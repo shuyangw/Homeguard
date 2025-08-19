@@ -1,0 +1,7 @@
+# Env file
+.env
+.claude
+.vscode
+__pycache__/
+backtest_lists/
+strategies/
