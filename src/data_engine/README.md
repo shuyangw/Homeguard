@@ -16,15 +16,15 @@ The Data Engine is a production-ready framework designed to efficiently collect,
 
 ### Key Features
 
-- ✅ **Multithreaded Execution**: Parallel processing with 6-16 workers (OS-dependent) for up to 16x speedup
-- ✅ **Progress Tracking**: Real-time updates with completion percentage, elapsed time, and ETA
-- ✅ **Thread Visibility**: Every operation tagged with thread ID for debugging and performance analysis
-- ✅ **Error Resilient**: Per-symbol error isolation ensures one failure doesn't stop the entire pipeline
-- ✅ **Partitioned Storage**: Symbol/year/month partitioning for efficient querying and data management
-- ✅ **Idempotent Operations**: Safe to re-run without creating duplicates (OVERWRITE_OR_IGNORE)
-- ✅ **OS-Aware**: Automatic platform detection with optimized settings for Windows, macOS, and Linux
-- ✅ **Feed Flexible**: Support for multiple Alpaca data feeds (SIP, IEX, OTC, DELAYED_SIP)
-- ✅ **Metadata Tracking**: Automatic index membership tracking with timestamps
+- **Multithreaded Execution**: Parallel processing with 6-16 workers (OS-dependent) for up to 16x speedup
+- **Progress Tracking**: Real-time updates with completion percentage, elapsed time, and ETA
+- **Thread Visibility**: Every operation tagged with thread ID for debugging and performance analysis
+- **Error Resilient**: Per-symbol error isolation ensures one failure doesn't stop the entire pipeline
+- **Partitioned Storage**: Symbol/year/month partitioning for efficient querying and data management
+- **Idempotent Operations**: Safe to re-run without creating duplicates (OVERWRITE_OR_IGNORE)
+- **OS-Aware**: Automatic platform detection with optimized settings for Windows, macOS, and Linux
+- **Feed Flexible**: Support for multiple Alpaca data feeds (SIP, IEX, OTC, DELAYED_SIP)
+- **Metadata Tracking**: Automatic index membership tracking with timestamps
 
 ### Use Cases
 

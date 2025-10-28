@@ -1,24 +1,28 @@
-# Auto detect text files and normalize line endings to LF in repository
-* text=auto
+# Set default behavior to automatically normalize line endings
+* text=auto eol=lf
 
-# Python files should always use LF
+# Explicitly declare text files
 *.py text eol=lf
-
-# Markdown files should always use LF
 *.md text eol=lf
-
-# INI files should always use LF
 *.ini text eol=lf
-
-# Shell scripts should always use LF
 *.sh text eol=lf
+*.txt text eol=lf
+*.json text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
 
-# Windows batch files should use CRLF
+# Windows-specific files
 *.bat text eol=crlf
 *.cmd text eol=crlf
 
-# Binary files
+# Binary files (no normalization)
 *.parquet binary
 *.csv binary
 *.pkl binary
 *.joblib binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary

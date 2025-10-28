@@ -68,7 +68,7 @@ class AlpacaClient:
         feed_info = f" (feed: {data_feed})" if data_feed else ""
         print(f"[Thread-{thread_id}] Fetching data for {symbol} from {start_date_str} to {end_date_str}{feed_info}")
 
-        data = self.client.get_stock_bars(request_params).df
+        data = self.client.get_stock_bars(request_params).df  # type: ignore[attr-defined]
         print(f"[Thread-{thread_id}] Fetched {len(data)} bars for {symbol}")
 
         return data

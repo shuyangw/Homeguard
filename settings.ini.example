@@ -1,0 +1,11 @@
+[windows]
+local_storage_dir = F:\Stock_Data
+api_threads = 16
+
+[macos]
+local_storage_dir = /path/to/your/data/directory
+api_threads = 6
+
+[linux]
+local_storage_dir = /home/user/stock_data
+api_threads = 8

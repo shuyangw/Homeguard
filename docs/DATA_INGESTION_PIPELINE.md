@@ -363,14 +363,14 @@ storage.store(data)
 
 ## Key Features
 
-✅ **Multithreaded**: Parallel processing with configurable workers
-✅ **Progress Tracking**: Real-time updates with time estimates
-✅ **Error Resilient**: Per-symbol error isolation
-✅ **Partitioned Storage**: Efficient query-optimized structure
-✅ **Metadata Tracking**: Index membership and timestamps
-✅ **OS-Aware**: Platform-specific configuration
-✅ **Idempotent**: Safe to re-run without duplicates
-✅ **Feed Flexible**: Support for multiple Alpaca data feeds
+- **Multithreaded**: Parallel processing with configurable workers
+- **Progress Tracking**: Real-time updates with time estimates
+- **Error Resilient**: Per-symbol error isolation
+- **Partitioned Storage**: Efficient query-optimized structure
+- **Metadata Tracking**: Index membership and timestamps
+- **OS-Aware**: Platform-specific configuration
+- **Idempotent**: Safe to re-run without duplicates
+- **Feed Flexible**: Support for multiple Alpaca data feeds
 
 ## Design Patterns
 

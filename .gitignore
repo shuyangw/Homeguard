@@ -1,5 +1,6 @@
 # Env file
 .env
+settings.ini
 .claude
 .vscode
 
