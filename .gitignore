@@ -2,6 +2,10 @@
 .env
 .claude
 .vscode
+
+Homeguard.code-workspace
+notes
 __pycache__/
 backtest_lists/
 strategies/
+claude.md
