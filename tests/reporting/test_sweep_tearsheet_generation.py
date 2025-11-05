@@ -8,7 +8,7 @@ import tempfile
 import pandas as pd
 
 # Add src to path
-sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / 'src'))
 
 from backtesting.engine.sweep_runner import SweepRunner
 from backtesting.engine.backtest_engine import BacktestEngine

@@ -13,7 +13,7 @@ from pathlib import Path
 import sys
 import tempfile
 
-sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / 'src'))
 
 from backtesting.engine.benchmark_calculator import BenchmarkCalculator
 from backtesting.engine.portfolio_aggregator import PortfolioAggregator

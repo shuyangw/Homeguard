@@ -22,7 +22,7 @@ from pathlib import Path
 from typing import Tuple, Dict
 from datetime import datetime, timedelta
 
-sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / 'src'))
 
 from backtesting.engine.backtest_engine import BacktestEngine
 from backtesting.base.strategy import LongOnlyStrategy
