@@ -1,12 +1,233 @@
-# Env file
+# ============================================================================
+# SECURITY - API Keys and Secrets
+# ============================================================================
 .env
+.env.*
+!.env.example
+src/api_key.py
+**/api_key.py
+secrets/
+*.pem
+*.key
+
+# ============================================================================
+# CONFIGURATION - Environment and Settings
+# ============================================================================
 settings.ini
 .claude
-.vscode
 
-Homeguard.code-workspace
-notes
+# ============================================================================
+# IDE AND EDITOR FILES
+# ============================================================================
+# Visual Studio Code
+.vscode/
+*.code-workspace
+pyrightconfig.json
+
+# PyCharm
+.idea/
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# Vim
+*.swp
+*.swo
+*~
+
+# Emacs
+\#*\#
+.\#*
+
+# ============================================================================
+# PYTHON - Cache and Compiled Files
+# ============================================================================
 __pycache__/
-backtest_lists/
-strategies/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# ============================================================================
+# PYTHON - Virtual Environments
+# ============================================================================
+venv/
+env/
+ENV/
+.venv/
+.env/
+
+# ============================================================================
+# PYTHON - Distribution and Packaging
+# ============================================================================
+build/
+dist/
+*.egg-info/
+*.egg
+.eggs/
+
+# ============================================================================
+# PYTHON - Testing and Coverage
+# ============================================================================
+.pytest_cache/
+.tox/
+.nox/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+*.cover
+.hypothesis/
+
+# ============================================================================
+# PYTHON - Type Checking and Linting
+# ============================================================================
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.ruff_cache/
+.pytype/
+
+# ============================================================================
+# JUPYTER NOTEBOOKS
+# ============================================================================
+.ipynb_checkpoints/
+*.ipynb_checkpoints/
+
+# ============================================================================
+# DATA AND OUTPUTS
+# ============================================================================
+# Data directories (market data storage)
+data/
+equities_*/
+*.parquet
+*.csv
+!examples/**/*.csv
+!tests/**/*.csv
+
+# Log files
+logs/
+*.log
+
+# Output directories
+output/
+offline_charts/
+
+# Generated reports and charts
+*.html
+!docs/**/*.html
+*.png
+!docs/**/*.png
+
+# ============================================================================
+# GUI-SPECIFIC FILES
+# ============================================================================
+gui_config/
+*.json
+!package.json
+!tsconfig.json
+!examples/**/*.json
+!tests/**/*.json
+
+# ============================================================================
+# USER-SPECIFIC FILES
+# ============================================================================
+# Personal notes and workspace
+notes
+notes.*
+env.md
 claude.md
+
+# Backtest lists (user-specific symbol lists)
+backtest_lists/
+
+# ============================================================================
+# DOCUMENTATION (Discouraged per CLAUDE.md)
+# ============================================================================
+*_SUMMARY.md
+*_COMPLETE.md
+*IMPLEMENTATION_SUMMARY.md
+CHANGES_SUMMARY.md
+
+# ============================================================================
+# OPERATING SYSTEM FILES
+# ============================================================================
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+desktop.ini
+$RECYCLE.BIN/
+
+# Linux
+.directory
+.Trash-*
+
+# ============================================================================
+# TEMPORARY AND BACKUP FILES
+# ============================================================================
+*.tmp
+*.tmp.*
+*.bak
+*.backup
+*.old
+*~
+nul
+
+# ============================================================================
+# DATABASE FILES
+# ============================================================================
+*.db
+*.sqlite
+*.sqlite3
+!tests/**/*.db
+
+# ============================================================================
+# COMPRESSION
+# ============================================================================
+*.zip
+*.tar
+*.tar.gz
+*.rar
+*.7z
+
+# ============================================================================
+# PROJECT-SPECIFIC EXCLUSIONS
+# ============================================================================
+# Keep certain example files
+!examples/
+!tests/
+
+# Hide documentation/analysis files in tests
+tests/*.md
+!tests/README.md
+
+# ============================================================================
+# DOCUMENTATION - Hide all except architecture
+# ============================================================================
+# Hide all docs by default
+docs/*
+
+# KEEP: Main documentation navigation
+!docs/README.md
+
+# KEEP: Architecture documentation (critical for developers)
+!docs/architecture/
+!docs/architecture/**
+
+# Hide everything else:
+# - docs/api/ (can be generated from code)
+# - docs/guides/ (user guides, wiki material)
+# - docs/testing/ (test documentation)
+# - docs/progress/ (historical tracking)
+# - docs/quantstats/ (integration-specific)
+# - docs/*.md (misc root-level docs)

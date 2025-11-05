@@ -1,0 +1,15 @@
+"""
+Advanced trading strategy implementations.
+"""
+
+from strategies.advanced.volatility_targeted_momentum import VolatilityTargetedMomentum
+from strategies.advanced.overnight_mean_reversion import OvernightMeanReversion
+from strategies.advanced.cross_sectional_momentum import CrossSectionalMomentum
+from strategies.advanced.pairs_trading import PairsTrading
+
+__all__ = [
+    'VolatilityTargetedMomentum',
+    'OvernightMeanReversion',
+    'CrossSectionalMomentum',
+    'PairsTrading'
+]

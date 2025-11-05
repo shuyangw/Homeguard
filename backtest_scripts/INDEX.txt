@@ -1,0 +1,223 @@
+================================================================================
+                     BACKTEST SCRIPTS - COMPLETE INDEX
+================================================================================
+
+MASTER SCRIPTS (3)
+==================
+RUN_QUICK_TEST.bat              Quick system verification (1-2 min)
+RUN_ALL_BASIC.bat               Run all 5 basic tests sequentially (5-10 min)
+LIST_ALL_STRATEGIES.bat         Display all available strategies
+
+BASIC SCRIPTS (5) - Single symbol, default parameters
+======================================================
+Location: basic/
+
+01_simple_ma_crossover.bat      MA 20/50 SMA crossover on AAPL (2023)
+02_rsi_mean_reversion.bat       RSI 14-period, 30/70 levels on AAPL (2023)
+03_bollinger_bands.bat          BB 20-period, 2.0 std on MSFT (2023)
+04_macd_momentum.bat            MACD 12/26/9 on GOOGL (2023)
+05_breakout_strategy.bat        20-period breakout on AMZN (2023)
+
+Runtime: 1-2 minutes each
+Symbols: AAPL, MSFT, GOOGL, AMZN
+Period: 2023-01-01 to 2024-01-01
+Capital: $100,000
+Fees: 0.1%
+
+INTERMEDIATE SCRIPTS (6) - Custom parameters & portfolios
+==========================================================
+Location: intermediate/
+
+01_custom_ma_parameters.bat     MA 10/30 EMA (faster) on AAPL (2023)
+02_multi_symbol_portfolio.bat   4 tech stocks (AAPL,MSFT,GOOGL,AMZN) (2023)
+03_tight_rsi_levels.bat         RSI 25/75 aggressive on MSFT (2023)
+04_triple_ma_trend.bat          Triple MA 10/20/50 EMA on GOOGL (2023)
+05_higher_capital_lower_fees.bat $500k capital, 0.05% fees on AAPL (2023)
+06_long_period_test.bat         MA crossover on AAPL (2022-2024, 2 years)
+
+Runtime: 2-5 minutes each
+Features: Custom parameters, multi-symbol, longer periods, varied capital
+Demonstrates: Parameter customization, portfolio management, cost impact
+
+OPTIMIZATION SCRIPTS (5) - Parameter grid search
+=================================================
+Location: optimization/
+
+01_optimize_ma_crossover.bat    Fast=[10,15,20,25,30], Slow=[40,50,60]
+                                15 combinations, optimize Sharpe
+                                AAPL 2022-2023
+
+02_optimize_rsi_levels.bat      Oversold=[20,25,30,35], Overbought=[65,70,75,80]
+                                16 combinations, optimize Sharpe
+                                MSFT 2022-2023
+
+03_optimize_for_returns.bat     Fast=[5,10,15,20], Slow=[30,40,50]
+                                12 combinations, optimize Total Return
+                                GOOGL 2022-2023
+
+04_optimize_minimize_drawdown.bat Window=[15,20,25,30], Std=[1.5,2.0,2.5]
+                                  12 combinations, minimize Max Drawdown
+                                  AAPL 2022-2023
+
+05_optimize_breakout_windows.bat Breakout=[10,15,20,25,30], Exit=[5,7,10]
+                                 15 combinations, optimize Sharpe
+                                 AMZN 2022-2023
+
+Runtime: 5-15 minutes each
+Features: Grid search, multiple metrics, training period
+Demonstrates: Parameter tuning, optimization workflow, metric selection
+
+ADVANCED SCRIPTS (6) - Complex scenarios
+=========================================
+Location: advanced/
+
+01_large_portfolio_10_symbols.bat   10-stock tech portfolio with cash sharing
+                                   AAPL,MSFT,GOOGL,AMZN,NVDA,META,TSLA,NFLX,AMD,INTC
+                                   $500k capital, 2023
+
+02_high_frequency_parameters.bat   MA 3/10 (very short) for frequent trading
+                                  AAPL 2023, expect high trade count
+
+03_multi_year_robustness_test.bat MA crossover on AAPL (2021-2024, 3 years)
+                                  Tests through bull/bear/recovery markets
+
+04_sector_rotation_portfolio.bat  8 stocks across sectors (tech, finance, health, energy)
+                                 RSI strategy, $250k capital, 2023
+
+05_stress_test_volatile_stock.bat Bollinger Bands on TSLA (high volatility)
+                                 Tests strategy in extreme conditions, 2023
+
+06_save_results_and_plot.bat     MA crossover with CSV export and charts
+                                Generates report file and equity plots
+
+Runtime: 3-20 minutes each
+Features: Large portfolios, multi-year, sector diversity, high frequency, reporting
+Demonstrates: Robustness testing, real-world scenarios, result export
+
+DOCUMENTATION (3 files)
+========================
+README.md               Complete guide to all scripts (this index in detail)
+QUICK_REFERENCE.txt     One-page quick reference card
+INDEX.txt               This file - complete listing
+
+================================================================================
+SUMMARY STATISTICS
+================================================================================
+
+Total Batch Files:      25
+Master Scripts:         3
+Basic Scripts:          5
+Intermediate Scripts:   6
+Optimization Scripts:   5
+Advanced Scripts:       6
+Documentation Files:    3
+
+Strategies Covered:     6 (all built-in strategies)
+Symbols Used:          15+ different stocks
+Complexity Levels:      4 (Basic, Intermediate, Optimization, Advanced)
+Date Ranges:           1-3 years
+Capital Amounts:       $100k - $500k
+Fee Structures:        0.05% - 0.1%
+
+================================================================================
+RECOMMENDED WORKFLOWS
+================================================================================
+
+NEW USERS
+---------
+1. RUN_QUICK_TEST.bat                    (verify system)
+2. basic/01_simple_ma_crossover.bat      (first real backtest)
+3. basic/02_rsi_mean_reversion.bat       (try different strategy)
+4. RUN_ALL_BASIC.bat                     (compare all strategies)
+5. intermediate/01_custom_ma_parameters.bat (learn customization)
+
+STRATEGY RESEARCH
+-----------------
+1. basic/ scripts                        (understand baseline performance)
+2. intermediate/01_custom_ma_parameters.bat (test parameter sensitivity)
+3. optimization/01_optimize_ma_crossover.bat (find optimal parameters)
+4. advanced/03_multi_year_robustness_test.bat (validate robustness)
+5. advanced/06_save_results_and_plot.bat (document findings)
+
+PORTFOLIO TESTING
+-----------------
+1. intermediate/02_multi_symbol_portfolio.bat (4-stock portfolio)
+2. advanced/01_large_portfolio_10_symbols.bat (10-stock portfolio)
+3. advanced/04_sector_rotation_portfolio.bat (sector diversification)
+
+STRATEGY COMPARISON
+-------------------
+1. RUN_ALL_BASIC.bat                     (compare all 6 strategies)
+2. Note which performs best on each metric
+3. Use optimization/ to tune the winner
+4. Validate with advanced/03_multi_year_robustness_test.bat
+
+CUSTOM DEVELOPMENT
+------------------
+1. Copy any script as template
+2. Modify strategy, symbols, parameters
+3. Test thoroughly
+4. Document results
+5. Create your own workflow
+
+================================================================================
+FILE NAMING CONVENTION
+================================================================================
+
+XX_descriptive_name.bat
+
+XX = Two-digit sequence number (01, 02, etc.)
+descriptive_name = Lowercase with underscores
+.bat = Windows batch file extension
+
+Examples:
+01_simple_ma_crossover.bat
+02_multi_symbol_portfolio.bat
+03_optimize_for_returns.bat
+
+================================================================================
+TECHNICAL DETAILS
+================================================================================
+
+All scripts use backtest_runner.py with these standard options:
+
+Required:
+  --strategy [StrategyName]     Strategy to test
+  --symbols [SYMBOL,...]        Comma-separated symbol list
+  --start [YYYY-MM-DD]         Start date
+  --end [YYYY-MM-DD]           End date
+
+Optional:
+  --capital [AMOUNT]           Starting capital (default: 100000)
+  --fees [DECIMAL]             Trading fees as decimal (default: 0.001)
+  --params [KEY=VAL,...]       Strategy parameters
+  --save-report                Save CSV report
+  --show-plots                 Display equity plots
+
+Optimization:
+  --optimize                   Enable optimization mode
+  --param-grid [SPEC]          Parameter grid specification
+  --metric [METRIC]            sharpe_ratio, total_return, max_drawdown
+
+================================================================================
+SUPPORT
+================================================================================
+
+Problems?
+- Check backtest_scripts/README.md for troubleshooting
+- Review docs/BACKTESTING_GUIDE.md for detailed help
+- Verify data is ingested for symbols/dates used
+- Ensure Python and dependencies are installed
+
+Questions?
+- Full documentation: docs/
+- Example code: examples/
+- Custom strategies: src/strategies/custom/template.py
+
+================================================================================
+Version: 1.0
+Created: 2025-10-28
+Scripts: 25 batch files
+Documentation: Complete
+Status: Production Ready
+================================================================================

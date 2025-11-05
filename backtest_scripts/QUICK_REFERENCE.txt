@@ -1,0 +1,140 @@
+================================================================================
+                        BACKTEST SCRIPTS QUICK REFERENCE
+================================================================================
+
+GETTING STARTED
+---------------
+1. Double-click: RUN_QUICK_TEST.bat (verify system works)
+2. Try basic scripts in basic/ folder
+3. View all strategies: LIST_ALL_STRATEGIES.bat
+
+DIRECTORY STRUCTURE
+-------------------
+basic/          - 5 simple backtests with default parameters
+intermediate/   - 6 backtests with custom parameters & multi-symbol
+optimization/   - 5 parameter optimization scripts
+advanced/       - 6 complex scenarios (large portfolios, stress tests)
+
+QUICK COMMANDS
+--------------
+Run Quick Test:         Double-click RUN_QUICK_TEST.bat
+Run All Basic Tests:    Double-click RUN_ALL_BASIC.bat
+List Strategies:        Double-click LIST_ALL_STRATEGIES.bat
+
+BASIC SCRIPTS (1-2 min each)
+----------------------------
+01_simple_ma_crossover.bat      - MA 20/50 crossover on AAPL
+02_rsi_mean_reversion.bat       - RSI 30/70 on AAPL
+03_bollinger_bands.bat          - Bollinger Bands on MSFT
+04_macd_momentum.bat            - MACD on GOOGL
+05_breakout_strategy.bat        - Breakout on AMZN
+
+INTERMEDIATE SCRIPTS (2-5 min each)
+-----------------------------------
+01_custom_ma_parameters.bat     - Custom MA windows (10/30 EMA)
+02_multi_symbol_portfolio.bat   - 4 stocks portfolio
+03_tight_rsi_levels.bat         - Aggressive RSI 25/75
+04_triple_ma_trend.bat          - Triple MA 10/20/50
+05_higher_capital_lower_fees.bat- $500k institutional setup
+06_long_period_test.bat         - 2-year backtest
+
+OPTIMIZATION SCRIPTS (5-15 min each)
+------------------------------------
+01_optimize_ma_crossover.bat    - Find best MA windows
+02_optimize_rsi_levels.bat      - Find best RSI thresholds
+03_optimize_for_returns.bat     - Maximize total return
+04_optimize_minimize_drawdown.bat - Minimize risk
+05_optimize_breakout_windows.bat  - Find best breakout periods
+
+ADVANCED SCRIPTS (3-20 min each)
+--------------------------------
+01_large_portfolio_10_symbols.bat - 10-stock portfolio
+02_high_frequency_parameters.bat  - Short MAs for frequent trading
+03_multi_year_robustness_test.bat - 3-year test (2021-2024)
+04_sector_rotation_portfolio.bat  - 8 stocks across sectors
+05_stress_test_volatile_stock.bat - Test on TSLA volatility
+06_save_results_and_plot.bat     - Generate reports + charts
+
+AVAILABLE STRATEGIES
+--------------------
+MovingAverageCrossover  - Fast/slow MA crossover
+TripleMovingAverage     - Triple MA trend alignment
+MeanReversion           - Bollinger Bands bounce
+RSIMeanReversion        - RSI oversold/overbought
+MomentumStrategy        - MACD momentum
+BreakoutStrategy        - Price breakout
+
+CUSTOMIZING SCRIPTS
+-------------------
+Right-click any .bat file → Edit with Notepad
+
+Change Symbol:      --symbols AAPL → --symbols MSFT
+Change Dates:       --start 2023-01-01 --end 2024-01-01
+Change Capital:     --capital 100000 → --capital 50000
+Change Fees:        --fees 0.001 → --fees 0.0005
+Change Parameters:  --params "fast_window=20,slow_window=50"
+
+TYPICAL OUTPUT
+--------------
+Total Return:       XX.XX%
+Annual Return:      XX.XX%
+Sharpe Ratio:       X.XX
+Max Drawdown:       -X.XX%
+Win Rate:           XX.XX%
+Total Trades:       XXX
+Final Value:        $XXX,XXX.XX
+
+TROUBLESHOOTING
+---------------
+Script closes immediately:  Right-click → Edit → Check config
+No data found:             Run data ingestion first
+Python not found:          Install Python 3.8+ and add to PATH
+Module not found:          Run: pip install -r requirements.txt
+Slow performance:          Normal for large portfolios/long periods
+
+WORKFLOW RECOMMENDATIONS
+------------------------
+For Learning:
+1. RUN_QUICK_TEST.bat
+2. Try each basic/ script
+3. RUN_ALL_BASIC.bat to compare
+4. Move to intermediate/
+
+For Research:
+1. Use optimization/ to find best parameters
+2. Test on train period (2022-2023)
+3. Validate on test period (2023-2024)
+4. Use advanced/ for robustness
+
+For Development:
+1. Copy existing script as template
+2. Modify parameters
+3. Test with different symbols/periods
+4. Document findings
+
+PERFORMANCE TIMES
+-----------------
+Single symbol, 1 year:      1-2 minutes
+Multi-symbol (4-5), 1 year: 2-5 minutes
+Large portfolio (10+):      5-10 minutes
+Optimization (10-20 tests): 5-15 minutes
+Multi-year (2-3 years):     3-10 minutes
+
+DATA REQUIREMENTS
+-----------------
+Must have ingested data for:
+- Symbols used in scripts
+- Date ranges specified
+- Check available: cd src && python -c "from backtesting.engine.data_loader import DataLoader; print(DataLoader().get_available_symbols())"
+
+MORE INFORMATION
+----------------
+Full Guide:         docs/BACKTESTING_GUIDE.md
+API Reference:      docs/API_REFERENCE.md
+Example Scripts:    examples/
+Custom Strategies:  src/strategies/custom/template.py
+Detailed README:    backtest_scripts/README.md
+
+================================================================================
+Total: 25 batch files | 6 strategies | 4 complexity levels | Ready to run!
+================================================================================
