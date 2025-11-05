@@ -7,7 +7,7 @@ from pathlib import Path
 import tempfile
 
 # Add src to path
-sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / 'src'))
 
 from backtesting.engine.multi_symbol_html_viewer import MultiSymbolHTMLViewer
 

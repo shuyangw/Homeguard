@@ -12,7 +12,7 @@ import numpy as np
 from datetime import datetime, timedelta
 
 # Add src to path
-sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / 'src'))
 
 from backtesting.engine.multi_asset_portfolio import MultiAssetPortfolio
 from backtesting.engine.multi_symbol_metrics import MultiSymbolMetrics

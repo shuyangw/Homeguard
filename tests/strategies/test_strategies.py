@@ -8,7 +8,7 @@ import numpy as np
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / 'src'))
 
 from strategies.base_strategies.moving_average import MovingAverageCrossover, TripleMovingAverage
 from strategies.base_strategies.mean_reversion import MeanReversion, RSIMeanReversion
