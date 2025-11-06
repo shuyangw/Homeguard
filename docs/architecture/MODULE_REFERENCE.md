@@ -1034,6 +1034,247 @@ entries, exits = strategy.generate_signals(data)
 
 ---
 
+### Regime Analysis & Validation Modules
+
+#### `src/backtesting/regimes/detector.py`
+**Purpose**: Detect different market regimes (trend, volatility, drawdown)
+
+**Key Classes**:
+- `RegimeDetector`: Market regime detector
+
+**Key Methods**:
+- `detect_trend_regimes(prices, lookback)`: Detect bull/bear/sideways markets
+- `detect_volatility_regimes(prices, lookback)`: Detect high/low volatility periods
+- `detect_drawdown_regimes(prices, threshold)`: Detect drawdown/recovery/calm periods
+
+**Regime Types**:
+
+1. **Trend Regimes** (based on moving average slope):
+   - Bull: Price trending up (MA slope > threshold)
+   - Bear: Price trending down (MA slope < -threshold)
+   - Sideways: Price range-bound
+
+2. **Volatility Regimes** (based on rolling volatility):
+   - High Volatility: Vol > median
+   - Low Volatility: Vol ≤ median
+
+3. **Drawdown Regimes** (based on peak-to-trough):
+   - Drawdown: Currently in drawdown > threshold
+   - Recovery: Recovering from drawdown
+   - Calm: Not in drawdown
+
+**Dependencies**: `pandas`, `numpy`
+
+**Usage Example**:
+```python
+from backtesting.regimes.detector import RegimeDetector
+
+detector = RegimeDetector(
+    trend_lookback=60,  # 60-day MA for trend
+    vol_lookback=20,    # 20-day vol calculation
+    drawdown_threshold=10.0  # 10% drawdown threshold
+)
+
+# Detect regimes
+trend_regimes = detector.detect_trend_regimes(prices)
+vol_regimes = detector.detect_volatility_regimes(prices)
+dd_regimes = detector.detect_drawdown_regimes(prices)
+```
+
+---
+
+#### `src/backtesting/regimes/analyzer.py`
+**Purpose**: Analyze strategy performance across market regimes
+
+**Key Classes**:
+- `RegimeAnalyzer`: Regime-based performance analyzer
+
+**Key Methods**:
+- `analyze(portfolio_returns, market_prices, trades)`: Full regime analysis
+- `calculate_robustness_score()`: Calculate consistency score (0-100)
+- `format_results()`: Format results for display
+
+**Analysis Output**:
+- **Per-Regime Performance**: Sharpe, returns, drawdown, trade count
+- **Robustness Score**: 0-100 metric measuring consistency across regimes
+- **Best/Worst Regimes**: Identifies strengths and weaknesses
+
+**Robustness Score Calculation**:
+```python
+# Variance of Sharpe ratios across regimes (lower is better)
+variance_penalty = np.std(regime_sharpes) * 20
+# Negative regime penalty (more negative regimes = lower score)
+negative_penalty = (num_negative_regimes / total_regimes) * 30
+robustness = max(0, 100 - variance_penalty - negative_penalty)
+```
+
+**Interpretation**:
+- **80-100**: Excellent - Highly consistent across all conditions
+- **60-80**: Good - Reasonable consistency
+- **40-60**: Fair - Some regime-specific weaknesses
+- **< 40**: Needs improvement - Inconsistent performance
+
+**Dependencies**: `pandas`, `numpy`, `RegimeDetector`
+
+**Usage Example**:
+```python
+from backtesting.regimes.analyzer import RegimeAnalyzer
+
+analyzer = RegimeAnalyzer(
+    trend_lookback=60,
+    vol_lookback=20,
+    drawdown_threshold=10.0
+)
+
+results = analyzer.analyze(
+    portfolio_returns=portfolio.returns(),
+    market_prices=spy_prices,
+    trades=portfolio.trades
+)
+
+print(f"Robustness Score: {results['robustness_score']}")
+```
+
+---
+
+#### `src/backtesting/chunking/walk_forward.py`
+**Purpose**: Walk-forward validation for strategy testing
+
+**Key Classes**:
+- `WalkForwardValidator`: Rolling train/test window validator
+
+**Key Methods**:
+- `run(strategy_class, param_grid, data, train_days, test_days)`: Execute validation
+- `optimize_window(train_data, param_grid)`: Optimize params on training window
+- `test_window(test_data, best_params)`: Test on out-of-sample window
+
+**Walk-Forward Process**:
+```
+Timeline:
+[-------Train 1-------][--Test 1--]
+                [-------Train 2-------][--Test 2--]
+                                [-------Train 3-------][--Test 3--]
+```
+
+**Key Features**:
+- **Rolling windows**: Train on past N days, test on next M days
+- **Parameter optimization**: Grid search on training window
+- **Out-of-sample testing**: No lookahead bias
+- **Degradation tracking**: Compare in-sample vs out-of-sample performance
+
+**Validation Output**:
+```python
+{
+    'windows': [
+        {
+            'train_start': '2023-01-01',
+            'train_end': '2023-06-30',
+            'test_start': '2023-07-01',
+            'test_end': '2023-09-30',
+            'best_params': {'fast': 10, 'slow': 50},
+            'train_return': 15.2,
+            'test_return': 8.7,
+            'degradation_pct': 42.8
+        },
+        # ... more windows
+    ],
+    'avg_train_return': 14.5,
+    'avg_test_return': 9.2,
+    'avg_degradation': 36.5,
+    'stability_score': 68.0
+}
+```
+
+**Dependencies**: `BacktestEngine`, `pandas`, `itertools`
+
+**Usage Example**:
+```python
+from backtesting.chunking.walk_forward import WalkForwardValidator
+from strategies.moving_average import MovingAverageCrossover
+
+validator = WalkForwardValidator(
+    engine=engine,
+    symbol='AAPL',
+    train_days=180,  # 6 months training
+    test_days=90     # 3 months testing
+)
+
+param_grid = {
+    'fast_window': [10, 20, 30],
+    'slow_window': [50, 100, 200]
+}
+
+results = validator.run(
+    strategy_class=MovingAverageCrossover,
+    param_grid=param_grid,
+    start_date='2023-01-01',
+    end_date='2024-01-01'
+)
+
+print(f"Avg Test Return: {results['avg_test_return']:.2f}%")
+print(f"Degradation: {results['avg_degradation']:.2f}%")
+```
+
+---
+
+#### `backtest_engine.py` - Regime Analysis Integration
+**Level 1 Enhancement**: Transparent regime analysis
+
+**New Parameters**:
+- `enable_regime_analysis`: Enable automatic regime analysis (default: False)
+
+**New Methods**:
+- `_print_regime_analysis(portfolio)`: Print regime-based performance breakdown
+
+**Features Added**:
+- Automatic data caching for regime analysis
+- Daily resampling for regime detection
+- Console output with regime performance tables
+- Robustness scoring
+
+**Usage Example**:
+```python
+# Enable regime analysis automatically
+engine = BacktestEngine(
+    initial_capital=100000,
+    enable_regime_analysis=True  # NEW: Auto-analyze by regime
+)
+
+portfolio = engine.run(
+    strategy=strategy,
+    symbols='AAPL',
+    start_date='2023-01-01',
+    end_date='2024-01-01'
+)
+# Regime analysis printed automatically after backtest results
+```
+
+---
+
+#### GUI Integration - Level 2
+**Files Modified**: `setup_view.py`, `app.py`, `gui_controller.py`
+
+**New GUI Elements**:
+- Regime analysis checkbox in SetupView (Output Settings section)
+- Tooltip: "Automatically analyze strategy performance across different market regimes"
+- State persistence with saved configurations
+
+**Data Flow**:
+```
+SetupView (checkbox)
+  └─→ App (_on_run_backtests)
+       └─→ GUIBacktestController (start_backtests)
+            └─→ BacktestEngine (enable_regime_analysis parameter)
+```
+
+**User Experience**:
+1. User checks "Enable regime analysis" checkbox
+2. Runs backtest normally
+3. Regime analysis appears in terminal output after results
+4. No GUI changes to results view (terminal output only)
+
+---
+
 ## Visualization Layer
 
 ### `src/visualization/integration.py`

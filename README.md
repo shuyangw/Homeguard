@@ -32,16 +32,21 @@ A comprehensive VectorBT-based backtesting framework for testing stock trading s
 - CLI and programmatic API interfaces
 
 **🖥️ GUI Quick Start (Recommended for Beginners):**
+
+**Windows:**
 ```bash
-# Activate environment
-conda activate fintech
+# Double-click start_gui.bat in the root directory
+# Or run from command line:
+start_gui.bat
+```
 
-# Launch GUI (option 1: launcher script)
-python scripts/run_gui.py
+**macOS/Linux:**
+```bash
+# Make script executable (first time only)
+chmod +x start_gui.sh
 
-# Or (option 2: as Python module)
-cd src
-python -m gui
+# Run the launcher
+./start_gui.sh
 ```
 
 The GUI provides:

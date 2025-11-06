@@ -78,7 +78,7 @@ except Exception as e:
 print("\n[5/6] Checking backend components...")
 try:
     from backtesting.engine.backtest_engine import BacktestEngine
-    from backtesting.engine.sweep_runner import SweepRunner
+    from backtesting.optimization.sweep_runner import SweepRunner
     from strategies.base_strategies.moving_average import MovingAverageCrossover
     print("  [OK] Backend engine imports successfully")
     checks_passed += 1

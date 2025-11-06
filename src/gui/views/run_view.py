@@ -323,16 +323,22 @@ Execution:
 
             self.progress_text.value = status
 
-            # Update time estimates
-            self.update_time_estimates(completed)
+            # Update time estimates (pass total to avoid mismatch)
+            self.update_time_estimates(completed, total)
 
             if self.page:
                 self.overall_progress.update()
                 self.progress_text.update()
 
-    def update_time_estimates(self, completed: int):
-        """Calculate and display time estimates based on completed symbols."""
-        if not self.start_time or self.total_symbols == 0:
+    def update_time_estimates(self, completed: int, total: int):
+        """
+        Calculate and display time estimates based on completed symbols.
+
+        Args:
+            completed: Number of completed symbols
+            total: Total number of symbols (passed to avoid using stale self.total_symbols)
+        """
+        if not self.start_time or total == 0:
             return
 
         elapsed = (datetime.now() - self.start_time).total_seconds()
@@ -340,8 +346,13 @@ Execution:
 
         if completed > 0:
             avg_time = elapsed / completed
-            remaining_symbols = self.total_symbols - completed
+            remaining_symbols = total - completed
             remaining_seconds = avg_time * remaining_symbols
+
+            # Guard against negative remaining time
+            if remaining_seconds < 0:
+                remaining_seconds = 0
+
             self.time_remaining_text.value = f"⏳ Remaining: ~{timedelta(seconds=int(remaining_seconds))}"
 
             eta = datetime.now() + timedelta(seconds=remaining_seconds)
@@ -384,10 +395,11 @@ Execution:
             self.return_to_menu_button.visible = True
             self.return_to_menu_button.disabled = False
         else:
-            # Show view results button
+            # Show both view results and return to menu buttons
             self.view_results_button.disabled = False
             self.view_results_button.visible = True
-            self.return_to_menu_button.visible = False
+            self.return_to_menu_button.visible = True
+            self.return_to_menu_button.disabled = False
 
         if self.page:
             self.update()

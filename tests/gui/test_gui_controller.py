@@ -10,7 +10,7 @@ from typing import List, Dict
 from datetime import datetime
 
 from backtesting.engine.backtest_engine import BacktestEngine
-from backtesting.engine.sweep_runner import SweepRunner
+from backtesting.optimization.sweep_runner import SweepRunner
 from backtesting.engine.portfolio_simulator import Portfolio
 from strategies.base_strategies.moving_average import MovingAverageCrossover
 from gui.workers.gui_controller import GUIBacktestController

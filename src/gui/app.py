@@ -10,6 +10,7 @@ from gui.views.setup_view import SetupView
 from gui.views.run_view import RunView
 from gui.views.results_view import ResultsView
 from gui.workers.gui_controller import GUIBacktestController
+from gui.optimization.runner import OptimizationRunner
 from backtesting.engine.backtest_engine import BacktestEngine
 from backtesting.engine.results_aggregator import ResultsAggregator
 from gui.utils.error_logger import log_error, log_info, log_exception
@@ -64,6 +65,9 @@ class BacktestApp:
             # Cache manager
             self.cache_manager = CacheManager()
 
+            # Optimization runner (initialized in _build_ui)
+            self.optimization_runner: OptimizationRunner = None  # type: ignore
+
             # Setup keyboard shortcuts
             self.page.on_keyboard_event = self._on_keyboard
 
@@ -84,7 +88,19 @@ class BacktestApp:
         self.run_view.cancel_button.on_click = lambda e: self._on_cancel_backtests()
         self.run_view.view_results_button.on_click = lambda e: self._show_results_view()
         self.run_view.return_to_menu_button.on_click = lambda e: self._show_setup_view()
-        self.results_view = ResultsView(on_back_clicked=self._show_setup_view)
+        self.results_view = ResultsView(
+            on_back_clicked=self._show_setup_view,
+            on_view_logs_clicked=self._show_run_view
+        )
+
+        # Initialize optimization runner
+        self.optimization_runner = OptimizationRunner(
+            page=self.page,
+            setup_view=self.setup_view,
+            show_notification=self._show_notification,
+            show_error_dialog=self._show_error_dialog,
+            show_setup_view=self._show_setup_view
+        )
 
         # Start with setup view
         self._show_setup_view()
@@ -119,6 +135,12 @@ class BacktestApp:
                 self.results_view.load_results(df)
                 log_info(f"Loaded {len(df)} results")
 
+                # Level 4: Load regime analysis results if available
+                regime_results = self.controller.get_regime_results()
+                if regime_results:
+                    self.results_view.load_regime_results(regime_results)
+                    log_info(f"Loaded regime analysis for {len(regime_results)} symbol(s)")
+
             self.page.controls.clear()
             self.page.controls.append(self.results_view)
             self.page.update()
@@ -135,6 +157,11 @@ class BacktestApp:
             config: Configuration dictionary from SetupView
         """
         try:
+            # Check if this is an optimization request
+            if config.get('is_optimization', False):
+                self._run_optimization(config)
+                return
+
             log_info(f"Starting backtests for {len(config['symbols'])} symbols")
             log_info(f"Strategy: {config['strategy_class'].__name__}")
             log_info(f"Date range: {config['start_date']} to {config['end_date']}")
@@ -313,9 +340,10 @@ class BacktestApp:
 
         Shortcuts:
         - Ctrl+R: Run backtests (setup view)
-        - Esc: Cancel backtests (run view)
+        - Esc: Cancel backtests (run view) / Back to setup (results view)
         - Ctrl+Q: Quick re-run (setup view)
-        - F5: Refresh/view results
+        - F5: View results (run view) / View execution logs (results view)
+        - Ctrl+L: View execution logs (results view)
         """
         try:
             # Check if key event is key down
@@ -328,11 +356,14 @@ class BacktestApp:
                     self.setup_view.run_button.on_click(None)
                     log_info("Keyboard shortcut: Ctrl+R - Run backtests")
 
-            # Esc: Cancel backtests
+            # Esc: Cancel backtests or navigate back
             elif e.key == "Escape":
                 if self.current_view == 'run':
                     self._on_cancel_backtests()
                     log_info("Keyboard shortcut: Esc - Cancel backtests")
+                elif self.current_view == 'results':
+                    self._show_setup_view()
+                    log_info("Keyboard shortcut: Esc - Back to setup")
 
             # Ctrl+Q: Quick re-run
             elif e.key == "Q" and e.ctrl:
@@ -340,11 +371,20 @@ class BacktestApp:
                     self.setup_view.quick_rerun_button.on_click(None)
                     log_info("Keyboard shortcut: Ctrl+Q - Quick re-run")
 
-            # F5: View results
+            # F5: Toggle between results and execution logs
             elif e.key == "F5":
                 if self.current_view == 'run' and not self.run_view.view_results_button.disabled:
                     self._show_results_view()
                     log_info("Keyboard shortcut: F5 - View results")
+                elif self.current_view == 'results':
+                    self._show_run_view()
+                    log_info("Keyboard shortcut: F5 - View execution logs")
+
+            # Ctrl+L: View execution logs (from results view)
+            elif e.key == "L" and e.ctrl:
+                if self.current_view == 'results':
+                    self._show_run_view()
+                    log_info("Keyboard shortcut: Ctrl+L - View execution logs")
 
         except Exception as ex:
             log_error(f"Error handling keyboard shortcut: {ex}")
@@ -550,7 +590,8 @@ class BacktestApp:
                 portfolio_mode=config.get('portfolio_mode', 'Single-Symbol'),
                 position_sizing_method=config.get('position_sizing_method', 'equal_weight'),
                 rebalancing_frequency=config.get('rebalancing_frequency', 'never'),
-                rebalancing_threshold_pct=config.get('rebalancing_threshold_pct', 0.05)
+                rebalancing_threshold_pct=config.get('rebalancing_threshold_pct', 0.05),
+                enable_regime_analysis=config.get('enable_regime_analysis', False)
             )
 
             # Start polling for updates
@@ -559,6 +600,15 @@ class BacktestApp:
         except Exception as e:
             log_exception(e, "Error running backtest")
             self._show_notification(f"Failed to run backtest: {str(e)}", "error")
+
+    def _run_optimization(self, config: Dict[str, Any]):
+        """
+        Run parameter optimization.
+
+        Args:
+            config: Configuration with optimization parameters
+        """
+        self.optimization_runner.run_optimization(config)
 
 
 def main(page: ft.Page):

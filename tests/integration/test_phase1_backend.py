@@ -13,7 +13,7 @@ project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root / 'src'))
 
 from backtesting.engine.backtest_engine import BacktestEngine
-from backtesting.engine.sweep_runner import SweepRunner
+from backtesting.optimization.sweep_runner import SweepRunner
 from strategies.base_strategies.moving_average import MovingAverageCrossover
 from gui.workers.gui_controller import GUIBacktestController
 

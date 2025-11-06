@@ -34,7 +34,8 @@ class BacktestEngine:
         freq: str = '1min',
         market_hours_only: bool = True,
         benchmark: str = 'SPY',
-        risk_config: Optional[RiskConfig] = None
+        risk_config: Optional[RiskConfig] = None,
+        enable_regime_analysis: bool = False
     ):
         """
         Initialize backtesting engine.
@@ -47,6 +48,7 @@ class BacktestEngine:
             market_hours_only: If True, only execute trades during market hours (9:35 AM - 3:55 PM EST)
             benchmark: Benchmark ticker for QuantStats reports (default: 'SPY')
             risk_config: Risk management configuration (default: RiskConfig.moderate())
+            enable_regime_analysis: If True, automatically analyze performance by market regime (default: False)
         """
         self.initial_capital = initial_capital
         self.fees = fees
@@ -54,8 +56,15 @@ class BacktestEngine:
         self.freq = freq
         self.market_hours_only = market_hours_only
         self.risk_config = risk_config or RiskConfig.moderate()
+        self.enable_regime_analysis = enable_regime_analysis
         self.data_loader = DataLoader()
         self.reporter = QuantStatsReporter(benchmark=benchmark)
+
+        # Cache for regime analysis
+        self._last_market_data = None
+        self._last_symbols = None
+        self._last_start_date = None
+        self._last_end_date = None
 
     def run(
         self,
@@ -109,6 +118,13 @@ class BacktestEngine:
 
         data = self.data_loader.load_symbols(symbols, start_date, end_date)
 
+        # Cache for regime analysis
+        if self.enable_regime_analysis:
+            self._last_market_data = data
+            self._last_symbols = symbols
+            self._last_start_date = start_date
+            self._last_end_date = end_date
+
         # Route based on portfolio mode
         if portfolio_mode == 'single':
             # SINGLE-SYMBOL MODE (backward compatible)
@@ -131,6 +147,10 @@ class BacktestEngine:
             raise ValueError(f"Invalid portfolio_mode: {portfolio_mode}. Must be 'single' or 'multi'.")
 
         self._print_summary(portfolio)
+
+        # Optionally run regime analysis
+        if self.enable_regime_analysis:
+            self._print_regime_analysis(portfolio)
 
         return portfolio
 
@@ -417,6 +437,8 @@ class BacktestEngine:
         """
         Optimize strategy parameters over a grid.
 
+        Delegates to GridSearchOptimizer for the actual optimization.
+
         Args:
             strategy_class: Strategy class to optimize
             param_grid: Dictionary mapping parameter names to lists of values
@@ -428,76 +450,17 @@ class BacktestEngine:
         Returns:
             Dictionary with best parameters and results
         """
-        if isinstance(symbols, str):
-            symbols = [symbols]
+        from backtesting.optimization.grid_search import GridSearchOptimizer
 
-        data = self.data_loader.load_symbols(symbols, start_date, end_date)
-
-        logger.blank()
-        logger.separator()
-        logger.header(f"Optimizing {strategy_class.__name__}")
-        logger.info(f"Parameter grid: {param_grid}")
-        logger.separator()
-        logger.blank()
-
-        from itertools import product
-
-        param_names = list(param_grid.keys())
-        param_values = list(param_grid.values())
-
-        best_value = float('-inf') if metric != 'max_drawdown' else float('inf')
-        best_params = None
-        best_portfolio = None
-
-        for param_combo in product(*param_values):
-            params = dict(zip(param_names, param_combo))
-
-            strategy = strategy_class(**params)
-
-            if len(symbols) == 1:
-                portfolio = self._run_single_symbol(strategy, data, symbols[0], 'close')
-            else:
-                portfolio = self._run_multiple_symbols(strategy, data, symbols, 'close')
-
-            stats = portfolio.stats()
-
-            if stats is None:
-                continue
-
-            if metric == 'sharpe_ratio':
-                value = float(stats.get('Sharpe Ratio', float('-inf')))  # type: ignore[arg-type]
-            elif metric == 'total_return':
-                value = float(stats.get('Total Return [%]', float('-inf')))  # type: ignore[arg-type]
-            elif metric == 'max_drawdown':
-                value = float(stats.get('Max Drawdown [%]', float('inf')))  # type: ignore[arg-type]
-            else:
-                raise ValueError(f"Unknown metric: {metric}")
-
-            is_better: bool = (
-                (metric != 'max_drawdown' and value > best_value) or
-                (metric == 'max_drawdown' and value < best_value)
-            )
-
-            if is_better:
-                best_value = value
-                best_params = params
-                best_portfolio = portfolio
-
-            logger.metric(f"Params: {params} -> {metric}: {value:.4f}")
-
-        logger.blank()
-        logger.separator()
-        logger.success(f"Best parameters: {best_params}")
-        logger.profit(f"Best {metric}: {best_value:.4f}")
-        logger.separator()
-        logger.blank()
-
-        return {
-            'best_params': best_params,
-            'best_value': best_value,
-            'best_portfolio': best_portfolio,
-            'metric': metric
-        }
+        optimizer = GridSearchOptimizer(self)
+        return optimizer.optimize(
+            strategy_class=strategy_class,
+            param_grid=param_grid,
+            symbols=symbols,
+            start_date=start_date,
+            end_date=end_date,
+            metric=metric
+        )
 
     def _print_summary(self, portfolio: Portfolio) -> None:
         """
@@ -559,3 +522,73 @@ class BacktestEngine:
             logger.blank()
         except Exception as e:
             logger.warning(f"Could not print summary statistics: {e}")
+
+    def _print_regime_analysis(self, portfolio: Portfolio) -> Optional['RegimeAnalysisResults']:
+        """
+        Print regime-based performance analysis and store results (Level 4).
+
+        Analyzes strategy performance across different market regimes:
+        - Trend regimes (Bull/Bear/Sideways)
+        - Volatility regimes (High/Low)
+        - Drawdown regimes (Drawdown/Recovery/Calm)
+
+        Returns:
+            RegimeAnalysisResults object if analysis successful, None otherwise
+        """
+        try:
+            from backtesting.regimes.analyzer import RegimeAnalyzer
+
+            logger.blank()
+            logger.separator()
+            logger.header("REGIME-BASED ANALYSIS")
+            logger.separator()
+            logger.info("Analyzing performance across market regimes...")
+            logger.blank()
+
+            # Get portfolio returns
+            returns = portfolio.returns()
+
+            if len(returns) == 0:
+                logger.warning("No returns available for regime analysis")
+                return None
+
+            # Get market data (need to resample to daily for regime detection)
+            if self._last_market_data is None or self._last_symbols is None:
+                logger.warning("Market data not available for regime analysis")
+                return None
+
+            # Use the first symbol for regime detection
+            primary_symbol = self._last_symbols[0]
+            market_prices = self._last_market_data.xs(primary_symbol, level='symbol')['close']
+
+            # Resample to daily to avoid too many regime changes
+            logger.info("Resampling market data to daily frequency for regime detection...")
+            daily_prices = market_prices.resample('D').last().dropna()
+
+            # Create regime analyzer
+            analyzer = RegimeAnalyzer(
+                trend_lookback=60,
+                vol_lookback=20,
+                drawdown_threshold=10.0
+            )
+
+            # Analyze by regime
+            regime_results = analyzer.analyze(
+                portfolio_returns=returns,
+                market_prices=daily_prices,
+                trades=None
+            )
+
+            # Store results in portfolio object (Level 4: for GUI/export access)
+            portfolio.regime_analysis = regime_results
+
+            # Results are printed automatically by analyzer.analyze()
+
+            return regime_results
+
+        except ImportError:
+            logger.warning("Regime analysis module not available")
+            return None
+        except Exception as e:
+            logger.warning(f"Could not perform regime analysis: {e}")
+            return None

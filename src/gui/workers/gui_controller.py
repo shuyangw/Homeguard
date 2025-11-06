@@ -14,7 +14,7 @@ import json
 
 from backtesting.base.strategy import BaseStrategy
 from backtesting.engine.backtest_engine import BacktestEngine, PortfolioType
-from backtesting.engine.sweep_runner import SweepRunner
+from backtesting.optimization.sweep_runner import SweepRunner
 from backtesting.engine.portfolio_simulator import Portfolio
 from backtesting.utils.risk_config import RiskConfig
 import pandas as pd
@@ -118,6 +118,7 @@ class GUIBacktestController:
         self.portfolios: Dict[str, PortfolioType] = {}
         self.stats: Dict[str, pd.Series] = {}
         self.errors: Dict[str, str] = {}
+        self.regime_results: Dict[str, 'RegimeAnalysisResults'] = {}  # Level 4: Store regime analysis results
 
         # Background thread
         self._thread: Optional[threading.Thread] = None
@@ -146,7 +147,8 @@ class GUIBacktestController:
         portfolio_mode: str = "Single-Symbol",
         position_sizing_method: str = "equal_weight",
         rebalancing_frequency: str = "never",
-        rebalancing_threshold_pct: float = 0.05
+        rebalancing_threshold_pct: float = 0.05,
+        enable_regime_analysis: bool = False
     ):
         """
         Start backtests in background thread.
@@ -164,6 +166,7 @@ class GUIBacktestController:
             position_sizing_method: Position sizing for multi-symbol portfolio (default: "equal_weight")
             rebalancing_frequency: Rebalancing frequency for portfolio (default: "never")
             rebalancing_threshold_pct: Drift threshold for rebalancing (default: 0.05)
+            enable_regime_analysis: Enable regime-based performance analysis (default: False)
         """
         try:
             log_info(f"GUIController: Starting backtests for {len(symbols)} symbols")
@@ -176,6 +179,7 @@ class GUIBacktestController:
             self.portfolios.clear()
             self.stats.clear()
             self.errors.clear()
+            self.regime_results.clear()  # Level 4: Clear regime analysis results
 
             # Phase 3: Initialize worker tracking
             self.worker_log_queues.clear()
@@ -198,6 +202,7 @@ class GUIBacktestController:
             self._initial_capital = initial_capital
             self._fees = fees
             self._portfolio_mode = portfolio_mode
+            self._enable_regime_analysis = enable_regime_analysis  # Level 4: Store for result storage
 
             # Create queues for each symbol
             # For Multi-Symbol Portfolio mode, create single "Portfolio" entry
@@ -235,7 +240,8 @@ class GUIBacktestController:
             engine = BacktestEngine(
                 initial_capital=initial_capital,
                 fees=fees,
-                risk_config=risk_config
+                risk_config=risk_config,
+                enable_regime_analysis=enable_regime_analysis
             )
 
             # Create SweepRunner with callbacks
@@ -353,6 +359,23 @@ class GUIBacktestController:
                         # Single-Symbol Mode: Export sweep results
                         self._export_sweep_results(output_dir, timestamp, symbols)
 
+                        # Mark all successfully processed symbols as completed AFTER exports
+                        for symbol in symbols:
+                            if self.status.get(symbol) == "processing":
+                                self.status[symbol] = "completed"
+                                self.progress_queues[symbol].put(ProgressUpdate(
+                                    symbol=symbol,
+                                    message="Complete",
+                                    progress=1.0,
+                                    timestamp=datetime.now()
+                                ))
+                                self.log_queues[symbol].put(LogMessage(
+                                    symbol=symbol,
+                                    message="All reports generated successfully",
+                                    level="success",
+                                    timestamp=datetime.now()
+                                ))
+
                     log_info(f"GUIController: Full output generated at {output_dir}")
                 except Exception as export_error:
                     log_exception(export_error, "GUIController: Error generating full output")
@@ -370,8 +393,19 @@ class GUIBacktestController:
                                 progress=1.0,
                                 timestamp=datetime.now()
                             ))
+                    else:
+                        # Single-Symbol Mode: Mark all processing symbols as completed despite errors
+                        for symbol in symbols:
+                            if self.status.get(symbol) == "processing":
+                                self.status[symbol] = "completed"
+                                self.progress_queues[symbol].put(ProgressUpdate(
+                                    symbol=symbol,
+                                    message="Complete (export errors)",
+                                    progress=1.0,
+                                    timestamp=datetime.now()
+                                ))
             else:
-                # No full output - mark as completed immediately for portfolio mode
+                # No full output - mark as completed immediately
                 if self._portfolio_mode == "Multi-Symbol Portfolio":
                     portfolio_key = "Portfolio"
                     symbols_display = f"Portfolio ({', '.join(symbols)})"
@@ -382,6 +416,17 @@ class GUIBacktestController:
                         progress=1.0,
                         timestamp=datetime.now()
                     ))
+                else:
+                    # Single-Symbol Mode: Mark all processing symbols as completed
+                    for symbol in symbols:
+                        if self.status.get(symbol) == "processing":
+                            self.status[symbol] = "completed"
+                            self.progress_queues[symbol].put(ProgressUpdate(
+                                symbol=symbol,
+                                message="Complete",
+                                progress=1.0,
+                                timestamp=datetime.now()
+                            ))
 
         except Exception as e:
             log_exception(e, "GUIController: Error in background thread")
@@ -497,6 +542,11 @@ class GUIBacktestController:
             portfolio_key = "Portfolio"
             self.portfolios[portfolio_key] = portfolio
             self.stats[portfolio_key] = stats
+
+            # Level 4: Extract and store regime analysis results if available
+            if hasattr(portfolio, 'regime_analysis') and portfolio.regime_analysis is not None:
+                self.regime_results[portfolio_key] = portfolio.regime_analysis
+                log_info(f"GUIController: Stored regime analysis for {portfolio_key}")
 
             # Step 4: Calculate metrics
             return_pct = stats.get('Total Return [%]', 0)
@@ -632,13 +682,20 @@ class GUIBacktestController:
         with self._worker_lock:
             worker_id = getattr(self, '_thread_to_worker', {}).get(thread_id)
 
-        self.status[symbol] = "completed"
+        # Store results but don't mark as "completed" yet
+        # Completion will be signaled after tearsheet generation in _run_backtests
+        self.status[symbol] = "processing"
         self.portfolios[symbol] = portfolio
         self.stats[symbol] = stats
 
+        # Level 4: Extract and store regime analysis results if available
+        if hasattr(portfolio, 'regime_analysis') and portfolio.regime_analysis is not None:
+            self.regime_results[symbol] = portfolio.regime_analysis
+            log_info(f"Worker: Stored regime analysis for {symbol}")
+
         self.progress_queues[symbol].put(ProgressUpdate(
             symbol=symbol,
-            message="Complete",
+            message="Backtest complete, generating reports...",
             progress=1.0,
             timestamp=datetime.now()
         ))
@@ -888,6 +945,19 @@ class GUIBacktestController:
         """
         return self.portfolios.copy()
 
+    def get_regime_results(self) -> Dict[str, 'RegimeAnalysisResults']:
+        """
+        Get regime analysis results for all symbols (Level 4).
+
+        Returns:
+            Dictionary mapping symbol -> RegimeAnalysisResults object
+
+        Note:
+            Only available if enable_regime_analysis=True was set.
+            Only complete after is_running() returns False.
+        """
+        return self.regime_results.copy()
+
     def get_status(self, symbol: str) -> str:
         """
         Get status for a specific symbol.
@@ -1064,6 +1134,14 @@ class GUIBacktestController:
 
                 symbol_prefix = f"{timestamp}_{symbol}"
 
+                # Send progress update: Exporting trades
+                self.progress_queues[symbol].put(ProgressUpdate(
+                    symbol=symbol,
+                    message="Exporting trade logs...",
+                    progress=1.0,
+                    timestamp=datetime.now()
+                ))
+
                 # Export trades CSV
                 trades_csv = trades_dir / f"{symbol_prefix}_trades.csv"
                 TradeLogger.export_trades_csv(portfolio, trades_csv, symbol=symbol)
@@ -1096,6 +1174,14 @@ class GUIBacktestController:
                     }.get(freq, freq)
                     log_info(f"Generating {symbol} tearsheet with {freq_label} data ({len(returns)} points)...")
 
+                    # Send progress update: Generating tearsheet
+                    self.progress_queues[symbol].put(ProgressUpdate(
+                        symbol=symbol,
+                        message="Generating tearsheet HTML...",
+                        progress=1.0,
+                        timestamp=datetime.now()
+                    ))
+
                     qs.reports.html(
                         returns,
                         output=str(tearsheet_path),
@@ -1106,6 +1192,14 @@ class GUIBacktestController:
                     # Log file size
                     size_mb = tearsheet_path.stat().st_size / 1024 / 1024
                     log_info(f"Generated tearsheet for {symbol}: {tearsheet_path} ({size_mb:.1f} MB)")
+
+                    # Send log message about tearsheet completion
+                    self.log_queues[symbol].put(LogMessage(
+                        symbol=symbol,
+                        message=f"Tearsheet generated ({size_mb:.1f} MB)",
+                        level="info",
+                        timestamp=datetime.now()
+                    ))
                 except ImportError:
                     log_error(f"QuantStats not installed - skipping tearsheet for {symbol}")
                 except Exception as e:
@@ -1117,6 +1211,63 @@ class GUIBacktestController:
             log_error("WARNING: No portfolios available for tearsheet generation!")
             log_error("This means portfolio objects were not stored during the sweep.")
             log_error("Tearsheets and detailed trade logs will NOT be generated.")
+
+        # Level 4: Export regime analysis if available
+        if self._enable_regime_analysis and self.regime_results:
+            self._export_regime_analysis(output_dir, timestamp)
+
+    def _export_regime_analysis(self, output_dir: Path, timestamp: str):
+        """
+        Export regime analysis results to CSV, HTML, and JSON (Level 4).
+
+        Args:
+            output_dir: Output directory path
+            timestamp: Timestamp string for filenames
+        """
+        try:
+            from backtesting.regimes.exporter import RegimeExporter
+
+            log_info("=" * 80)
+            log_info("EXPORTING REGIME ANALYSIS RESULTS")
+            log_info("=" * 80)
+
+            # Create regime analysis subdirectory
+            regime_dir = output_dir / "regime_analysis"
+            regime_dir.mkdir(exist_ok=True)
+
+            exporter = RegimeExporter()
+
+            # Export regime analysis for each symbol
+            for symbol, regime_results in self.regime_results.items():
+                log_info(f"Exporting regime analysis for {symbol}...")
+
+                # Base filename
+                base_filename = f"{timestamp}_{self._strategy_name}_{symbol}_regime"
+
+                # Export CSV (creates multiple files: trend, volatility, drawdown, summary)
+                csv_path = regime_dir / f"{base_filename}.csv"
+                exporter.export_csv(regime_results, csv_path)
+                log_info(f"  ✓ Exported regime CSV: {csv_path.parent.name}/{csv_path.stem}_*.csv")
+
+                # Export HTML (formatted report)
+                html_path = regime_dir / f"{base_filename}.html"
+                exporter.export_html(regime_results, html_path, self._strategy_name, symbol)
+                log_info(f"  ✓ Exported regime HTML: {html_path.name}")
+
+                # Export JSON (machine-readable)
+                json_path = regime_dir / f"{base_filename}.json"
+                exporter.export_json(regime_results, json_path)
+                log_info(f"  ✓ Exported regime JSON: {json_path.name}")
+
+            log_info(f"Regime analysis exported to: {regime_dir}")
+            log_info("=" * 80)
+
+        except ImportError as e:
+            log_error(f"Could not import RegimeExporter: {e}")
+            log_error("Regime analysis export skipped")
+        except Exception as e:
+            log_exception(e, "Failed to export regime analysis")
+            log_error("Continuing without regime analysis export")
 
     def _export_portfolio_results(self, output_dir: Path, timestamp: str, symbols: List[str]):
         """
@@ -1209,6 +1360,15 @@ class GUIBacktestController:
                 'W': 'weekly'
             }.get(freq, freq)
             log_info(f"Generating portfolio tearsheet with {freq_label} data ({len(returns)} points)...")
+
+            # Send progress update: Generating tearsheet
+            if portfolio_key in self.progress_queues:
+                self.progress_queues[portfolio_key].put(ProgressUpdate(
+                    symbol=symbols_display,
+                    message="Generating tearsheet HTML...",
+                    progress=1.0,
+                    timestamp=datetime.now()
+                ))
 
             # Generate tearsheet
             qs.reports.html(
@@ -1513,3 +1673,60 @@ class GUIBacktestController:
         except Exception as e:
             log_exception(e, "Failed to generate symbol comparison report")
             log_error("Continuing without comparison report")
+
+        # Level 4: Export regime analysis if available
+        if self._enable_regime_analysis and self.regime_results:
+            self._export_regime_analysis(output_dir, timestamp)
+
+    def _export_regime_analysis(self, output_dir: Path, timestamp: str):
+        """
+        Export regime analysis results to CSV, HTML, and JSON (Level 4).
+
+        Args:
+            output_dir: Output directory path
+            timestamp: Timestamp string for filenames
+        """
+        try:
+            from backtesting.regimes.exporter import RegimeExporter
+
+            log_info("=" * 80)
+            log_info("EXPORTING REGIME ANALYSIS RESULTS")
+            log_info("=" * 80)
+
+            # Create regime analysis subdirectory
+            regime_dir = output_dir / "regime_analysis"
+            regime_dir.mkdir(exist_ok=True)
+
+            exporter = RegimeExporter()
+
+            # Export regime analysis for each symbol
+            for symbol, regime_results in self.regime_results.items():
+                log_info(f"Exporting regime analysis for {symbol}...")
+
+                # Base filename
+                base_filename = f"{timestamp}_{self._strategy_name}_{symbol}_regime"
+
+                # Export CSV (creates multiple files: trend, volatility, drawdown, summary)
+                csv_path = regime_dir / f"{base_filename}.csv"
+                exporter.export_csv(regime_results, csv_path)
+                log_info(f"  ✓ Exported regime CSV: {csv_path.parent.name}/{csv_path.stem}_*.csv")
+
+                # Export HTML (formatted report)
+                html_path = regime_dir / f"{base_filename}.html"
+                exporter.export_html(regime_results, html_path, self._strategy_name, symbol)
+                log_info(f"  ✓ Exported regime HTML: {html_path.name}")
+
+                # Export JSON (machine-readable)
+                json_path = regime_dir / f"{base_filename}.json"
+                exporter.export_json(regime_results, json_path)
+                log_info(f"  ✓ Exported regime JSON: {json_path.name}")
+
+            log_info(f"Regime analysis exported to: {regime_dir}")
+            log_info("=" * 80)
+
+        except ImportError as e:
+            log_error(f"Could not import RegimeExporter: {e}")
+            log_error("Regime analysis export skipped")
+        except Exception as e:
+            log_exception(e, "Failed to export regime analysis")
+            log_error("Continuing without regime analysis export")

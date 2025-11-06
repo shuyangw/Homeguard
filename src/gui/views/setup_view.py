@@ -14,6 +14,7 @@ from gui.utils.strategy_utils import (
     get_strategy_description
 )
 from gui.utils.config_manager import ConfigManager
+from gui.optimization.dialog import OptimizationDialog
 
 
 class SetupView(ft.Container):
@@ -54,6 +55,7 @@ class SetupView(ft.Container):
         self.workers_text = None
         self.run_button = None
         self.parallel_checkbox = None
+        self.regime_analysis_checkbox = None
 
         # Preset/Symbol List UI components
         self.quick_rerun_button = None
@@ -289,6 +291,13 @@ class SetupView(ft.Container):
             tooltip="Generate comprehensive output: CSV/HTML reports, trade logs, equity curves, and portfolio states. Files saved to logs directory."
         )
 
+        # Regime analysis checkbox
+        self.regime_analysis_checkbox = ft.Checkbox(
+            label="Enable regime analysis (analyze performance across market conditions)",
+            value=False,
+            tooltip="Automatically analyze strategy performance across different market regimes (bull/bear/sideways, high/low volatility). Shows robustness score and identifies weakness in specific market conditions."
+        )
+
         # Run button
         self.run_button = ft.ElevatedButton(
             "Run Backtests",
@@ -316,6 +325,20 @@ class SetupView(ft.Container):
             height=50,
             width=200,
             tooltip="Load the last executed configuration with one click. Perfect for iterating on parameters."
+        )
+
+        # Optimize Parameters button
+        self.optimize_button = ft.ElevatedButton(
+            "Optimize Parameters",
+            icon=ft.Icons.TUNE,
+            on_click=self._on_optimize_clicked,
+            style=ft.ButtonStyle(
+                color=ft.Colors.WHITE,
+                bgcolor=ft.Colors.AMBER_700
+            ),
+            height=50,
+            width=200,
+            tooltip="Run grid search to find optimal strategy parameters."
         )
 
         # Cache management buttons
@@ -486,6 +509,7 @@ class SetupView(ft.Container):
                         ft.Divider(),
                         ft.Text("Output Settings", size=16, weight=ft.FontWeight.W_400),
                         self.generate_full_output_checkbox,
+                        self.regime_analysis_checkbox,
                     ], spacing=10),
                     border=ft.border.all(2, ft.Colors.TEAL_700),
                     border_radius=8,
@@ -545,7 +569,8 @@ class SetupView(ft.Container):
                         # Run Buttons
                         ft.Row([
                             self.run_button,
-                            self.quick_rerun_button
+                            self.quick_rerun_button,
+                            self.optimize_button
                         ], spacing=15, alignment=ft.MainAxisAlignment.CENTER),
 
                         # Cache Management
@@ -565,8 +590,24 @@ class SetupView(ft.Container):
         self.padding = 20
         self.expand = True
 
-        # Initialize with first strategy
-        if strategy_names:
+        # Auto-load last configuration if available (silent)
+        # Note: Do this BEFORE initializing first strategy so cached config takes precedence
+        config_loaded = False
+        if self.config_manager.has_last_run():
+            try:
+                last_config = self.config_manager.load_last_run()
+                if last_config:
+                    self._load_configuration(last_config)
+                    config_loaded = True
+            except Exception as e:
+                # If loading fails, fall back to first strategy
+                # Log error but don't show to user
+                import traceback
+                print(f"Failed to load cached config: {e}")
+                traceback.print_exc()
+
+        # Initialize with first strategy if no config loaded
+        if not config_loaded and strategy_names:
             self._on_strategy_changed(None)
 
     def _on_strategy_changed(self, e):
@@ -837,6 +878,7 @@ class SetupView(ft.Container):
             workers = int(self.workers_slider.value)
             parallel = self.parallel_checkbox.value
             generate_full_output = self.generate_full_output_checkbox.value
+            enable_regime_analysis = self.regime_analysis_checkbox.value
 
             # Cap workers at number of symbols (no point having more workers than symbols)
             if workers > len(symbols):
@@ -862,6 +904,7 @@ class SetupView(ft.Container):
                 'workers': workers,
                 'parallel': parallel,
                 'generate_full_output': generate_full_output,
+                'enable_regime_analysis': enable_regime_analysis,
                 'portfolio_mode': portfolio_mode,
                 'position_sizing_method': position_sizing_method,
                 'rebalancing_frequency': rebalancing_frequency,
@@ -976,7 +1019,33 @@ class SetupView(ft.Container):
         strategy_class = config.get('strategy_class')
         if strategy_class:
             # Handle both string names (from JSON) and class objects (legacy)
-            strategy_name = strategy_class if isinstance(strategy_class, str) else strategy_class.__name__
+            if isinstance(strategy_class, str):
+                # String could be either display name or class name
+                # Try to find it in registry first (display name)
+                if strategy_class in self.strategy_registry:
+                    strategy_name = strategy_class
+                else:
+                    # Not found as display name, try to find by class name
+                    strategy_name = None
+                    for display_name, cls in self.strategy_registry.items():
+                        if cls.__name__ == strategy_class:
+                            strategy_name = display_name
+                            break
+
+                    if strategy_name is None:
+                        raise ValueError(f"Strategy '{strategy_class}' not found. Available: {list(self.strategy_registry.keys())}")
+            else:
+                # It's a class object - find its display name
+                class_name = strategy_class.__name__
+                strategy_name = None
+                for display_name, cls in self.strategy_registry.items():
+                    if cls.__name__ == class_name:
+                        strategy_name = display_name
+                        break
+
+                if strategy_name is None:
+                    raise ValueError(f"Strategy class '{class_name}' not found in registry")
+
             self.strategy_dropdown.value = strategy_name
             self._on_strategy_changed(None)
 
@@ -1025,10 +1094,14 @@ class SetupView(ft.Container):
         # Set execution settings
         if 'workers' in config:
             self.workers_slider.value = config['workers']
+            # Manually update workers text since on_change won't fire
+            self._on_workers_changed(None)
         if 'parallel' in config:
             self.parallel_checkbox.value = config['parallel']
         if 'generate_full_output' in config:
             self.generate_full_output_checkbox.value = config['generate_full_output']
+        if 'enable_regime_analysis' in config:
+            self.regime_analysis_checkbox.value = config['enable_regime_analysis']
 
         # Set portfolio mode and settings
         if 'portfolio_mode' in config:
@@ -1108,6 +1181,50 @@ class SetupView(ft.Container):
             self._show_success("Last configuration loaded! Click 'Run Backtests' to execute.")
         else:
             self._show_error("No previous run configuration found")
+
+    # ========== Parameter Optimization ==========
+
+    def _on_optimize_clicked(self, e):
+        """Handle Optimize Parameters button click."""
+        if not self.current_strategy_class:
+            self._show_error("Please select a strategy first")
+            return
+
+        # Get current strategy parameters
+        current_params = get_strategy_parameters(self.current_strategy_class)
+        param_types = get_strategy_param_types(self.current_strategy_class)
+        strategy_name = self.strategy_dropdown.value
+
+        # Show optimization dialog
+        dialog = OptimizationDialog(
+            page=self.page,
+            strategy_name=strategy_name,
+            current_params=current_params,
+            param_types=param_types,
+            on_optimize=self._on_run_optimization
+        )
+        dialog.show()
+
+    def _on_run_optimization(self, param_grid: Dict[str, Any], metric: str):
+        """
+        Handle optimization start.
+
+        Args:
+            param_grid: Parameter grid to optimize over
+            metric: Optimization metric
+        """
+        # Collect current configuration (except strategy params)
+        config = self._collect_configuration()
+        if not config:
+            return
+
+        # Store optimization parameters
+        config['param_grid'] = param_grid
+        config['optimization_metric'] = metric
+        config['is_optimization'] = True
+
+        # Pass to app controller (will be handled in app.py)
+        self.on_run_clicked(config)
 
     # ========== Symbol Download Dialog ==========
 

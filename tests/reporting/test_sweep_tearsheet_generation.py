@@ -10,7 +10,7 @@ import pandas as pd
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / 'src'))
 
-from backtesting.engine.sweep_runner import SweepRunner
+from backtesting.optimization.sweep_runner import SweepRunner
 from backtesting.engine.backtest_engine import BacktestEngine
 from backtesting.strategies.examples.ma_crossover import MovingAverageCrossover
 from data.loaders.csv_loader import CSVDataLoader

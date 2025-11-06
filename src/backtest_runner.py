@@ -14,7 +14,7 @@ from typing import Dict, Any, Optional
 from backtesting.engine.backtest_engine import BacktestEngine
 from backtesting.engine.metrics import PerformanceMetrics
 from backtesting.engine.data_loader import DataLoader
-from backtesting.engine.sweep_runner import SweepRunner
+from backtesting.optimization.sweep_runner import SweepRunner
 from backtesting.utils.universe import UniverseManager
 from strategies.base_strategies.moving_average import MovingAverageCrossover, TripleMovingAverage
 from strategies.base_strategies.mean_reversion import MeanReversion, RSIMeanReversion

@@ -6,6 +6,7 @@ import flet as ft
 import pandas as pd
 from typing import Callable, Optional, Dict
 from pathlib import Path
+from gui.views.regime_analysis_tab import RegimeAnalysisTab
 
 
 class ResultsView(ft.Container):
@@ -18,16 +19,18 @@ class ResultsView(ft.Container):
     - Export buttons
     """
 
-    def __init__(self, on_back_clicked: Callable[[], None]):
+    def __init__(self, on_back_clicked: Callable[[], None], on_view_logs_clicked: Optional[Callable[[], None]] = None):
         """
         Initialize results view.
 
         Args:
             on_back_clicked: Callback when Back button is clicked
+            on_view_logs_clicked: Optional callback when View Execution Logs button is clicked
         """
         super().__init__()
 
         self.on_back_clicked = on_back_clicked
+        self.on_view_logs_clicked = on_view_logs_clicked
 
         # Components
         self.summary_cards = None
@@ -35,6 +38,9 @@ class ResultsView(ft.Container):
         self.export_csv_button = None
         self.export_html_button = None
         self.back_button = None
+        self.view_logs_button = None
+        self.regime_tab = None  # Level 4: Regime analysis tab
+        self.main_tabs = None  # Level 4: Main tab container
 
         # State
         self.results_df: Optional[pd.DataFrame] = None
@@ -71,6 +77,19 @@ class ResultsView(ft.Container):
             )
         )
 
+        # View execution logs button
+        self.view_logs_button = ft.ElevatedButton(
+            "View Execution Logs",
+            icon=ft.Icons.ARTICLE,
+            on_click=lambda e: self.on_view_logs_clicked() if self.on_view_logs_clicked else None,
+            visible=self.on_view_logs_clicked is not None,
+            style=ft.ButtonStyle(
+                color=ft.Colors.WHITE,
+                bgcolor=ft.Colors.PURPLE_700
+            ),
+            tooltip="Go back to worker threads and execution logs"
+        )
+
         self.back_button = ft.ElevatedButton(
             "Back to Setup",
             icon=ft.Icons.ARROW_BACK,
@@ -79,6 +98,42 @@ class ResultsView(ft.Container):
                 color=ft.Colors.WHITE,
                 bgcolor=ft.Colors.BLUE_700
             )
+        )
+
+        # Level 4: Create regime analysis tab
+        self.regime_tab = RegimeAnalysisTab()
+
+        # Level 4: Create tabbed interface
+        results_table_content = ft.Column(
+            [
+                ft.Text("Detailed Results", size=18, weight=ft.FontWeight.W_500),
+                ft.Container(
+                    content=self.results_table,
+                    border=ft.border.all(3, ft.Colors.BLUE_700),
+                    border_radius=12,
+                    padding=15,
+                    bgcolor=ft.Colors.GREY_900
+                )
+            ],
+            scroll=ft.ScrollMode.AUTO,
+            expand=True
+        )
+
+        self.main_tabs = ft.Tabs(
+            selected_index=0,
+            tabs=[
+                ft.Tab(
+                    text="Results Table",
+                    icon=ft.Icons.TABLE_CHART,
+                    content=results_table_content
+                ),
+                ft.Tab(
+                    text="Regime Analysis",
+                    icon=ft.Icons.ANALYTICS,
+                    content=self.regime_tab
+                )
+            ],
+            expand=True
         )
 
         # Layout
@@ -92,21 +147,15 @@ class ResultsView(ft.Container):
                 self.summary_cards,
                 ft.Divider(),
 
-                # Results table
-                ft.Text("Detailed Results", size=18, weight=ft.FontWeight.W_500),
-                ft.Container(
-                    content=self.results_table,
-                    border=ft.border.all(3, ft.Colors.BLUE_700),
-                    border_radius=12,
-                    padding=15,
-                    bgcolor=ft.Colors.GREY_900
-                ),
+                # Tabs (Results Table + Regime Analysis)
+                self.main_tabs,
                 ft.Divider(),
 
                 # Actions
                 ft.Row(
                     [
                         self.back_button,
+                        self.view_logs_button,
                         self.open_logs_button
                     ],
                     spacing=15
@@ -141,6 +190,18 @@ class ResultsView(ft.Container):
 
         if self.page:
             self.update()
+
+    def load_regime_results(self, regime_results: Dict):
+        """
+        Load regime analysis results into the regime tab (Level 4).
+
+        Args:
+            regime_results: Dictionary mapping symbol -> RegimeAnalysisResults
+        """
+        if regime_results and self.regime_tab:
+            self.regime_tab.load_results(regime_results)
+            if self.page:
+                self.update()
 
     def _build_summary_cards(self, df: pd.DataFrame):
         """Build summary statistic cards."""
