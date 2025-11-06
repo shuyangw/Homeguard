@@ -26,9 +26,11 @@ A comprehensive VectorBT-based backtesting framework for testing stock trading s
 - 10 built-in strategies (MA, RSI, MACD, Breakout, Volatility-targeted, Pairs Trading, etc.)
 - 11 predefined universes (FAANG, DOW30, NASDAQ100, sectors)
 - Easy custom strategy development with base classes
-- Parameter optimization with grid search
+- **Advanced Validation**: Walk-forward analysis, regime-based testing, and parameter optimization
+- **Regime Analysis**: Automatic detection of market conditions (bull/bear, high/low volatility, drawdown phases)
+- **Robustness Scoring**: Quantify strategy consistency across different market regimes
 - Comprehensive performance metrics (Sharpe, drawdown, win rate, etc.)
-- Automated CSV + HTML reporting
+- Automated CSV + HTML reporting with regime analysis export
 - CLI and programmatic API interfaces
 
 **🖥️ GUI Quick Start (Recommended for Beginners):**
@@ -154,6 +156,63 @@ portfolio = engine.run_and_report(
 
 **Log Location:** Reports are saved to the `log_output_dir` configured in [settings.ini](settings.ini.example), not in the repository. See [docs/quantstats/LOG_LOCATION_UPDATE.md](docs/quantstats/LOG_LOCATION_UPDATE.md) for details
 
+#### Regime Analysis & Advanced Validation
+
+Prevent overfitting and assess strategy robustness with automated regime-based testing and walk-forward validation:
+
+**Features:**
+- **Automatic Regime Detection**: Identifies market conditions (bull/bear, high/low volatility, drawdown/recovery)
+- **Walk-Forward Validation**: Rolling train/test windows prevent parameter overfitting
+- **Robustness Scoring**: 0-100 metric quantifying consistency across market regimes
+- **GUI Integration**: Enable with one checkbox click
+- **File Export**: CSV/HTML/JSON regime analysis reports
+- **CLI Tools**: Advanced validation scripts for production-grade testing
+
+**Quick Start (GUI - Level 2):**
+```python
+# In the GUI:
+# 1. Configure your backtest
+# 2. Check "Enable regime analysis" in Output Settings
+# 3. Run backtest
+# 4. View regime analysis in Results tab and exported files
+```
+
+**Programmatic Usage (Level 1):**
+```python
+from backtesting.engine.backtest_engine import BacktestEngine
+from strategies.base_strategies.moving_average import MovingAverageCrossover
+
+# Enable regime analysis with one parameter
+engine = BacktestEngine(
+    initial_capital=10000,
+    enable_regime_analysis=True  # Automatic regime analysis
+)
+
+strategy = MovingAverageCrossover(fast_window=20, slow_window=100)
+portfolio = engine.run(
+    strategy=strategy,
+    symbols=['AAPL'],
+    start_date='2023-01-01',
+    end_date='2023-12-31'
+)
+# Regime analysis automatically printed and returned
+```
+
+**Advanced CLI Tools (Level 3):**
+```bash
+# Fast demonstration (~15 seconds)
+python backtest_scripts/regime_analysis_fast.py
+
+# Full production validation (~5-10 minutes)
+python backtest_scripts/regime_analysis_example.py
+```
+
+**Documentation:**
+- [Master User Guide](docs/guides/REGIME_ANALYSIS_USER_GUIDE.md) - Complete guide for all usage methods
+- [Architecture](docs/architecture/REGIME_BASED_TESTING.md) - Technical design and algorithms
+- [CLI Scripts Guide](backtest_scripts/README_REGIME_TESTING.md) - Advanced validation tools
+- [Implementation Summary](docs/progress/OPTIMIZATION_AND_REGIME_DETECTION_SUMMARY.md) - Feature overview
+
 ## Quick Start
 
 ### 1. Installation
@@ -205,6 +264,8 @@ Homeguard/
 │   ├── backtesting/          # Backtesting framework
 │   │   ├── engine/           # Core backtesting engine
 │   │   ├── base/             # Base strategy classes
+│   │   ├── regimes/          # Regime detection and analysis
+│   │   ├── chunking/         # Walk-forward validation
 │   │   └── utils/            # Indicators and utilities
 │   ├── visualization/        # QuantStats-based performance visualization
 │   │   ├── charts/           # Legacy chart generators (archived)
@@ -241,6 +302,13 @@ Homeguard/
 - [Backtesting Guide](docs/BACKTESTING_GUIDE.md) - Complete user guide and walkthrough
 - [API Reference](docs/API_REFERENCE.md) - Detailed API documentation
 - [Backtesting System README](docs/BACKTESTING_README.md) - Quick start and overview
+
+### Regime Analysis & Advanced Validation
+- **[Regime Analysis User Guide](docs/guides/REGIME_ANALYSIS_USER_GUIDE.md) - Complete guide for GUI, code, and CLI usage**
+- [Regime-Based Testing Architecture](docs/architecture/REGIME_BASED_TESTING.md) - Technical design and algorithms
+- [CLI Scripts Guide](backtest_scripts/README_REGIME_TESTING.md) - Advanced validation tools
+- [Implementation Summary](docs/progress/OPTIMIZATION_AND_REGIME_DETECTION_SUMMARY.md) - Complete feature overview
+- [Documentation Index](docs/REGIME_ANALYSIS_DOCS_INDEX.md) - All regime analysis documentation
 
 ### QuantStats Reporting
 - **[QuantStats Documentation](docs/quantstats/README.md) - Complete QuantStats guide**

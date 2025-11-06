@@ -26,7 +26,9 @@ python src/gui/app.py
 - **Real-Time Progress**: Individual progress cards for each symbol
 - **Color-Coded Results**: Green/red metrics for quick analysis
 - **Multi-Worker Support**: 1-16 parallel workers for fast execution
-- **Export Options**: Save results to CSV or HTML
+- **Regime Analysis**: Automatic market regime detection and robustness scoring (toggle in Output Settings)
+- **Regime Analysis Tab**: Dedicated results tab with summary cards and performance tables
+- **Export Options**: Save results to CSV or HTML (including regime analysis CSV/HTML/JSON)
 
 ## Project Structure
 
@@ -46,7 +48,8 @@ gui/
 │   ├── __init__.py
 │   ├── setup_view.py        # Configuration screen
 │   ├── execution_view.py    # Progress monitoring
-│   └── results_view.py      # Results display
+│   ├── results_view.py      # Results display
+│   └── regime_analysis_tab.py  # Regime analysis results tab
 │
 ├── workers/                 # Background processing
 │   ├── __init__.py
@@ -128,12 +131,10 @@ python -m gui
 
 ## Known Limitations
 
-- **No log capture** (backtesting console output not shown)
-- **No equity curves** (results table only, no charts)
-- **No dark mode** (light theme only)
+- **No equity curves in GUI** (charts available in exported HTML reports)
 - **Single backtest at a time** (no queuing)
 
-These are planned for future phases.
+**Note**: Dark mode and regime analysis features have been implemented (November 2025).
 
 ## Troubleshooting
 

@@ -1,7 +1,7 @@
 # Regime-Based Testing Architecture
 
-**Version:** 1.0
-**Status:** Implemented (Level 3)
+**Version:** 2.0
+**Status:** ✅ **ALL LEVELS COMPLETE** (Levels 1-4)
 **Last Updated:** November 2025
 
 ## Overview
@@ -357,6 +357,56 @@ else:
     print("✗ FAIL: Strategy not production-ready")
 ```
 
+### Example 4: GUI Integration with File Export (Level 4)
+
+```python
+# GUI Usage:
+# 1. Open backtesting GUI
+# 2. Configure backtest settings
+# 3. Check "Enable regime analysis" in Output Settings
+# 4. Check "Generate full output" for file export
+# 5. Click "Run Backtest"
+# 6. Results displayed in:
+#    - Terminal output (immediate feedback)
+#    - "Regime Analysis" tab in results view
+#    - Exported files in {log_dir}/regime_analysis/
+
+# Programmatic access to exported files:
+from pathlib import Path
+from config import get_log_output_dir
+import json
+
+log_dir = get_log_output_dir()
+regime_dir = log_dir / "20251106_123456_MovingAverageCrossover_AAPL" / "regime_analysis"
+
+# Load JSON results
+json_file = regime_dir / "AAPL_regime_analysis.json"
+with open(json_file, 'r') as f:
+    regime_data = json.load(f)
+
+print(f"Robustness Score: {regime_data['robustness_score']}")
+print(f"Best Regime: {regime_data['best_regime']}")
+print(f"Worst Regime: {regime_data['worst_regime']}")
+
+# View HTML report in browser
+html_file = regime_dir / "AAPL_regime_analysis.html"
+import webbrowser
+webbrowser.open(html_file.as_uri())
+
+# Load CSV for analysis in pandas
+import pandas as pd
+csv_file = regime_dir / "AAPL_trend_regimes.csv"
+trend_data = pd.read_csv(csv_file)
+print(trend_data)
+```
+
+**Level 4 Features:**
+- **Data Storage**: Regime results stored in `controller.regime_results` dict
+- **File Export**: Automatic CSV/HTML/JSON export when both flags enabled
+- **GUI Display**: Dedicated "Regime Analysis" tab with summary cards and tables
+- **Multi-Symbol**: Dropdown selector for sweeps with multiple symbols
+- **Dark Theme**: Consistent dark-themed HTML reports
+
 ## Proof-of-Concept Script
 
 **Location:** `backtest_scripts/regime_analysis_example.py`
@@ -463,7 +513,7 @@ pytest tests/backtesting/chunking/ tests/backtesting/regimes/ -v
 - ✅ Integration test suite
 - ✅ Documentation and user guide
 
-### Level 3: Advanced CLI/Script Tools ✅ COMPLETED
+### Level 3: Advanced CLI/Script Tools ✅ COMPLETED (November 2025)
 - ✅ Walk-forward validation module
 - ✅ Regime detection module (trend, volatility, drawdown)
 - ✅ Regime analysis module
@@ -471,8 +521,17 @@ pytest tests/backtesting/chunking/ tests/backtesting/regimes/ -v
 - ✅ Comprehensive test suite (43 tests)
 - ✅ Architecture documentation
 
-**Future Phases (Optional):**
-- Level 4: Enhanced GUI with dedicated results tab and interactive charts
+### Level 4: Enhanced GUI Display & File Export ✅ COMPLETED (November 2025)
+- ✅ **Phase 1**: Regime data storage in controller and portfolio objects
+- ✅ **Phase 2**: File export to CSV/HTML/JSON formats
+- ✅ **Phase 3**: Dedicated "Regime Analysis" tab in results view
+- ✅ **Phase 4**: Summary cards, robustness gauge, and performance tables
+- ✅ Multi-symbol support with dropdown selector
+- ✅ Dark-themed HTML reports
+- ✅ Integration test suite (test_level4_regime_integration.py)
+- ✅ Complete documentation
+
+**All Four Levels Complete** - The regime-based testing system is now fully integrated and production-ready!
 
 ## References
 
@@ -488,9 +547,23 @@ pytest tests/backtesting/chunking/ tests/backtesting/regimes/ -v
 
 ## Changelog
 
+### Version 2.0 (November 2025)
+- ✅ **Level 4 Complete**: Enhanced GUI display and file export
+  - Regime data storage in controller and portfolio objects
+  - File export to CSV/HTML/JSON formats
+  - Dedicated "Regime Analysis" tab in results view
+  - Summary cards with robustness gauge
+  - Performance tables for all regime types
+  - Multi-symbol support with dropdown selector
+  - Dark-themed HTML reports
+  - Integration test suite (test_level4_regime_integration.py)
+- ✅ **All Four Levels Complete**: System is production-ready
+- Updated documentation across all guides
+
 ### Version 1.0 (November 2025)
 - Initial implementation of Level 3 (Advanced CLI Tools)
 - Walk-forward validation system
 - Regime detection and analysis
 - Proof-of-concept examples
 - Comprehensive test suite (43 tests)
+- Level 1 & 2 implementations (toggleable parameter and GUI checkbox)

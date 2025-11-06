@@ -34,7 +34,16 @@ This documentation is organized by topic for easy navigation. Select the categor
 - [**Caching Guide**](guides/CACHING_GUIDE.md) - Performance optimization
 - [**Make Commands**](guides/MAKE_COMMANDS.md) - Makefile usage reference
 
-**When to read**: When implementing strategies, optimizing performance, or managing risk
+### Regime Analysis & Advanced Validation ✅ NEW
+- [**Regime Analysis User Guide**](guides/REGIME_ANALYSIS_USER_GUIDE.md) - ⭐ **Master guide** for GUI, code, and CLI usage
+- [**Regime-Based Testing Architecture**](architecture/REGIME_BASED_TESTING.md) - Technical design and algorithms
+- [**CLI Scripts Guide**](../backtest_scripts/README_REGIME_TESTING.md) - Advanced validation tools
+- [**Implementation Summary**](progress/OPTIMIZATION_AND_REGIME_DETECTION_SUMMARY.md) - Complete feature overview
+- [**Documentation Index**](REGIME_ANALYSIS_DOCS_INDEX.md) - All regime analysis documentation (10+ docs)
+
+**What it does**: Prevent overfitting and assess strategy robustness across different market conditions (bull/bear, high/low volatility, drawdown phases)
+
+**When to read**: Before deploying strategies to production, when validating robustness
 
 ---
 
@@ -121,6 +130,10 @@ Location: [`progress/`](progress/)
 
 **Create a custom strategy** → [Advanced Strategies Guide](guides/ADVANCED_STRATEGIES_GUIDE.md)
 
+**Validate strategy robustness** → [Regime Analysis User Guide](guides/REGIME_ANALYSIS_USER_GUIDE.md) ⭐ **NEW**
+
+**Prevent overfitting** → [Regime-Based Testing Architecture](architecture/REGIME_BASED_TESTING.md) ⭐ **NEW**
+
 **Understand the architecture** → [Architecture Overview](architecture/ARCHITECTURE_OVERVIEW.md)
 
 **Run the test suite** → [Test Suite Quick Start](testing/TEST_SUITE_QUICK_START.md)
@@ -186,6 +199,17 @@ When adding new documentation:
 ---
 
 ## Recent Updates
+
+**2025-11-06** (Regime Analysis):
+- ✅ **All 4 Levels of Regime-Based Testing Complete**
+  - Level 1: Transparent integration (BacktestEngine parameter)
+  - Level 2: GUI integration (checkbox toggle)
+  - Level 3: Advanced CLI tools (walk-forward validation)
+  - Level 4: Enhanced GUI display & file export
+- ✅ Created 10+ comprehensive documentation files
+- ✅ Updated main README.md with regime analysis section
+- ✅ Updated docs/README.md navigation hub
+- ✅ Updated REGIME_BASED_TESTING.md architecture doc to v2.0
 
 **2025-11-05**:
 - ✅ Deleted 5 outdated/superseded docs
