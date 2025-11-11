@@ -6,13 +6,13 @@ import pandas as pd
 import numpy as np
 from typing import Tuple, Dict, Optional, List
 
-from backtesting.base.strategy import BaseStrategy
+from backtesting.base.pairs_strategy import PairsStrategy
 from backtesting.utils.pairs import PairsUtils
 from backtesting.utils.indicators import Indicators
 from backtesting.utils.validation import validate_positive_int, validate_positive_float
 
 
-class PairsTrading(BaseStrategy):
+class PairsTrading(PairsStrategy):
     """
     Statistical arbitrage via cointegrated pairs.
 
@@ -119,21 +119,6 @@ class PairsTrading(BaseStrategy):
         )
 
         return is_coint, p_value
-
-    def generate_signals(self, data: pd.DataFrame) -> Tuple[pd.Series, pd.Series]:
-        """
-        Generate signals for SINGLE symbol.
-
-        NOTE: Pairs trading requires TWO symbols. This method is not applicable.
-        Use generate_pairs_signals() instead.
-
-        Raises:
-            NotImplementedError: This strategy requires two symbols
-        """
-        raise NotImplementedError(
-            "PairsTrading requires two symbols. Use generate_pairs_signals() "
-            "with two DataFrames instead."
-        )
 
     def generate_pairs_signals(
         self,

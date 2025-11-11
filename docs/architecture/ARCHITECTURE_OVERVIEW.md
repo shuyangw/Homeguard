@@ -1,7 +1,7 @@
 # Homeguard Backtesting Framework - Architecture Overview
 
-**Version**: 1.0
-**Last Updated**: 2025-11-05
+**Version**: 1.1
+**Last Updated**: 2025-11-11
 **Status**: Current
 
 ---
@@ -105,13 +105,19 @@ Homeguard is a professional-grade backtesting framework for algorithmic trading 
 **Purpose**: Implement trading logic and generate entry/exit signals
 
 **Key Components**:
-- **BaseStrategy** ([src/backtesting/base/strategy.py](../../src/backtesting/base/strategy.py))
+- **Strategy** ([src/backtesting/base/strategy.py](../../src/backtesting/base/strategy.py))
   - Abstract base class for all strategies
   - Defines interface: `generate_signals(data) → (entries, exits)`
 
-- **LongOnlyStrategy** ([src/backtesting/base/strategy.py](../../src/backtesting/base/strategy.py))
-  - Base for long-only strategies
-  - All concrete strategies inherit from this
+- **MultiSymbolStrategy** ([src/backtesting/base/strategy.py](../../src/backtesting/base/strategy.py))
+  - Base for strategies that trade multiple symbols simultaneously
+  - Interface: `generate_signals_multi(data_dict) → signals_dict`
+
+- **PairsStrategy** ([src/backtesting/base/pairs_strategy.py](../../src/backtesting/base/pairs_strategy.py))
+  - Base for pairs trading strategies (market-neutral)
+  - Inherits from `MultiSymbolStrategy`
+  - Enforces synchronized execution of both legs
+  - Automatically routes to `PairsPortfolio`
 
 **Strategy Categories**:
 
@@ -127,7 +133,7 @@ Homeguard is a professional-grade backtesting framework for algorithmic trading 
    - `VolatilityTargetedMomentum`: Vol-scaled momentum
    - `OvernightMeanReversion`: Overnight gap trading
    - `CrossSectionalMomentum`: Multi-asset momentum ranking
-   - `PairsTrading`: Statistical arbitrage
+   - `PairsTrading`: Statistical arbitrage (cointegration-based)
 
 **Strategy Flow**:
 ```python
@@ -176,6 +182,13 @@ portfolio = engine.run_with_data(strategy, data)
   - Rebalancing logic
   - Portfolio-level metrics
 
+- **PairsPortfolio** ([pairs_portfolio.py](../../src/backtesting/engine/pairs_portfolio.py))
+  - **Synchronized execution** for pairs trading strategies
+  - Both legs trade simultaneously (market-neutral)
+  - Position sizing via `PairsPositionSizer` classes
+  - Automatic routing from `BacktestEngine` when `PairsStrategy` detected
+  - Trade logging with pair-specific attributes
+
 **Optimization** ([src/backtesting/engine/](../../src/backtesting/engine/) | [Detailed Docs](OPTIMIZATION_MODULE.md)):
 
 - **BacktestEngine.optimize()** ([backtest_engine.py](../../src/backtesting/engine/backtest_engine.py:408))
@@ -210,6 +223,15 @@ portfolio = engine.run_with_data(strategy, data)
     3. Volatility-Based (ATR-scaled)
     4. Kelly Criterion (optimal sizing)
     5. Risk Parity (equal risk contribution)
+
+- **PairsPositionSizer** ([pairs_position_sizer.py](../../src/backtesting/utils/pairs_position_sizer.py))
+  - **Position sizing for pairs trading** (both legs simultaneously)
+  - **3 Sizing Strategies**:
+    1. **DollarNeutral**: Equal dollar allocation (50/50 split)
+    2. **VolatilityAdjusted**: Inverse volatility weighting
+    3. **RiskParity**: Equal risk contribution (correlation-aware)
+  - Factory function: `create_pairs_sizer(method, **kwargs)`
+  - Returns `(shares1, shares2)` tuple
 
 - **RiskConfig** ([risk_config.py](../../src/backtesting/utils/risk_config.py))
   - Configuration dataclass

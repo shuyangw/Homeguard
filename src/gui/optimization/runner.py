@@ -16,6 +16,9 @@ from pathlib import Path
 from typing import Dict, Any, Optional, Callable
 
 from backtesting.engine.backtest_engine import BacktestEngine
+from backtesting.optimization import GridSearchOptimizer, RandomSearchOptimizer, GeneticOptimizer, BAYESIAN_AVAILABLE
+if BAYESIAN_AVAILABLE:
+    from backtesting.optimization import BayesianOptimizer
 from config import get_log_output_dir
 from gui.utils.error_logger import log_info, log_error, log_exception
 
@@ -56,8 +59,10 @@ class OptimizationRunner:
         Args:
             config: Configuration with optimization parameters:
                 - strategy_class: Strategy class to optimize
-                - param_grid: Parameter grid dictionary
+                - param_space: Parameter space (grid or ranges)
                 - optimization_metric: Metric to optimize
+                - optimization_method: 'grid_search' or 'random_search'
+                - n_iterations: Number of iterations (Random Search only)
                 - symbols: List of symbols
                 - start_date: Start date
                 - end_date: End date
@@ -67,25 +72,31 @@ class OptimizationRunner:
         progress_dialog = None
         try:
             strategy_class = config['strategy_class']
-            param_grid = config['param_grid']
+            param_space = config['param_space']
             metric = config['optimization_metric']
+            method = config.get('optimization_method', 'grid_search')
             symbols = config['symbols']
             start_date = config['start_date']
             end_date = config['end_date']
 
             log_info(f"Starting optimization: {strategy_class.__name__}")
-            log_info(f"Parameter grid: {param_grid}")
+            log_info(f"Method: {method}")
+            log_info(f"Parameter space: {param_space}")
             log_info(f"Optimization metric: {metric}")
+
+            # Format method display name
+            method_display = "Grid Search" if method == 'grid_search' else "Random Search"
 
             # Show progress dialog
             progress_dialog = ft.AlertDialog(
                 title=ft.Text("Running Optimization..."),
                 content=ft.Column([
                     ft.Text(f"Strategy: {strategy_class.__name__}"),
+                    ft.Text(f"Method: {method_display}"),
                     ft.Text(f"Metric: {metric}"),
                     ft.ProgressRing(),
                     ft.Text("This may take several minutes...")
-                ], spacing=10, height=150),
+                ], spacing=10, height=180),
                 modal=True
             )
             self.page.open(progress_dialog)
@@ -124,8 +135,9 @@ class OptimizationRunner:
             Results dictionary with best_params, best_value, csv_path, total_tested
         """
         strategy_class = config['strategy_class']
-        param_grid = config['param_grid']
+        param_space = config['param_space']
         metric = config['optimization_metric']
+        method = config.get('optimization_method', 'grid_search')
         symbols = config['symbols']
         start_date = config['start_date']
         end_date = config['end_date']
@@ -133,91 +145,146 @@ class OptimizationRunner:
         # Create engine
         engine = BacktestEngine(
             initial_capital=config['initial_capital'],
-            fees=config['fees']
+            fees=config['fees'],
+            allow_shorts=config.get('allow_shorts', True)  # Default True for optimization
         )
 
-        # Track all results for CSV export
-        all_results = []
-        param_names = list(param_grid.keys())
-        param_values = [param_grid[name] for name in param_names]
-        combinations = list(product(*param_values))
+        # Select optimizer based on method
+        if method == 'random_search':
+            optimizer = RandomSearchOptimizer(engine)
+            n_iterations = config.get('n_iterations', 100)
+            log_info(f"Using Random Search with {n_iterations} iterations")
 
-        log_info(f"Testing {len(combinations)} parameter combinations...")
+            # Run Random Search optimization
+            result = optimizer.optimize(
+                strategy_class=strategy_class,
+                param_ranges=param_space,
+                symbols=symbols,
+                start_date=start_date,
+                end_date=end_date,
+                metric=metric,
+                n_iterations=n_iterations,
+                random_seed=None,  # Different results each time
+                max_workers=config.get('workers', 1)
+            )
 
-        best_value = float('-inf') if metric != 'max_drawdown' else float('inf')
-        best_params = None
-        valid_combinations = 0
+        elif method == 'bayesian':
+            if not BAYESIAN_AVAILABLE:
+                raise ImportError(
+                    "Bayesian optimization requires scikit-optimize. "
+                    "Install it with: pip install scikit-optimize"
+                )
 
-        for param_combo in combinations:
-            params = dict(zip(param_names, param_combo))
+            # Convert param_ranges to skopt.space dimensions
+            from skopt.space import Integer, Real, Categorical
 
-            try:
-                # Test if strategy can be instantiated with these params
-                strategy = strategy_class(**params)
+            param_space_skopt = []
+            for param_name, param_spec in param_space.items():
+                if isinstance(param_spec, tuple) and len(param_spec) >= 2:
+                    # Numeric range (min, max) or (min, max, 'log')
+                    min_val, max_val = param_spec[0], param_spec[1]
+                    is_log = (len(param_spec) == 3 and param_spec[2] == 'log')
 
-                # Run backtest
-                if len(symbols) == 1:
-                    data = engine.data_loader.load_symbols(symbols, start_date, end_date)
-                    portfolio = engine._run_single_symbol(strategy, data, symbols[0], 'close')
-                else:
-                    data = engine.data_loader.load_symbols(symbols, start_date, end_date)
-                    portfolio = engine._run_multiple_symbols(strategy, data, symbols, 'close')
-
-                stats = portfolio.stats()
-
-                if stats is not None:
-                    # Extract metric value
-                    if metric == 'sharpe_ratio':
-                        value = float(stats.get('Sharpe Ratio', float('-inf')))
-                    elif metric == 'total_return':
-                        value = float(stats.get('Total Return [%]', float('-inf')))
-                    elif metric == 'max_drawdown':
-                        value = float(stats.get('Max Drawdown [%]', float('inf')))
+                    if isinstance(min_val, int) and isinstance(max_val, int):
+                        # Integer parameter
+                        param_space_skopt.append(Integer(min_val, max_val, name=param_name))
                     else:
-                        value = float('-inf')
+                        # Real parameter
+                        prior = 'log-uniform' if is_log else 'uniform'
+                        param_space_skopt.append(Real(min_val, max_val, prior=prior, name=param_name))
 
-                    # Track result
-                    result_row = params.copy()
-                    result_row['metric_value'] = value
-                    result_row['sharpe_ratio'] = float(stats.get('Sharpe Ratio', 0))
-                    result_row['total_return'] = float(stats.get('Total Return [%]', 0))
-                    result_row['max_drawdown'] = float(stats.get('Max Drawdown [%]', 0))
-                    result_row['win_rate'] = float(stats.get('Win Rate [%]', 0))
-                    result_row['total_trades'] = int(stats.get('# Trades', 0))
-                    all_results.append(result_row)
+                elif isinstance(param_spec, list):
+                    # Categorical parameter
+                    param_space_skopt.append(Categorical(param_spec, name=param_name))
 
-                    valid_combinations += 1
+            optimizer = BayesianOptimizer(engine)
+            n_iterations = config.get('n_iterations', 50)
+            n_initial_points = config.get('n_initial_points', 10)
+            acquisition_func = config.get('acquisition_func', 'EI')
 
-                    # Check if this is the best
-                    is_better = (
-                        (metric != 'max_drawdown' and value > best_value) or
-                        (metric == 'max_drawdown' and value < best_value)
-                    )
+            log_info(f"Using Bayesian Optimization with {n_iterations} iterations")
+            log_info(f"Initial random points: {n_initial_points}")
+            log_info(f"Acquisition function: {acquisition_func}")
 
-                    if is_better:
-                        best_value = value
-                        best_params = params
-                        log_info(f"New best {metric}: {best_value:.4f} with params {best_params}")
+            # Run Bayesian optimization
+            result = optimizer.optimize(
+                strategy_class=strategy_class,
+                param_space=param_space_skopt,
+                symbols=symbols,
+                start_date=start_date,
+                end_date=end_date,
+                metric=metric,
+                n_iterations=n_iterations,
+                n_initial_points=n_initial_points,
+                acquisition_func=acquisition_func,
+                random_seed=None,
+                max_workers=config.get('workers', 1)
+            )
 
-            except ValueError as ve:
-                # Invalid parameter combination (e.g., fast_window >= slow_window)
-                log_info(f"Skipping invalid combination {params}: {ve}")
-                continue
-            except Exception as e:
-                log_error(f"Error testing params {params}: {e}")
-                continue
+        elif method == 'genetic':
+            optimizer = GeneticOptimizer(engine)
+            population_size = config.get('population_size', 50)
+            n_generations = config.get('n_generations', 20)
+            mutation_rate = config.get('mutation_rate', 0.1)
+            crossover_rate = config.get('crossover_rate', 0.7)
 
-        log_info(f"Optimization complete. Tested {valid_combinations}/{len(combinations)} valid combinations")
+            log_info(f"Using Genetic Algorithm")
+            log_info(f"Population: {population_size}, Generations: {n_generations}")
+            log_info(f"Mutation rate: {mutation_rate}, Crossover rate: {crossover_rate}")
 
-        # Export results to CSV
-        csv_path = self._export_results_to_csv(all_results, strategy_class, metric)
+            # Run Genetic Algorithm optimization
+            result = optimizer.optimize(
+                strategy_class=strategy_class,
+                param_ranges=param_space,
+                symbols=symbols,
+                start_date=start_date,
+                end_date=end_date,
+                metric=metric,
+                population_size=population_size,
+                n_generations=n_generations,
+                mutation_rate=mutation_rate,
+                crossover_rate=crossover_rate,
+                max_workers=config.get('workers', 1)
+            )
+
+        else:  # grid_search
+            optimizer = GridSearchOptimizer(engine)
+            log_info(f"Using Grid Search")
+
+            # Run Grid Search optimization
+            result = optimizer.optimize(
+                strategy_class=strategy_class,
+                param_grid=param_space,
+                symbols=symbols,
+                start_date=start_date,
+                end_date=end_date,
+                metric=metric,
+                max_workers=config.get('workers', 1)
+            )
+
+        # Extract results from optimizer result
+        best_params = result['best_params']
+        best_value = result['best_value']
+        csv_path = result.get('csv_path')  # CSV path from optimizer
+
+        # Get total tested from result
+        if method == 'random_search' or method == 'bayesian':
+            total_tested = result.get('n_iterations', result.get('total_tested', 0))
+        elif method == 'genetic':
+            total_tested = result.get('total_evaluations', result.get('total_tested', 0))
+        else:
+            total_tested = result.get('total_tested', 0)
+
+        log_info(f"Optimization complete. Best {metric}: {best_value:.4f}")
+        log_info(f"Total combinations tested: {total_tested}")
 
         return {
             'best_params': best_params,
             'best_value': best_value,
             'metric': metric,
             'csv_path': csv_path,
-            'total_tested': valid_combinations
+            'total_tested': total_tested,
+            'method': method
         }
 
     def _export_results_to_csv(

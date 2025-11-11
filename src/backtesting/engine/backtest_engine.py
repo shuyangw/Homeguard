@@ -7,7 +7,8 @@ import numpy as np
 from typing import Union, Dict, Any, Optional, List, TYPE_CHECKING
 from pathlib import Path
 
-from backtesting.base.strategy import BaseStrategy
+from backtesting.base.strategy import BaseStrategy, MultiSymbolStrategy
+from backtesting.base.pairs_strategy import PairsStrategy
 from backtesting.engine.data_loader import DataLoader
 from backtesting.engine.portfolio_simulator import Portfolio, from_signals
 from backtesting.utils.risk_config import RiskConfig
@@ -35,7 +36,8 @@ class BacktestEngine:
         market_hours_only: bool = True,
         benchmark: str = 'SPY',
         risk_config: Optional[RiskConfig] = None,
-        enable_regime_analysis: bool = False
+        enable_regime_analysis: bool = False,
+        allow_shorts: bool = True
     ):
         """
         Initialize backtesting engine.
@@ -49,7 +51,19 @@ class BacktestEngine:
             benchmark: Benchmark ticker for QuantStats reports (default: 'SPY')
             risk_config: Risk management configuration (default: RiskConfig.moderate())
             enable_regime_analysis: If True, automatically analyze performance by market regime (default: False)
+            allow_shorts: If True, enable short selling for strategies (default: True)
+
+        Raises:
+            ValueError: If initial_capital <= 0
         """
+        # Validate inputs
+        if initial_capital <= 0:
+            raise ValueError(f"initial_capital must be positive, got {initial_capital}")
+        if fees < 0:
+            raise ValueError(f"fees must be non-negative, got {fees}")
+        if slippage < 0:
+            raise ValueError(f"slippage must be non-negative, got {slippage}")
+
         self.initial_capital = initial_capital
         self.fees = fees
         self.slippage = slippage
@@ -57,6 +71,7 @@ class BacktestEngine:
         self.market_hours_only = market_hours_only
         self.risk_config = risk_config or RiskConfig.moderate()
         self.enable_regime_analysis = enable_regime_analysis
+        self.allow_shorts = allow_shorts
         self.data_loader = DataLoader()
         self.reporter = QuantStatsReporter(benchmark=benchmark)
 
@@ -101,6 +116,13 @@ class BacktestEngine:
         logger.info(f"Period: {start_date} to {end_date}")
         logger.metric(f"Initial capital: ${self.initial_capital:,.2f}")
         logger.metric(f"Fees: {self.fees*100:.2f}%")
+
+        # Display short selling status prominently
+        if self.allow_shorts:
+            logger.success(f"Short selling: ENABLED")
+        else:
+            logger.warning(f"Short selling: DISABLED (long-only mode)")
+
         if self.market_hours_only:
             logger.info(f"Market hours only: 9:35 AM - 3:55 PM EST")
         else:
@@ -125,8 +147,36 @@ class BacktestEngine:
             self._last_start_date = start_date
             self._last_end_date = end_date
 
-        # Route based on portfolio mode
-        if portfolio_mode == 'single':
+        # Detect strategy type
+        is_multi_symbol = self._detect_strategy_type(strategy)
+
+        # Route based on strategy type and portfolio mode
+        if is_multi_symbol:
+            # MULTI-SYMBOL STRATEGY (e.g., PairsTrading)
+            if len(symbols) < 2:
+                raise ValueError(
+                    f"{strategy.__class__.__name__} is a multi-symbol strategy that requires "
+                    f"at least 2 symbols, got {len(symbols)}"
+                )
+
+            # Validate symbol requirements
+            required = strategy.get_required_symbols()  # type: ignore
+            if isinstance(required, int):
+                if len(symbols) != required:
+                    raise ValueError(
+                        f"{strategy.__class__.__name__} requires exactly {required} symbols, "
+                        f"got {len(symbols)}: {symbols}"
+                    )
+            elif isinstance(required, list):
+                if symbols != required:
+                    raise ValueError(
+                        f"{strategy.__class__.__name__} requires specific symbols {required}, "
+                        f"got {symbols}"
+                    )
+
+            portfolio = self._run_multi_symbol_strategy(strategy, data, symbols, price_type)
+
+        elif portfolio_mode == 'single':
             # SINGLE-SYMBOL MODE (backward compatible)
             if len(symbols) == 1:
                 portfolio = self._run_single_symbol(strategy, data, symbols[0], price_type)
@@ -224,7 +274,8 @@ class BacktestEngine:
             'start_date': start_date,
             'end_date': end_date,
             'initial_capital': self.initial_capital,
-            'fees': f"{self.fees:.4f}" if self.fees else "0.0000"
+            'fees': f"{self.fees:.4f}" if self.fees else "0.0000",
+            'allow_shorts': self.allow_shorts
         }
 
         try:
@@ -273,7 +324,8 @@ class BacktestEngine:
             freq=self.freq,
             market_hours_only=self.market_hours_only,
             risk_config=self.risk_config,
-            price_data=symbol_data  # Pass OHLC data for ATR-based position sizing
+            price_data=symbol_data,  # Pass OHLC data for ATR-based position sizing
+            allow_shorts=self.allow_shorts
         )
 
         return portfolio
@@ -362,6 +414,207 @@ class BacktestEngine:
         )
 
         return portfolio  # type: ignore[return-value]
+
+    def _detect_strategy_type(self, strategy: BaseStrategy) -> bool:
+        """
+        Detect if strategy is a multi-symbol strategy.
+
+        Args:
+            strategy: Strategy instance to check
+
+        Returns:
+            True if strategy is a MultiSymbolStrategy, False otherwise
+        """
+        return isinstance(strategy, MultiSymbolStrategy)
+
+    def _synchronize_symbol_data(
+        self,
+        data: pd.DataFrame,
+        symbols: List[str]
+    ) -> Dict[str, pd.DataFrame]:
+        """
+        Synchronize data across multiple symbols (align timestamps).
+
+        For multi-symbol strategies, all symbols must have aligned timestamps.
+        This method extracts per-symbol data and ensures they share a common index.
+
+        Args:
+            data: Multi-index DataFrame with (timestamp, symbol) index
+            symbols: List of symbols to synchronize
+
+        Returns:
+            Dictionary mapping symbol to synchronized DataFrame
+
+        Example:
+            >>> data_dict = engine._synchronize_symbol_data(data, ['AAPL', 'MSFT'])
+            >>> # All DataFrames in data_dict now have the same timestamp index
+        """
+        # Extract data for each symbol
+        symbol_data = {}
+        for symbol in symbols:
+            try:
+                symbol_df: pd.DataFrame = data.xs(symbol, level='symbol')  # type: ignore
+                symbol_data[symbol] = symbol_df
+            except KeyError:
+                raise ValueError(f"Symbol {symbol} not found in data")
+
+        # Find common timestamp index (intersection of all symbol timestamps)
+        common_index = symbol_data[symbols[0]].index
+        for symbol in symbols[1:]:
+            common_index = common_index.intersection(symbol_data[symbol].index)
+
+        if len(common_index) == 0:
+            raise ValueError(
+                f"No overlapping timestamps found between symbols {symbols}. "
+                f"Cannot synchronize data for multi-symbol strategy."
+            )
+
+        # Reindex all symbols to common timestamps
+        synchronized_data = {}
+        for symbol, df in symbol_data.items():
+            synchronized_data[symbol] = df.loc[common_index]
+
+        logger.info(
+            f"Synchronized {len(symbols)} symbols: {len(common_index)} common timestamps"
+        )
+
+        return synchronized_data
+
+    def _run_multi_symbol_strategy(
+        self,
+        strategy: MultiSymbolStrategy,
+        data: pd.DataFrame,
+        symbols: List[str],
+        price_type: str
+    ) -> Portfolio:
+        """
+        Run backtest for a multi-symbol strategy (e.g., PairsTrading).
+
+        Multi-symbol strategies receive all symbol data at once and generate
+        synchronized signals across all symbols.
+
+        Args:
+            strategy: MultiSymbolStrategy instance
+            data: Multi-index DataFrame with (timestamp, symbol) index
+            symbols: List of symbols to trade
+            price_type: Price column to use for execution
+
+        Returns:
+            Portfolio object with backtest results
+        """
+        logger.info(f"Running multi-symbol strategy: {strategy.__class__.__name__}")
+        logger.info(f"Symbols: {', '.join(symbols)}")
+
+        # Synchronize data across symbols
+        data_dict = self._synchronize_symbol_data(data, symbols)
+
+        # Generate multi-symbol signals
+        signals_dict = strategy.generate_multi_signals(data_dict)
+
+        # Check if this is a pairs strategy
+        if isinstance(strategy, PairsStrategy) and len(symbols) == 2:
+            # Use PairsPortfolio for proper pairs execution
+            from backtesting.engine.pairs_portfolio import PairsPortfolio
+
+            logger.info("Using PairsPortfolio for synchronized pair execution")
+
+            symbol1, symbol2 = symbols
+            signals1 = signals_dict[symbol1]
+            signals2 = signals_dict[symbol2]
+
+            # Expect 4-tuple for pairs
+            if len(signals1) != 4 or len(signals2) != 4:
+                raise ValueError(
+                    f"PairsStrategy must return 4-tuple (long_e, long_x, short_e, short_x), "
+                    f"got {len(signals1)}-tuple for {symbol1} and {len(signals2)}-tuple for {symbol2}"
+                )
+
+            # Unpack signals for symbol1
+            long_entries1, long_exits1, short_entries1, short_exits1 = signals1
+
+            # For pairs: we use symbol1's signals to determine spread direction
+            # Long spread: short sym1, long sym2 (entries = long_entries1 inverted)
+            # Short spread: long sym1, short sym2 (entries = short_entries1)
+
+            # The strategy should return signals where:
+            # - symbol1 long_entries means "long symbol1" (short spread)
+            # - symbol1 short_entries means "short symbol1" (long spread)
+
+            # So we use short_entries1 as long_spread_entries
+            # And long_entries1 as short_spread_entries
+
+            portfolio = PairsPortfolio(
+                symbols=(symbol1, symbol2),
+                prices1=data_dict[symbol1][price_type],
+                prices2=data_dict[symbol2][price_type],
+                entries=short_entries1,  # Long spread entries
+                exits=short_exits1,      # Long spread exits
+                short_entries=long_entries1,  # Short spread entries
+                short_exits=long_exits1,      # Short spread exits
+                init_cash=self.initial_capital,
+                fees=self.fees,
+                slippage=self.slippage,
+                freq=self.freq,
+                market_hours_only=self.market_hours_only,
+                risk_config=self.risk_config,
+                price_data1=data_dict[symbol1],
+                price_data2=data_dict[symbol2]
+            )
+
+            return portfolio  # type: ignore
+
+        else:
+            # Fallback to single-symbol execution for other multi-symbol strategies
+            logger.warning(
+                f"Non-pairs multi-symbol strategy: executing first symbol only. "
+                f"Full multi-asset support pending."
+            )
+
+            first_symbol = symbols[0]
+            signal_tuple = signals_dict[first_symbol]
+
+            # Check if 2-tuple (long-only) or 4-tuple (long-short)
+            if len(signal_tuple) == 2:
+                # Long-only strategy
+                entries, exits = signal_tuple
+                short_entries = pd.Series(False, index=entries.index)
+                short_exits = pd.Series(False, index=entries.index)
+            elif len(signal_tuple) == 4:
+                # Long-short strategy
+                entries, exits, short_entries, short_exits = signal_tuple
+            else:
+                raise ValueError(
+                    f"Invalid signal tuple length: {len(signal_tuple)}. "
+                    f"Expected 2 (long-only) or 4 (long-short)."
+                )
+
+            # Get price data
+            price = data_dict[first_symbol][price_type]
+
+            # Ensure boolean signals
+            entries = entries.fillna(False).astype(bool)
+            exits = exits.fillna(False).astype(bool)
+            short_entries = short_entries.fillna(False).astype(bool)
+            short_exits = short_exits.fillna(False).astype(bool)
+
+            # Create portfolio using existing from_signals()
+            portfolio = from_signals(
+                close=price,
+                entries=entries,
+                exits=exits,
+                short_entries=short_entries,
+                short_exits=short_exits,
+                init_cash=self.initial_capital,
+                fees=self.fees,
+                slippage=self.slippage,
+                freq=self.freq,
+                market_hours_only=self.market_hours_only,
+                risk_config=self.risk_config,
+                price_data=data_dict[first_symbol],
+                allow_shorts=self.allow_shorts
+            )
+
+            return portfolio
 
     def run_with_data(
         self,

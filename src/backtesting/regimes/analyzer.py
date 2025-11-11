@@ -369,6 +369,10 @@ class RegimeAnalyzer:
 
         cumulative = (1 + returns).cumprod()
         running_max = cumulative.expanding().max()
+
+        # Prevent division by zero (theoretical edge case if catastrophic loss)
+        running_max = running_max.replace(0, 1e-10)
+
         drawdown = (cumulative - running_max) / running_max
         max_dd = drawdown.min() * 100
 

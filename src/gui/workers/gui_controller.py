@@ -148,7 +148,8 @@ class GUIBacktestController:
         position_sizing_method: str = "equal_weight",
         rebalancing_frequency: str = "never",
         rebalancing_threshold_pct: float = 0.05,
-        enable_regime_analysis: bool = False
+        enable_regime_analysis: bool = False,
+        allow_short_selling: bool = False
     ):
         """
         Start backtests in background thread.
@@ -167,6 +168,7 @@ class GUIBacktestController:
             rebalancing_frequency: Rebalancing frequency for portfolio (default: "never")
             rebalancing_threshold_pct: Drift threshold for rebalancing (default: 0.05)
             enable_regime_analysis: Enable regime-based performance analysis (default: False)
+            allow_short_selling: Enable short selling for strategies (default: False)
         """
         try:
             log_info(f"GUIController: Starting backtests for {len(symbols)} symbols")
@@ -241,7 +243,8 @@ class GUIBacktestController:
                 initial_capital=initial_capital,
                 fees=fees,
                 risk_config=risk_config,
-                enable_regime_analysis=enable_regime_analysis
+                enable_regime_analysis=enable_regime_analysis,
+                allow_shorts=allow_short_selling
             )
 
             # Create SweepRunner with callbacks

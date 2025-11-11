@@ -225,6 +225,9 @@ class DrawdownDetector:
         # Calculate running maximum (high water mark)
         running_max = prices.expanding().max()
 
+        # Prevent division by zero (theoretical edge case if prices hit zero)
+        running_max = running_max.replace(0, 1e-10)
+
         # Calculate drawdown from high water mark
         drawdown = ((prices - running_max) / running_max) * 100
 

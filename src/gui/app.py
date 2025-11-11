@@ -591,7 +591,8 @@ class BacktestApp:
                 position_sizing_method=config.get('position_sizing_method', 'equal_weight'),
                 rebalancing_frequency=config.get('rebalancing_frequency', 'never'),
                 rebalancing_threshold_pct=config.get('rebalancing_threshold_pct', 0.05),
-                enable_regime_analysis=config.get('enable_regime_analysis', False)
+                enable_regime_analysis=config.get('enable_regime_analysis', False),
+                allow_short_selling=config.get('allow_short_selling', False)
             )
 
             # Start polling for updates

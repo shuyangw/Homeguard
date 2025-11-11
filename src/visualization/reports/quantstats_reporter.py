@@ -696,8 +696,11 @@ class QuantStatsReporter:
         end_date = strategy_info.get('end_date', 'N/A')
         initial_capital = strategy_info.get('initial_capital', 'N/A')
         fees = strategy_info.get('fees', 'N/A')
+        allow_shorts = strategy_info.get('allow_shorts', False)
 
         symbols_str = ', '.join(symbols) if isinstance(symbols, list) else str(symbols)
+        short_selling_str = "ENABLED ✓" if allow_shorts else "DISABLED (Long-Only)"
+        short_selling_color = "#27ae60" if allow_shorts else "#e74c3c"
 
         # Format values
         sharpe_str = f"{sharpe:.2f}" if sharpe is not None else "N/A"
@@ -1006,6 +1009,10 @@ class QuantStatsReporter:
                 <tr>
                     <td class="metric-label">Transaction Fees:</td>
                     <td class="metric-value">{fees}</td>
+                </tr>
+                <tr>
+                    <td class="metric-label">Short Selling:</td>
+                    <td class="metric-value" style="color: {short_selling_color}; font-weight: 600;">{short_selling_str}</td>
                 </tr>
             </table>
         </div>

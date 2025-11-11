@@ -56,6 +56,8 @@ class SetupView(ft.Container):
         self.run_button = None
         self.parallel_checkbox = None
         self.regime_analysis_checkbox = None
+        self.allow_short_selling_checkbox = None
+        self.optimization_enabled_checkbox = None
 
         # Preset/Symbol List UI components
         self.quick_rerun_button = None
@@ -298,6 +300,21 @@ class SetupView(ft.Container):
             tooltip="Automatically analyze strategy performance across different market regimes (bull/bear/sideways, high/low volatility). Shows robustness score and identifies weakness in specific market conditions."
         )
 
+        # Short selling checkbox
+        self.allow_short_selling_checkbox = ft.Checkbox(
+            label="Allow short selling (profit from downtrends)",
+            value=False,
+            tooltip="Enable short positions. When enabled, exit signals open short positions instead of going flat. Allows strategies to profit from both uptrends (long) and downtrends (short). Note: Strategies should be re-optimized with shorts enabled for best results."
+        )
+
+        # Parameter optimization checkbox
+        self.optimization_enabled_checkbox = ft.Checkbox(
+            label="Enable parameter optimization",
+            value=True,
+            on_change=self._on_optimization_enabled_changed,
+            tooltip="Enable grid search parameter optimization. When enabled, the 'Optimize Parameters' button will be available to find the best parameter combinations for your strategy."
+        )
+
         # Run button
         self.run_button = ft.ElevatedButton(
             "Run Backtests",
@@ -510,6 +527,12 @@ class SetupView(ft.Container):
                         ft.Text("Output Settings", size=16, weight=ft.FontWeight.W_400),
                         self.generate_full_output_checkbox,
                         self.regime_analysis_checkbox,
+                        ft.Divider(),
+                        ft.Text("Trading Settings", size=16, weight=ft.FontWeight.W_400),
+                        self.allow_short_selling_checkbox,
+                        ft.Divider(),
+                        ft.Text("Optimization", size=16, weight=ft.FontWeight.W_400),
+                        self.optimization_enabled_checkbox,
                     ], spacing=10),
                     border=ft.border.all(2, ft.Colors.TEAL_700),
                     border_radius=8,
@@ -609,6 +632,10 @@ class SetupView(ft.Container):
         # Initialize with first strategy if no config loaded
         if not config_loaded and strategy_names:
             self._on_strategy_changed(None)
+
+        # Set initial optimize button visibility based on checkbox
+        if self.optimize_button and self.optimization_enabled_checkbox:
+            self.optimize_button.visible = self.optimization_enabled_checkbox.value
 
     def _on_strategy_changed(self, e):
         """Handle strategy selection change."""
@@ -879,6 +906,8 @@ class SetupView(ft.Container):
             parallel = self.parallel_checkbox.value
             generate_full_output = self.generate_full_output_checkbox.value
             enable_regime_analysis = self.regime_analysis_checkbox.value
+            allow_short_selling = self.allow_short_selling_checkbox.value
+            optimization_enabled = self.optimization_enabled_checkbox.value
 
             # Cap workers at number of symbols (no point having more workers than symbols)
             if workers > len(symbols):
@@ -905,6 +934,8 @@ class SetupView(ft.Container):
                 'parallel': parallel,
                 'generate_full_output': generate_full_output,
                 'enable_regime_analysis': enable_regime_analysis,
+                'allow_short_selling': allow_short_selling,
+                'optimization_enabled': optimization_enabled,
                 'portfolio_mode': portfolio_mode,
                 'position_sizing_method': position_sizing_method,
                 'rebalancing_frequency': rebalancing_frequency,
@@ -1102,6 +1133,12 @@ class SetupView(ft.Container):
             self.generate_full_output_checkbox.value = config['generate_full_output']
         if 'enable_regime_analysis' in config:
             self.regime_analysis_checkbox.value = config['enable_regime_analysis']
+        if 'allow_short_selling' in config:
+            self.allow_short_selling_checkbox.value = config['allow_short_selling']
+        if 'optimization_enabled' in config:
+            self.optimization_enabled_checkbox.value = config['optimization_enabled']
+            # Update optimize button visibility
+            self._on_optimization_enabled_changed(None)
 
         # Set portfolio mode and settings
         if 'portfolio_mode' in config:
@@ -1205,13 +1242,16 @@ class SetupView(ft.Container):
         )
         dialog.show()
 
-    def _on_run_optimization(self, param_grid: Dict[str, Any], metric: str):
+    def _on_run_optimization(self, opt_config: Dict[str, Any]):
         """
         Handle optimization start.
 
         Args:
-            param_grid: Parameter grid to optimize over
-            metric: Optimization metric
+            opt_config: Optimization configuration containing:
+                - 'param_space': Parameter grid or ranges
+                - 'metric': Optimization metric
+                - 'method': 'grid_search' or 'random_search'
+                - 'n_iterations': Number of iterations (Random Search only)
         """
         # Collect current configuration (except strategy params)
         config = self._collect_configuration()
@@ -1219,12 +1259,24 @@ class SetupView(ft.Container):
             return
 
         # Store optimization parameters
-        config['param_grid'] = param_grid
-        config['optimization_metric'] = metric
+        config['param_space'] = opt_config['param_space']
+        config['optimization_metric'] = opt_config['metric']
+        config['optimization_method'] = opt_config['method']
         config['is_optimization'] = True
+
+        # Add Random Search specific parameters if present
+        if 'n_iterations' in opt_config:
+            config['n_iterations'] = opt_config['n_iterations']
 
         # Pass to app controller (will be handled in app.py)
         self.on_run_clicked(config)
+
+    def _on_optimization_enabled_changed(self, e):
+        """Handle optimization enabled checkbox change."""
+        # Enable/disable the optimize button based on checkbox state
+        if self.optimize_button:
+            self.optimize_button.visible = self.optimization_enabled_checkbox.value
+            self.update()
 
     # ========== Symbol Download Dialog ==========
 

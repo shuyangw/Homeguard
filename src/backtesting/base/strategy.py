@@ -3,7 +3,7 @@ Base strategy class for defining trading strategies.
 """
 
 from abc import ABC, abstractmethod
-from typing import Dict, Any, Tuple
+from typing import Dict, Any, Tuple, Union, List
 import pandas as pd
 import numpy as np
 
@@ -139,3 +139,80 @@ class LongShortStrategy(BaseStrategy):
             Tuple of (long_entries, long_exits, short_entries, short_exits)
         """
         pass
+
+
+class MultiSymbolStrategy(BaseStrategy):
+    """
+    Base class for strategies that trade multiple symbols simultaneously.
+
+    Multi-symbol strategies generate signals across multiple correlated assets.
+    Examples: pairs trading, statistical arbitrage, cross-sectional momentum.
+
+    Subclasses must implement:
+    - get_required_symbols(): Specify symbol requirements
+    - generate_multi_signals(): Generate signals across multiple symbols
+    """
+
+    @abstractmethod
+    def get_required_symbols(self) -> Union[int, List[str]]:
+        """
+        Specify symbol requirements for this strategy.
+
+        Returns:
+            int: Number of symbols required (e.g., 2 for pairs trading)
+            List[str]: Specific symbols required (e.g., ['SPY', 'TLT'])
+
+        Examples:
+            >>> class PairsStrategy(MultiSymbolStrategy):
+            ...     def get_required_symbols(self):
+            ...         return 2  # Any 2 symbols
+
+            >>> class SPYTLTStrategy(MultiSymbolStrategy):
+            ...     def get_required_symbols(self):
+            ...         return ['SPY', 'TLT']  # Specific pair
+        """
+        pass
+
+    @abstractmethod
+    def generate_multi_signals(
+        self,
+        data_dict: Dict[str, pd.DataFrame]
+    ) -> Dict[str, Union[
+        Tuple[pd.Series, pd.Series],
+        Tuple[pd.Series, pd.Series, pd.Series, pd.Series]
+    ]]:
+        """
+        Generate signals across multiple symbols.
+
+        Args:
+            data_dict: Dictionary mapping symbol names to OHLCV DataFrames
+                Example: {'AAPL': df1, 'MSFT': df2}
+
+        Returns:
+            Dictionary mapping symbols to signal tuples:
+            - Long-only: {symbol: (entries, exits)}
+            - Long-short: {symbol: (long_entries, long_exits, short_entries, short_exits)}
+
+        Example (Long-Short Pairs):
+            >>> def generate_multi_signals(self, data_dict):
+            ...     sym1, sym2 = list(data_dict.keys())
+            ...     # Calculate spread, generate signals
+            ...     return {
+            ...         sym1: (long_entries, long_exits, short_entries, short_exits),
+            ...         sym2: (long_entries, long_exits, short_entries, short_exits)
+            ...     }
+        """
+        pass
+
+    def generate_signals(self, data: pd.DataFrame) -> Tuple[pd.Series, pd.Series]:
+        """
+        Prevent single-symbol usage of multi-symbol strategies.
+
+        Raises:
+            NotImplementedError: Always raised for multi-symbol strategies
+        """
+        raise NotImplementedError(
+            f"{self.__class__.__name__} is a multi-symbol strategy that requires "
+            f"multiple symbols to generate signals. Use BacktestEngine.run() with "
+            f"a list of symbols: engine.run(strategy, symbols=['SYM1', 'SYM2'], ...)"
+        )

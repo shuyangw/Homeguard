@@ -639,6 +639,8 @@ class MultiAssetPortfolio:
 
         # Max drawdown
         cummax = equity_series.cummax()
+        # Prevent division by zero (theoretical edge case if init_cash=0)
+        cummax = cummax.replace(0, 1)
         drawdown = (equity_series - cummax) / cummax * 100
         max_drawdown_pct = drawdown.min()
 

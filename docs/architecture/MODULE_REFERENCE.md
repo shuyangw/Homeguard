@@ -1,7 +1,7 @@
 # Homeguard Module Reference
 
-**Version**: 1.0
-**Last Updated**: 2025-11-05
+**Version**: 1.1
+**Last Updated**: 2025-11-11
 **Purpose**: Comprehensive module-by-module reference for the Homeguard codebase
 
 ---
@@ -549,6 +549,135 @@ portfolio.rebalance(current_prices={'AAPL': 155.0, 'MSFT': 310.0})
 
 ---
 
+#### `src/backtesting/engine/pairs_portfolio.py`
+**Purpose**: Synchronized execution of pairs trading strategies
+
+**Key Classes**:
+- `PairsPortfolio`: Portfolio manager for pairs strategies
+
+**Key Features**:
+- **Synchronized execution**: Both legs trade simultaneously
+- **Position sizing**: Uses `PairsPositionSizer` for capital allocation
+- **Direction tracking**: Tracks long/short/flat per symbol
+- **Dollar-neutral**: Option to maintain market-neutral positions
+- **Risk management**: Integrated position size limits and stop losses
+
+**Initialization Parameters**:
+- `symbol1`: First symbol in pair (e.g., 'AAPL')
+- `symbol2`: Second symbol in pair (e.g., 'MSFT')
+- `init_cash`: Initial capital (default: $100,000)
+- `fees`: Trading fees per trade (default: 0.001 = 0.1%)
+- `slippage`: Slippage per trade (default: 0.0)
+- `position_sizer`: PairsPositionSizer instance (default: DollarNeutralSizer)
+- `risk_config`: RiskConfig instance (optional)
+
+**Key Methods**:
+```python
+def from_signals(
+    data1: pd.DataFrame,
+    data2: pd.DataFrame,
+    signals: Dict,
+    init_cash: float,
+    fees: float,
+    slippage: float,
+    position_sizer: PairsPositionSizer
+) -> PairsPortfolio:
+    """Create portfolio from pair signals."""
+    pass
+```
+
+**Execution Flow**:
+1. Iterate through each timestamp
+2. Check for exit signals → close both legs simultaneously
+3. Check for entry signals → open both legs simultaneously
+4. Calculate position sizes via PairsPositionSizer
+5. Update equity curve
+6. Log synchronized trades
+7. Check stop losses
+
+**Trade Dictionary Structure** (Pairs-Specific):
+```python
+{
+    'type': 'entry' | 'exit',
+    'timestamp': datetime,
+    'entry_symbol1': str,  # e.g., 'AAPL'
+    'entry_symbol2': str,  # e.g., 'MSFT'
+    'entry_price1': float,
+    'entry_price2': float,
+    'entry_shares1': int,
+    'entry_shares2': int,
+    'entry_direction1': int,  # 1=long, -1=short
+    'entry_direction2': int,
+    'total_value': float,
+    'fees': float,
+    'pnl': float (exit only),
+    'pnl_pct': float (exit only)
+}
+```
+
+**Position Sizing**:
+- Delegates to `PairsPositionSizer` classes
+- Three strategies: DollarNeutral, VolatilityAdjusted, RiskParity
+- Returns `(shares1, shares2)` tuple
+
+**Risk Management**:
+- Max position size per leg
+- Total capital constraint
+- Stop loss per pair
+- No new entries if capital depleted
+
+**Statistics Calculated**:
+- Same as PortfolioSimulator (total return, Sharpe, drawdown, etc.)
+- Additional pairs-specific metrics (spread P&L, correlation)
+
+**Dependencies**: `pandas`, `numpy`, `PairsPositionSizer`, `RiskManager`, `logger`
+
+**Usage Example**:
+```python
+from backtesting.engine.pairs_portfolio import PairsPortfolio
+from backtesting.utils.pairs_position_sizer import DollarNeutralSizer
+
+# Usually called internally by BacktestEngine
+sizer = DollarNeutralSizer(position_pct=0.5)
+
+portfolio = PairsPortfolio.from_signals(
+    data1=aapl_data,
+    data2=msft_data,
+    signals={
+        'AAPL': {
+            'entries': entries1,
+            'exits': exits1,
+            'direction': directions1
+        },
+        'MSFT': {
+            'entries': entries2,
+            'exits': exits2,
+            'direction': directions2
+        }
+    },
+    init_cash=100000,
+    fees=0.001,
+    slippage=0.0,
+    position_sizer=sizer
+)
+
+stats = portfolio.stats()
+print(f"Total Return: {stats['Total Return [%]']:.2f}%")
+```
+
+**Integration with BacktestEngine**:
+```python
+# BacktestEngine automatically detects PairsStrategy
+if isinstance(strategy, PairsStrategy):
+    # Route to PairsPortfolio
+    portfolio = PairsPortfolio.from_signals(...)
+else:
+    # Route to standard PortfolioSimulator
+    portfolio = PortfolioSimulator.from_signals(...)
+```
+
+---
+
 #### `src/backtesting/engine/metrics.py`
 **Purpose**: Calculate performance metrics
 
@@ -672,6 +801,178 @@ shares = sizer.calculate_shares(
     current_price=150.0,
     available_cash=100000,
     atr=5.0  # Optional, for volatility-based
+)
+```
+
+---
+
+#### `src/backtesting/utils/pairs_position_sizer.py`
+**Purpose**: Position sizing for pairs trading strategies
+
+**Key Classes**:
+
+1. **PairsPositionSizer** (Abstract Base):
+   ```python
+   class PairsPositionSizer(ABC):
+       @abstractmethod
+       def calculate_position_size(
+           self,
+           cash: float,
+           price1: float,
+           price2: float,
+           hedge_ratio: float = 1.0,
+           **kwargs
+       ) -> Tuple[float, float]:
+           """Calculate shares for both legs of the pair."""
+           pass
+   ```
+
+2. **DollarNeutralSizer**:
+   - **Purpose**: Equal dollar allocation to both legs
+   - **Logic**: Split capital 50/50 between both symbols
+   - **Parameters**: `position_pct` (default: 0.5 = 50% of capital)
+   - **Use case**: Baseline pairs strategy, simplest approach
+
+   ```python
+   total_capital = cash * position_pct  # e.g., $100k * 0.5 = $50k
+   capital_per_leg = total_capital / 2  # $25k per leg
+   shares1 = capital_per_leg / price1
+   shares2 = capital_per_leg / price2
+   ```
+
+3. **VolatilityAdjustedSizer**:
+   - **Purpose**: Allocate inversely to volatility
+   - **Logic**: Less capital to more volatile symbol, more to less volatile
+   - **Parameters**: `position_pct` (0.5), `volatility1`, `volatility2`
+   - **Use case**: Risk-balanced pairs trading
+
+   ```python
+   # Inverse volatility weights
+   weight1 = (1 / volatility1) / (1/volatility1 + 1/volatility2)
+   weight2 = 1 - weight1
+
+   total_capital = cash * position_pct
+   capital1 = total_capital * weight1
+   capital2 = total_capital * weight2
+   shares1 = capital1 / price1
+   shares2 = capital2 / price2
+   ```
+
+4. **RiskParitySizer**:
+   - **Purpose**: Equal risk contribution from both legs
+   - **Logic**: Accounts for volatility AND correlation
+   - **Parameters**: `position_pct` (0.5), `target_risk` (0.02), `correlation`
+   - **Use case**: Advanced risk management with correlation awareness
+
+   ```python
+   # Calculate target portfolio volatility
+   target_vol = target_risk
+
+   # Solve for weights that equalize risk contribution
+   # Account for correlation between symbols
+   # More complex optimization (see implementation)
+   ```
+
+**Factory Function**:
+```python
+def create_pairs_sizer(
+    method: str = 'dollar_neutral',
+    position_pct: float = 0.5,
+    **kwargs
+) -> PairsPositionSizer:
+    """
+    Create pairs position sizer.
+
+    Args:
+        method: 'dollar_neutral' | 'volatility_adjusted' | 'risk_parity'
+        position_pct: % of capital to deploy (0.0-1.0)
+        **kwargs: Additional parameters for specific sizers
+            - volatility1, volatility2 (for volatility_adjusted)
+            - target_risk, correlation (for risk_parity)
+
+    Returns:
+        PairsPositionSizer instance
+    """
+```
+
+**Common Parameters**:
+- `position_pct`: Fraction of capital to deploy (default: 0.5 = 50%)
+- `min_shares`: Minimum shares per leg (default: 1)
+- `max_position_pct`: Max capital per leg (default: 0.5 = 50%)
+
+**Dependencies**: `pandas`, `numpy`, `ABC`
+
+**Usage Example**:
+```python
+from backtesting.utils.pairs_position_sizer import (
+    create_pairs_sizer,
+    DollarNeutralSizer,
+    VolatilityAdjustedSizer,
+    RiskParitySizer
+)
+
+# Method 1: Factory function
+sizer = create_pairs_sizer(method='dollar_neutral', position_pct=0.5)
+
+# Method 2: Direct instantiation
+sizer = DollarNeutralSizer(position_pct=0.5)
+
+# Calculate position sizes
+shares1, shares2 = sizer.calculate_position_size(
+    cash=100000,
+    price1=150.0,  # AAPL
+    price2=300.0,  # MSFT
+    hedge_ratio=1.0
+)
+# Result: 166 shares AAPL, 83 shares MSFT (approx $25k each)
+
+# Volatility-adjusted sizing
+vol_sizer = VolatilityAdjustedSizer(position_pct=0.5)
+shares1, shares2 = vol_sizer.calculate_position_size(
+    cash=100000,
+    price1=150.0,
+    price2=300.0,
+    hedge_ratio=1.0,
+    volatility1=0.03,  # 3% daily vol
+    volatility2=0.02   # 2% daily vol
+)
+# Result: More capital to MSFT (lower vol)
+
+# Risk parity sizing
+rp_sizer = RiskParitySizer(position_pct=0.5, target_risk=0.02)
+shares1, shares2 = rp_sizer.calculate_position_size(
+    cash=100000,
+    price1=150.0,
+    price2=300.0,
+    hedge_ratio=1.0,
+    volatility1=0.03,
+    volatility2=0.02,
+    correlation=0.7  # 70% correlation
+)
+# Result: Optimized for equal risk contribution
+```
+
+**Comparison Table**:
+
+| Sizer | Pros | Cons | Best For |
+|-------|------|------|----------|
+| **DollarNeutral** | Simple, predictable | Ignores volatility | Quick testing, baseline |
+| **VolatilityAdjusted** | Risk-aware, balanced | Ignores correlation | Most pairs strategies |
+| **RiskParity** | Optimal risk balance | Complex, needs correlation | Advanced strategies |
+
+**Integration with PairsPortfolio**:
+```python
+from backtesting.engine.pairs_portfolio import PairsPortfolio
+from backtesting.utils.pairs_position_sizer import VolatilityAdjustedSizer
+
+sizer = VolatilityAdjustedSizer(position_pct=0.5)
+
+portfolio = PairsPortfolio.from_signals(
+    data1=data1,
+    data2=data2,
+    signals=signals,
+    init_cash=100000,
+    position_sizer=sizer  # Pass sizer to portfolio
 )
 ```
 
@@ -836,33 +1137,53 @@ trading_data = data[data.index.map(calendar.is_market_day)]
 
 **Key Classes**:
 
-1. **BaseStrategy** (Abstract):
+1. **Strategy** (Abstract):
    ```python
-   class BaseStrategy(ABC):
+   class Strategy(ABC):
        @abstractmethod
        def generate_signals(self, data: pd.DataFrame) -> Tuple[pd.Series, pd.Series]:
-           """Generate entry and exit signals."""
+           """Generate entry and exit signals for single symbol."""
            pass
    ```
 
-2. **LongOnlyStrategy** (Abstract):
-   - Inherits from `BaseStrategy`
-   - Enforces long-only constraint
-   - All concrete strategies inherit from this
+2. **MultiSymbolStrategy** (Abstract):
+   - Inherits from `Strategy`
+   - For strategies that trade multiple symbols simultaneously
+   - Returns dict of signals per symbol
+   ```python
+   class MultiSymbolStrategy(Strategy):
+       @abstractmethod
+       def generate_signals_multi(self, data: Dict[str, pd.DataFrame]) -> Dict:
+           """Generate signals for multiple symbols."""
+           pass
+   ```
 
 **Signal Format**:
 ```python
+# Single symbol
 entries = pd.Series([False, False, True, False, ...], index=data.index)
 exits = pd.Series([False, False, False, True, ...], index=data.index)
+
+# Multi-symbol
+signals = {
+    'AAPL': {
+        'entries': pd.Series([False, True, ...]),
+        'exits': pd.Series([False, False, ...])
+    },
+    'MSFT': {
+        'entries': pd.Series([False, True, ...]),
+        'exits': pd.Series([False, False, ...])
+    }
+}
 ```
 
 **Dependencies**: `pandas`, `ABC`
 
 **Usage Example**:
 ```python
-from backtesting.base.strategy import LongOnlyStrategy
+from backtesting.base.strategy import Strategy
 
-class MyStrategy(LongOnlyStrategy):
+class MyStrategy(Strategy):
     def __init__(self, param1, param2):
         self.param1 = param1
         self.param2 = param2
@@ -872,6 +1193,104 @@ class MyStrategy(LongOnlyStrategy):
         entries = ...
         exits = ...
         return entries, exits
+```
+
+---
+
+#### `src/backtesting/base/pairs_strategy.py`
+**Purpose**: Base class for pairs trading strategies
+
+**Key Classes**:
+- `PairsStrategy`: Abstract base for pairs strategies
+
+**Inheritance**:
+```
+Strategy (base)
+  └─→ MultiSymbolStrategy
+       └─→ PairsStrategy (adds pairs-specific requirements)
+```
+
+**Key Methods**:
+```python
+@abstractmethod
+def generate_signals_multi(self, data: Dict[str, pd.DataFrame]) -> Dict:
+    """
+    Generate synchronized signals for both legs of the pair.
+
+    Args:
+        data: Dict with keys 'symbol1' and 'symbol2', each containing OHLCV DataFrame
+
+    Returns:
+        Dict with signals for both symbols including direction:
+        {
+            'symbol1': {
+                'entries': pd.Series (bool),
+                'exits': pd.Series (bool),
+                'direction': pd.Series (int: 1=long, -1=short, 0=flat)
+            },
+            'symbol2': {
+                'entries': pd.Series (bool),
+                'exits': pd.Series (bool),
+                'direction': pd.Series (int: 1=long, -1=short, 0=flat)
+            }
+        }
+    """
+    pass
+```
+
+**Pairs Requirements**:
+- **Synchronized signals**: Both legs must trade simultaneously
+- **Opposite directions**: When symbol1 is long, symbol2 is short (or vice versa)
+- **Market neutral**: Dollar-neutral or risk-neutral positioning
+- **Direction field**: Required for pairs to indicate long/short/flat
+
+**Execution Routing**:
+- BacktestEngine detects `PairsStrategy` via `isinstance()` check
+- Routes to `PairsPortfolio` automatically
+- Uses `PairsPositionSizer` for capital allocation
+
+**Dependencies**: `MultiSymbolStrategy`, `pandas`, `ABC`
+
+**Usage Example**:
+```python
+from backtesting.base.pairs_strategy import PairsStrategy
+import pandas as pd
+
+class MyPairsStrategy(PairsStrategy):
+    def __init__(self, threshold=2.0):
+        self.threshold = threshold
+
+    def generate_signals_multi(self, data):
+        symbol1_data = data['symbol1']
+        symbol2_data = data['symbol2']
+
+        # Calculate spread, z-score, etc.
+        spread = symbol1_data['close'] - symbol2_data['close']
+        zscore = (spread - spread.mean()) / spread.std()
+
+        # Generate synchronized signals
+        entries_long = zscore < -self.threshold  # Long spread
+        entries_short = zscore > self.threshold  # Short spread
+        exits = abs(zscore) < 0.5
+
+        return {
+            'symbol1': {
+                'entries': entries_long | entries_short,
+                'exits': exits,
+                'direction': pd.Series(
+                    np.where(entries_long, 1, np.where(entries_short, -1, 0)),
+                    index=symbol1_data.index
+                )
+            },
+            'symbol2': {
+                'entries': entries_long | entries_short,
+                'exits': exits,
+                'direction': pd.Series(
+                    np.where(entries_long, -1, np.where(entries_short, 1, 0)),  # Opposite
+                    index=symbol2_data.index
+                )
+            }
+        }
 ```
 
 ---
@@ -1016,21 +1435,90 @@ entries, exits = strategy.generate_signals(data)
 ---
 
 #### `src/strategies/advanced/pairs_trading.py`
-**Purpose**: Statistical arbitrage between correlated pairs
+**Purpose**: Statistical arbitrage between correlated pairs (market-neutral)
+
+**Key Classes**:
+- `PairsTrading`: Concrete pairs trading strategy
 
 **Logic**:
-- Identify correlated/cointegrated pairs
-- Calculate spread: `spread = price_A - beta * price_B`
-- Buy when spread < -threshold, sell when spread > +threshold
+1. **Pair Selection**: Test cointegration using Engle-Granger test
+2. **Spread Calculation**: `spread = price1 - hedge_ratio * price2`
+3. **Z-score**: `zscore = (spread - mean) / std`
+4. **Entry**: Open when |zscore| > entry_threshold
+5. **Exit**: Close when |zscore| < exit_threshold or stop loss hit
 
 **Parameters**:
-- `lookback_period`: Correlation/cointegration window (60)
-- `entry_threshold`: Z-score entry (2.0)
-- `exit_threshold`: Z-score exit (0.5)
+- `pair_selection_window`: Cointegration lookback (252 days)
+- `cointegration_pvalue`: Max p-value for cointegration (0.05)
+- `entry_zscore`: Z-score entry threshold (2.0)
+- `exit_zscore`: Z-score exit threshold (0.5)
+- `stop_loss_zscore`: Stop loss threshold (3.5)
+- `zscore_window`: Rolling window for spread stats (20)
 
-**Use Case**: Market-neutral arbitrage
+**Trading Logic**:
+```python
+# Long pair: Buy symbol1, sell symbol2
+if zscore < -entry_zscore:
+    enter_long_pair()
 
-**Dependencies**: `pairs`, `pandas`, `statsmodels`
+# Short pair: Sell symbol1, buy symbol2
+if zscore > entry_zscore:
+    enter_short_pair()
+
+# Exit on mean reversion
+if abs(zscore) < exit_zscore:
+    exit_pair()
+
+# Stop loss
+if abs(zscore) > stop_loss_zscore:
+    exit_pair()
+```
+
+**Signal Format** (Multi-Symbol):
+```python
+signals = {
+    'AAPL': {
+        'entries': pd.Series([False, True, ...]),
+        'exits': pd.Series([False, False, ...]),
+        'direction': pd.Series([0, 1, ...])  # 1=long, -1=short
+    },
+    'MSFT': {
+        'entries': pd.Series([False, True, ...]),
+        'exits': pd.Series([False, False, ...]),
+        'direction': pd.Series([0, -1, ...])  # Opposite direction
+    }
+}
+```
+
+**Execution Requirements**:
+- Requires `PairsPortfolio` for synchronized execution
+- BacktestEngine automatically routes to PairsPortfolio
+- Position sizing via `PairsPositionSizer` classes
+
+**Use Case**: Market-neutral arbitrage, low correlation to market
+
+**Dependencies**: `PairsStrategy`, `statsmodels.tsa.stattools`, `pandas`, `numpy`
+
+**Usage Example**:
+```python
+from strategies.advanced.pairs_trading import PairsTrading
+from backtesting.engine.backtest_engine import BacktestEngine
+
+strategy = PairsTrading(
+    pair_selection_window=252,
+    entry_zscore=2.0,
+    exit_zscore=0.5,
+    zscore_window=20
+)
+
+engine = BacktestEngine(initial_capital=100000)
+portfolio = engine.run(
+    strategy=strategy,
+    symbols=['AAPL', 'MSFT'],  # Must provide exactly 2 symbols
+    start_date='2020-01-01',
+    end_date='2022-12-31'
+)
+```
 
 ---
 
@@ -1449,6 +1937,15 @@ When adding/modifying modules, update:
 
 ---
 
-**Last Updated**: 2025-11-05
-**Total Modules**: 60+ modules across 7 major components
-**Lines of Code**: ~38,000 LOC
+**Last Updated**: 2025-11-11
+**Total Modules**: 64+ modules across 7 major components
+**Lines of Code**: ~42,000 LOC
+
+**Recent Additions** (2025-11-11):
+- Pairs trading framework (4 new modules)
+  - `src/backtesting/base/pairs_strategy.py`: PairsStrategy base class
+  - `src/strategies/advanced/pairs_trading.py`: PairsTrading implementation
+  - `src/backtesting/engine/pairs_portfolio.py`: PairsPortfolio executor
+  - `src/backtesting/utils/pairs_position_sizer.py`: Position sizing strategies
+- Comprehensive test suite: 148+ pairs-specific tests
+- Integration with GridSearchOptimizer for multi-symbol support

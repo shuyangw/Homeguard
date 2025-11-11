@@ -45,3 +45,7 @@ statsmodels>=0.14.0
 
 pytest==8.3.5
 mplfinance==0.12.10b0
+
+# Optional: Bayesian Optimization (Phase 4b)
+# Uncomment to enable BayesianOptimizer
+# scikit-optimize>=0.9.0
