@@ -9,7 +9,7 @@ from alpaca.data.enums import DataFeed
 import datetime
 import threading
 
-from api_key import API_KEY, API_SECRET
+from src.api_key import API_KEY, API_SECRET
 
 
 class AlpacaClient:

@@ -20,7 +20,7 @@ try:
 except ImportError:
     HAS_QUANTSTATS = False
 
-from utils import logger
+from src.utils import logger
 
 
 class TearsheetGenerator:

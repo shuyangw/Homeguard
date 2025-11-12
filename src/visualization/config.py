@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Optional
 from enum import Enum
 
-from config import settings, OS_ENVIRONMENT
+from src.config import settings, OS_ENVIRONMENT
 
 
 class LogLevel(Enum):

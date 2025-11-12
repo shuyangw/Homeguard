@@ -13,7 +13,7 @@ import pandas as pd
 import json
 from dataclasses import asdict
 
-from backtesting.regimes.analyzer import RegimeAnalysisResults, RegimePerformance, RegimeLabel
+from src.backtesting.regimes.analyzer import RegimeAnalysisResults, RegimePerformance, RegimeLabel
 
 
 class RegimeExporter:

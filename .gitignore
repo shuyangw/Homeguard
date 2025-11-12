@@ -113,6 +113,7 @@ logs/
 # Output directories
 output/
 offline_charts/
+reports/
 
 # Generated reports and charts
 *.html

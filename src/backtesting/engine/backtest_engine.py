@@ -7,16 +7,16 @@ import numpy as np
 from typing import Union, Dict, Any, Optional, List, TYPE_CHECKING
 from pathlib import Path
 
-from backtesting.base.strategy import BaseStrategy, MultiSymbolStrategy
-from backtesting.base.pairs_strategy import PairsStrategy
-from backtesting.engine.data_loader import DataLoader
-from backtesting.engine.portfolio_simulator import Portfolio, from_signals
-from backtesting.utils.risk_config import RiskConfig
-from visualization.reports.quantstats_reporter import QuantStatsReporter
-from utils import logger
+from src.backtesting.base.strategy import BaseStrategy, MultiSymbolStrategy
+from src.backtesting.base.pairs_strategy import PairsStrategy
+from src.backtesting.engine.data_loader import DataLoader
+from src.backtesting.engine.portfolio_simulator import Portfolio, from_signals
+from src.backtesting.utils.risk_config import RiskConfig
+from src.visualization.reports.quantstats_reporter import QuantStatsReporter
+from src.utils import logger
 
 if TYPE_CHECKING:
-    from backtesting.engine.multi_asset_portfolio import MultiAssetPortfolio
+    from src.backtesting.engine.multi_asset_portfolio import MultiAssetPortfolio
 
 # Type alias for portfolio return types
 PortfolioType = Union[Portfolio, 'MultiAssetPortfolio']
@@ -358,7 +358,7 @@ class BacktestEngine:
 
         This is the new multi-asset portfolio implementation.
         """
-        from backtesting.engine.multi_asset_portfolio import MultiAssetPortfolio
+        from src.backtesting.engine.multi_asset_portfolio import MultiAssetPortfolio
 
         logger.info(f"Running multi-asset portfolio with {len(symbols)} symbols")
 
@@ -514,7 +514,7 @@ class BacktestEngine:
         # Check if this is a pairs strategy
         if isinstance(strategy, PairsStrategy) and len(symbols) == 2:
             # Use PairsPortfolio for proper pairs execution
-            from backtesting.engine.pairs_portfolio import PairsPortfolio
+            from src.backtesting.engine.pairs_portfolio import PairsPortfolio
 
             logger.info("Using PairsPortfolio for synchronized pair execution")
 
@@ -703,7 +703,7 @@ class BacktestEngine:
         Returns:
             Dictionary with best parameters and results
         """
-        from backtesting.optimization.grid_search import GridSearchOptimizer
+        from src.backtesting.optimization.grid_search import GridSearchOptimizer
 
         optimizer = GridSearchOptimizer(self)
         return optimizer.optimize(
@@ -789,7 +789,7 @@ class BacktestEngine:
             RegimeAnalysisResults object if analysis successful, None otherwise
         """
         try:
-            from backtesting.regimes.analyzer import RegimeAnalyzer
+            from src.backtesting.regimes.analyzer import RegimeAnalyzer
 
             logger.blank()
             logger.separator()

@@ -12,14 +12,14 @@ This module provides optimization capabilities including:
 - Smart result caching (Phase 3)
 """
 
-from backtesting.optimization.grid_search import GridSearchOptimizer
-from backtesting.optimization.random_search import RandomSearchOptimizer
-from backtesting.optimization.genetic_optimizer import GeneticOptimizer
-from backtesting.optimization.sweep_runner import SweepRunner
-from backtesting.optimization.walk_forward import WalkForwardOptimizer
-from backtesting.optimization.regime_aware import RegimeAwareOptimizer
-from backtesting.optimization.result_cache import ResultCache, CacheConfig
-from backtesting.optimization.base_optimizer import BaseOptimizer
+from src.backtesting.optimization.grid_search import GridSearchOptimizer
+from src.backtesting.optimization.random_search import RandomSearchOptimizer
+from src.backtesting.optimization.genetic_optimizer import GeneticOptimizer
+from src.backtesting.optimization.sweep_runner import SweepRunner
+from src.backtesting.optimization.walk_forward import WalkForwardOptimizer
+from src.backtesting.optimization.regime_aware import RegimeAwareOptimizer
+from src.backtesting.optimization.result_cache import ResultCache, CacheConfig
+from src.backtesting.optimization.base_optimizer import BaseOptimizer
 
 # Conditional import of BayesianOptimizer (requires scikit-optimize)
 try:

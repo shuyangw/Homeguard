@@ -5,7 +5,7 @@ Universe management for multi-symbol backtesting.
 import pandas as pd
 from pathlib import Path
 from typing import List, Optional, Set
-from utils import logger
+from src.utils import logger
 
 
 class UniverseManager:

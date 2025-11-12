@@ -15,11 +15,11 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, Any, Optional, Callable
 
-from backtesting.engine.backtest_engine import BacktestEngine
-from backtesting.optimization import GridSearchOptimizer, RandomSearchOptimizer, GeneticOptimizer, BAYESIAN_AVAILABLE
+from src.backtesting.engine.backtest_engine import BacktestEngine
+from src.backtesting.optimization import GridSearchOptimizer, RandomSearchOptimizer, GeneticOptimizer, BAYESIAN_AVAILABLE
 if BAYESIAN_AVAILABLE:
     from backtesting.optimization import BayesianOptimizer
-from config import get_log_output_dir
+from src.config import get_log_output_dir
 from gui.utils.error_logger import log_info, log_error, log_exception
 
 

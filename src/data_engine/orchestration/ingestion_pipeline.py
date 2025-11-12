@@ -8,10 +8,10 @@ from alpaca.data import TimeFrame
 import time
 import threading
 
-from data_engine.api.alpaca_client import AlpacaClient
-from data_engine.storage.parquet_storage import ParquetStorage, get_thread_count
-from data_engine.storage.metadata_store import MetadataStore
-from data_engine.loaders.symbol_loader import SymbolLoader
+from src.data_engine.api.alpaca_client import AlpacaClient
+from src.data_engine.storage.parquet_storage import ParquetStorage, get_thread_count
+from src.data_engine.storage.metadata_store import MetadataStore
+from src.data_engine.loaders.symbol_loader import SymbolLoader
 
 
 class IngestionPipeline:

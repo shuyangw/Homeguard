@@ -7,12 +7,12 @@ import vectorbt as vbt
 from typing import List, Optional, Any
 from pathlib import Path
 
-from visualization.config import VisualizationConfig, LogLevel
-from visualization.logger import TradeLogger, TradeEvent
-from visualization.charts.candlestick import CandlestickChart
-from visualization.reports.report_generator import ReportGenerator
-from visualization.utils.output_manager import OutputManager
-from backtesting.engine.data_loader import DataLoader
+from src.visualization.config import VisualizationConfig, LogLevel
+from src.visualization.logger import TradeLogger, TradeEvent
+from src.visualization.charts.candlestick import CandlestickChart
+from src.visualization.reports.report_generator import ReportGenerator
+from src.visualization.utils.output_manager import OutputManager
+from src.backtesting.engine.data_loader import DataLoader
 
 
 class BacktestVisualizer:

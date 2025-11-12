@@ -12,9 +12,9 @@ from typing import Optional, Dict, Any, Tuple
 import pytz
 from datetime import time
 
-from backtesting.utils.risk_config import RiskConfig
-from backtesting.utils.pairs_position_sizer import PairsPositionSizer, DollarNeutralSizer
-from utils import logger
+from src.backtesting.utils.risk_config import RiskConfig
+from src.backtesting.utils.pairs_position_sizer import PairsPositionSizer, DollarNeutralSizer
+from src.utils import logger
 
 
 @dataclass

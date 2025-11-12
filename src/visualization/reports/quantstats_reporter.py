@@ -14,7 +14,7 @@ import quantstats as qs
 import pandas as pd
 from pathlib import Path
 from typing import Optional
-from utils import logger
+from src.utils import logger
 
 
 class QuantStatsReporter:

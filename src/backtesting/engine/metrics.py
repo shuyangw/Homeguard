@@ -8,7 +8,7 @@ import vectorbt as vbt
 from typing import Dict, Any, Optional
 from pathlib import Path
 
-from utils import logger
+from src.utils import logger
 
 
 class PerformanceMetrics:

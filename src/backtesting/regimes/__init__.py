@@ -5,13 +5,13 @@ Analyzes strategy performance across different market regimes
 to assess robustness and identify failure conditions.
 """
 
-from backtesting.regimes.detector import (
+from src.backtesting.regimes.detector import (
     TrendDetector,
     VolatilityDetector,
     DrawdownDetector,
     RegimeLabel
 )
-from backtesting.regimes.analyzer import RegimeAnalyzer
+from src.backtesting.regimes.analyzer import RegimeAnalyzer
 
 __all__ = [
     'TrendDetector',

@@ -6,7 +6,7 @@ For comprehensive reports with interactive charts, use QuantStats instead.
 import pandas as pd
 from pathlib import Path
 from typing import Optional, Literal
-from utils import logger
+from src.utils import logger
 
 from .mplfinance_chart import MplfinanceChart
 

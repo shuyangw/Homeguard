@@ -6,7 +6,7 @@ from abc import abstractmethod
 from typing import Dict, Tuple
 import pandas as pd
 
-from backtesting.base.strategy import MultiSymbolStrategy
+from src.backtesting.base.strategy import MultiSymbolStrategy
 
 
 class PairsStrategy(MultiSymbolStrategy):

@@ -7,8 +7,8 @@ from datetime import datetime, timedelta
 from alpaca.data import TimeFrame
 from alpaca.data.enums import DataFeed
 
-from data_engine.api.alpaca_client import AlpacaClient
-from data_engine.storage.parquet_storage import ParquetStorage
+from src.data_engine.api.alpaca_client import AlpacaClient
+from src.data_engine.storage.parquet_storage import ParquetStorage
 from gui.utils.error_logger import log_info, log_error, log_exception
 
 

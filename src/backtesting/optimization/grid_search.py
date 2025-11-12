@@ -11,7 +11,7 @@ from typing import Dict, List, Any, Union, Optional, Tuple, TYPE_CHECKING
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass
 
-from utils import logger
+from src.utils import logger
 
 if TYPE_CHECKING:
     from backtesting.engine.backtest_engine import BacktestEngine

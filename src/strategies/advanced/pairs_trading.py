@@ -6,10 +6,10 @@ import pandas as pd
 import numpy as np
 from typing import Tuple, Dict, Optional, List
 
-from backtesting.base.pairs_strategy import PairsStrategy
-from backtesting.utils.pairs import PairsUtils
-from backtesting.utils.indicators import Indicators
-from backtesting.utils.validation import validate_positive_int, validate_positive_float
+from src.backtesting.base.pairs_strategy import PairsStrategy
+from src.backtesting.utils.pairs import PairsUtils
+from src.backtesting.utils.indicators import Indicators
+from src.backtesting.utils.validation import validate_positive_int, validate_positive_float
 
 
 class PairsTrading(PairsStrategy):
@@ -147,7 +147,13 @@ class PairsTrading(PairsStrategy):
         close1 = data1['close']
         close2 = data2['close']
 
-        is_coint, p_value = self.test_cointegration(close1, close2)
+        # Resample to daily data for cointegration testing and hedge ratio calculation
+        # This prevents over-trading on minute-level noise and ensures statistical validity
+        close1_daily = close1.resample('D').last().dropna()
+        close2_daily = close2.resample('D').last().dropna()
+
+        # Test cointegration on daily data
+        is_coint, p_value = self.test_cointegration(close1_daily, close2_daily)
 
         if not is_coint:
             empty_series = pd.Series(False, index=close1.index)
@@ -156,24 +162,38 @@ class PairsTrading(PairsStrategy):
                 symbol2: (empty_series.copy(), empty_series.copy(), empty_series.copy(), empty_series.copy())
             }
 
+        # Calculate hedge ratio on daily data for stability
         hedge_ratio = PairsUtils.calculate_hedge_ratio(
-            close1,
-            close2,
+            close1_daily,
+            close2_daily,
             method=self.params['hedge_ratio_method'],
             window=self.params.get('rolling_hedge_window')
         )
 
-        spread = PairsUtils.calculate_spread(close1, close2, hedge_ratio)
+        # Calculate spread on DAILY data to avoid over-trading on minute noise
+        if isinstance(hedge_ratio, pd.Series):
+            spread_daily = PairsUtils.calculate_spread(close1_daily, close2_daily, hedge_ratio)
+        else:
+            spread_daily = PairsUtils.calculate_spread(close1_daily, close2_daily, hedge_ratio)
 
-        spread_zscore = PairsUtils.spread_zscore(spread, window=self.params['zscore_window'])
+        # Calculate Z-score on daily spread
+        spread_zscore_daily = PairsUtils.spread_zscore(spread_daily, window=self.params['zscore_window'])
 
-        long_spread_entries, long_spread_exits, short_spread_entries, short_spread_exits = \
+        # Generate signals on DAILY data
+        long_spread_entries_daily, long_spread_exits_daily, short_spread_entries_daily, short_spread_exits_daily = \
             PairsUtils.generate_pairs_signals(
-                spread_zscore,
+                spread_zscore_daily,
                 entry_threshold=self.params['entry_zscore'],
                 exit_threshold=self.params['exit_zscore'],
                 stop_loss_threshold=self.params['stop_loss_zscore']
             )
+
+        # Resample daily signals to minute frequency (forward-fill)
+        # This ensures we only get signals once per day, not on every minute bar
+        long_spread_entries = long_spread_entries_daily.resample('min').ffill().reindex(close1.index, method='ffill').fillna(False).astype(bool)
+        long_spread_exits = long_spread_exits_daily.resample('min').ffill().reindex(close1.index, method='ffill').fillna(False).astype(bool)
+        short_spread_entries = short_spread_entries_daily.resample('min').ffill().reindex(close1.index, method='ffill').fillna(False).astype(bool)
+        short_spread_exits = short_spread_exits_daily.resample('min').ffill().reindex(close1.index, method='ffill').fillna(False).astype(bool)
 
         asset1_long_entries = short_spread_entries
         asset1_long_exits = short_spread_exits

@@ -8,7 +8,7 @@ import pandas as pd
 import numpy as np
 from pathlib import Path
 from typing import Optional, Dict, Any
-from utils import logger
+from src.utils import logger
 
 
 class TradeLogger:

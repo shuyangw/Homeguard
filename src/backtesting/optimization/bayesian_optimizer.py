@@ -12,8 +12,8 @@ import time
 from typing import Dict, List, Any, Union, Optional, Tuple
 from pathlib import Path
 
-from utils import logger
-from backtesting.optimization.base_optimizer import BaseOptimizer
+from src.utils import logger
+from src.backtesting.optimization.base_optimizer import BaseOptimizer
 
 # Conditional import of scikit-optimize
 try:

@@ -10,14 +10,14 @@ import pandas as pd
 import numpy as np
 from dataclasses import dataclass
 
-from backtesting.regimes.detector import (
+from src.backtesting.regimes.detector import (
     TrendDetector,
     VolatilityDetector,
     DrawdownDetector,
     RegimeLabel,
     RegimePeriod
 )
-from utils import logger
+from src.utils import logger
 
 
 @dataclass

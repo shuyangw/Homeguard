@@ -8,9 +8,9 @@ from typing import Optional, Dict, Any
 import pytz
 from datetime import time
 
-from backtesting.utils.risk_config import RiskConfig
-from backtesting.utils.position_sizer import FixedPercentageSizer, FixedDollarSizer, VolatilityBasedSizer, KellyCriterionSizer
-from backtesting.utils.risk_manager import RiskManager, Position
+from src.backtesting.utils.risk_config import RiskConfig
+from src.backtesting.utils.position_sizer import FixedPercentageSizer, FixedDollarSizer, VolatilityBasedSizer, KellyCriterionSizer
+from src.backtesting.utils.risk_manager import RiskManager, Position
 
 
 class Portfolio:

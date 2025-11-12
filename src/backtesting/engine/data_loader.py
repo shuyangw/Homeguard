@@ -8,9 +8,9 @@ from pathlib import Path
 from typing import Union, List, Optional
 from datetime import datetime
 
-from config import settings, OS_ENVIRONMENT
-from utils import logger
-from backtesting.utils.market_calendar import MarketCalendar
+from src.config import settings, OS_ENVIRONMENT
+from src.utils import logger
+from src.backtesting.utils.market_calendar import MarketCalendar
 
 
 class DataLoader:

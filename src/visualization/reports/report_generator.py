@@ -7,7 +7,7 @@ from pathlib import Path
 from datetime import datetime
 from typing import Dict, Any, Optional, List
 import json
-from utils import logger
+from src.utils import logger
 
 
 class ReportGenerator:

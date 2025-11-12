@@ -40,9 +40,9 @@ import pandas as pd
 import numpy as np
 from pathlib import Path
 
-from backtesting.engine.backtest_engine import BacktestEngine
-from backtesting.optimization.base_optimizer import BaseOptimizer
-from utils import logger
+from src.backtesting.engine.backtest_engine import BacktestEngine
+from src.backtesting.optimization.base_optimizer import BaseOptimizer
+from src.utils import logger
 
 
 class WalkForwardOptimizer:

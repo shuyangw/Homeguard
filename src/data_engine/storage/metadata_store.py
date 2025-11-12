@@ -5,7 +5,7 @@ Metadata storage and retrieval for stock indices.
 import pandas as pd
 from pathlib import Path
 
-from config import settings, OS_ENVIRONMENT
+from src.config import settings, OS_ENVIRONMENT
 
 
 def get_base_path():

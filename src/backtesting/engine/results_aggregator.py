@@ -8,10 +8,10 @@ import numpy as np
 from pathlib import Path
 from typing import Dict, List, Optional, Any
 from datetime import datetime
-from utils import logger
-from backtesting.engine.tearsheet_generator import TearsheetGenerator
-from backtesting.engine.portfolio_aggregator import PortfolioAggregator
-from backtesting.engine.benchmark_calculator import BenchmarkCalculator
+from src.utils import logger
+from src.backtesting.engine.tearsheet_generator import TearsheetGenerator
+from src.backtesting.engine.portfolio_aggregator import PortfolioAggregator
+from src.backtesting.engine.benchmark_calculator import BenchmarkCalculator
 
 try:
     import quantstats as qs

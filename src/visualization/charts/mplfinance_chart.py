@@ -13,7 +13,7 @@ import mplfinance as mpf
 from pathlib import Path
 from typing import Optional, List, Tuple
 import matplotlib.pyplot as plt
-from utils import logger
+from src.utils import logger
 
 
 class MplfinanceChart:

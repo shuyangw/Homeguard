@@ -11,9 +11,9 @@ from dataclasses import dataclass
 import pandas as pd
 import numpy as np
 
-from backtesting.engine.backtest_engine import BacktestEngine
-from backtesting.base.strategy import BaseStrategy
-from utils import logger
+from src.backtesting.engine.backtest_engine import BacktestEngine
+from src.backtesting.base.strategy import BaseStrategy
+from src.utils import logger
 
 
 @dataclass

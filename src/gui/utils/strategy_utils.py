@@ -4,7 +4,7 @@ Utilities for strategy introspection and parameter extraction.
 
 import inspect
 from typing import Dict, Any, List, Type
-from backtesting.base.strategy import BaseStrategy
+from src.backtesting.base.strategy import BaseStrategy
 
 
 def get_strategy_registry() -> Dict[str, Type[BaseStrategy]]:

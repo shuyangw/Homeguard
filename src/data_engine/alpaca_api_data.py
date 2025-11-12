@@ -19,11 +19,11 @@ from alpaca.data import TimeFrame
 from pathlib import Path
 
 # Import all functions from refactored modules
-from data_engine.api.alpaca_client import fetch_data, AlpacaClient
-from data_engine.storage.parquet_storage import store_data, get_base_path, get_thread_count, ParquetStorage
-from data_engine.storage.metadata_store import store_metadata, load_metadata, MetadataStore
-from data_engine.loaders.symbol_loader import load_index_symbols, SymbolLoader
-from data_engine.orchestration.ingestion_pipeline import (
+from src.data_engine.api.alpaca_client import fetch_data, AlpacaClient
+from src.data_engine.storage.parquet_storage import store_data, get_base_path, get_thread_count, ParquetStorage
+from src.data_engine.storage.metadata_store import store_metadata, load_metadata, MetadataStore
+from src.data_engine.loaders.symbol_loader import load_index_symbols, SymbolLoader
+from src.data_engine.orchestration.ingestion_pipeline import (
     fetch_and_store_symbol,
     store_data_with_metadata,
     ingest_index_from_csv,

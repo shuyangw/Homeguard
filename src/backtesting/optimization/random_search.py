@@ -13,8 +13,8 @@ from itertools import product
 from typing import Dict, List, Any, Union, Optional, Tuple
 from concurrent.futures import ProcessPoolExecutor, as_completed
 
-from utils import logger
-from backtesting.optimization.base_optimizer import BaseOptimizer, _EngineConfig
+from src.utils import logger
+from src.backtesting.optimization.base_optimizer import BaseOptimizer, _EngineConfig
 
 
 def _test_single_params(

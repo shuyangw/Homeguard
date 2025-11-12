@@ -5,7 +5,7 @@ Provides walk-forward validation to prevent overfitting by
 testing on truly out-of-sample data.
 """
 
-from backtesting.chunking.walk_forward import (
+from src.backtesting.chunking.walk_forward import (
     WalkForwardWindow,
     WalkForwardResults,
     WalkForwardValidator

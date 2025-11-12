@@ -6,9 +6,9 @@ import pandas as pd
 import numpy as np
 from typing import Tuple, Optional
 
-from backtesting.base.strategy import LongOnlyStrategy
-from backtesting.utils.indicators import Indicators
-from backtesting.utils.validation import validate_positive_int, validate_positive_float
+from src.backtesting.base.strategy import LongOnlyStrategy
+from src.backtesting.utils.indicators import Indicators
+from src.backtesting.utils.validation import validate_positive_int, validate_positive_float
 
 
 class OvernightMeanReversion(LongOnlyStrategy):

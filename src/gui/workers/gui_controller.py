@@ -12,20 +12,20 @@ from datetime import datetime
 from pathlib import Path
 import json
 
-from backtesting.base.strategy import BaseStrategy
-from backtesting.engine.backtest_engine import BacktestEngine, PortfolioType
-from backtesting.optimization.sweep_runner import SweepRunner
-from backtesting.engine.portfolio_simulator import Portfolio
-from backtesting.utils.risk_config import RiskConfig
+from src.backtesting.base.strategy import BaseStrategy
+from src.backtesting.engine.backtest_engine import BacktestEngine, PortfolioType
+from src.backtesting.optimization.sweep_runner import SweepRunner
+from src.backtesting.engine.portfolio_simulator import Portfolio
+from src.backtesting.utils.risk_config import RiskConfig
 import pandas as pd
 
 from gui.utils.error_logger import log_error, log_info, log_exception
-from config import get_log_output_dir, get_tearsheet_frequency
-from backtesting.engine.results_aggregator import ResultsAggregator
-from backtesting.engine.trade_logger import TradeLogger
-from backtesting.engine.multi_symbol_metrics import MultiSymbolMetrics
-from backtesting.engine.multi_symbol_charts import MultiSymbolChartGenerator
-from backtesting.engine.multi_symbol_html_viewer import MultiSymbolHTMLViewer
+from src.config import get_log_output_dir, get_tearsheet_frequency
+from src.backtesting.engine.results_aggregator import ResultsAggregator
+from src.backtesting.engine.trade_logger import TradeLogger
+from src.backtesting.engine.multi_symbol_metrics import MultiSymbolMetrics
+from src.backtesting.engine.multi_symbol_charts import MultiSymbolChartGenerator
+from src.backtesting.engine.multi_symbol_html_viewer import MultiSymbolHTMLViewer
 
 if TYPE_CHECKING:
     from backtesting.engine.multi_asset_portfolio import MultiAssetPortfolio

@@ -8,7 +8,7 @@ import pandas as pd
 import numpy as np
 from typing import Dict, Any, List, Tuple
 from pathlib import Path
-from utils import logger
+from src.utils import logger
 
 
 class PortfolioAggregator:

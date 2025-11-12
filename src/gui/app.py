@@ -11,8 +11,8 @@ from gui.views.run_view import RunView
 from gui.views.results_view import ResultsView
 from gui.workers.gui_controller import GUIBacktestController
 from gui.optimization.runner import OptimizationRunner
-from backtesting.engine.backtest_engine import BacktestEngine
-from backtesting.engine.results_aggregator import ResultsAggregator
+from src.backtesting.engine.backtest_engine import BacktestEngine
+from src.backtesting.engine.results_aggregator import ResultsAggregator
 from gui.utils.error_logger import log_error, log_info, log_exception
 from gui.utils.run_history import RunHistory
 from utils.cache_manager import CacheManager

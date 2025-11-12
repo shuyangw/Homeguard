@@ -5,7 +5,7 @@ Output directory management for visualization engine.
 from pathlib import Path
 from datetime import datetime
 from typing import Optional, List
-from utils import logger as main_logger
+from src.utils import logger as main_logger
 
 
 class OutputManager:

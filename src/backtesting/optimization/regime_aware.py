@@ -40,11 +40,11 @@ import pandas as pd
 import numpy as np
 from pathlib import Path
 
-from backtesting.engine.backtest_engine import BacktestEngine
-from backtesting.optimization.base_optimizer import BaseOptimizer
-from backtesting.regimes.detector import TrendDetector, VolatilityDetector, DrawdownDetector
-from backtesting.regimes.analyzer import RegimeAnalyzer
-from utils import logger
+from src.backtesting.engine.backtest_engine import BacktestEngine
+from src.backtesting.optimization.base_optimizer import BaseOptimizer
+from src.backtesting.regimes.detector import TrendDetector, VolatilityDetector, DrawdownDetector
+from src.backtesting.regimes.analyzer import RegimeAnalyzer
+from src.utils import logger
 
 
 class RegimeAwareOptimizer:

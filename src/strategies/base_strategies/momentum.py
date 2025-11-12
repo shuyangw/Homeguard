@@ -6,9 +6,9 @@ import pandas as pd
 import numpy as np
 from typing import Tuple
 
-from backtesting.base.strategy import LongOnlyStrategy
-from backtesting.utils.indicators import Indicators
-from backtesting.utils.validation import validate_positive_int
+from src.backtesting.base.strategy import LongOnlyStrategy
+from src.backtesting.utils.indicators import Indicators
+from src.backtesting.utils.validation import validate_positive_int
 
 
 class MomentumStrategy(LongOnlyStrategy):

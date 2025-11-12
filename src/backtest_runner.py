@@ -11,18 +11,18 @@ import sys
 from pathlib import Path
 from typing import Dict, Any, Optional
 
-from backtesting.engine.backtest_engine import BacktestEngine
-from backtesting.engine.metrics import PerformanceMetrics
-from backtesting.engine.data_loader import DataLoader
-from backtesting.optimization.sweep_runner import SweepRunner
-from backtesting.utils.universe import UniverseManager
-from strategies.base_strategies.moving_average import MovingAverageCrossover, TripleMovingAverage
-from strategies.base_strategies.mean_reversion import MeanReversion, RSIMeanReversion
-from strategies.base_strategies.momentum import MomentumStrategy, BreakoutStrategy
-from visualization.config import VisualizationConfig
-from visualization.integration import BacktestVisualizer
-from config import get_log_output_dir
-from utils import logger
+from src.backtesting.engine.backtest_engine import BacktestEngine
+from src.backtesting.engine.metrics import PerformanceMetrics
+from src.backtesting.engine.data_loader import DataLoader
+from src.backtesting.optimization.sweep_runner import SweepRunner
+from src.backtesting.utils.universe import UniverseManager
+from src.strategies.base_strategies.moving_average import MovingAverageCrossover, TripleMovingAverage
+from src.strategies.base_strategies.mean_reversion import MeanReversion, RSIMeanReversion
+from src.strategies.base_strategies.momentum import MomentumStrategy, BreakoutStrategy
+from src.visualization.config import VisualizationConfig
+from src.visualization.integration import BacktestVisualizer
+from src.config import get_log_output_dir
+from src.utils import logger
 
 
 STRATEGY_REGISTRY = {

@@ -7,8 +7,8 @@ from pathlib import Path
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 
-from visualization.config import LogLevel
-from utils import logger as main_logger
+from src.visualization.config import LogLevel
+from src.utils import logger as main_logger
 
 
 class TradeEvent:

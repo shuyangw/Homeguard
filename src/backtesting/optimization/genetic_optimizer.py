@@ -13,8 +13,8 @@ from typing import Dict, List, Any, Union, Optional, Tuple
 from pathlib import Path
 from dataclasses import dataclass
 
-from utils import logger
-from backtesting.optimization.base_optimizer import BaseOptimizer
+from src.utils import logger
+from src.backtesting.optimization.base_optimizer import BaseOptimizer
 
 
 @dataclass

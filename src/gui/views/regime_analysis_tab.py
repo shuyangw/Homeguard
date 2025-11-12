@@ -9,7 +9,7 @@ Displays regime-based performance analysis in the GUI with:
 
 import flet as ft
 from typing import Dict, Optional, List
-from backtesting.regimes.analyzer import RegimeAnalysisResults, RegimePerformance, RegimeLabel
+from src.backtesting.regimes.analyzer import RegimeAnalysisResults, RegimePerformance, RegimeLabel
 
 
 class RegimeAnalysisTab(ft.Container):
