@@ -115,6 +115,9 @@ class Logger:
 # Global logger instance for convenience
 _global_logger = Logger()
 
+# Export logger for direct import
+logger = _global_logger
+
 
 def get_logger(log_file: Optional[Path] = None) -> Logger:
     """
