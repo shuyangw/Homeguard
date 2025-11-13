@@ -1,0 +1,13 @@
+[i] Initialized AlpacaBroker (paper=True)
+[+] Alpaca connection successful (account: 5b6f682c-9dd2-4bef-9854-1abddfe78ac0)
+[i] Initialized AlpacaBroker (paper=True)
+[+] Alpaca connection successful (account: 5b6f682c-9dd2-4bef-9854-1abddfe78ac0)
+[i] Initialized AlpacaBroker (paper=True)
+[+] Alpaca connection successful (account: 5b6f682c-9dd2-4bef-9854-1abddfe78ac0)
+[X] Failed to get market hours: TradingClient.get_calendar() got an unexpected keyword argument 'start'
+[i] Initialized AlpacaBroker (paper=True)
+[+] Alpaca connection successful (account: 5b6f682c-9dd2-4bef-9854-1abddfe78ac0)
+[i] Initialized AlpacaBroker (paper=True)
+[+] Alpaca connection successful (account: 5b6f682c-9dd2-4bef-9854-1abddfe78ac0)
+[i] Initialized AlpacaBroker (paper=True)
+[+] Alpaca connection successful (account: 5b6f682c-9dd2-4bef-9854-1abddfe78ac0)

@@ -1,0 +1,37 @@
+# ============================================================================
+# Alpaca Broker Configuration
+# ============================================================================
+# Configuration for Alpaca paper trading API
+
+broker:
+  # Broker type (used by BrokerFactory)
+  type: alpaca
+
+  # Paper trading endpoint
+  base_url: "https://paper-api.alpaca.markets"
+
+  # API credentials (loaded from environment variables)
+  api_key: "${ALPACA_PAPER_KEY_ID}"
+  secret_key: "${ALPACA_PAPER_SECRET_KEY}"
+
+  # Paper trading mode
+  paper: true
+
+  # Data feed (IEX is free for paper trading)
+  data_feed: "iex"
+
+  # API settings
+  timeout: 30  # seconds
+  max_retries: 3
+  retry_delay: 1  # seconds
+
+  # Rate limiting
+  max_requests_per_minute: 200
+
+  # Order defaults
+  default_time_in_force: "day"  # day, gtc, ioc, fok
+
+  # Market data
+  enable_streaming: true
+  stream_trades: true
+  stream_quotes: true

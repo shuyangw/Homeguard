@@ -1,0 +1,102 @@
+# ============================================================================
+# OMR (Overnight Mean Reversion) Trading Configuration
+# ============================================================================
+# Broker-agnostic strategy parameters for OMR strategy
+
+strategy:
+  name: "OMR"
+  version: "1.0.0"
+  description: "Overnight Mean Reversion Strategy"
+
+  # Timing (EST/EDT timezone)
+  entry_time: "15:50:00"  # 3:50 PM EST
+  exit_time: "09:31:00"   # 9:31 AM EST next day
+  entry_window_seconds: 30  # ±30 seconds buffer
+  exit_window_seconds: 30   # ±30 seconds buffer
+
+  # Position sizing
+  position_size_pct: 0.15       # 15% per position
+  max_concurrent_positions: 3   # Max 3 simultaneous positions
+  max_total_exposure_pct: 0.45  # 45% max total exposure (3 × 15%)
+
+  # Risk management
+  stop_loss_pct: -0.02      # -2% stop-loss (hard limit)
+  vix_threshold: 35         # Skip trading if VIX > 35
+
+  # Signal quality filters
+  min_win_rate: 0.58        # 58% minimum win rate
+  min_expected_return: 0.002  # 0.2% minimum expected return
+  min_sample_size: 15       # 15 historical samples required
+
+  # Regime filtering
+  skip_regimes:
+    - "BEAR"                # Skip BEAR regime
+
+  # Symbol universe (20 optimal leveraged ETFs)
+  symbols:
+    - FAZ     # Financials Bear 3x
+    - USD     # Ultra Semiconductors 3x
+    - UDOW    # Dow 30 Bull 3x
+    - UYG     # Financials Bull 2x
+    - SOXL    # Semiconductors Bull 3x
+    - TECL    # Tech Bull 3x
+    - UPRO    # S&P 500 Bull 3x
+    - SVXY    # Short VIX Short-Term Futures
+    - TQQQ    # Nasdaq 100 Bull 3x
+    - SSO     # S&P 500 Bull 2x
+    - DFEN    # Defense Bull 3x
+    - WEBL    # Dow Internet Bull 3x
+    - UCO     # Oil & Gas Bull 2x
+    - FAS     # Financials Bull 3x
+    - TNA     # Small Cap Bull 3x
+    - LABU    # Biotech Bull 3x
+    - SPXU    # S&P 500 Bear 3x
+    - QLD     # Nasdaq 100 Bull 2x
+    - SQQQ    # Nasdaq 100 Bear 3x
+    - NAIL    # Homebuilders Bull 3x
+
+  # Historical data for model training
+  training_period_years: 2  # 2 years of historical data
+  retrain_frequency: "daily"  # Retrain Bayesian model daily
+
+  # Execution
+  order_type: "market"      # market or limit
+  limit_order_offset_pct: 0.001  # 0.1% above/below for limit orders (if used)
+
+# Position manager configuration
+position_manager:
+  max_position_size_pct: 0.15      # 15% max per position
+  max_concurrent_positions: 3      # Max 3 positions
+  max_total_exposure_pct: 0.45     # 45% max total exposure
+  stop_loss_pct: -0.02             # -2% stop-loss
+
+  # State persistence
+  save_state: true
+  state_file: "data/trading/position_state.json"
+
+# Risk limits and circuit breakers
+risk:
+  # Loss limits
+  max_daily_loss_pct: 0.05         # -5% daily loss triggers halt
+  max_weekly_loss_pct: 0.10        # -10% weekly loss triggers halt
+  max_drawdown_pct: 0.15           # -15% drawdown triggers halt
+
+  # Order limits
+  max_orders_per_day: 50           # Max 50 orders per day
+  max_order_value: 50000           # $50k max per order
+  min_order_value: 100             # $100 min per order
+
+  # Stop-loss monitoring
+  stop_loss_check_interval: 5      # Check every 5 seconds
+
+  # VIX threshold
+  vix_threshold: 35                # Don't trade if VIX > 35
+
+  # Account minimums
+  min_buying_power: 10000          # $10k minimum buying power
+  min_account_value: 50000         # $50k minimum account value
+
+  # Safety checks
+  require_market_data: true        # Don't trade if data feed down
+  require_order_confirmation: true  # Wait for fill confirmation
+  enable_paper_trading_only: true  # Safety flag for paper trading

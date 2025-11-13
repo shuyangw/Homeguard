@@ -21,19 +21,16 @@ class OvernightReversionSignals:
     Generates trading signals for overnight mean reversion.
 
     Signals are generated at 3:50 PM EST based on regime and probabilities.
-    """
 
-    # Leveraged ETF universe
-    LEVERAGED_ETFS = [
-        'TQQQ', 'SQQQ', 'UPRO', 'SPXU', 'UDOW', 'SDOW', 'TNA', 'TZA',
-        'SOXL', 'SOXS', 'FAS', 'FAZ', 'LABU', 'LABD', 'TECL', 'TECS',
-        'QLD', 'QID', 'SSO', 'SDS', 'UVXY', 'SVXY', 'VIXY'
-    ]
+    NOTE: Symbol list is now injected via constructor (not hardcoded).
+    For backward compatibility, defaults to leveraged 3x ETFs if not specified.
+    """
 
     def __init__(
         self,
         regime_detector: MarketRegimeDetector,
         bayesian_model: BayesianReversionModel,
+        symbols: Optional[List[str]] = None,
         min_probability: float = 0.55,
         min_expected_return: float = 0.002,
         max_positions: int = 5
@@ -44,6 +41,8 @@ class OvernightReversionSignals:
         Args:
             regime_detector: Trained market regime detector
             bayesian_model: Trained Bayesian probability model
+            symbols: List of symbols to generate signals for.
+                    If None, defaults to leveraged 3x ETFs from ETFUniverse.
             min_probability: Minimum win rate to generate signal
             min_expected_return: Minimum expected return to generate signal
             max_positions: Maximum number of positions to take
@@ -53,6 +52,16 @@ class OvernightReversionSignals:
         self.min_probability = min_probability
         self.min_expected_return = min_expected_return
         self.max_positions = max_positions
+
+        # Symbol list - injected or default from ETFUniverse
+        if symbols is None:
+            # Backward compatibility: use leveraged 3x ETFs as default
+            from src.strategies.universe import ETFUniverse
+            self.symbols = ETFUniverse.LEVERAGED_3X
+            logger.info(f"Using default symbol universe: {len(self.symbols)} leveraged 3x ETFs")
+        else:
+            self.symbols = symbols
+            logger.info(f"Using custom symbol universe: {len(self.symbols)} symbols")
 
     def generate_signals(
         self,
@@ -106,9 +115,9 @@ class OvernightReversionSignals:
             regime_params.get('max_positions', 5)
         )
 
-        # Generate signals for each ETF
+        # Generate signals for each symbol
         signals = []
-        for symbol in self.LEVERAGED_ETFS:
+        for symbol in self.symbols:
             if symbol not in market_data:
                 continue
 

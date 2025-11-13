@@ -1,0 +1,29 @@
+[i] Loading broker config from: C:\Users\qwqw1\Dropbox\cs\github\Homeguard\config\trading\broker_alpaca.yaml
+[!] Environment variable not set: ALPACA_PAPER_KEY_ID
+[i] Loading broker config from: C:\Users\qwqw1\Dropbox\cs\github\Homeguard\config\trading\broker_alpaca.yaml
+[i] Loading broker config from: C:\Users\qwqw1\Dropbox\cs\github\Homeguard\config\trading\broker_alpaca.yaml
+[i] Resolved api_key from environment variable: ALPACA_PAPER_KEY_ID
+[i] Resolved secret_key from environment variable: ALPACA_PAPER_SECRET_KEY
+[i] Creating AlpacaBroker instance
+[i] Loading broker config from: C:\Users\qwqw1\Dropbox\cs\github\Homeguard\config\trading\broker_alpaca.yaml
+[!] Environment variable not set: ALPACA_PAPER_KEY_ID
+[i] Loading broker config from: C:\Users\qwqw1\Dropbox\cs\github\Homeguard\config\trading\broker_alpaca.yaml
+[i] Resolved api_key from environment variable: ALPACA_PAPER_KEY_ID
+[i] Resolved secret_key from environment variable: ALPACA_PAPER_SECRET_KEY
+[i] Creating AlpacaBroker instance
+[i] Loading broker config from: C:\Users\qwqw1\Dropbox\cs\github\Homeguard\config\trading\broker_alpaca.yaml
+[i] Resolved api_key from environment variable: ALPACA_PAPER_KEY_ID
+[i] Resolved secret_key from environment variable: ALPACA_PAPER_SECRET_KEY
+[i] Creating AlpacaBroker instance
+[i] Loading broker config from: C:\Users\qwqw1\Dropbox\cs\github\Homeguard\config\trading\broker_alpaca.yaml
+[i] Resolved api_key from environment variable: ALPACA_PAPER_KEY_ID
+[i] Resolved secret_key from environment variable: ALPACA_PAPER_SECRET_KEY
+[i] Creating AlpacaBroker instance
+[i] Loading broker config from: C:\Users\qwqw1\Dropbox\cs\github\Homeguard\config\trading\broker_alpaca.yaml
+[i] Resolved api_key from environment variable: ALPACA_PAPER_KEY_ID
+[i] Resolved secret_key from environment variable: ALPACA_PAPER_SECRET_KEY
+[i] Creating AlpacaBroker instance
+[i] Loading broker config from: C:\Users\qwqw1\Dropbox\cs\github\Homeguard\config\trading\broker_alpaca.yaml
+[i] Resolved api_key from environment variable: ALPACA_PAPER_KEY_ID
+[i] Resolved secret_key from environment variable: ALPACA_PAPER_SECRET_KEY
+[i] Creating AlpacaBroker instance
