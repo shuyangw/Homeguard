@@ -18,8 +18,6 @@ from dotenv import load_dotenv
 env_path = project_root / '.env'
 if env_path.exists():
     load_dotenv(env_path)
-else:
-    print(f"Warning: .env file not found at {env_path}")
 
 from src.trading.brokers.broker_factory import BrokerFactory
 from src.trading.utils.portfolio_health_check import PortfolioHealthChecker

@@ -22,7 +22,6 @@ import time
 import signal
 import argparse
 import json
-import logging
 from datetime import datetime, time as dt_time
 from typing import Optional, Dict, List
 from dotenv import load_dotenv
@@ -34,7 +33,7 @@ from src.trading.adapters import (
     OMRLiveAdapter
 )
 from src.strategies.universe import EquityUniverse, ETFUniverse
-from src.utils.logger import logger
+from src.utils.logger import logger, get_trading_logger, TradingLogger
 
 
 class TradingSessionTracker:
@@ -70,32 +69,25 @@ class TradingSessionTracker:
         self.trades_log_file = log_dir / f"{self.session_date}_{strategy_name}_trades.csv"
         self.market_checks_log_file = log_dir / f"{self.session_date}_{strategy_name}_market_checks.csv"
 
-        # Initialize CSV log files with headers
-        self._init_csv_logs()
+        # Create trading logger with CSV logging
+        self.trading_logger = get_trading_logger(strategy_name, log_dir)
 
-    def _init_csv_logs(self):
-        """Initialize CSV log files with headers."""
-        import csv
+        # Add CSV loggers for trades and market checks
+        self.trading_logger.add_csv_logger(
+            'trades',
+            self.trades_log_file,
+            ['timestamp', 'symbol', 'side', 'qty', 'price',
+             'order_type', 'status', 'order_id', 'error']
+        )
 
-        # Initialize trades log
-        with open(self.trades_log_file, 'w', newline='') as f:
-            writer = csv.writer(f)
-            writer.writerow([
-                'timestamp', 'symbol', 'side', 'qty', 'price',
-                'order_type', 'status', 'order_id', 'error'
-            ])
-
-        # Initialize market checks log
-        with open(self.market_checks_log_file, 'w', newline='') as f:
-            writer = csv.writer(f)
-            writer.writerow([
-                'timestamp', 'market_open', 'check_number'
-            ])
+        self.trading_logger.add_csv_logger(
+            'market_checks',
+            self.market_checks_log_file,
+            ['timestamp', 'market_open', 'check_number']
+        )
 
     def log_check(self, market_open: bool):
         """Log a schedule check to memory and CSV file."""
-        import csv
-
         self.total_checks += 1
         timestamp = datetime.now().isoformat()
 
@@ -106,14 +98,8 @@ class TradingSessionTracker:
             'total_checks': self.total_checks
         })
 
-        # Write to CSV file
-        with open(self.market_checks_log_file, 'a', newline='') as f:
-            writer = csv.writer(f)
-            writer.writerow([
-                timestamp,
-                market_open,
-                self.total_checks
-            ])
+        # Log to CSV using trading logger
+        self.trading_logger.log_market_check(market_open, self.total_checks)
 
     def log_run(self, signals_count: int):
         """Log a strategy run."""
@@ -138,8 +124,6 @@ class TradingSessionTracker:
 
     def log_order(self, symbol: str, side: str, qty: int, price: float, success: bool, order_id: str = None, error: str = None, order_type: str = 'market'):
         """Log an order attempt to memory and CSV file."""
-        import csv
-
         self.total_orders += 1
         if success:
             self.successful_orders += 1
@@ -168,20 +152,17 @@ class TradingSessionTracker:
             'success': success
         })
 
-        # Write to CSV file
-        with open(self.trades_log_file, 'a', newline='') as f:
-            writer = csv.writer(f)
-            writer.writerow([
-                timestamp,
-                symbol,
-                side,
-                qty,
-                price,
-                order_type,
-                'SUCCESS' if success else 'FAILED',
-                order_id if order_id else '',
-                error if error else ''
-            ])
+        # Log to CSV and console using trading logger
+        self.trading_logger.log_trade(
+            symbol=symbol,
+            side=side,
+            qty=qty,
+            price=price,
+            status='SUCCESS' if success else 'FAILED',
+            order_type=order_type,
+            order_id=order_id,
+            error=error
+        )
 
     def save_progress(self):
         """Save current progress to file."""
@@ -345,29 +326,12 @@ class LiveTradingRunner:
         strategy_name = adapter.__class__.__name__.replace('LiveAdapter', '')
         self.session_tracker = TradingSessionTracker(log_dir, strategy_name)
 
-        # Setup file logger
-        self._setup_file_logger()
-
         # Setup signal handlers for graceful shutdown
         signal.signal(signal.SIGINT, self._signal_handler)
         signal.signal(signal.SIGTERM, self._signal_handler)
 
-    def _setup_file_logger(self):
-        """Setup file logging for this session."""
-        log_file = self.log_dir / f"{self.session_tracker.session_date}_{self.session_tracker.strategy_name}.log"
-
-        # Create file handler
-        file_handler = logging.FileHandler(log_file)
-        file_handler.setLevel(logging.INFO)
-        file_handler.setFormatter(logging.Formatter(
-            '%(asctime)s | %(levelname)-8s | %(message)s',
-            datefmt='%Y-%m-%d %H:%M:%S'
-        ))
-
-        # Add to logger
-        logging.getLogger().addHandler(file_handler)
-
-        logger.info(f"File logging enabled: {log_file}")
+        # Note: File logging is now handled by TradingLogger in TradingSessionTracker
+        logger.info(f"File logging enabled: {log_dir}")
 
     def _signal_handler(self, signum, frame):
         """Handle shutdown signals gracefully."""

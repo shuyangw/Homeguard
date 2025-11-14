@@ -12,6 +12,7 @@ project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 
 from scripts.trading.run_live_paper_trading import TradingSessionTracker
+from src.utils.logger import logger
 
 
 def test_csv_logging():
@@ -20,14 +21,14 @@ def test_csv_logging():
     with tempfile.TemporaryDirectory() as tmpdir:
         log_dir = Path(tmpdir)
 
-        print("Testing TradingSessionTracker CSV logging...")
-        print(f"Log directory: {log_dir}")
+        logger.info("Testing TradingSessionTracker CSV logging...")
+        logger.info(f"Log directory: {log_dir}")
 
         # Create session tracker
         tracker = TradingSessionTracker(log_dir, "TestStrategy")
 
         # Test market check logging
-        print("\n1. Testing market check logging...")
+        logger.info("\n1. Testing market check logging...")
         tracker.log_check(True)
         tracker.log_check(False)
         tracker.log_check(True)
@@ -45,10 +46,10 @@ def test_csv_logging():
             assert rows[2][1] == 'False', "Second check should be False"
             assert rows[3][1] == 'True', "Third check should be True"
 
-        print("   Market checks CSV: OK")
+        logger.success("   Market checks CSV: OK")
 
         # Test trade logging
-        print("\n2. Testing trade logging...")
+        logger.info("\n2. Testing trade logging...")
         tracker.log_order(
             symbol='TQQQ',
             side='buy',
@@ -101,10 +102,10 @@ def test_csv_logging():
             assert rows[2][7] == '', "Order ID should be empty"
             assert rows[2][8] == 'Insufficient funds', "Error mismatch"
 
-        print("   Trades CSV: OK")
+        logger.success("   Trades CSV: OK")
 
         # Test type compatibility
-        print("\n3. Testing type compatibility...")
+        logger.info("\n3. Testing type compatibility...")
 
         # Test with different numeric types
         tracker.log_order(
@@ -125,19 +126,19 @@ def test_csv_logging():
             assert rows[3][3] == '100', "Int conversion failed"
             assert rows[3][4] == '450.5', "Float conversion failed"
 
-        print("   Type compatibility: OK")
+        logger.success("   Type compatibility: OK")
 
-        print("\n" + "="*60)
-        print("ALL VALIDATION TESTS PASSED")
-        print("="*60)
-        print(f"\nCSV Files Created:")
-        print(f"  - Market Checks: {market_checks_file.name}")
-        print(f"  - Trades:        {trades_file.name}")
-        print(f"\nFormat Validation:")
-        print("  - Headers correct")
-        print("  - Data types compatible")
-        print("  - CSV format valid")
-        print("  - File encoding correct")
+        logger.info("\n" + "="*60)
+        logger.success("ALL VALIDATION TESTS PASSED")
+        logger.info("="*60)
+        logger.info(f"\nCSV Files Created:")
+        logger.info(f"  - Market Checks: {market_checks_file.name}")
+        logger.info(f"  - Trades:        {trades_file.name}")
+        logger.info(f"\nFormat Validation:")
+        logger.success("  - Headers correct")
+        logger.success("  - Data types compatible")
+        logger.success("  - CSV format valid")
+        logger.success("  - File encoding correct")
 
         return True
 
@@ -147,7 +148,7 @@ if __name__ == "__main__":
         test_csv_logging()
         sys.exit(0)
     except Exception as e:
-        print(f"\nVALIDATION FAILED: {e}")
+        logger.error(f"\nVALIDATION FAILED: {e}")
         import traceback
         traceback.print_exc()
         sys.exit(1)

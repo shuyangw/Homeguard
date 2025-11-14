@@ -5,11 +5,13 @@ All logging that is intended to be written to disk or displayed to users
 must go through this module.
 """
 
-from typing import Optional
+from typing import Optional, List, Dict, Any
 from pathlib import Path
 from rich.console import Console
 from rich.theme import Theme
+from datetime import datetime
 import sys
+import csv
 
 # Define custom theme for consistent coloring
 custom_theme = Theme({
@@ -112,6 +114,177 @@ class Logger:
         self._log("", to_file=to_file)
 
 
+class CSVLogger:
+    """CSV file logger for structured data logging."""
+
+    def __init__(self, filepath: Path, headers: List[str]):
+        """
+        Initialize CSV logger with headers.
+
+        Args:
+            filepath: Path to CSV file
+            headers: Column headers for the CSV file
+        """
+        self.filepath = Path(filepath)
+        self.headers = headers
+        self._init_file()
+
+    def _init_file(self):
+        """Create CSV file with headers."""
+        self.filepath.parent.mkdir(parents=True, exist_ok=True)
+        with open(self.filepath, 'w', newline='', encoding='utf-8') as f:
+            writer = csv.writer(f)
+            writer.writerow(self.headers)
+
+    def log_row(self, data: List[Any]):
+        """
+        Append row to CSV file.
+
+        Args:
+            data: List of values matching headers length
+        """
+        with open(self.filepath, 'a', newline='', encoding='utf-8') as f:
+            writer = csv.writer(f)
+            writer.writerow(data)
+
+
+class TradingLogger:
+    """
+    Extended logger with file and CSV logging capabilities for trading.
+
+    Combines colored console output, file logging, and structured CSV logs.
+    Maintains same logging theme and cadence as existing code.
+    """
+
+    def __init__(self, name: str, log_dir: Optional[Path] = None):
+        """
+        Initialize trading logger.
+
+        Args:
+            name: Logger name (e.g., 'trading.OMR')
+            log_dir: Directory for log files (optional)
+        """
+        self.name = name
+        self.log_dir = Path(log_dir) if log_dir else None
+        self.csv_loggers: Dict[str, CSVLogger] = {}
+
+        # Create base logger for console + file
+        log_file = None
+        if self.log_dir:
+            self.log_dir.mkdir(parents=True, exist_ok=True)
+            log_file = self.log_dir / f"{datetime.now().strftime('%Y%m%d')}_{name}.log"
+
+        self.logger = Logger(log_file=log_file)
+
+    def add_csv_logger(self, name: str, filepath: Path, headers: List[str]):
+        """
+        Add a CSV logger for structured data.
+
+        Args:
+            name: Name for this CSV logger (e.g., 'trades', 'market_checks')
+            filepath: Path to CSV file
+            headers: Column headers
+        """
+        self.csv_loggers[name] = CSVLogger(filepath, headers)
+
+    def log_trade(
+        self,
+        symbol: str,
+        side: str,
+        qty: int,
+        price: float,
+        status: str,
+        order_type: str = 'market',
+        order_id: Optional[str] = None,
+        error: Optional[str] = None
+    ):
+        """
+        Log trade to CSV and console with consistent formatting.
+
+        Args:
+            symbol: Trading symbol
+            side: 'buy' or 'sell'
+            qty: Quantity
+            price: Price
+            status: 'SUCCESS' or 'FAILED'
+            order_type: Order type (default: 'market')
+            order_id: Order ID (optional)
+            error: Error message if failed (optional)
+        """
+        timestamp = datetime.now().isoformat()
+
+        # Log to CSV if available
+        if 'trades' in self.csv_loggers:
+            self.csv_loggers['trades'].log_row([
+                timestamp,
+                symbol,
+                side,
+                qty,
+                price,
+                order_type,
+                status,
+                order_id if order_id else '',
+                error if error else ''
+            ])
+
+        # Log to console with color
+        if status == 'SUCCESS':
+            self.logger.success(
+                f"Trade: {symbol} {side.upper()} {qty} @ ${price:.2f}"
+            )
+        else:
+            self.logger.error(
+                f"Trade FAILED: {symbol} {side.upper()} {qty} @ ${price:.2f} - {error}"
+            )
+
+    def log_market_check(self, market_open: bool, check_number: int):
+        """
+        Log market check to CSV.
+
+        Args:
+            market_open: Whether market is open
+            check_number: Check sequence number
+        """
+        timestamp = datetime.now().isoformat()
+
+        # Log to CSV if available
+        if 'market_checks' in self.csv_loggers:
+            self.csv_loggers['market_checks'].log_row([
+                timestamp,
+                market_open,
+                check_number
+            ])
+
+    # Expose base logger methods for convenience
+    def success(self, message: str, to_file: bool = True):
+        """Log success message (green)."""
+        self.logger.success(message, to_file=to_file)
+
+    def error(self, message: str, to_file: bool = True):
+        """Log error message (red)."""
+        self.logger.error(message, to_file=to_file)
+
+    def warning(self, message: str, to_file: bool = True):
+        """Log warning message (yellow)."""
+        self.logger.warning(message, to_file=to_file)
+
+    def info(self, message: str, to_file: bool = True):
+        """Log info message (cyan)."""
+        self.logger.info(message, to_file=to_file)
+
+    def header(self, message: str, to_file: bool = True):
+        """Log header message (magenta)."""
+        self.logger.header(message, to_file=to_file)
+
+    def separator(self, char: str = "=", length: int = 80, to_file: bool = True):
+        """Print a separator line."""
+        self.logger.separator(char, length, to_file=to_file)
+
+    def blank(self, to_file: bool = True):
+        """Print a blank line."""
+        self.logger.blank(to_file=to_file)
+
+
 # Global logger instance for convenience
 _global_logger = Logger()
 
@@ -132,6 +305,38 @@ def get_logger(log_file: Optional[Path] = None) -> Logger:
     if log_file:
         return Logger(log_file=log_file)
     return _global_logger
+
+
+def get_trading_logger(name: str, log_dir: Optional[Path] = None) -> TradingLogger:
+    """
+    Get a trading logger instance with CSV logging capabilities.
+
+    Args:
+        name: Logger name (e.g., 'trading.OMR', 'MACrossover')
+        log_dir: Directory for log files (optional)
+
+    Returns:
+        TradingLogger instance
+
+    Usage:
+        # Create trading logger
+        trading_logger = get_trading_logger('OMR', Path('logs/live_trading/paper'))
+
+        # Add CSV loggers
+        trading_logger.add_csv_logger(
+            'trades',
+            Path('logs/trades.csv'),
+            ['timestamp', 'symbol', 'side', 'qty', 'price', 'status']
+        )
+
+        # Log trades
+        trading_logger.log_trade('TQQQ', 'buy', 100, 45.23, 'SUCCESS')
+
+        # Use regular logging methods
+        trading_logger.success("Trade executed successfully")
+        trading_logger.info("Market check complete")
+    """
+    return TradingLogger(name, log_dir)
 
 
 # Convenience functions for global logger
