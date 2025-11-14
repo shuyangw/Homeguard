@@ -554,11 +554,11 @@ class RandomSearchOptimizer(BaseOptimizer):
         """
         from pathlib import Path
         from datetime import datetime
-        from config import get_log_output_dir
+        from src.config import get_backtest_results_dir
 
         # Determine output directory
         if output_dir is None:
-            base_dir = get_log_output_dir()
+            base_dir = get_backtest_results_dir()
         else:
             base_dir = Path(output_dir)
 

@@ -27,3 +27,8 @@
 [i] Resolved api_key from environment variable: ALPACA_PAPER_KEY_ID
 [i] Resolved secret_key from environment variable: ALPACA_PAPER_SECRET_KEY
 [i] Creating AlpacaBroker instance
+[i] Creating broker from environment (type: alpaca)
+[i] Creating broker from environment (type: alpaca)
+[i] Creating AlpacaBroker instance
+[i] Creating broker from environment (type: alpaca)
+[i] Creating AlpacaBroker instance

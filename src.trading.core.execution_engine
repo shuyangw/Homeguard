@@ -64,3 +64,279 @@
 [i] Initialized ExecutionEngine (max_retries=3, retry_delay=1.0s, fill_timeout=30.0s)
 [i] Initialized ExecutionEngine (max_retries=3, retry_delay=1.0s, fill_timeout=30.0s)
 [i] Initialized ExecutionEngine (max_retries=3, retry_delay=1.0s, fill_timeout=30.0s)
+[i] Initialized ExecutionEngine (max_retries=3, retry_delay=1.0s, fill_timeout=30.0s)
+[i] Initialized ExecutionEngine (max_retries=3, retry_delay=1.0s, fill_timeout=30.0s)
+[i] Initialized ExecutionEngine (max_retries=3, retry_delay=1.0s, fill_timeout=30.0s)
+[i] Initialized ExecutionEngine (max_retries=3, retry_delay=1.0s, fill_timeout=30.0s)
+[i] Initialized ExecutionEngine (max_retries=3, retry_delay=1.0s, fill_timeout=30.0s)
+[i] Initialized ExecutionEngine (max_retries=3, retry_delay=1.0s, fill_timeout=30.0s)
+[i] Initialized ExecutionEngine (max_retries=3, retry_delay=1.0s, fill_timeout=30.0s)
+[i] Initialized ExecutionEngine (max_retries=3, retry_delay=1.0s, fill_timeout=30.0s)
+[i] Initialized ExecutionEngine (max_retries=3, retry_delay=1.0s, fill_timeout=30.0s)
+[i] Initialized ExecutionEngine (max_retries=3, retry_delay=1.0s, fill_timeout=30.0s)
+[i] Initialized ExecutionEngine (max_retries=3, retry_delay=1.0s, fill_timeout=30.0s)
+[i] Initialized ExecutionEngine (max_retries=3, retry_delay=1.0s, fill_timeout=30.0s)
+[i] Initialized ExecutionEngine (max_retries=3, retry_delay=1.0s, fill_timeout=30.0s)
+[i] Initialized ExecutionEngine (max_retries=3, retry_delay=1.0s, fill_timeout=30.0s)
+[i] Initialized ExecutionEngine (max_retries=3, retry_delay=1.0s, fill_timeout=30.0s)
+[i] Initialized ExecutionEngine (max_retries=3, retry_delay=1.0s, fill_timeout=30.0s)
+[i] Initialized ExecutionEngine (max_retries=3, retry_delay=1.0s, fill_timeout=30.0s)
+[i] Initialized ExecutionEngine (max_retries=3, retry_delay=1.0s, fill_timeout=30.0s)
+[i] Initialized ExecutionEngine (max_retries=3, retry_delay=1.0s, fill_timeout=30.0s)
+[i] Initialized ExecutionEngine (max_retries=3, retry_delay=1.0s, fill_timeout=30.0s)
+[i] Initialized ExecutionEngine (max_retries=3, retry_delay=1.0s, fill_timeout=30.0s)
+[i] Initialized ExecutionEngine (max_retries=3, retry_delay=1.0s, fill_timeout=30.0s)
+[i] Initialized ExecutionEngine (max_retries=3, retry_delay=1.0s, fill_timeout=30.0s)
+[i] Initialized ExecutionEngine (max_retries=3, retry_delay=1.0s, fill_timeout=30.0s)
+[i] Initialized ExecutionEngine (max_retries=3, retry_delay=1.0s, fill_timeout=30.0s)
+[i] Initialized ExecutionEngine (max_retries=3, retry_delay=1.0s, fill_timeout=30.0s)
+[i] Initialized ExecutionEngine (max_retries=3, retry_delay=1.0s, fill_timeout=30.0s)
+[i] Initialized ExecutionEngine (max_retries=3, retry_delay=1.0s, fill_timeout=30.0s)
+[i] Initialized ExecutionEngine (max_retries=3, retry_delay=1.0s, fill_timeout=30.0s)
+[i] Initialized ExecutionEngine (max_retries=3, retry_delay=1.0s, fill_timeout=30.0s)
+[i] Initialized ExecutionEngine (max_retries=3, retry_delay=1.0s, fill_timeout=30.0s)
+[i] Initialized ExecutionEngine (max_retries=3, retry_delay=0.1s, fill_timeout=5.0s)
+[i] Initialized ExecutionEngine (max_retries=3, retry_delay=0.1s, fill_timeout=5.0s)
+[i] Executing order: buy 10 AAPL @ market
+[+] Order executed successfully: 33418ced-5448-40c8-a4b3-40985a8f5814 | Filled 10 @ $150.05 | Duration: 0.00s
+[i] Initialized ExecutionEngine (max_retries=3, retry_delay=0.1s, fill_timeout=5.0s)
+[i] Executing order: buy 10 AAPL @ limit
+[+] Order executed successfully: 19cefc95-110d-4aae-aef2-9c6f7029dcb4 | Filled 10 @ $150.00 | Duration: 0.00s
+[i] Initialized ExecutionEngine (max_retries=3, retry_delay=0.1s, fill_timeout=5.0s)
+[i] Executing order: buy 10 AAPL @ stop
+[+] Order executed successfully: 22c2e001-fc37-47ba-ae47-27dc6e3d74e2 | Filled 10 @ $155.00 | Duration: 0.00s
+[i] Initialized ExecutionEngine (max_retries=3, retry_delay=0.1s, fill_timeout=5.0s)
+[i] Executing order: buy -10 AAPL @ market
+[X] Invalid order (no retry): Invalid quantity: -10
+[i] Initialized ExecutionEngine (max_retries=3, retry_delay=0.1s, fill_timeout=5.0s)
+[i] Executing order: buy 10 AAPL @ market
+[+] Order executed successfully: 01c773b8-d226-4a2c-a4ce-c28bfb3d9a95 | Filled 10 @ $150.05 | Duration: 0.00s
+[i] Executing order: buy 5 MSFT @ market
+[+] Order executed successfully: f3630e17-d660-4f62-9989-db4082b8a3f9 | Filled 5 @ $100.00 | Duration: 0.00s
+[i] Initialized ExecutionEngine (max_retries=3, retry_delay=0.1s, fill_timeout=5.0s)
+[i] Executing batch of 2 orders (sequential)
+[i] Executing order: buy 10 AAPL @ market
+[+] Order executed successfully: d4ceec1b-68db-44af-867d-b1b56967bc4c | Filled 10 @ $150.05 | Duration: 0.00s
+[i] Executing order: buy 5 MSFT @ market
+[+] Order executed successfully: 1221079f-0eff-4e3b-873f-efe07cbf4a18 | Filled 5 @ $300.05 | Duration: 0.00s
+[i] Batch execution complete: 2/2 successful
+[i] Initialized ExecutionEngine (max_retries=3, retry_delay=0.1s, fill_timeout=5.0s)
+[i] Executing batch of 3 orders (parallel)
+[X] Batch order failed: src.trading.core.execution_engine.ExecutionEngine.execute_order() got multiple values for keyword argument 'wait_for_fill'
+[X] Batch order failed: src.trading.core.execution_engine.ExecutionEngine.execute_order() got multiple values for keyword argument 'wait_for_fill'
+[X] Batch order failed: src.trading.core.execution_engine.ExecutionEngine.execute_order() got multiple values for keyword argument 'wait_for_fill'
+[i] Batch execution complete: 0/3 successful
+[i] Initialized ExecutionEngine (max_retries=3, retry_delay=0.1s, fill_timeout=5.0s)
+[i] Executing order: buy 10 AAPL @ market
+[+] Order executed successfully: a53d8f74-8f39-4166-a8c2-d1e179b7f0a6 | Filled 10 @ $150.05 | Duration: 0.00s
+[i] Closing position: AAPL
+[i] Executing order: sell 10 AAPL @ market
+[+] Order executed successfully: dd46be26-8f1d-45d6-9a3f-82fa92bea05c | Filled 10 @ $155.05 | Duration: 0.00s
+[i] Initialized ExecutionEngine (max_retries=3, retry_delay=0.1s, fill_timeout=5.0s)
+[i] Closing position: AAPL
+[!] No position found for AAPL
+[i] Initialized ExecutionEngine (max_retries=3, retry_delay=0.1s, fill_timeout=5.0s)
+[i] Executing order: buy 10 AAPL @ market
+[+] Order executed successfully: 3cd54284-9bbd-4671-9e98-c74372c88602 | Filled 10 @ $150.05 | Duration: 0.00s
+[i] Executing order: buy 5 MSFT @ market
+[+] Order executed successfully: a78303a3-186e-4b21-a655-e562b662cbec | Filled 5 @ $300.05 | Duration: 0.00s
+[i] Closing 2 positions
+[i] Closing position: AAPL
+[i] Executing order: sell 10 AAPL @ market
+[+] Order executed successfully: ee2bae2b-9c68-4538-bf24-1c8604f1e0ab | Filled 10 @ $150.05 | Duration: 0.00s
+[i] Closing position: MSFT
+[i] Executing order: sell 5 MSFT @ market
+[+] Order executed successfully: cbd87ee1-5f52-447e-a641-f7ac3a8242bf | Filled 5 @ $300.05 | Duration: 0.00s
+[i] Initialized ExecutionEngine (max_retries=3, retry_delay=0.1s, fill_timeout=5.0s)
+[i] Executing order: buy 10 AAPL @ market
+[+] Order executed successfully: b4f74d72-73e6-480a-96a7-4f8706fd7445 | Filled 10 @ $150.05 | Duration: 0.00s
+[i] Cancelling order: b4f74d72-73e6-480a-96a7-4f8706fd7445
+[+] Order cancelled: b4f74d72-73e6-480a-96a7-4f8706fd7445
+[i] Initialized ExecutionEngine (max_retries=3, retry_delay=0.1s, fill_timeout=5.0s)
+[i] Executing order: buy 10 AAPL @ market
+[+] Order executed successfully: a6c40852-52cc-4e68-8653-6f29af11c805 | Filled 10 @ $150.05 | Duration: 0.00s
+[i] Initialized ExecutionEngine (max_retries=3, retry_delay=0.1s, fill_timeout=5.0s)
+[i] Executing order: buy 10 AAPL @ limit
+[X] Invalid order (no retry): Limit price required for LIMIT orders
+[i] Initialized ExecutionEngine (max_retries=3, retry_delay=0.1s, fill_timeout=5.0s)
+[i] Executing order: buy 10 AAPL @ stop
+[X] Invalid order (no retry): Stop price required for STOP orders
+[i] Initialized ExecutionEngine (max_retries=3, retry_delay=0.1s, fill_timeout=5.0s)
+[i] Executing order: buy 0 AAPL @ market
+[X] Invalid order (no retry): Invalid quantity: 0
+[i] Initialized ExecutionEngine (max_retries=3, retry_delay=0.1s, fill_timeout=5.0s)
+[i] Initialized ExecutionEngine (max_retries=3, retry_delay=0.1s, fill_timeout=5.0s)
+[i] Executing order: buy 10 AAPL @ market
+[+] Order executed successfully: 132efe4d-28b7-4dcb-9e50-b2a3b79129b5 | Filled 10 @ $150.05 | Duration: 0.00s
+[i] Executing order: buy 5 AAPL @ market
+[+] Order executed successfully: 986ec045-809d-4b50-a3ff-e34c8cbb36c0 | Filled 5 @ $150.05 | Duration: 0.00s
+[i] Executing order: buy -10 AAPL @ market
+[X] Invalid order (no retry): Invalid quantity: -10
+[i] Initialized ExecutionEngine (max_retries=3, retry_delay=0.1s, fill_timeout=5.0s)
+[i] Executing order: buy 10 AAPL @ market
+[+] Order executed successfully: db0b2bce-98f3-438b-bd70-e5eae0546e27 | Filled 10 @ $150.05 | Duration: 0.00s
+[i] Executing order: buy 5 AAPL @ market
+[+] Order executed successfully: a93ba569-fe75-43a1-aee3-af5775bf49be | Filled 5 @ $150.05 | Duration: 0.00s
+[i] Initialized ExecutionEngine (max_retries=3, retry_delay=0.1s, fill_timeout=5.0s)
+[i] Executing order: buy 10 AAPL @ market
+[+] Order executed successfully: 2410ea92-621b-4c5c-bac9-6c2fbbb4160b | Filled 10 @ $150.05 | Duration: 0.00s
+[i] Executing order: sell 10 AAPL @ market
+[+] Order executed successfully: 4eafb3e0-5bd0-4430-8355-10d3103c7128 | Filled 10 @ $155.05 | Duration: 0.00s
+[i] Initialized ExecutionEngine (max_retries=3, retry_delay=0.1s, fill_timeout=5.0s)
+[i] Executing order: buy 10 AAPL @ market
+[+] Order executed successfully: 41f85c09-0c33-4950-9788-9392c95fe17f | Filled 10 @ $100.05 | Duration: 0.00s
+[i] Executing order: buy 10 MSFT @ market
+[+] Order executed successfully: e5b54d40-a21a-4985-99cf-56d872625033 | Filled 10 @ $100.05 | Duration: 0.00s
+[i] Executing order: buy 10 TSLA @ market
+[+] Order executed successfully: 78f13e4f-4f80-4373-be4c-9a35b1614d94 | Filled 10 @ $100.05 | Duration: 0.00s
+[i] Closing 3 positions
+[i] Closing position: AAPL
+[i] Executing order: sell 10 AAPL @ market
+[+] Order executed successfully: 4490688f-a07b-4dfa-9471-fc6356498f09 | Filled 10 @ $100.05 | Duration: 0.00s
+[i] Closing position: MSFT
+[i] Executing order: sell 10 MSFT @ market
+[+] Order executed successfully: 8f087320-9efc-42bb-9289-ae1085724c3d | Filled 10 @ $100.05 | Duration: 0.00s
+[i] Closing position: TSLA
+[i] Executing order: sell 10 TSLA @ market
+[+] Order executed successfully: c69b19d8-f766-4ac5-af9d-6a3e4207382d | Filled 10 @ $100.05 | Duration: 0.00s
+[i] Initialized ExecutionEngine (max_retries=3, retry_delay=0.1s, fill_timeout=5.0s)
+[i] Executing batch of 3 orders (parallel)
+[i] Executing order: buy 10 AAPL @ market
+[+] Order executed successfully: 044a5df3-e5d8-4f55-9db7-ddf7a18415dc | Filled 10 @ $150.05 | Duration: 0.00s
+[i] Executing order: buy 5 MSFT @ market
+[+] Order executed successfully: 7e2018e8-945a-4bc5-9f52-efd63105c007 | Filled 5 @ $300.05 | Duration: 0.00s
+[i] Executing order: buy 8 TSLA @ market
+[+] Order executed successfully: 2fe8fd9d-fc49-4db2-bc33-c1f24def6fb3 | Filled 8 @ $200.05 | Duration: 0.00s
+[i] Batch execution complete: 3/3 successful
+[i] Initialized ExecutionEngine (max_retries=3, retry_delay=1.0s, fill_timeout=30.0s)
+[i] Initialized ExecutionEngine (max_retries=3, retry_delay=1.0s, fill_timeout=30.0s)
+[i] Initialized ExecutionEngine (max_retries=3, retry_delay=1.0s, fill_timeout=30.0s)
+[i] Initialized ExecutionEngine (max_retries=3, retry_delay=1.0s, fill_timeout=30.0s)
+[i] Initialized ExecutionEngine (max_retries=3, retry_delay=1.0s, fill_timeout=30.0s)
+[i] Initialized ExecutionEngine (max_retries=3, retry_delay=1.0s, fill_timeout=30.0s)
+[i] Initialized ExecutionEngine (max_retries=3, retry_delay=1.0s, fill_timeout=30.0s)
+[i] Initialized ExecutionEngine (max_retries=3, retry_delay=1.0s, fill_timeout=30.0s)
+[i] Initialized ExecutionEngine (max_retries=3, retry_delay=1.0s, fill_timeout=30.0s)
+[i] Initialized ExecutionEngine (max_retries=3, retry_delay=1.0s, fill_timeout=30.0s)
+[i] Initialized ExecutionEngine (max_retries=3, retry_delay=1.0s, fill_timeout=30.0s)
+[i] Initialized ExecutionEngine (max_retries=3, retry_delay=1.0s, fill_timeout=30.0s)
+[i] Initialized ExecutionEngine (max_retries=3, retry_delay=1.0s, fill_timeout=30.0s)
+[i] Initialized ExecutionEngine (max_retries=3, retry_delay=1.0s, fill_timeout=30.0s)
+[i] Initialized ExecutionEngine (max_retries=3, retry_delay=1.0s, fill_timeout=30.0s)
+[i] Initialized ExecutionEngine (max_retries=3, retry_delay=1.0s, fill_timeout=30.0s)
+[i] Initialized ExecutionEngine (max_retries=3, retry_delay=1.0s, fill_timeout=30.0s)
+[i] Initialized ExecutionEngine (max_retries=3, retry_delay=1.0s, fill_timeout=30.0s)
+[i] Initialized ExecutionEngine (max_retries=3, retry_delay=1.0s, fill_timeout=30.0s)
+[i] Initialized ExecutionEngine (max_retries=3, retry_delay=1.0s, fill_timeout=30.0s)
+[i] Initialized ExecutionEngine (max_retries=3, retry_delay=1.0s, fill_timeout=30.0s)
+[i] Initialized ExecutionEngine (max_retries=3, retry_delay=1.0s, fill_timeout=30.0s)
+[i] Initialized ExecutionEngine (max_retries=3, retry_delay=0.1s, fill_timeout=5.0s)
+[i] Initialized ExecutionEngine (max_retries=3, retry_delay=0.1s, fill_timeout=5.0s)
+[i] Executing order: buy 10 AAPL @ market
+[+] Order executed successfully: 8c7ed3e5-56f3-4747-b160-c8cbb9d54e38 | Filled 10 @ $150.05 | Duration: 0.00s
+[i] Initialized ExecutionEngine (max_retries=3, retry_delay=0.1s, fill_timeout=5.0s)
+[i] Executing order: buy 10 AAPL @ limit
+[+] Order executed successfully: e86a3544-a2d2-4774-8295-c294d2ad350a | Filled 10 @ $150.00 | Duration: 0.00s
+[i] Initialized ExecutionEngine (max_retries=3, retry_delay=0.1s, fill_timeout=5.0s)
+[i] Executing order: buy 10 AAPL @ stop
+[+] Order executed successfully: 8ff16fdf-4ad2-4b25-b3e7-f76644d0f9ca | Filled 10 @ $155.00 | Duration: 0.00s
+[i] Initialized ExecutionEngine (max_retries=3, retry_delay=0.1s, fill_timeout=5.0s)
+[i] Executing order: buy -10 AAPL @ market
+[X] Invalid order (no retry): Invalid quantity: -10
+[i] Initialized ExecutionEngine (max_retries=3, retry_delay=0.1s, fill_timeout=5.0s)
+[i] Executing order: buy 10 AAPL @ market
+[+] Order executed successfully: e49f5d66-1ea0-4914-9255-34c71adc5443 | Filled 10 @ $150.05 | Duration: 0.00s
+[i] Executing order: buy 5 MSFT @ market
+[+] Order executed successfully: adf0d84f-1730-4bed-8afa-a609059106d7 | Filled 5 @ $100.00 | Duration: 0.00s
+[i] Initialized ExecutionEngine (max_retries=3, retry_delay=0.1s, fill_timeout=5.0s)
+[i] Executing batch of 2 orders (sequential)
+[i] Executing order: buy 10 AAPL @ market
+[+] Order executed successfully: 448e5d95-6849-48c3-ad4f-85cba4486c2f | Filled 10 @ $150.05 | Duration: 0.00s
+[i] Executing order: buy 5 MSFT @ market
+[+] Order executed successfully: a0459080-8146-4ee0-9a73-d9b0fcf6c248 | Filled 5 @ $300.05 | Duration: 0.00s
+[i] Batch execution complete: 2/2 successful
+[i] Initialized ExecutionEngine (max_retries=3, retry_delay=0.1s, fill_timeout=5.0s)
+[i] Executing batch of 3 orders (parallel)
+[i] Executing order: buy 10 AAPL @ market
+[+] Order executed successfully: 9839179f-2f37-439e-bf82-af1e36baefa9 | Filled 10 @ $150.05 | Duration: 0.00s
+[i] Executing order: buy 5 MSFT @ market
+[+] Order executed successfully: f2b37a1f-6bb9-470c-86d2-cff15bb03336 | Filled 5 @ $300.05 | Duration: 0.00s
+[i] Executing order: buy 8 TSLA @ market
+[+] Order executed successfully: be7f6956-7f1f-4f6a-9c5e-61dbd99d4c38 | Filled 8 @ $200.05 | Duration: 0.00s
+[i] Batch execution complete: 3/3 successful
+[i] Initialized ExecutionEngine (max_retries=3, retry_delay=0.1s, fill_timeout=5.0s)
+[i] Executing order: buy 10 AAPL @ market
+[+] Order executed successfully: a9242dd0-005f-4015-b3df-354cd7c5d309 | Filled 10 @ $150.05 | Duration: 0.00s
+[i] Closing position: AAPL
+[i] Executing order: sell 10 AAPL @ market
+[+] Order executed successfully: 10d998f8-ee46-4293-8286-9a540fbb0b6a | Filled 10 @ $155.05 | Duration: 0.00s
+[i] Initialized ExecutionEngine (max_retries=3, retry_delay=0.1s, fill_timeout=5.0s)
+[i] Closing position: AAPL
+[!] No position found for AAPL
+[i] Initialized ExecutionEngine (max_retries=3, retry_delay=0.1s, fill_timeout=5.0s)
+[i] Executing order: buy 10 AAPL @ market
+[+] Order executed successfully: 6757b013-f1b4-491e-aab1-8e8ba0832cb6 | Filled 10 @ $150.05 | Duration: 0.00s
+[i] Executing order: buy 5 MSFT @ market
+[+] Order executed successfully: 2e4a6481-0c22-4e20-9632-86f55009cbb4 | Filled 5 @ $300.05 | Duration: 0.00s
+[i] Closing 2 positions
+[i] Closing position: AAPL
+[i] Executing order: sell 10 AAPL @ market
+[+] Order executed successfully: fecfb961-c21f-4566-942e-3d3db58cfc04 | Filled 10 @ $150.05 | Duration: 0.00s
+[i] Closing position: MSFT
+[i] Executing order: sell 5 MSFT @ market
+[+] Order executed successfully: c80c8589-c02b-40b1-9dbf-b2828efb5791 | Filled 5 @ $300.05 | Duration: 0.00s
+[i] Initialized ExecutionEngine (max_retries=3, retry_delay=0.1s, fill_timeout=5.0s)
+[i] Executing order: buy 10 AAPL @ market
+[+] Order executed successfully: 89e1afaa-98f8-46ff-a5ce-0119f17ed523 | Filled 10 @ $150.05 | Duration: 0.00s
+[i] Cancelling order: 89e1afaa-98f8-46ff-a5ce-0119f17ed523
+[+] Order cancelled: 89e1afaa-98f8-46ff-a5ce-0119f17ed523
+[i] Initialized ExecutionEngine (max_retries=3, retry_delay=0.1s, fill_timeout=5.0s)
+[i] Executing order: buy 10 AAPL @ market
+[+] Order executed successfully: 8ef72cdf-32de-493f-98e7-c5c93df57cf1 | Filled 10 @ $150.05 | Duration: 0.00s
+[i] Initialized ExecutionEngine (max_retries=3, retry_delay=0.1s, fill_timeout=5.0s)
+[i] Executing order: buy 10 AAPL @ limit
+[X] Invalid order (no retry): Limit price required for LIMIT orders
+[i] Initialized ExecutionEngine (max_retries=3, retry_delay=0.1s, fill_timeout=5.0s)
+[i] Executing order: buy 10 AAPL @ stop
+[X] Invalid order (no retry): Stop price required for STOP orders
+[i] Initialized ExecutionEngine (max_retries=3, retry_delay=0.1s, fill_timeout=5.0s)
+[i] Executing order: buy 0 AAPL @ market
+[X] Invalid order (no retry): Invalid quantity: 0
+[i] Initialized ExecutionEngine (max_retries=3, retry_delay=0.1s, fill_timeout=5.0s)
+[i] Initialized ExecutionEngine (max_retries=3, retry_delay=0.1s, fill_timeout=5.0s)
+[i] Executing order: buy 10 AAPL @ market
+[+] Order executed successfully: 994ab52d-5006-4eea-bbba-705067364cd6 | Filled 10 @ $150.05 | Duration: 0.00s
+[i] Executing order: buy 5 AAPL @ market
+[+] Order executed successfully: 3fdce9a6-aa5c-4124-8fe0-61a740f0365f | Filled 5 @ $150.05 | Duration: 0.00s
+[i] Executing order: buy -10 AAPL @ market
+[X] Invalid order (no retry): Invalid quantity: -10
+[i] Initialized ExecutionEngine (max_retries=3, retry_delay=0.1s, fill_timeout=5.0s)
+[i] Executing order: buy 10 AAPL @ market
+[+] Order executed successfully: 9d22fefd-7efd-40d4-bf5b-f77b87bc194e | Filled 10 @ $150.05 | Duration: 0.00s
+[i] Executing order: buy 5 AAPL @ market
+[+] Order executed successfully: e85bdbed-7a18-4f47-a181-0537986d034f | Filled 5 @ $150.05 | Duration: 0.00s
+[i] Initialized ExecutionEngine (max_retries=3, retry_delay=0.1s, fill_timeout=5.0s)
+[i] Executing order: buy 10 AAPL @ market
+[+] Order executed successfully: 09ca8af8-7ceb-4dfc-8792-a8d94d3e90cc | Filled 10 @ $150.05 | Duration: 0.00s
+[i] Executing order: sell 10 AAPL @ market
+[+] Order executed successfully: afc2e9e0-e8a0-4eba-ae5c-e931cdbb35b0 | Filled 10 @ $155.05 | Duration: 0.00s
+[i] Initialized ExecutionEngine (max_retries=3, retry_delay=0.1s, fill_timeout=5.0s)
+[i] Executing order: buy 10 AAPL @ market
+[+] Order executed successfully: 8f551bfe-df46-4a72-ae0c-3c61dbf2feb9 | Filled 10 @ $100.05 | Duration: 0.00s
+[i] Executing order: buy 10 MSFT @ market
+[+] Order executed successfully: 2b589527-abe6-4a01-8d56-3f24e3ef2651 | Filled 10 @ $100.05 | Duration: 0.00s
+[i] Executing order: buy 10 TSLA @ market
+[+] Order executed successfully: 597840a9-3fdf-4c71-aee2-e29143e6d90e | Filled 10 @ $100.05 | Duration: 0.00s
+[i] Closing 3 positions
+[i] Closing position: AAPL
+[i] Executing order: sell 10 AAPL @ market
+[+] Order executed successfully: 5722beab-0593-4033-822a-4137fb4633f6 | Filled 10 @ $100.05 | Duration: 0.00s
+[i] Closing position: MSFT
+[i] Executing order: sell 10 MSFT @ market
+[+] Order executed successfully: c52846d2-3f51-4c35-b21b-8f0843e342c5 | Filled 10 @ $100.05 | Duration: 0.00s
+[i] Closing position: TSLA
+[i] Executing order: sell 10 TSLA @ market
+[+] Order executed successfully: 333c3bc3-0596-41bb-9ab5-0d86a6e49c71 | Filled 10 @ $100.05 | Duration: 0.00s
+[i] Initialized ExecutionEngine (max_retries=3, retry_delay=1.0s, fill_timeout=30.0s)
+[i] Initialized ExecutionEngine (max_retries=3, retry_delay=1.0s, fill_timeout=30.0s)
+[i] Initialized ExecutionEngine (max_retries=3, retry_delay=1.0s, fill_timeout=30.0s)

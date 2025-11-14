@@ -117,12 +117,8 @@ class MarketRegimeDetector:
         best_regime = max(regime_scores, key=regime_scores.get)
         confidence = regime_scores[best_regime]
 
-        # Log regime classification
-        logger.debug(
-            f"Regime: {best_regime} (confidence: {confidence:.2f}) | "
-            f"Momentum: {indicators['momentum_slope']:.3f} | "
-            f"VIX percentile: {indicators['vix_percentile']:.1f}%"
-        )
+        # (Debug logging removed - logger.debug not available)
+        # Regime: best_regime, confidence, momentum, VIX percentile
 
         return best_regime, confidence
 

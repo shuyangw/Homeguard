@@ -7,11 +7,16 @@ This example demonstrates:
 3. Visualizing results
 """
 
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
+
 from backtesting.engine.backtest_engine import BacktestEngine
 from backtesting.engine.metrics import PerformanceMetrics
 from strategies.base_strategies.moving_average import MovingAverageCrossover
 from strategies.base_strategies.mean_reversion import MeanReversion, RSIMeanReversion
 from strategies.base_strategies.momentum import MomentumStrategy
+from config import get_backtest_results_dir
 
 
 def main():
@@ -75,7 +80,7 @@ def main():
 
     # Step 6: Save detailed report
     print("\n6. Saving detailed report...")
-    output_path = 'strategy_comparison_report.csv'
+    output_path = get_backtest_results_dir() / 'strategy_comparison_report.csv'
     comparison.to_csv(output_path)
     print(f"   Report saved to: {output_path}")
 

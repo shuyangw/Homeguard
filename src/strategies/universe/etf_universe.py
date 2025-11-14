@@ -35,6 +35,10 @@ class ETFUniverse:
         'UPRO',  # ProShares UltraPro S&P500 (3x Long)
         'SPXU',  # ProShares UltraPro Short S&P500 (3x Short)
 
+        # Dow Jones 3x
+        'UDOW',  # ProShares UltraPro Dow30 (3x Long)
+        'SDOW',  # ProShares UltraPro Short Dow30 (3x Short)
+
         # Treasury 3x
         'TMF',   # Direxion Daily 20+ Year Treasury Bull 3X
         'TMV',   # Direxion Daily 20+ Year Treasury Bear 3X
@@ -62,6 +66,50 @@ class ETFUniverse:
         # Gold 3x
         'NUGT',  # Direxion Daily Gold Miners Bull 3X
         'DUST',  # Direxion Daily Gold Miners Bear 3X
+    ]
+
+    # Optimal OMR Symbols (Ranked by backtest performance)
+    # Based on walk-forward validation 2015-2025
+    # See docs/OMR_OPTIMAL_SYMBOLS.md for details
+    OPTIMAL_OMR = [
+        # Tier 1: Proven top performers (Sharpe > 0.4)
+        'SDOW',   # Dow 3x Bear - Sharpe 0.88 (best)
+        'SOXS',   # Semiconductor 3x Bear - Sharpe 0.45
+
+        # Tier 2: High-liquidity core (broad market)
+        'SQQQ',   # Nasdaq 3x Bear - Most liquid inverse
+        'SPXU',   # S&P 3x Bear - Broad market
+        'TQQQ',   # Nasdaq 3x Bull - Most liquid bull
+        'UPRO',   # S&P 3x Bull - Broad market
+
+        # Tier 3: Sector leaders (tech/semis)
+        'TECS',   # Tech 3x Bear - Sharpe 0.04 (proven)
+        'TECL',   # Tech 3x Bull
+        'SOXL',   # Semiconductor 3x Bull
+
+        # Tier 4: Financials & small cap
+        'FAZ',    # Financial 3x Bear
+        'FAS',    # Financial 3x Bull
+        'TZA',    # Small Cap 3x Bear
+        'TNA',    # Small Cap 3x Bull
+
+        # Tier 5: Diversification
+        'TMF',    # Treasury 3x Bull
+        'ERX',    # Energy 3x Bull
+    ]
+
+    # OMR Conservative (7 symbols - proven + high liquidity)
+    OMR_CONSERVATIVE = [
+        'SDOW', 'SOXS',  # Top 2 proven
+        'SQQQ', 'SPXU',  # Inverse core
+        'TQQQ', 'UPRO',  # Bull core
+        'TECS'           # #3 proven
+    ]
+
+    # OMR Balanced (12 symbols - proven + sectors)
+    OMR_BALANCED = [
+        'SDOW', 'SOXS', 'SQQQ', 'SPXU', 'TQQQ', 'UPRO',
+        'TECS', 'TECL', 'SOXL', 'FAZ', 'FAS', 'TZA'
     ]
 
     # Leveraged 2x ETFs

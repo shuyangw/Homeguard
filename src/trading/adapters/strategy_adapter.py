@@ -68,27 +68,36 @@ class StrategyAdapter(ABC):
         }
         self.position_manager = PositionManager(position_config)
 
+        # Data caching for performance optimization
+        self._data_cache: Optional[Dict[str, pd.DataFrame]] = None
+        self._cache_date: Optional[datetime] = None
+
+        # Intraday data caching for reliability (pre-fetch at 3:45 PM)
+        self._intraday_cache: Optional[Dict[str, pd.DataFrame]] = None
+        self._intraday_cache_time: Optional[datetime] = None
+
         logger.info(f"Initialized {self.__class__.__name__}")
         logger.info(f"  Strategy: {strategy.__class__.__name__}")
         logger.info(f"  Symbols: {len(symbols)}")
         logger.info(f"  Position size: {position_size:.1%}")
         logger.info(f"  Max positions: {max_positions}")
 
-    def fetch_market_data(self) -> Dict[str, pd.DataFrame]:
+    def preload_historical_data(self) -> None:
         """
-        Fetch market data for all symbols.
+        Pre-load historical data for all symbols.
 
-        Returns:
-            Dict of symbol -> DataFrame with OHLCV data
+        This should be called once at market open to cache historical data,
+        avoiding the need to fetch a full year of data at execution time.
         """
         try:
-            market_data = {}
+            logger.info("Pre-loading historical data...")
             end_date = datetime.now()
             start_date = end_date - timedelta(days=self.data_lookback_days)
 
+            self._data_cache = {}
+
             for symbol in self.symbols:
                 try:
-                    # Fetch data from broker
                     df = self.broker.get_historical_bars(
                         symbol=symbol,
                         start=start_date,
@@ -97,16 +106,168 @@ class StrategyAdapter(ABC):
                     )
 
                     if df is not None and not df.empty:
-                        market_data[symbol] = df
+                        self._data_cache[symbol] = df
                     else:
                         logger.warning(f"No data returned for {symbol}")
 
                 except Exception as e:
-                    logger.error(f"Error fetching data for {symbol}: {e}")
+                    logger.error(f"Error pre-loading data for {symbol}: {e}")
                     continue
 
-            logger.info(f"Fetched data for {len(market_data)}/{len(self.symbols)} symbols")
-            return market_data
+            self._cache_date = datetime.now().date()
+            logger.success(
+                f"Pre-loaded {len(self._data_cache)}/{len(self.symbols)} symbols "
+                f"({self.data_lookback_days} days)"
+            )
+
+        except Exception as e:
+            logger.error(f"Error in preload_historical_data: {e}")
+            self._data_cache = None
+
+    def prefetch_intraday_data(self) -> None:
+        """
+        Pre-fetch today's intraday data for all symbols.
+
+        This should be called at 3:45 PM to cache today's intraday data,
+        avoiding network issues at the critical 3:50 PM execution time.
+        Provides a 5-minute buffer while keeping data fresh.
+        """
+        try:
+            logger.info("Pre-fetching today's intraday data...")
+            now = datetime.now()
+            market_open_today = now.replace(hour=9, minute=30, second=0, microsecond=0)
+
+            self._intraday_cache = {}
+
+            for symbol in self.symbols:
+                try:
+                    # Fetch intraday bars from market open to now
+                    df = self.broker.get_historical_bars(
+                        symbol=symbol,
+                        start=market_open_today,
+                        end=now,
+                        timeframe='1Min'  # 1-minute bars for intraday
+                    )
+
+                    if df is not None and not df.empty:
+                        self._intraday_cache[symbol] = df
+                    else:
+                        logger.warning(f"No intraday data returned for {symbol}")
+
+                except Exception as e:
+                    logger.error(f"Error pre-fetching intraday data for {symbol}: {e}")
+                    continue
+
+            self._intraday_cache_time = now
+            logger.success(
+                f"Pre-fetched intraday data for {len(self._intraday_cache)}/{len(self.symbols)} symbols "
+                f"({now.strftime('%H:%M')} update)"
+            )
+
+        except Exception as e:
+            logger.error(f"Error in prefetch_intraday_data: {e}")
+            self._intraday_cache = None
+
+    def fetch_market_data(self) -> Dict[str, pd.DataFrame]:
+        """
+        Fetch market data for all symbols.
+
+        Uses cached historical data if available (pre-loaded), and only fetches
+        recent data to append. Falls back to full fetch if cache is unavailable.
+
+        Returns:
+            Dict of symbol -> DataFrame with OHLCV data
+        """
+        try:
+            # Check if cache is available and current
+            today = datetime.now().date()
+            cache_is_valid = (
+                self._data_cache is not None and
+                self._cache_date is not None and
+                self._cache_date == today
+            )
+
+            if cache_is_valid:
+                # Use cached data + fetch only today's data
+                logger.info("Using cached data + fetching today's update")
+                market_data = {}
+
+                for symbol in self.symbols:
+                    try:
+                        if symbol in self._data_cache:
+                            # Get cached data
+                            cached_df = self._data_cache[symbol].copy()
+
+                            # Fetch only today's data
+                            today_df = self.broker.get_historical_bars(
+                                symbol=symbol,
+                                start=datetime.now().replace(hour=0, minute=0, second=0),
+                                end=datetime.now(),
+                                timeframe='1D'
+                            )
+
+                            # Append today's data if available
+                            if today_df is not None and not today_df.empty:
+                                # Combine cached + today's data, removing duplicates
+                                combined = pd.concat([cached_df, today_df])
+                                combined = combined[~combined.index.duplicated(keep='last')]
+                                market_data[symbol] = combined
+                            else:
+                                # No new data, use cached
+                                market_data[symbol] = cached_df
+
+                        else:
+                            # Symbol not in cache, full fetch
+                            logger.warning(f"{symbol} not in cache, performing full fetch")
+                            df = self.broker.get_historical_bars(
+                                symbol=symbol,
+                                start=datetime.now() - timedelta(days=self.data_lookback_days),
+                                end=datetime.now(),
+                                timeframe='1D'
+                            )
+                            if df is not None and not df.empty:
+                                market_data[symbol] = df
+
+                    except Exception as e:
+                        logger.error(f"Error fetching data for {symbol}: {e}")
+                        # Fall back to cached data if available
+                        if symbol in self._data_cache:
+                            market_data[symbol] = self._data_cache[symbol]
+                        continue
+
+                logger.info(
+                    f"Fetched data for {len(market_data)}/{len(self.symbols)} symbols "
+                    "(cached + today's update)"
+                )
+                return market_data
+
+            else:
+                # No cache available - full fetch
+                logger.info("No cache available, performing full data fetch")
+                market_data = {}
+                end_date = datetime.now()
+                start_date = end_date - timedelta(days=self.data_lookback_days)
+
+                for symbol in self.symbols:
+                    try:
+                        df = self.broker.get_historical_bars(
+                            symbol=symbol,
+                            start=start_date,
+                            end=end_date,
+                            timeframe='1D'
+                        )
+
+                        if df is not None and not df.empty:
+                            market_data[symbol] = df
+                        else:
+                            logger.warning(f"No data returned for {symbol}")
+
+                    except Exception as e:
+                        logger.error(f"Error fetching data for {symbol}: {e}")
+                        continue
+
+                logger.info(f"Fetched data for {len(market_data)}/{len(self.symbols)} symbols (full)")
+                return market_data
 
         except Exception as e:
             logger.error(f"Error in fetch_market_data: {e}")
@@ -168,7 +329,7 @@ class StrategyAdapter(ABC):
 
             filtered.append(signal)
 
-        logger.info(f"Filtered {len(signals)} → {len(filtered)} signals")
+        logger.info(f"Filtered {len(signals)} -> {len(filtered)} signals")
         return filtered
 
     def execute_signals(self, signals: List[Signal]) -> None:

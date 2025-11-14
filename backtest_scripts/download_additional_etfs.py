@@ -16,6 +16,7 @@ warnings.filterwarnings('ignore')
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from src.utils.logger import logger
+from src.config import get_backtest_results_dir
 
 DATA_DIR = Path('data/leveraged_etfs')
 DATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -174,7 +175,7 @@ def main():
 
     # Save summary
     summary_df = pd.DataFrame(results)
-    summary_path = Path('reports/20251112_additional_etf_download_summary.csv')
+    summary_path = get_backtest_results_dir() / '20251112_additional_etf_download_summary.csv'
     summary_path.parent.mkdir(exist_ok=True)
     summary_df.to_csv(summary_path, index=False)
     logger.success(f"\nSaved download summary to {summary_path}")

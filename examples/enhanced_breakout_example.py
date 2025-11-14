@@ -13,6 +13,7 @@ Period: 2023-2024
 
 from backtesting.engine.backtest_engine import BacktestEngine
 from strategies import BreakoutStrategy
+from src.config import get_output_dir
 
 
 def main():
@@ -37,17 +38,18 @@ def main():
     )
 
     # Run backtest
+    output_dir = str(get_output_dir() / 'examples' / 'enhanced_breakout_example')
     portfolio = engine.run_and_report(
         strategy=strategy,
         symbols=['AMZN'],
         start_date='2023-01-01',
         end_date='2024-01-01',
         quantstats=True,
-        output_dir='output/enhanced_breakout_example'
+        output_dir=output_dir
     )
 
     print("\nBacktest complete!")
-    print(f"See QuantStats report in: output/enhanced_breakout_example/")
+    print(f"See QuantStats report in: {output_dir}")
 
 
 if __name__ == '__main__':

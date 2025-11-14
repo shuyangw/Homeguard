@@ -254,6 +254,23 @@ class AlpacaBroker(BrokerInterface):
             logger.error(f"Failed to get orders: {e}")
             raise BrokerConnectionError(f"Alpaca API error: {e}")
 
+    def get_open_orders(self) -> List[Dict]:
+        """Get all open orders (convenience method)."""
+        try:
+            # Import Alpaca request class
+            from alpaca.trading.requests import GetOrdersRequest
+            from alpaca.trading.enums import QueryOrderStatus
+
+            # Get only open orders from Alpaca using request object
+            request = GetOrdersRequest(status=QueryOrderStatus.OPEN)
+            orders = self.trading_client.get_orders(filter=request)
+
+            # Translate to standardized format
+            return [self._translate_order(order) for order in orders]
+        except Exception as e:
+            logger.error(f"Failed to get open orders: {e}")
+            raise BrokerConnectionError(f"Alpaca API error: {e}")
+
     def close_position(
         self,
         symbol: str,
@@ -366,6 +383,51 @@ class AlpacaBroker(BrokerInterface):
             logger.error(f"Failed to get bars: {e}")
             raise BrokerConnectionError(f"Alpaca API error: {e}")
 
+    def get_historical_bars(
+        self,
+        symbol: str,
+        start: datetime,
+        end: datetime,
+        timeframe: str = '1D'
+    ) -> pd.DataFrame:
+        """
+        Get historical OHLCV bars for a single symbol.
+
+        This method is used by strategy adapters for fetching market data.
+
+        Args:
+            symbol: Stock symbol
+            start: Start datetime
+            end: End datetime
+            timeframe: Timeframe string (e.g., '1D', '1Min', '5Min', '1Hour')
+
+        Returns:
+            DataFrame with OHLCV data indexed by timestamp
+        """
+        try:
+            # Use get_bars with single symbol
+            df = self.get_bars(
+                symbols=[symbol],
+                timeframe=timeframe,
+                start=start,
+                end=end
+            )
+
+            # Extract data for the symbol and reset index
+            if df.empty:
+                logger.warning(f"No data returned for {symbol}")
+                return pd.DataFrame()
+
+            # If multi-index (symbol, timestamp), extract just this symbol
+            if isinstance(df.index, pd.MultiIndex):
+                df = df.xs(symbol, level='symbol')
+
+            return df
+
+        except Exception as e:
+            logger.error(f"Failed to get historical bars for {symbol}: {e}")
+            raise BrokerConnectionError(f"Alpaca API error: {e}")
+
     # ==================== Utility Methods ====================
 
     def is_market_open(self) -> bool:
@@ -437,22 +499,25 @@ class AlpacaBroker(BrokerInterface):
     def _translate_timeframe(self, timeframe: str) -> TimeFrame:
         """Translate timeframe string to Alpaca TimeFrame."""
         # Parse timeframe string (e.g., "1Min", "5Min", "1Hour", "1Day")
-        timeframe = timeframe.lower()
+        import re
 
-        if 'min' in timeframe:
-            amount = int(timeframe.replace('min', ''))
+        # Extract number and unit using regex before lowercasing
+        match = re.match(r'(\d+)([a-zA-Z]+)', timeframe)
+        if not match:
+            raise ValueError(f"Invalid timeframe format: {timeframe}")
+
+        amount = int(match.group(1))
+        unit = match.group(2).lower()
+
+        if 'min' in unit:
             return TimeFrame(amount, TimeFrameUnit.Minute)
-        elif 'hour' in timeframe:
-            amount = int(timeframe.replace('hour', ''))
+        elif 'hour' in unit or unit == 'h':
             return TimeFrame(amount, TimeFrameUnit.Hour)
-        elif 'day' in timeframe:
-            amount = int(timeframe.replace('day', ''))
+        elif 'day' in unit or unit == 'd':
             return TimeFrame(amount, TimeFrameUnit.Day)
-        elif 'week' in timeframe:
-            amount = int(timeframe.replace('week', ''))
+        elif 'week' in unit or unit == 'w':
             return TimeFrame(amount, TimeFrameUnit.Week)
-        elif 'month' in timeframe:
-            amount = int(timeframe.replace('month', ''))
+        elif 'month' in unit or unit == 'm':
             return TimeFrame(amount, TimeFrameUnit.Month)
         else:
-            raise ValueError(f"Invalid timeframe: {timeframe}")
+            raise ValueError(f"Invalid timeframe unit: {unit}")

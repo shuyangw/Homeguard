@@ -30,6 +30,7 @@ warnings.filterwarnings('ignore')
 # Add src to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from src.utils.logger import logger
+from src.config import get_backtest_results_dir
 
 # Data directory
 DATA_DIR = Path('data/leveraged_etfs')
@@ -644,7 +645,7 @@ def main():
     results_df = pd.DataFrame(individual_results)
     results_df = results_df.sort_values('avg_sharpe', ascending=False)
 
-    phase1_csv = Path('reports/20251112_INDIVIDUAL_SYMBOL_RESULTS.csv')
+    phase1_csv = get_backtest_results_dir() / '20251112_INDIVIDUAL_SYMBOL_RESULTS.csv'
     phase1_csv.parent.mkdir(exist_ok=True)
     results_df.to_csv(phase1_csv, index=False)
 
@@ -713,7 +714,7 @@ def main():
 
     # Save combination results
     combo_df = pd.DataFrame(combination_results)
-    combo_csv = Path('reports/20251112_COMBINATION_RESULTS.csv')
+    combo_csv = get_backtest_results_dir() / '20251112_COMBINATION_RESULTS.csv'
     combo_df.to_csv(combo_csv, index=False)
 
     logger.info("\n" + "="*80)
@@ -757,7 +758,7 @@ def main():
     update_progress(f"Best configuration: {best_combo['label']} with Sharpe {best_combo['avg_sharpe']:.2f}")
 
     # Generate detailed report
-    report_path = Path('reports/20251112_UNUSED_SYMBOLS_TESTING_REPORT.md')
+    report_path = get_backtest_results_dir() / '20251112_UNUSED_SYMBOLS_TESTING_REPORT.md'
     with open(report_path, 'w') as f:
         f.write("# Testing 26 Unused ETF Symbols - Results Report\n\n")
         f.write(f"**Date**: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")

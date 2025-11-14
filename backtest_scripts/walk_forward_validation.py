@@ -20,6 +20,7 @@ import pandas as pd
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.utils import logger
+from src.config import get_backtest_results_dir
 from src.backtesting.engine.multi_pair_portfolio import (
     MultiPairPortfolio,
     PairConfig,
@@ -317,7 +318,7 @@ def main():
                 'Win_Rate': '-'
             }])
 
-            output_path = Path('output/walk_forward_validation_results.csv')
+            output_path = get_backtest_results_dir() / 'walk_forward_validation_results.csv'
             results_df.to_csv(output_path, index=False)
             logger.info(f"\n📊 Results saved to: {output_path}")
 

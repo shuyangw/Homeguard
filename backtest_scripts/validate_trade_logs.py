@@ -20,6 +20,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import pandas as pd
 from src.utils.logger import logger
+from src.config import get_backtest_results_dir
 
 def validate_trade_log(csv_path, version_name):
     """Validate a single trade log CSV."""
@@ -190,7 +191,7 @@ def validate_trade_log(csv_path, version_name):
 def main():
     """Validate all available trade logs."""
 
-    reports_dir = Path('reports')
+    reports_dir = get_backtest_results_dir()
 
     # V2 trades
     v2_file = reports_dir / 'overnight_validation_trades_v2.csv'

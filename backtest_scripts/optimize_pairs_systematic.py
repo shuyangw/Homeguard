@@ -29,6 +29,7 @@ sys.path.insert(0, str(project_root))
 from src.backtesting.engine.backtest_engine import BacktestEngine
 from src.strategies.advanced.pairs_trading import PairsTrading
 from src.utils import logger
+from src.config import get_backtest_results_dir, PROJECT_ROOT
 
 
 # Top 8 pairs from validation (ordered by Sharpe ratio)
@@ -176,7 +177,8 @@ def sensitivity_analysis(symbol1, symbol2, baseline_sharpe, baseline_return):
     df = pd.DataFrame(results)
 
     # Save sensitivity results
-    output_path = project_root / "output" / f"sensitivity_{symbol1}_{symbol2}.csv"
+    output_path = get_backtest_results_dir() / f"sensitivity_{symbol1}_{symbol2}.csv"
+    output_path.parent.mkdir(parents=True, exist_ok=True)
     df.to_csv(output_path, index=False)
     logger.info(f"\n[+] Sensitivity results saved: {output_path}")
 
@@ -255,7 +257,8 @@ def grid_search_optimization(symbol1, symbol2, baseline_sharpe, baseline_return)
     df = df.sort_values('sharpe', ascending=False)
 
     # Save full results
-    output_path = project_root / "output" / f"grid_search_{symbol1}_{symbol2}.csv"
+    output_path = get_backtest_results_dir() / f"grid_search_{symbol1}_{symbol2}.csv"
+    output_path.parent.mkdir(parents=True, exist_ok=True)
     df.to_csv(output_path, index=False)
     logger.info(f"\n[+] Grid search results saved: {output_path}")
 
@@ -294,7 +297,8 @@ def update_progress_chronicle(pair, phase, results_summary):
         phase: Phase name (e.g., "Sensitivity Analysis")
         results_summary: Dictionary with key findings
     """
-    chronicle_path = project_root / "reports" / "OPTIMIZATION_PROGRESS.md"
+    chronicle_path = PROJECT_ROOT / "docs" / "reports" / "OPTIMIZATION_PROGRESS.md"
+    chronicle_path.parent.mkdir(parents=True, exist_ok=True)
 
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
@@ -458,7 +462,8 @@ def main():
 
         # Save incremental results
         results_df = pd.DataFrame(all_results)
-        output_path = project_root / "output" / "pairs_optimization_results.csv"
+        output_path = get_backtest_results_dir() / "pairs_optimization_results.csv"
+        output_path.parent.mkdir(parents=True, exist_ok=True)
         results_df.to_csv(output_path, index=False)
         logger.info(f"\n[+] Incremental results saved: {output_path}")
 
@@ -493,7 +498,7 @@ def main():
         logger.info("  - Multi-pair portfolio optimization")
 
     logger.info(f"\n[+] All results saved: {output_path}")
-    logger.info(f"[+] Chronicle updated: {project_root / 'reports' / 'OPTIMIZATION_PROGRESS.md'}")
+    logger.info(f"[+] Chronicle updated: {PROJECT_ROOT / 'docs' / 'reports' / 'OPTIMIZATION_PROGRESS.md'}")
 
 
 if __name__ == "__main__":

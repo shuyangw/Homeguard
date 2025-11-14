@@ -44,6 +44,7 @@ from src.backtesting.engine.backtest_engine import BacktestEngine
 from src.backtesting.optimization.base_optimizer import BaseOptimizer
 from src.backtesting.regimes.detector import TrendDetector, VolatilityDetector, DrawdownDetector
 from src.backtesting.regimes.analyzer import RegimeAnalyzer
+from src.config import get_backtest_results_dir
 from src.utils import logger
 
 
@@ -382,7 +383,8 @@ class RegimeAwareOptimizer:
         """Export regime-aware optimization results."""
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         symbol_str = symbols if isinstance(symbols, str) else '_'.join(symbols)
-        output_dir = Path(f"C:/Users/qwqw1/Dropbox/cs/stonk/logs/{timestamp}_RegimeAware_{strategy_class.__name__}_{symbol_str}")
+        results_dir = get_backtest_results_dir()
+        output_dir = results_dir / f"{timestamp}_RegimeAware_{strategy_class.__name__}_{symbol_str}"
         output_dir.mkdir(parents=True, exist_ok=True)
 
         # Export regime parameters

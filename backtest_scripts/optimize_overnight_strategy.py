@@ -23,10 +23,10 @@ warnings.filterwarnings('ignore')
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from src.utils.logger import logger
+from src.config import get_backtest_results_dir
 
 DATA_DIR = Path('data/leveraged_etfs')
-REPORTS_DIR = Path('reports')
-REPORTS_DIR.mkdir(exist_ok=True)
+REPORTS_DIR = get_backtest_results_dir()
 
 # All available symbols
 BASELINE_SYMBOLS = [

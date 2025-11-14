@@ -14,6 +14,7 @@ from datetime import datetime, timedelta
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+from src.config import get_output_dir
 from src.visualization.charts.candlestick import CandlestickChart
 from src.visualization.charts.lightweight_html import LightweightChartsHTML
 from src.visualization.charts.mplfinance_chart import MplfinanceChart
@@ -74,7 +75,7 @@ def demo_lightweight_html_charts():
     trades_df = generate_sample_trades(price_data, num_trades=20)
 
     # Create output directory
-    output_dir = Path('output/charts_demo')
+    output_dir = get_output_dir() / 'examples' / 'charts_demo'
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # 1. Standard HTML chart
@@ -133,7 +134,7 @@ def demo_mplfinance_static_charts():
     trades_df = generate_sample_trades(price_data, num_trades=15)
 
     # Create output directory
-    output_dir = Path('output/charts_demo')
+    output_dir = get_output_dir() / 'examples' / 'charts_demo'
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # 1. PNG chart with default style
@@ -207,7 +208,7 @@ def demo_performance_comparison():
 
     import time
 
-    output_dir = Path('output/charts_demo/performance')
+    output_dir = get_output_dir() / 'examples' / 'charts_demo' / 'performance'
     output_dir.mkdir(parents=True, exist_ok=True)
 
     data_sizes = [100, 500, 1000, 5000, 10000]
@@ -252,7 +253,7 @@ def demo_auto_format_detection():
     logger.header("=== Auto Format Detection Demo ===")
 
     price_data = generate_sample_data(num_days=100)
-    output_dir = Path('output/charts_demo')
+    output_dir = get_output_dir() / 'examples' / 'charts_demo'
 
     # Test different extensions
     test_files = [
@@ -299,7 +300,7 @@ def main():
     logger.blank()
     logger.separator('=', 80)
     logger.success("All demonstrations completed!")
-    logger.info("Check the 'output/charts_demo' directory for generated charts")
+    logger.info(f"Check the '{get_output_dir() / 'examples' / 'charts_demo'}' directory for generated charts")
     logger.separator('=', 80)
 
 

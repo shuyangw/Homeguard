@@ -26,6 +26,7 @@ warnings.filterwarnings('ignore')
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from src.utils.logger import logger
+from src.config import get_backtest_results_dir
 
 DATA_DIR = Path('data/leveraged_etfs')
 
@@ -473,7 +474,7 @@ def main():
             results.append(result)
 
             # Save trades
-            output_path = Path(f'reports/overnight_v3_{group_name.replace(" ", "_").lower()}_trades.csv')
+            output_path = get_backtest_results_dir() / f'overnight_v3_{group_name.replace(" ", "_").lower()}_trades.csv'
             output_path.parent.mkdir(exist_ok=True)
             trades_df.to_csv(output_path, index=False)
             logger.success(f"  Saved to {output_path}")
@@ -505,7 +506,7 @@ def main():
     logger.success(f"  Best Win Rate: {best_winrate['name']} ({best_winrate['win_rate']:.1%})")
 
     # Save summary
-    summary_path = Path('reports/20251112_V3_FULL_UNIVERSE_COMPARISON.md')
+    summary_path = get_backtest_results_dir() / '20251112_V3_FULL_UNIVERSE_COMPARISON.md'
     with open(summary_path, 'w') as f:
         f.write("# Overnight Mean Reversion - Full Universe Test (V3)\n\n")
         f.write(f"**Date**: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")

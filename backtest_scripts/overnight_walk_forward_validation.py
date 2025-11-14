@@ -28,6 +28,12 @@ warnings.filterwarnings('ignore')
 # Add src to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from src.utils.logger import logger
+from src.config import get_backtest_results_dir
+
+# CRITICAL UPDATE (2025-11-13): Now using PRODUCTION modules for backtest parity
+# These match the exact implementations used in live trading
+from src.strategies.advanced.market_regime_detector import MarketRegimeDetector
+from src.strategies.advanced.bayesian_reversion_model import BayesianReversionModel
 
 # Data directory
 DATA_DIR = Path('data/leveraged_etfs')
@@ -109,175 +115,22 @@ WALK_FORWARD_PERIODS = [
 ]
 
 
-class SimpleRegimeDetector:
-    """Simplified regime detector for daily data."""
-
-    def classify_regime(self, spy_data, vix_data, date):
-        """Classify market regime based on momentum and volatility."""
-        spy = spy_data[spy_data.index <= date].copy()
-        vix = vix_data[vix_data.index <= date].copy()
-
-        if len(spy) < 200:
-            return 'SIDEWAYS', 0.5
-
-        # Calculate indicators
-        spy['sma_20'] = spy['Close'].rolling(20).mean()
-        spy['sma_50'] = spy['Close'].rolling(50).mean()
-        spy['sma_200'] = spy['Close'].rolling(200).mean()
-
-        current_price = float(spy['Close'].iloc[-1])
-        sma_20 = float(spy['sma_20'].iloc[-1])
-        sma_50 = float(spy['sma_50'].iloc[-1])
-        sma_200 = float(spy['sma_200'].iloc[-1])
-
-        # Momentum
-        if len(spy) >= 40:
-            sma_20_prev = spy['sma_20'].iloc[-20]
-            momentum = (sma_20 - sma_20_prev) / sma_20_prev if sma_20_prev != 0 else 0
-        else:
-            momentum = 0
-
-        # VIX percentile
-        vix_current = float(vix['Close'].iloc[-1])
-        vix_lookback = vix['Close'].iloc[-252:] if len(vix) >= 252 else vix['Close']
-        vix_percentile = float((vix_lookback < vix_current).sum() / len(vix_lookback) * 100)
-
-        # Classify regime
-        above_all = current_price > sma_20 and current_price > sma_50 and current_price > sma_200
-        below_all = current_price < sma_20 and current_price < sma_50 and current_price < sma_200
-
-        if above_all and momentum > 0.02 and vix_percentile < 30:
-            regime = 'STRONG_BULL'
-            confidence = 0.8
-        elif above_all and vix_percentile < 50:
-            regime = 'WEAK_BULL'
-            confidence = 0.7
-        elif below_all and vix_percentile > 70:
-            regime = 'BEAR'
-            confidence = 0.8
-        elif vix_percentile > 60:
-            regime = 'UNPREDICTABLE'
-            confidence = 0.6
-        else:
-            regime = 'SIDEWAYS'
-            confidence = 0.6
-
-        return regime, confidence
-
-
-class SimpleBayesianModel:
-    """Simplified Bayesian model for daily data."""
-
-    def __init__(self):
-        self.probabilities = {}
-        self.trained = False
-
-    def train(self, historical_data, regime_detector, spy_data, vix_data, train_start, train_end):
-        """Train on historical data."""
-        logger.info(f"Training Bayesian model from {train_start} to {train_end}...")
-
-        # Convert dates to timestamps
-        train_start_ts = pd.Timestamp(train_start)
-        train_end_ts = pd.Timestamp(train_end)
-
-        for symbol in historical_data.keys():
-            if symbol in ['SPY', '^VIX']:
-                continue
-
-            df = historical_data[symbol].copy()
-
-            # Ensure index is DatetimeIndex
-            if not isinstance(df.index, pd.DatetimeIndex):
-                logger.warning(f"  Skipping {symbol}: index is not DatetimeIndex (type: {type(df.index)})")
-                continue
-
-            # Filter to training period
-            df = df.loc[train_start_ts:train_end_ts]
-
-            if len(df) < 100:
-                continue
-
-            # Calculate overnight returns
-            df['overnight_return'] = (df['Open'].shift(-1) - df['Close']) / df['Close']
-            df['intraday_return'] = (df['Close'] - df['Open']) / df['Open']
-
-            # Classify regimes
-            regimes = []
-            for date in df.index:
-                regime, _ = regime_detector.classify_regime(spy_data, vix_data, date)
-                regimes.append(regime)
-            df['regime'] = regimes
-
-            # Calculate probabilities by regime and intraday move
-            self.probabilities[symbol] = {}
-
-            for regime in ['STRONG_BULL', 'WEAK_BULL', 'SIDEWAYS', 'UNPREDICTABLE', 'BEAR']:
-                regime_data = df[df['regime'] == regime].copy()
-
-                if len(regime_data) < 30:
-                    continue
-
-                buckets = [
-                    ('large_down', -1.0, -0.03),
-                    ('medium_down', -0.03, -0.015),
-                    ('small_down', -0.015, -0.005),
-                    ('flat', -0.005, 0.005),
-                    ('small_up', 0.005, 0.015),
-                    ('medium_up', 0.015, 0.03),
-                    ('large_up', 0.03, 1.0)
-                ]
-
-                self.probabilities[symbol][regime] = {}
-
-                for bucket_name, min_val, max_val in buckets:
-                    bucket_data = regime_data[
-                        (regime_data['intraday_return'] >= min_val) &
-                        (regime_data['intraday_return'] < max_val)
-                    ]
-
-                    if len(bucket_data) < 10:
-                        continue
-
-                    overnight_returns = bucket_data['overnight_return'].dropna()
-
-                    if len(overnight_returns) < 10:
-                        continue
-
-                    win_rate = (overnight_returns > 0).sum() / len(overnight_returns)
-                    expected_return = overnight_returns.mean()
-
-                    self.probabilities[symbol][regime][bucket_name] = {
-                        'probability': win_rate,
-                        'expected_return': expected_return,
-                        'sample_size': len(overnight_returns),
-                        'std': overnight_returns.std()
-                    }
-
-        self.trained = True
-        logger.success(f"  Training complete! Analyzed {len(self.probabilities)} symbols")
-
-    def get_probability(self, symbol, regime, intraday_return):
-        """Get probability for given conditions."""
-        if symbol not in self.probabilities:
-            return None
-        if regime not in self.probabilities[symbol]:
-            return None
-
-        buckets = [
-            ('large_down', -1.0, -0.03),
-            ('medium_down', -0.03, -0.015),
-            ('small_down', -0.015, -0.005),
-            ('flat', -0.005, 0.005),
-            ('small_up', 0.005, 0.015),
-            ('medium_up', 0.015, 0.03),
-            ('large_up', 0.03, 1.0)
-        ]
-
-        for bucket_name, min_val, max_val in buckets:
-            if min_val <= intraday_return < max_val:
-                return self.probabilities[symbol][regime].get(bucket_name)
-
-        return None
+# ============================================================================
+# DEPRECATED CLASSES - Removed
+# ============================================================================
+# The original backtest implementations (SimpleRegimeDetector and
+# SimpleBayesianModel) have been removed. They had different bucket boundaries
+# than production, causing theoretical parity issues.
+#
+# OLD (backtest):  large_down [-1.0, -0.03), medium_down [-0.03, -0.015)
+# NEW (production): large_down [-1.0, -0.05), medium_down [-0.05, -0.03)
+#
+# This caused a 2% intraday move to categorize differently between backtest
+# and live trading, leading to different signal generation.
+#
+# Now uses MarketRegimeDetector and BayesianReversionModel from
+# src.strategies.advanced (imported at top of file).
+# ============================================================================
 
 
 def load_data():
@@ -303,6 +156,10 @@ def load_data():
     if isinstance(vix_df.columns, pd.MultiIndex):
         vix_df.columns = [col[0] for col in vix_df.columns]
 
+    # Normalize column names to lowercase (production expects lowercase)
+    spy_df.columns = [col.lower() for col in spy_df.columns]
+    vix_df.columns = [col.lower() for col in vix_df.columns]
+
     data['SPY'] = spy_df
     data['^VIX'] = vix_df
 
@@ -318,6 +175,8 @@ def load_data():
             # Flatten multi-index columns
             if isinstance(df.columns, pd.MultiIndex):
                 df.columns = [col[0] for col in df.columns]
+            # Normalize column names to lowercase (production expects lowercase)
+            df.columns = [col.lower() for col in df.columns]
             data[symbol] = df
             loaded += 1
 
@@ -351,7 +210,7 @@ def backtest_period(data, regime_detector, bayesian_model, test_start, test_end,
             continue
 
         # Check VIX
-        vix_value = float(vix_data[vix_data.index <= date]['Close'].iloc[-1])
+        vix_value = float(vix_data[vix_data.index <= date]['close'].iloc[-1])
         if vix_value > config['vix_threshold']:
             continue
 
@@ -369,11 +228,11 @@ def backtest_period(data, regime_detector, bayesian_model, test_start, test_end,
             today = symbol_data.loc[date]
 
             if isinstance(today, pd.Series):
-                today_open = float(today['Open'])
-                today_close = float(today['Close'])
+                today_open = float(today['open'])
+                today_close = float(today['close'])
             else:
-                today_open = float(today['Open'].iloc[0])
-                today_close = float(today['Close'].iloc[0])
+                today_open = float(today['open'].iloc[0])
+                today_close = float(today['close'].iloc[0])
 
             intraday_return = (today_close - today_open) / today_open
 
@@ -381,7 +240,8 @@ def backtest_period(data, regime_detector, bayesian_model, test_start, test_end,
                 continue
 
             # Get probability from model
-            prob_data = bayesian_model.get_probability(symbol, regime, intraday_return)
+            # Updated 2025-11-13: Production uses get_reversion_probability()
+            prob_data = bayesian_model.get_reversion_probability(symbol, regime, intraday_return)
 
             if prob_data is None:
                 continue
@@ -397,7 +257,7 @@ def backtest_period(data, regime_detector, bayesian_model, test_start, test_end,
             if next_idx >= len(symbol_data):
                 continue
 
-            next_open = float(symbol_data.iloc[next_idx]['Open'])
+            next_open = float(symbol_data.iloc[next_idx]['open'])
             overnight_return = (next_open - today_close) / today_close
 
             # Apply stop-loss
@@ -498,7 +358,8 @@ def run_walk_forward_validation():
         return None
 
     # Initialize components
-    regime_detector = SimpleRegimeDetector()
+    # Updated 2025-11-13: Use production module for theoretical parity
+    regime_detector = MarketRegimeDetector()
 
     # Results storage
     all_results = []
@@ -514,11 +375,25 @@ def run_walk_forward_validation():
         logger.info(f"Test:  {period['test_start']} to {period['test_end']}")
 
         # Train Bayesian model on training period
-        bayesian_model = SimpleBayesianModel()
+        # Updated 2025-11-13: Use production module for theoretical parity
+        bayesian_model = BayesianReversionModel(data_frequency='daily')
+
+        # Filter data to training period (production train() doesn't take date params)
+        train_start_ts = pd.Timestamp(period['train_start'])
+        train_end_ts = pd.Timestamp(period['train_end'])
+
+        train_data = {}
+        for symbol, df in data.items():
+            if symbol in ['SPY', '^VIX']:
+                # Keep full data for regime detection
+                train_data[symbol] = df
+            else:
+                # Filter symbol data to training period
+                train_data[symbol] = df.loc[train_start_ts:train_end_ts]
+
         bayesian_model.train(
-            data, regime_detector,
-            data['SPY'], data['^VIX'],
-            period['train_start'], period['train_end']
+            train_data, regime_detector,
+            train_data['SPY'], train_data['^VIX']
         )
 
         # Backtest on test period
@@ -606,27 +481,27 @@ def run_walk_forward_validation():
 
     logger.info("\nTarget: Average Sharpe > 3.0")
     if avg_sharpe > 3.0:
-        logger.success(f"  ✓ PASSED: {avg_sharpe:.2f} > 3.0")
+        logger.success(f"  [PASS] {avg_sharpe:.2f} > 3.0")
     else:
-        logger.error(f"  ✗ FAILED: {avg_sharpe:.2f} < 3.0")
+        logger.error(f"  [FAIL] {avg_sharpe:.2f} < 3.0")
 
     logger.info("\nTarget: Win Rate > 55% in at least 7/8 periods")
     if periods_above_55_wr >= 7:
-        logger.success(f"  ✓ PASSED: {periods_above_55_wr}/8 periods")
+        logger.success(f"  [PASS] {periods_above_55_wr}/8 periods")
     else:
-        logger.error(f"  ✗ FAILED: {periods_above_55_wr}/8 periods")
+        logger.error(f"  [FAIL] {periods_above_55_wr}/8 periods")
 
     logger.info("\nTarget: No period with < -15% return")
     if periods_below_neg15 == 0:
-        logger.success(f"  ✓ PASSED: All periods > -15%")
+        logger.success(f"  [PASS] All periods > -15%")
     else:
-        logger.error(f"  ✗ FAILED: {periods_below_neg15} periods < -15%")
+        logger.error(f"  [FAIL] {periods_below_neg15} periods < -15%")
 
     logger.info("\nTarget: Max DD < -10% in all periods")
     if periods_max_dd_ok == 8:
-        logger.success(f"  ✓ PASSED: All periods have DD > -10%")
+        logger.success(f"  [PASS] All periods have DD > -10%")
     else:
-        logger.error(f"  ✗ FAILED: {8 - periods_max_dd_ok} periods have DD < -10%")
+        logger.error(f"  [FAIL] {8 - periods_max_dd_ok} periods have DD < -10%")
 
     # Comparison to 2024-2025 baseline
     logger.info("\n" + "="*80)
@@ -644,10 +519,10 @@ def run_walk_forward_validation():
     logger.info(f"\nInterpretation:")
 
     if avg_sharpe >= baseline_sharpe * 0.7:
-        logger.success(f"  ✓ ROBUST: Average Sharpe is {avg_sharpe/baseline_sharpe*100:.0f}% of baseline")
+        logger.success(f"  [ROBUST] Average Sharpe is {avg_sharpe/baseline_sharpe*100:.0f}% of baseline")
         logger.success(f"  Strategy performance is consistent across time")
     else:
-        logger.error(f"  ✗ OVERFITTED: Average Sharpe only {avg_sharpe/baseline_sharpe*100:.0f}% of baseline")
+        logger.error(f"  [OVERFITTED] Average Sharpe only {avg_sharpe/baseline_sharpe*100:.0f}% of baseline")
         logger.error(f"  2024-2025 results may have been lucky")
 
     # Save results
@@ -655,8 +530,7 @@ def run_walk_forward_validation():
     logger.info("SAVING RESULTS")
     logger.info("="*80)
 
-    output_dir = Path('reports')
-    output_dir.mkdir(exist_ok=True)
+    output_dir = get_backtest_results_dir()
 
     # Save CSV
     csv_path = output_dir / '20251112_WALK_FORWARD_RESULTS.csv'
@@ -689,9 +563,9 @@ def run_walk_forward_validation():
         f.write("\n## Key Findings\n\n")
 
         if avg_sharpe >= 3.0:
-            f.write("✓ **PASSED**: Strategy is robust across time periods\n\n")
+            f.write("[PASS] **PASSED**: Strategy is robust across time periods\n\n")
         else:
-            f.write("✗ **FAILED**: Strategy shows significant performance degradation\n\n")
+            f.write("[FAIL] **FAILED**: Strategy shows significant performance degradation\n\n")
 
         f.write(f"- Best period: {results_df.loc[results_df['sharpe_ratio'].idxmax(), 'period']} "
                f"(Sharpe: {results_df['sharpe_ratio'].max():.2f})\n")
@@ -702,7 +576,7 @@ def run_walk_forward_validation():
     logger.success(f"  Saved report: {report_path}")
 
     total_time = (datetime.now() - start_time).total_seconds() / 60
-    logger.info(f"\n✓ Total execution time: {total_time:.0f} minutes")
+    logger.info(f"\n[DONE] Total execution time: {total_time:.0f} minutes")
 
     return results_df
 

@@ -18,10 +18,10 @@ import numpy as np
 from pathlib import Path
 from datetime import datetime
 from src.utils.logger import logger
+from src.config import get_backtest_results_dir
 
 DATA_DIR = Path('data/leveraged_etfs')
-REPORTS_DIR = Path('reports')
-REPORTS_DIR.mkdir(exist_ok=True)
+REPORTS_DIR = get_backtest_results_dir()
 
 # Optimal configuration
 OPTIMAL_CONFIG = {
