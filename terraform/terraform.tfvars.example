@@ -1,0 +1,60 @@
+# Terraform Variables - Example Configuration
+# Copy this file to terraform.tfvars and customize for your deployment
+
+# ===== REQUIRED SETTINGS =====
+
+# AWS region to deploy to
+aws_region = "us-east-1"
+
+# Name of your EC2 key pair (must exist in AWS Console -> EC2 -> Key Pairs)
+# Create one first: EC2 Console -> Key Pairs -> Create Key Pair
+key_pair_name = "my-key-pair"
+
+# Your IP address for SSH access (get your IP from https://whatismyip.com)
+# Format: ["YOUR_IP/32"] for single IP or ["0.0.0.0/0"] for anywhere (not recommended)
+ssh_allowed_cidrs = ["1.2.3.4/32"]  # Replace with your actual IP
+
+# Git repository settings
+git_repo_url = "https://github.com/shuyangw/Homeguard.git"
+git_branch   = "main"
+
+# Alpaca API credentials (paper trading)
+# IMPORTANT: For security, set these via environment variables instead:
+#   export TF_VAR_alpaca_key_id="your_key_here"
+#   export TF_VAR_alpaca_secret="your_secret_here"
+# Or uncomment below (less secure - don't commit this file to git!)
+# alpaca_key_id = "your_paper_key_id_here"
+# alpaca_secret = "your_paper_secret_here"
+
+# ===== INSTANCE CONFIGURATION =====
+
+# Instance type (t4g.small = $12/month, t4g.medium = $24/month)
+instance_type = "t4g.small"
+
+# Root volume size in GB (8 GB = $0.64/month)
+root_volume_size = 8
+
+# Protect volume from deletion when instance terminates
+delete_volume_on_termination = false
+
+# Environment name
+environment = "production"
+
+# ===== OPTIONAL FEATURES (Set to true to enable) =====
+
+# Static IP address (costs $0/month if instance running, $3.60/month if stopped)
+create_elastic_ip = false
+
+# Detailed CloudWatch monitoring (costs $2.10/month)
+enable_detailed_monitoring = false
+
+# CloudWatch Logs (costs ~$0.50-1/month)
+create_cloudwatch_logs = false
+log_retention_days     = 30
+
+# Email alerts via SNS (free tier eligible)
+create_sns_alerts      = false
+alert_email            = ""  # Set your email if create_sns_alerts = true
+
+# CloudWatch alarms for instance monitoring
+create_cloudwatch_alarms = false
