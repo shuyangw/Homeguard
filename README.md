@@ -98,7 +98,7 @@ python src\backtest_runner.py \
 
 **Output**: Generates CSV + HTML reports with symbol rankings and summary statistics
 
-[Read the Backtesting Documentation](docs/BACKTESTING_README.md) | [Sweep Mode Guide](docs/SWEEP_MIGRATION_GUIDE.md)
+[Read the Backtesting Documentation](docs/guides/BACKTESTING_README.md) | [Backtesting Guide](docs/guides/BACKTESTING_GUIDE.md)
 
 #### QuantStats Reporting
 
@@ -154,7 +154,7 @@ portfolio = engine.run_and_report(
 - `daily_returns.csv` - Daily returns data
 - `equity_curve.csv` - Portfolio value over time
 
-**Log Location:** Reports are saved to the `log_output_dir` configured in [settings.ini](settings.ini.example), not in the repository. See [docs/quantstats/LOG_LOCATION_UPDATE.md](docs/quantstats/LOG_LOCATION_UPDATE.md) for details
+**Log Location:** Reports are saved to the `log_output_dir` configured in [settings.ini](settings.ini.example), not in the repository
 
 #### Regime Analysis & Advanced Validation
 
@@ -239,10 +239,12 @@ python scripts/trading/demo_omr_paper_trading.py
 ```
 
 **Documentation**:
-- **[Live Trading System Architecture](docs/architecture/LIVE_TRADING_SYSTEM.md)** - Complete system documentation
+- **[Live Paper Trading Guide](docs/guides/LIVE_PAPER_TRADING.md)** - Complete setup and usage guide
+- **[Quick Start Trading](docs/guides/QUICK_START_TRADING.md)** - Get started quickly
+- **[OMR Strategy Architecture](docs/architecture/OMR_STRATEGY_ARCHITECTURE.md)** - Overnight mean reversion deployment
 - [Trading Scripts](scripts/trading/) - All trading utilities and tests
 
-[See full live trading documentation →](docs/architecture/LIVE_TRADING_SYSTEM.md)
+[See full live trading documentation →](docs/guides/LIVE_PAPER_TRADING.md)
 
 ## Quick Start
 
@@ -325,27 +327,35 @@ Homeguard/
 ### Setup and Configuration
 - [Setup Instructions](SETUP.md) - Initial configuration and setup
 
+### Architecture
+- **[Architecture Overview](docs/architecture/ARCHITECTURE_OVERVIEW.md)** - High-level system design and components
+- [Module Reference](docs/architecture/MODULE_REFERENCE.md) - Complete module documentation
+- [Data Flow](docs/architecture/DATA_FLOW.md) - Data pipeline and flow diagrams
+
 ### Data Engine
 - [Data Engine Documentation](src/data_engine/README.md) - Detailed API and usage guide
-- [Data Ingestion Pipeline Architecture](docs/DATA_INGESTION_PIPELINE.md) - System design and flow
+- [Data Ingestion Pipeline Guide](docs/guides/DATA_INGESTION_PIPELINE.md) - System design and flow
 
 ### Backtesting
-- [Backtesting Guide](docs/BACKTESTING_GUIDE.md) - Complete user guide and walkthrough
-- [API Reference](docs/API_REFERENCE.md) - Detailed API documentation
-- [Backtesting System README](docs/BACKTESTING_README.md) - Quick start and overview
+- [Backtesting Guide](docs/guides/BACKTESTING_GUIDE.md) - Complete user guide and walkthrough
+- [Backtesting System README](docs/guides/BACKTESTING_README.md) - Quick start and overview
+
+### Live Trading
+- **[Live Paper Trading Guide](docs/guides/LIVE_PAPER_TRADING.md)** - Complete setup and usage
+- [Quick Start Trading](docs/guides/QUICK_START_TRADING.md) - Get started quickly
+- [OMR Strategy Architecture](docs/architecture/OMR_STRATEGY_ARCHITECTURE.md) - Overnight mean reversion
 
 ### Regime Analysis & Advanced Validation
-- **[Regime Analysis User Guide](docs/guides/REGIME_ANALYSIS_USER_GUIDE.md) - Complete guide for GUI, code, and CLI usage**
+- **[Regime Analysis User Guide](docs/guides/REGIME_ANALYSIS_USER_GUIDE.md)** - Complete guide for GUI, code, and CLI usage
 - [Regime-Based Testing Architecture](docs/architecture/REGIME_BASED_TESTING.md) - Technical design and algorithms
 - [CLI Scripts Guide](backtest_scripts/README_REGIME_TESTING.md) - Advanced validation tools
 - [Implementation Summary](docs/progress/OPTIMIZATION_AND_REGIME_DETECTION_SUMMARY.md) - Complete feature overview
-- [Documentation Index](docs/REGIME_ANALYSIS_DOCS_INDEX.md) - All regime analysis documentation
+- [Documentation Index](docs/guides/REGIME_ANALYSIS_DOCS_INDEX.md) - All regime analysis documentation
 
 ### QuantStats Reporting
-- **[QuantStats Documentation](docs/quantstats/README.md) - Complete QuantStats guide**
+- **[QuantStats Documentation](docs/quantstats/README.md)** - Complete QuantStats guide
 - [Metrics Explained](docs/quantstats/QUANTSTATS_METRICS_EXPLAINED.md) - Understanding performance metrics
 - [Migration Guide](docs/quantstats/MIGRATION_GUIDE_FOR_USERS.md) - Upgrading from TradingView charts
-- [Log Configuration](docs/quantstats/LOG_LOCATION_UPDATE.md) - Where reports are saved
 
 ## Features
 
@@ -394,7 +404,7 @@ make clean             # Clean Python cache files
 make help              # Show all commands
 ```
 
-See [MAKE_COMMANDS.md](MAKE_COMMANDS.md) for complete command reference.
+See [MAKE_COMMANDS.md](docs/guides/MAKE_COMMANDS.md) for complete command reference.
 
 ### Contributing
 
