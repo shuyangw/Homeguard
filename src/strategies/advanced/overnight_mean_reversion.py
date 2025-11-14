@@ -17,7 +17,7 @@ from typing import Dict, List, Optional, Tuple
 from datetime import datetime, time, timedelta
 from pathlib import Path
 
-from src.strategies.base import BaseStrategy
+from src.backtesting.base.strategy import BaseStrategy
 from src.strategies.advanced.market_regime_detector import MarketRegimeDetector
 from src.strategies.advanced.bayesian_reversion_model import BayesianReversionModel
 from src.strategies.advanced.overnight_signal_generator import OvernightReversionSignals
