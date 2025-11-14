@@ -21,11 +21,11 @@ sys.path.append(str(Path(__file__).parent.parent / 'src'))
 from strategies.advanced.overnight_mean_reversion import OvernightMeanReversionStrategy
 from strategies.advanced.market_regime_detector import MarketRegimeDetector
 from utils.logger import logger
+from config import get_backtest_results_dir
 
 # Paths
 DATA_DIR = Path('data/leveraged_etfs')
-REPORTS_DIR = Path('reports')
-REPORTS_DIR.mkdir(exist_ok=True)
+REPORTS_DIR = get_backtest_results_dir()
 
 # Current optimal 20 symbols
 OPTIMAL_SYMBOLS = [

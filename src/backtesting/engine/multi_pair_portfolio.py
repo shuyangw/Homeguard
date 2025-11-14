@@ -21,6 +21,7 @@ from src.strategies.advanced.pairs_trading import PairsTrading
 from src.backtesting.engine.backtest_engine import BacktestEngine
 from src.backtesting.utils.risk_config import RiskConfig
 from src.backtesting.engine.metrics import PerformanceMetrics
+from src.config import get_backtest_results_dir
 
 
 @dataclass
@@ -311,15 +312,17 @@ class MultiPairPortfolio:
             logger.warning(f"  [NOT READY] Sharpe {metrics['adjusted_sharpe']:.3f} < 0.80")
             logger.warning(f"              Gap: {gap:.3f}")
 
-    def save_results(self, output_dir: Path = Path('output')):
+    def save_results(self, output_dir: Optional[Path] = None):
         """
         Save portfolio results to CSV files.
 
         Args:
-            output_dir: Directory to save results
+            output_dir: Directory to save results (defaults to backtest results directory)
         """
+        if output_dir is None:
+            output_dir = get_backtest_results_dir()
         output_dir = Path(output_dir)
-        output_dir.mkdir(exist_ok=True)
+        output_dir.mkdir(exist_ok=True, parents=True)
 
         # Individual pair results
         pair_data = []

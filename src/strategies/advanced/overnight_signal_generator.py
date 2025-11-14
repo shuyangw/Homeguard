@@ -33,7 +33,8 @@ class OvernightReversionSignals:
         symbols: Optional[List[str]] = None,
         min_probability: float = 0.55,
         min_expected_return: float = 0.002,
-        max_positions: int = 5
+        max_positions: int = 5,
+        skip_bear_regime: bool = True
     ):
         """
         Initialize signal generator.
@@ -46,12 +47,16 @@ class OvernightReversionSignals:
             min_probability: Minimum win rate to generate signal
             min_expected_return: Minimum expected return to generate signal
             max_positions: Maximum number of positions to take
+            skip_bear_regime: If True, skip all trades during BEAR regime (default: True)
+                            CRITICAL: Backtests show BEAR regime has negative edge (-1.31 Sharpe)
+                            and causes 100% of catastrophic drawdowns.
         """
         self.regime_detector = regime_detector
         self.bayesian_model = bayesian_model
         self.min_probability = min_probability
         self.min_expected_return = min_expected_return
         self.max_positions = max_positions
+        self.skip_bear_regime = skip_bear_regime
 
         # Symbol list - injected or default from ETFUniverse
         if symbols is None:
@@ -62,6 +67,12 @@ class OvernightReversionSignals:
         else:
             self.symbols = symbols
             logger.info(f"Using custom symbol universe: {len(self.symbols)} symbols")
+
+        # Log BEAR regime filter status
+        if self.skip_bear_regime:
+            logger.info("BEAR regime filter ENABLED - will skip trades in bear markets")
+        else:
+            logger.warning("BEAR regime filter DISABLED - trades allowed in all regimes")
 
     def generate_signals(
         self,
@@ -97,6 +108,14 @@ class OvernightReversionSignals:
         )
 
         logger.info(f"Current regime: {regime} (confidence: {regime_confidence:.2f})")
+
+        # CRITICAL: Skip trading in BEAR regime (negative edge, causes catastrophic losses)
+        if self.skip_bear_regime and regime == 'BEAR':
+            logger.warning(
+                "BEAR regime detected - SKIPPING ALL TRADES "
+                "(BEAR has -1.31 Sharpe, 100% of BEAR trades occurred in negative months)"
+            )
+            return []
 
         # Get regime-specific parameters
         regime_params = self.regime_detector.get_regime_parameters(regime)

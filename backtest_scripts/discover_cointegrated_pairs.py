@@ -28,6 +28,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from src.backtesting.engine.data_loader import DataLoader
 from src.backtesting.utils.pairs import PairsUtils
 from src.utils.logger import Logger
+from src.config import get_backtest_results_dir
 
 logger = Logger()
 
@@ -330,8 +331,8 @@ def main():
     display_top_pairs(results_df, top_n=20)
 
     # Save results
-    output_path = Path(__file__).parent.parent / 'output' / 'cointegrated_pairs_discovery.csv'
-    output_path.parent.mkdir(exist_ok=True)
+    output_path = get_backtest_results_dir() / 'cointegrated_pairs_discovery.csv'
+    output_path.parent.mkdir(parents=True, exist_ok=True)
     save_results(results_df, output_path)
 
     # Recommendations

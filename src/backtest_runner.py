@@ -129,15 +129,16 @@ def run_backtest(
         fees=fees
     )
 
-    # Generate output directory for logs/reports (use configured log_output_dir from settings.ini)
+    # Generate output directory for results (use configured output_dir from settings.ini)
     if output_dir is None and (quantstats or visualize):
         from datetime import datetime
+        from src.config import get_backtest_results_dir
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         symbols_str = '_'.join(symbol_list)
-        log_base_dir = get_log_output_dir()
+        results_dir = get_backtest_results_dir()
         # Use run_name if provided, otherwise fall back to strategy_name
         display_name = run_name if run_name else strategy_name
-        output_dir = str(log_base_dir / f"{timestamp}_{display_name}_{symbols_str}")
+        output_dir = str(results_dir / f"{timestamp}_{display_name}_{symbols_str}")
 
     output_path = Path(output_dir) if output_dir else None
 

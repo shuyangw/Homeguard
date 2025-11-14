@@ -235,12 +235,13 @@ class BacktestEngine:
         Example:
             >>> engine = BacktestEngine(initial_capital=50000, fees=0.001)
             >>> strategy = MovingAverageCrossover(fast=10, slow=50)
+            >>> from src.config import get_backtest_results_dir
             >>> portfolio = engine.run_and_report(
             ...     strategy=strategy,
             ...     symbols=['AAPL'],
             ...     start_date='2024-01-01',
             ...     end_date='2024-12-31',
-            ...     output_dir=Path('logs/backtest_001')
+            ...     output_dir=get_backtest_results_dir() / 'backtest_001'
             ... )
         """
         # Run the backtest

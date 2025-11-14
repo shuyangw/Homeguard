@@ -246,7 +246,7 @@ class ExecutionEngine:
             # Execute orders in parallel (simplified - can use threading/asyncio for true parallelism)
             for order_params in orders:
                 try:
-                    result = self.execute_order(**order_params, wait_for_fill=False)
+                    result = self.execute_order(**order_params)
                     results.append(result)
                 except Exception as e:
                     logger.error(f"Batch order failed: {e}")

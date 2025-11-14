@@ -213,6 +213,37 @@ python backtest_scripts/regime_analysis_example.py
 - [CLI Scripts Guide](backtest_scripts/README_REGIME_TESTING.md) - Advanced validation tools
 - [Implementation Summary](docs/progress/OPTIMIZATION_AND_REGIME_DETECTION_SUMMARY.md) - Feature overview
 
+### Live Trading System
+
+**NEW!** Production-grade paper trading platform for live market execution.
+
+Bridge the gap between backtesting and live trading with our comprehensive paper trading system. Test strategies in real-time market conditions with zero risk using Alpaca paper trading accounts.
+
+**Key Features:**
+- Paper Trading: Risk-free live testing with $100K virtual capital
+- Alpaca Integration: Real-time market data and order execution
+- Strategy Adapters: Convert backtest strategies to live trading
+- Portfolio Health Checks: Pre-trade validation and risk management
+- Comprehensive Logging: CSV + console logging with audit trails
+- Advanced Strategies: Overnight mean reversion with Bayesian probability model
+- Market Regime Detection: Automatic market condition classification
+- Position Management: Risk limits, stop losses, exposure tracking
+
+**Quick Start**:
+```bash
+# Test Alpaca connection
+python scripts/trading/test_alpaca_connection.py
+
+# Run overnight mean reversion paper trading
+python scripts/trading/demo_omr_paper_trading.py
+```
+
+**Documentation**:
+- **[Live Trading System Architecture](docs/architecture/LIVE_TRADING_SYSTEM.md)** - Complete system documentation
+- [Trading Scripts](scripts/trading/) - All trading utilities and tests
+
+[See full live trading documentation →](docs/architecture/LIVE_TRADING_SYSTEM.md)
+
 ## Quick Start
 
 ### 1. Installation

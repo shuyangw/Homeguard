@@ -15,6 +15,7 @@ import numpy as np
 from pathlib import Path
 from datetime import datetime, timedelta
 from src.utils.logger import logger
+from src.config import get_backtest_results_dir
 
 DATA_DIR = Path('data/leveraged_etfs')
 
@@ -430,7 +431,7 @@ def main():
     logger.info(f"Stop-Out Rate: {results['stop_out_rate']*100:.1f}%")
 
     # Save trades
-    trades_file = Path('reports/20251112_LAST_MONTH_TRADES.csv')
+    trades_file = get_backtest_results_dir() / '20251112_LAST_MONTH_TRADES.csv'
     results['trades'].to_csv(trades_file, index=False)
     logger.success(f"\nSaved trades to: {trades_file}")
 

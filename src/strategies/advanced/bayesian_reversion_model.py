@@ -15,6 +15,7 @@ import pickle
 from pathlib import Path
 from src.utils.logger import logger
 from src.strategies.advanced.market_regime_detector import MarketRegimeDetector
+from src.config import get_models_dir
 
 
 class BayesianReversionModel:
@@ -39,18 +40,20 @@ class BayesianReversionModel:
     # Minimum sample size for statistical significance
     MIN_SAMPLE_SIZE = 30
 
-    def __init__(self, lookback_years: int = 10):
+    def __init__(self, lookback_years: int = 10, data_frequency: str = 'minute'):
         """
         Initialize the Bayesian reversion model.
 
         Args:
             lookback_years: Number of years of historical data to use
+            data_frequency: 'minute' for live trading, 'daily' for backtesting
         """
         self.lookback_years = lookback_years
+        self.data_frequency = data_frequency
         self.regime_probabilities = {}
         self.trained = False
         self.training_stats = {}
-        self.model_path = Path('models/bayesian_reversion_model.pkl')
+        self.model_path = get_models_dir() / 'bayesian_reversion_model.pkl'
 
     def train(
         self,
@@ -63,12 +66,13 @@ class BayesianReversionModel:
         Train the model on historical data.
 
         Args:
-            historical_data: Dict of symbol -> DataFrame with minute data
+            historical_data: Dict of symbol -> DataFrame (minute or daily data)
             regime_detector: Trained regime detector
             spy_data: SPY daily data for regime detection
             vix_data: VIX daily data for regime detection
         """
         logger.info("Training Bayesian Reversion Model")
+        logger.info(f"Data frequency: {self.data_frequency}")
         logger.info("="*60)
 
         # Initialize probability tables
@@ -86,8 +90,11 @@ class BayesianReversionModel:
         for symbol, data in historical_data.items():
             logger.info(f"Processing {symbol}...")
 
-            # Calculate daily metrics
-            daily_data = self._calculate_daily_metrics(data)
+            # Calculate daily metrics (handles both minute and daily data)
+            if self.data_frequency == 'daily':
+                daily_data = self._calculate_daily_metrics_from_daily(data)
+            else:
+                daily_data = self._calculate_daily_metrics(data)
 
             # Add regime labels
             daily_data = self._add_regime_labels(
@@ -185,10 +192,55 @@ class BayesianReversionModel:
                 })
 
             except Exception as e:
-                logger.debug(f"Error processing {date}: {e}")
+                # Skip error (logger.debug not available)
                 continue
 
+        # Return DataFrame with date index, handle empty case
+        if not daily_metrics:
+            # Return empty DataFrame with expected columns
+            return pd.DataFrame(columns=['open', 'close_3_50', 'next_open', 'intraday_return', 'overnight_return'])
+
         return pd.DataFrame(daily_metrics).set_index('date')
+
+    def _calculate_daily_metrics_from_daily(self, daily_data: pd.DataFrame) -> pd.DataFrame:
+        """
+        Calculate daily metrics from daily OHLC data (for backtesting).
+
+        For daily data, we use:
+        - intraday_return = (Close - Open) / Open
+        - overnight_return = (Next Open - Close) / Close
+
+        Note: This uses market close (4:00 PM) instead of 3:50 PM.
+        """
+        metrics = []
+
+        for i in range(len(daily_data) - 1):
+            try:
+                row = daily_data.iloc[i]
+                next_row = daily_data.iloc[i + 1]
+
+                # Calculate returns (use lowercase column names)
+                intraday_return = (row['close'] - row['open']) / row['open']
+                overnight_return = (next_row['open'] - row['close']) / row['close']
+
+                metrics.append({
+                    'date': row.name,
+                    'open': row['open'],
+                    'close_3_50': row['close'],  # Actually 4:00 PM but kept for consistency
+                    'next_open': next_row['open'],
+                    'intraday_return': intraday_return,
+                    'overnight_return': overnight_return
+                })
+
+            except Exception as e:
+                # Skip error (logger.debug not available)
+                continue
+
+        if not metrics:
+            # Return empty DataFrame with correct structure
+            return pd.DataFrame(columns=['open', 'close_3_50', 'next_open', 'intraday_return', 'overnight_return'])
+
+        return pd.DataFrame(metrics).set_index('date')
 
     def _add_regime_labels(
         self,

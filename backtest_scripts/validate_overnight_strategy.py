@@ -21,6 +21,7 @@ warnings.filterwarnings('ignore')
 # Add src to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from src.utils.logger import logger
+from src.config import get_backtest_results_dir
 
 # Data directory
 DATA_DIR = Path('data/leveraged_etfs')
@@ -457,13 +458,13 @@ def main():
         logger.info("\n[Step 5] Saving results...")
 
         # Save trades to CSV
-        output_path = Path('reports/overnight_validation_trades.csv')
+        output_path = get_backtest_results_dir() / 'overnight_validation_trades.csv'
         output_path.parent.mkdir(exist_ok=True)
         trades_df.to_csv(output_path, index=False)
         logger.success(f"  Saved trades to {output_path}")
 
         # Generate summary report
-        report_path = Path('reports/20251112_OVERNIGHT_VALIDATION_RESULTS.md')
+        report_path = get_backtest_results_dir() / '20251112_OVERNIGHT_VALIDATION_RESULTS.md'
 
         with open(report_path, 'w') as f:
             f.write("# Overnight Mean Reversion Strategy - Validation Results\n\n")

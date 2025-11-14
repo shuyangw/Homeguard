@@ -15,6 +15,7 @@ from src.strategies.advanced.market_regime_detector import MarketRegimeDetector
 from src.strategies.advanced.bayesian_reversion_model import BayesianReversionModel
 from src.strategies.universe import ETFUniverse
 from src.trading.brokers.broker_interface import BrokerInterface
+from src.trading.utils.portfolio_health_check import PortfolioHealthChecker
 from src.utils.logger import logger
 
 
@@ -95,17 +96,28 @@ class OMRLiveAdapter(StrategyAdapter):
         self.min_probability = min_probability
         self.min_expected_return = min_expected_return
 
+        # Initialize portfolio health checker
+        self.health_checker = PortfolioHealthChecker(
+            broker=broker,
+            min_buying_power=1000.0,
+            min_portfolio_value=5000.0,
+            max_positions=max_positions,
+            max_position_age_hours=48
+        )
+
         logger.info("OMR Strategy Configuration:")
         logger.info(f"  Min probability: {min_probability:.1%}")
         logger.info(f"  Min expected return: {min_expected_return:.2%}")
         logger.info(f"  Signal time: 3:50 PM EST")
         logger.info(f"  Entry: 3:50 PM | Exit: Next day 9:31 AM")
+        logger.info(f"  Portfolio health checks: ENABLED")
 
     def fetch_market_data(self) -> Dict[str, pd.DataFrame]:
         """
         Fetch intraday market data for OMR strategy.
 
         OMR needs intraday bars to calculate intraday moves.
+        Uses pre-fetched intraday cache if available (3:45 PM pre-fetch).
         """
         try:
             import pandas as pd
@@ -115,45 +127,85 @@ class OMRLiveAdapter(StrategyAdapter):
             end_date = datetime.now()
             start_date = end_date - timedelta(days=self.data_lookback_days)
 
-            # For OMR, we need intraday data (1-minute or 5-minute bars)
-            # Fetch daily data for now (can be enhanced to intraday later)
-            for symbol in self.symbols:
-                try:
-                    # Fetch daily data
-                    df = self.broker.get_historical_bars(
-                        symbol=symbol,
-                        start=start_date,
-                        end=end_date,
-                        timeframe='1D'
-                    )
+            # Check if intraday cache is available
+            intraday_cache_available = (
+                self._intraday_cache is not None and
+                len(self._intraday_cache) > 0
+            )
 
-                    if df is not None and not df.empty:
-                        market_data[symbol] = df
+            if intraday_cache_available:
+                logger.info("Using pre-fetched intraday data cache")
+
+                # Use cached intraday data for symbols
+                for symbol in self.symbols:
+                    if symbol in self._intraday_cache:
+                        market_data[symbol] = self._intraday_cache[symbol]
                     else:
-                        logger.warning(f"No data returned for {symbol}")
+                        logger.warning(f"{symbol} not in intraday cache, fetching...")
+                        # Fall back to live fetch
+                        try:
+                            df = self.broker.get_historical_bars(
+                                symbol=symbol,
+                                start=end_date.replace(hour=9, minute=30, second=0),
+                                end=end_date,
+                                timeframe='1Min'
+                            )
+                            if df is not None and not df.empty:
+                                market_data[symbol] = df
+                        except Exception as e:
+                            logger.error(f"Error fetching {symbol}: {e}")
 
-                except Exception as e:
-                    logger.error(f"Error fetching data for {symbol}: {e}")
-                    continue
+            else:
+                logger.info("No intraday cache available, fetching data...")
 
-            # Also need SPY and VIX for regime detection
-            for market_symbol in ['SPY', 'VIX']:
-                if market_symbol not in market_data:
+                # For OMR, we need intraday data (1-minute bars)
+                market_open_today = end_date.replace(hour=9, minute=30, second=0, microsecond=0)
+
+                for symbol in self.symbols:
                     try:
+                        # Fetch intraday data from market open to now
                         df = self.broker.get_historical_bars(
-                            symbol=market_symbol,
-                            start=start_date,
+                            symbol=symbol,
+                            start=market_open_today,
                             end=end_date,
-                            timeframe='1D'
+                            timeframe='1Min'
                         )
-                        if df is not None and not df.empty:
-                            market_data[market_symbol] = df
-                    except Exception as e:
-                        logger.error(f"Error fetching {market_symbol}: {e}")
 
+                        if df is not None and not df.empty:
+                            market_data[symbol] = df
+                        else:
+                            logger.warning(f"No intraday data returned for {symbol}")
+
+                    except Exception as e:
+                        logger.error(f"Error fetching data for {symbol}: {e}")
+                        continue
+
+            # Also need historical daily data for regime detection
+            # Use base class cache if available
+            if self._data_cache is not None:
+                logger.info("Using cached historical data for regime detection")
+                for market_symbol in ['SPY', 'VIX']:
+                    if market_symbol in self._data_cache:
+                        market_data[market_symbol] = self._data_cache[market_symbol]
+            else:
+                # Fetch historical data for SPY and VIX
+                for market_symbol in ['SPY', 'VIX']:
+                    if market_symbol not in market_data:
+                        try:
+                            df = self.broker.get_historical_bars(
+                                symbol=market_symbol,
+                                start=start_date,
+                                end=end_date,
+                                timeframe='1D'
+                            )
+                            if df is not None and not df.empty:
+                                market_data[market_symbol] = df
+                        except Exception as e:
+                            logger.error(f"Error fetching {market_symbol}: {e}")
+
+            cache_status = "cached intraday" if intraday_cache_available else "live fetch"
             logger.info(
-                f"Fetched data for {len(market_data)} symbols "
-                f"(including SPY/VIX for regime)"
+                f"Fetched data for {len(market_data)} symbols ({cache_status})"
             )
             return market_data
 
@@ -161,16 +213,69 @@ class OMRLiveAdapter(StrategyAdapter):
             logger.error(f"Error in fetch_market_data: {e}")
             return {}
 
+    def run_once(self) -> None:
+        """
+        Run one iteration of the strategy with portfolio health checks.
+
+        Overrides base class to add pre-entry health validation.
+        """
+        logger.info("=" * 60)
+        logger.info(f"Running {self.__class__.__name__} at {datetime.now()}")
+        logger.info("=" * 60)
+
+        try:
+            # CRITICAL: Portfolio health check before entry
+            logger.info("Running pre-entry portfolio health check...")
+            health_result = self.health_checker.check_before_entry(
+                required_capital=None,  # Will be calculated after signals generated
+                allow_existing_positions=True  # OMR can have multiple concurrent positions
+            )
+
+            # Check for critical errors
+            if not health_result.passed:
+                logger.error("Portfolio health check FAILED - BLOCKING ENTRY")
+                logger.error("Critical errors detected:")
+                for error in health_result.errors:
+                    logger.error(f"  - {error}")
+                logger.info("Skipping signal generation and order execution")
+                return
+
+            # Log warnings if any
+            if health_result.warnings:
+                logger.warning("Portfolio health check passed with warnings:")
+                for warning in health_result.warnings:
+                    logger.warning(f"  - {warning}")
+
+            # Health check passed - proceed with normal strategy execution
+            logger.success("Portfolio health check PASSED - proceeding with entry")
+            logger.info("")
+
+            # Call parent's run_once() for normal strategy execution
+            super().run_once()
+
+        except Exception as e:
+            logger.error(f"Error in run_once: {e}")
+            import traceback
+            traceback.print_exc()
+
     def get_schedule(self) -> Dict[str, any]:
         """
         Get scheduling configuration.
 
+        OMR requires TWO execution times:
+        - 3:50 PM EST: Generate signals and enter positions
+        - 9:31 AM EST: Close overnight positions
+
         Returns:
-            Schedule dict (run at 3:50 PM EST specifically)
+            Schedule dict with entry and exit times
         """
         return {
-            'specific_time': '15:50',  # 3:50 PM EST
-            'market_hours_only': True
+            'execution_times': [
+                {'time': '15:50', 'action': 'entry'},   # 3:50 PM - Enter positions
+                {'time': '09:31', 'action': 'exit'}     # 9:31 AM - Exit positions
+            ],
+            'market_hours_only': True,
+            'strategy_type': 'overnight'  # Indicates overnight holding
         }
 
     def close_overnight_positions(self) -> None:
@@ -186,6 +291,24 @@ class OMRLiveAdapter(StrategyAdapter):
                     f"close_overnight_positions called at {now.time()}, "
                     "expected 9:31 AM"
                 )
+
+            # CRITICAL: Portfolio health check before exit
+            logger.info("Running pre-exit portfolio health check...")
+            health_result = self.health_checker.check_before_exit()
+
+            # Check for critical errors
+            if not health_result.passed:
+                logger.error("Portfolio health check FAILED - CRITICAL ERRORS DETECTED")
+                logger.error("Critical errors:")
+                for error in health_result.errors:
+                    logger.error(f"  - {error}")
+                logger.warning("Attempting to close positions despite errors (safety measure)")
+
+            # Log warnings if any
+            if health_result.warnings:
+                logger.warning("Portfolio health check warnings:")
+                for warning in health_result.warnings:
+                    logger.warning(f"  - {warning}")
 
             # Get all open positions
             positions = self.broker.get_positions()

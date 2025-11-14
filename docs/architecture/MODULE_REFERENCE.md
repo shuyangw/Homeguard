@@ -1937,11 +1937,237 @@ When adding/modifying modules, update:
 
 ---
 
-**Last Updated**: 2025-11-11
-**Total Modules**: 64+ modules across 7 major components
-**Lines of Code**: ~42,000 LOC
+---
 
-**Recent Additions** (2025-11-11):
+## Trading System Layer
+
+### `src/trading/brokers/broker_interface.py`
+**Purpose**: Abstract broker protocol
+
+**Key Classes**: `BrokerInterface`, `OrderSide`, `OrderType`, `OrderStatus`, `TimeInForce`
+
+**Methods**: 30+ broker operations (account, orders, positions, market data)
+
+**Dependencies**: `Protocol`, `Enum`, `datetime`
+
+---
+
+### `src/trading/brokers/alpaca_broker.py`
+**Purpose**: Alpaca Markets API implementation
+
+**Features**: Paper/live trading, real-time data, WebSocket streaming, historical bars
+
+**Configuration**: Via `.env` (ALPACA_API_KEY, ALPACA_SECRET_KEY, ALPACA_PAPER)
+
+**Dependencies**: `alpaca-py`, `broker_interface`, `logger`
+
+---
+
+### `src/trading/brokers/broker_factory.py`
+**Purpose**: Factory for broker instantiation
+
+**Methods**: `create_from_env()`, `create_from_yaml()`, `create_broker()`
+
+**Dependencies**: `broker_interface`, `alpaca_broker`, `dotenv`, `yaml`
+
+---
+
+### `src/trading/core/execution_engine.py`
+**Purpose**: Order execution with retry logic
+
+**Features**: Automatic retry, fill timeout, error handling
+
+**Config**: max_retries=3, retry_delay=1.0s, fill_timeout=30s
+
+**Dependencies**: `broker_interface`, `logger`, `time`
+
+---
+
+### `src/trading/core/position_manager.py`
+**Purpose**: Risk management and position tracking
+
+**Features**: Position limits, size limits, stop losses, exposure tracking
+
+**Config**: max_positions, max_position_size, stop_loss_pct
+
+**Dependencies**: `broker_interface`, `logger`, `datetime`
+
+---
+
+### `src/trading/core/paper_trading_bot.py`
+**Purpose**: Scheduled trading bot
+
+**Features**: Schedule-based execution, market hours awareness, auto logging
+
+**Dependencies**: `schedule`, `execution_engine`, `position_manager`, `logger`
+
+---
+
+### `src/trading/adapters/strategy_adapter.py`
+**Purpose**: Base adapter interface
+
+**Methods**: `generate_signals()`, `get_required_symbols()`, `update_data()`
+
+**Dependencies**: `ABC`, `pandas`
+
+---
+
+### `src/trading/adapters/omr_live_adapter.py`
+**Purpose**: Overnight Mean Reversion adapter
+
+**Features**: Intraday data fetch, Bayesian probability, regime filtering
+
+**Dependencies**: `strategy_adapter`, `bayesian_reversion_model`, `market_regime_detector`, `yfinance`
+
+---
+
+### `src/trading/adapters/ma_live_adapter.py`
+**Purpose**: Moving Average crossover adapter
+
+**Features**: Real-time MA calculation, trend confirmation
+
+**Dependencies**: `strategy_adapter`, `pandas`
+
+---
+
+### `src/trading/strategies/omr_live_strategy.py`
+**Purpose**: Live OMR strategy implementation
+
+**Features**: 3:50 PM entry, next morning exit, Bayesian signals
+
+**Dependencies**: `omr_live_adapter`, `broker_interface`, `logger`
+
+---
+
+### `src/trading/utils/portfolio_health_check.py`
+**Purpose**: Pre-trade validation
+
+**Classes**: `HealthCheckResult`, `PortfolioHealthChecker`
+
+**Checks**: Buying power, portfolio value, position limits, capital requirements
+
+**Dependencies**: `broker_interface`, `logger`, `dataclasses`
+
+---
+
+### `src/strategies/advanced/bayesian_reversion_model.py`
+**Purpose**: Probabilistic reversion forecasting
+
+**Training**: 10 years historical data, regime × move bucket combinations
+
+**Output**: Win rate, expected return, Sharpe ratio, confidence
+
+**Dependencies**: `pandas`, `numpy`, `pickle`, `market_regime_detector`
+
+---
+
+### `src/strategies/advanced/market_regime_detector.py`
+**Purpose**: Market condition classification
+
+**Regimes**: STRONG_BULL, WEAK_BULL, SIDEWAYS, UNPREDICTABLE, BEAR
+
+**Features**: SPY 200MA, VIX thresholds, drawdown detection
+
+**Dependencies**: `pandas`, `yfinance`, `Enum`
+
+---
+
+### `src/strategies/advanced/overnight_mean_reversion.py`
+**Purpose**: Backtest OMR strategy
+
+**Features**: Intraday-to-overnight reversion, regime filtering
+
+**Dependencies**: `Strategy`, `pandas`, `bayesian_reversion_model`
+
+---
+
+### `src/strategies/advanced/overnight_signal_generator.py`
+**Purpose**: Signal generation for OMR
+
+**Features**: Probability calculation, confidence scoring
+
+**Dependencies**: `pandas`, `bayesian_reversion_model`, `market_regime_detector`
+
+---
+
+### `src/utils/logger.py`
+**Purpose**: Centralized logging system
+
+**Classes**: `Logger`, `CSVLogger`, `TradingLogger`
+
+**Features**: Color-coded console, CSV logging, file logging, trading-specific methods
+
+**Dependencies**: `logging`, `pathlib`, `csv`, `datetime`
+
+---
+
+## Trading Scripts Layer
+
+### `scripts/trading/test_alpaca_connection.py`
+**Purpose**: Test Alpaca API connection
+
+**Output**: Account info, positions, market status, quote fetching
+
+---
+
+### `scripts/trading/test_live_portfolio_health.py`
+**Purpose**: Test portfolio health checks with live broker
+
+**Output**: Pre-entry/pre-exit validation, broker data type verification
+
+---
+
+### `scripts/trading/execute_test_trade.py`
+**Purpose**: Execute small test trade to validate pipeline
+
+**Output**: Full trade cycle (buy 1 SPY, verify, close)
+
+---
+
+### `scripts/trading/close_test_position.py`
+**Purpose**: Close test positions
+
+**Output**: Position closure verification
+
+---
+
+### `scripts/trading/demo_omr_paper_trading.py`
+**Purpose**: Demo overnight mean reversion paper trading
+
+**Output**: Live OMR strategy execution
+
+---
+
+### `scripts/trading/demo_ma_paper_trading.py`
+**Purpose**: Demo moving average paper trading
+
+**Output**: Live MA crossover strategy execution
+
+---
+
+### `scripts/trading/run_live_paper_trading.py`
+**Purpose**: Main live paper trading runner
+
+**Features**: `TradingSessionTracker` with CSV logging
+
+---
+
+**Last Updated**: 2025-11-14
+**Total Modules**: 80+ modules across 8 major components
+**Lines of Code**: ~45,000 LOC
+
+**Recent Additions** (2025-11-14):
+- Live trading system (16 new modules)
+  - Complete broker abstraction layer with Alpaca implementation
+  - Execution engine with retry logic and risk management
+  - Strategy adapters for live trading (OMR, MA)
+  - Portfolio health checks and pre-trade validation
+  - Bayesian probability model for overnight mean reversion
+  - Market regime detection system (5 regimes)
+  - Centralized logging with CSV audit trails
+  - 10+ trading scripts for testing and execution
+
+**Previous Additions** (2025-11-11):
 - Pairs trading framework (4 new modules)
   - `src/backtesting/base/pairs_strategy.py`: PairsStrategy base class
   - `src/strategies/advanced/pairs_trading.py`: PairsTrading implementation

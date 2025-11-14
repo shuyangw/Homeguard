@@ -22,6 +22,7 @@ warnings.filterwarnings('ignore')
 # Add src to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from src.utils.logger import logger
+from src.config import get_backtest_results_dir
 
 # Data directory
 DATA_DIR = Path('data/leveraged_etfs')
@@ -523,7 +524,7 @@ def main():
     if results and not trades_df.empty:
         logger.info("\n[Step 5] Saving results...")
 
-        output_path = Path('reports/overnight_validation_trades_v2.csv')
+        output_path = get_backtest_results_dir() / 'overnight_validation_trades_v2.csv'
         output_path.parent.mkdir(exist_ok=True)
         trades_df.to_csv(output_path, index=False)
         logger.success(f"  Saved trades to {output_path}")

@@ -22,6 +22,7 @@ from backtesting.utils.risk_config import RiskConfig
 import pandas as pd
 from datetime import datetime
 from utils import logger
+from config import get_backtest_results_dir
 
 # OPTIMAL PARAMETERS (proven on AAPL 2019-2021)
 OPTIMAL_PARAMS = {
@@ -203,7 +204,7 @@ def main():
 
     df = pd.DataFrame(all_results)
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    output_path = f"bollinger_bands_expansion_{timestamp}.csv"
+    output_path = get_backtest_results_dir() / f"bollinger_bands_expansion_{timestamp}.csv"
     df.to_csv(output_path, index=False)
 
     # ========================================================================
