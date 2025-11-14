@@ -183,6 +183,13 @@ $RECYCLE.BIN/
 *.old
 *~
 nul
+NUL
+__main__
+
+# Accidental stdout redirect files (module output dumps)
+/execution_engine
+/position_manager
+/src.*
 
 # ============================================================================
 # DATABASE FILES
