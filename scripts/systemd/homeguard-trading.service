@@ -1,0 +1,39 @@
+[Unit]
+Description=Homeguard Trading Bot - Live Paper Trading
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ec2-user
+Group=ec2-user
+WorkingDirectory=/home/ec2-user/Homeguard
+
+# Use virtual environment Python
+Environment="PATH=/home/ec2-user/Homeguard/venv/bin:/usr/local/bin:/usr/bin:/bin"
+Environment="PYTHONUNBUFFERED=1"
+
+# Start command
+ExecStart=/home/ec2-user/Homeguard/venv/bin/python /home/ec2-user/Homeguard/scripts/start_trading_bot.py
+
+# Restart policy
+Restart=on-failure
+RestartSec=10
+StartLimitInterval=300
+StartLimitBurst=5
+
+# Resource limits (optional - adjust based on your needs)
+MemoryMax=1G
+CPUQuota=150%
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=homeguard-trading
+
+# Security hardening (optional)
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
