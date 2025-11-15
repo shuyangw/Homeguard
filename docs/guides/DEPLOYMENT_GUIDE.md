@@ -653,6 +653,62 @@ curl -X GET https://paper-api.alpaca.markets/v2/clock
 
 ---
 
+## Management Scripts (Quick Access)
+
+After deployment, use the SSH management scripts for easy instance monitoring:
+
+### Windows
+
+```bash
+# From repository root
+scripts\ec2\check_bot.bat          # Check bot status + recent activity
+scripts\ec2\view_logs.bat          # Stream live logs
+scripts\ec2\restart_bot.bat        # Restart bot service
+scripts\ec2\daily_health_check.bat # Automated 6-point health check
+scripts\ec2\connect.bat            # SSH into instance
+```
+
+### Linux/Mac
+
+```bash
+# From repository root
+scripts/ec2/check_bot.sh           # Check bot status + recent activity
+scripts/ec2/view_logs.sh           # Stream live logs
+scripts/ec2/restart_bot.sh         # Restart bot service
+scripts/ec2/daily_health_check.sh  # Automated 6-point health check
+scripts/ec2/connect.sh             # SSH into instance
+```
+
+### Automated Health Check
+
+The `daily_health_check` script performs 6-point validation:
+
+1. **Instance State** - Verifies EC2 instance is running
+2. **Bot Service Status** - Checks systemd service is active
+3. **Recent Errors** - Counts errors in last hour
+4. **Resource Usage** - Shows memory and CPU utilization
+5. **Last Activity** - Displays recent log entries
+6. **Market Status** - Shows current market state (OPEN/CLOSED)
+
+**Recommended Daily Routine**:
+```bash
+# Morning (before market open)
+scripts\ec2\daily_health_check.bat  # Windows
+scripts/ec2/daily_health_check.sh   # Linux/Mac
+
+# If issues found, restart:
+scripts\ec2\restart_bot.bat         # Windows
+scripts/ec2/restart_bot.sh          # Linux/Mac
+```
+
+**Comprehensive Monitoring Guide**: See [`HEALTH_CHECK_CHEATSHEET.md`](../../HEALTH_CHECK_CHEATSHEET.md) for:
+- Complete monitoring commands
+- Common issues and fixes
+- Lambda scheduler verification
+- Git repository sync checks
+
+---
+
 ## Monitor First Trading Window
 
 ### Entry Signals (3:50 PM EST)

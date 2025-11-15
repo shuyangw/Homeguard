@@ -636,7 +636,14 @@ python -m gui
 - 📋 Futures trading support
 - 📋 Intraday rebalancing
 - 📋 Machine learning strategy integration
-- 📋 Live trading integration (paper trading)
+
+### Recently Deployed
+- ✅ **Live trading integration** - Paper trading deployed to AWS EC2 with automated scheduling (November 2025)
+  - EC2 instance with Python 3.11 (t4g.small ARM64)
+  - Lambda-powered auto-start/stop (9 AM - 4:30 PM ET Mon-Fri)
+  - Systemd service with auto-restart capabilities
+  - SSH management scripts and automated health monitoring
+  - See [Infrastructure Overview](../INFRASTRUCTURE_OVERVIEW.md) for details
 
 ---
 
@@ -650,6 +657,6 @@ python -m gui
 
 ---
 
-**Last Updated**: 2025-11-05
+**Last Updated**: 2025-11-15
 **Maintainers**: Update this doc when adding/removing/moving major modules
 **Review Frequency**: After any architectural changes

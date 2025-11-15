@@ -2152,9 +2152,157 @@ When adding/modifying modules, update:
 
 ---
 
-**Last Updated**: 2025-11-14
-**Total Modules**: 80+ modules across 8 major components
+## Infrastructure & Deployment Layer
+
+**Purpose**: AWS cloud deployment infrastructure with automated scheduling and monitoring
+
+**Location**: `terraform/`, `scripts/ec2/`, systemd service files
+
+**Total Components**: 20+ infrastructure resources + 10 management scripts
+
+---
+
+### Terraform Infrastructure as Code
+
+#### `terraform/main.tf`
+**Purpose**: Core infrastructure definition
+- EC2 instance (t4g.small ARM64)
+- Security group (SSH access only)
+- Elastic IP (static IP address)
+- EBS volume (8 GB encrypted)
+
+#### `terraform/scheduled_start_stop.tf`
+**Purpose**: Automated scheduling infrastructure
+- Lambda functions for start/stop
+- EventBridge cron rules (9 AM start, 4:30 PM stop ET Mon-Fri)
+- IAM roles and policies
+- CloudWatch Log Groups (90-day retention)
+
+#### `terraform/user-data.sh`
+**Purpose**: Bootstrap script for EC2 instance
+- Installs Python 3.11 and dependencies
+- Clones repository from GitHub
+- Creates systemd service
+- Configures environment variables
+
+#### `terraform/lambda/start_instance.py`
+**Purpose**: Lambda function to start EC2 instance
+- Triggered by EventBridge at 9 AM ET weekdays
+
+#### `terraform/lambda/stop_instance.py`
+**Purpose**: Lambda function to stop EC2 instance
+- Triggered by EventBridge at 4:30 PM ET weekdays
+
+---
+
+### SSH Management Scripts
+
+**Location**: `scripts/ec2/`
+
+**Purpose**: Quick-access scripts for monitoring and managing cloud-deployed bot
+
+#### `scripts/ec2/connect.bat` / `connect.sh`
+**Purpose**: SSH into EC2 instance
+- Windows batch and Linux/Mac shell versions
+
+#### `scripts/ec2/check_bot.bat` / `check_bot.sh`
+**Purpose**: Check bot status and recent activity
+- Shows systemd service status
+- Displays last 10 log lines
+
+#### `scripts/ec2/view_logs.bat` / `view_logs.sh`
+**Purpose**: Stream live bot logs
+- Real-time log monitoring
+- Press Ctrl+C to stop
+
+#### `scripts/ec2/restart_bot.bat` / `restart_bot.sh`
+**Purpose**: Restart trading bot service
+- Restarts systemd service
+- Shows status after restart
+
+#### `scripts/ec2/daily_health_check.bat` / `daily_health_check.sh`
+**Purpose**: Automated 6-point health validation
+- Instance state check
+- Bot service status
+- Recent errors count
+- Resource usage (memory/CPU)
+- Last activity logs
+- Market status
+
+#### `scripts/ec2/view_logs_plain.bat`
+**Purpose**: View logs without ANSI colors
+- For Windows CMD compatibility
+
+---
+
+### Systemd Service
+
+#### `/etc/systemd/system/homeguard-trading.service` (on EC2)
+**Purpose**: Systemd service configuration for bot
+- Auto-restart on failure (10-second delay)
+- Resource limits (1GB RAM, 150% CPU)
+- Logging to systemd journal
+- Runs as ec2-user (non-root)
+
+**Command**: `python scripts/trading/run_live_paper_trading.py --strategy omr`
+
+---
+
+### Infrastructure Documentation
+
+#### `docs/INFRASTRUCTURE_OVERVIEW.md`
+**Purpose**: Complete AWS architecture documentation
+- Infrastructure diagrams
+- Resource breakdown (16 resources)
+- Daily operation flow
+- Cost breakdown (~$7/month)
+- Management commands
+
+#### `terraform/README.md`
+**Purpose**: Terraform deployment guide
+- Prerequisites and setup
+- Configuration options
+- Common operations
+- Troubleshooting
+- Post-deployment management
+
+#### `scripts/ec2/SSH_SCRIPTS_README.md`
+**Purpose**: SSH scripts documentation
+- Script descriptions and usage
+- Troubleshooting guide
+- Manual commands reference
+
+#### `HEALTH_CHECK_CHEATSHEET.md`
+**Purpose**: Comprehensive monitoring guide
+- Daily health check routines
+- Common issues and fixes
+- Advanced monitoring commands
+- Lambda scheduler verification
+
+---
+
+**Infrastructure Summary**:
+- **16 AWS resources**: EC2, Lambda (2), EventBridge (4), IAM (4), CloudWatch Logs (2), EBS, Security Group, Elastic IP
+- **10 management scripts**: Windows & Linux/Mac versions (5 each)
+- **1 systemd service**: Auto-restart trading bot
+- **4 documentation files**: Complete setup and monitoring guides
+- **Cost**: ~$7/month with automated scheduling
+- **Uptime**: Monday-Friday 9 AM - 4:30 PM ET (automated)
+
+---
+
+**Last Updated**: 2025-11-15
+**Total Modules**: 90+ modules across 9 major components (including infrastructure)
 **Lines of Code**: ~45,000 LOC
+
+**Recent Additions** (2025-11-15):
+- Infrastructure & Deployment Layer (30+ new components)
+  - Complete Terraform infrastructure as code (5 .tf files)
+  - Lambda-powered automated scheduling (2 Lambda functions)
+  - SSH management scripts (10 scripts for Windows & Linux/Mac)
+  - Systemd service with auto-restart
+  - Comprehensive infrastructure documentation (4 guides)
+  - ~$7/month AWS deployment with 46% cost savings vs 24/7
 
 **Recent Additions** (2025-11-14):
 - Live trading system (16 new modules)

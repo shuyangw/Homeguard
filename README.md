@@ -246,6 +246,56 @@ python scripts/trading/demo_omr_paper_trading.py
 
 [See full live trading documentation →](docs/guides/LIVE_PAPER_TRADING.md)
 
+### AWS Cloud Deployment
+
+**Production deployment on AWS EC2 with automated scheduling and monitoring.**
+
+Run your trading bot 24/7 on AWS with automated start/stop scheduling, systemd service management, and comprehensive health monitoring.
+
+**Key Features:**
+- **EC2 Instance**: t3.micro instance running Amazon Linux 2023 with Python 3.11
+- **Automated Scheduling**: Lambda-powered auto-start (9:00 AM) and auto-stop (4:30 PM ET) on trading days
+- **Systemd Service**: Auto-restart on failure, resource limits (1GB RAM, 150% CPU)
+- **SSH Management Scripts**: Quick-access Windows & Linux scripts for status checks, logs, and restarts
+- **Health Monitoring**: Automated health check scripts with 6-point validation
+- **Infrastructure as Code**: Complete Terraform configuration for reproducible deployments
+
+**Quick Start (Post-Deployment):**
+
+```bash
+# Check bot status (Windows)
+scripts\ec2\check_bot.bat
+
+# Check bot status (Linux/Mac)
+scripts/ec2/check_bot.sh
+
+# View live logs
+scripts\ec2\view_logs.bat       # Windows
+scripts/ec2/view_logs.sh        # Linux/Mac
+
+# Restart bot
+scripts\ec2\restart_bot.bat     # Windows
+scripts/ec2/restart_bot.sh      # Linux/Mac
+
+# Daily health check
+scripts\ec2\daily_health_check.bat   # Windows
+scripts/ec2/daily_health_check.sh    # Linux/Mac
+```
+
+**Documentation:**
+- **[Infrastructure Overview](docs/INFRASTRUCTURE_OVERVIEW.md)** - Complete AWS architecture and cost breakdown
+- **[Terraform README](terraform/README.md)** - Deployment instructions and configuration
+- **[SSH Scripts README](scripts/ec2/SSH_SCRIPTS_README.md)** - Management scripts documentation
+- **[Health Check Cheatsheet](HEALTH_CHECK_CHEATSHEET.md)** - Monitoring and troubleshooting guide
+- **[Preflight Checklist](terraform/PREFLIGHT_CHECKLIST.md)** - Pre-deployment requirements
+
+**Current Deployment:**
+- **Instance IP**: 100.30.95.146
+- **Instance ID**: i-02500fe2392631ff2
+- **Region**: us-east-1 (N. Virginia)
+- **Schedule**: Monday-Friday, 9:00 AM - 4:30 PM ET
+- **Service**: homeguard-trading.service (systemd)
+
 ## Quick Start
 
 ### 1. Installation

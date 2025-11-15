@@ -514,8 +514,12 @@ This Terraform module creates:
 - ✅ **EC2 instance** (t4g.small, Amazon Linux 2023 ARM64)
 - ✅ **Security group** (SSH access only)
 - ✅ **EBS volume** (8 GB GP3, encrypted)
-- ✅ **Automated setup** (installs Python, clones repo, creates service)
-- ⚙️ **Optional**: Elastic IP, CloudWatch Logs, SNS alerts
+- ✅ **Automated setup** (installs Python, clones repo, creates systemd service)
+- ✅ **Lambda scheduling** (auto-start 9:00 AM, auto-stop 4:30 PM ET Mon-Fri)
+- ✅ **EventBridge rules** (cron triggers for Lambda functions)
+- ✅ **IAM roles & policies** (Lambda permissions for EC2 control)
+- ✅ **CloudWatch Log Groups** (Lambda execution logs, 90-day retention)
+- ⚙️ **Optional**: Elastic IP, SNS alerts
 
 **Not included**:
 - ❌ Load balancer (not needed)
@@ -525,25 +529,151 @@ This Terraform module creates:
 
 ---
 
+## Post-Deployment Management
+
+Once deployed, use the SSH management scripts for easy instance management:
+
+### Quick-Access Scripts
+
+**Location**: `scripts/ec2/` (repository root)
+
+**Windows**:
+```bash
+# Check bot status
+scripts\ec2\check_bot.bat
+
+# View live logs
+scripts\ec2\view_logs.bat
+
+# Restart bot service
+scripts\ec2\restart_bot.bat
+
+# Daily health check (6-point validation)
+scripts\ec2\daily_health_check.bat
+
+# SSH into instance
+scripts\ec2\connect.bat
+```
+
+**Linux/Mac**:
+```bash
+# Check bot status
+scripts/ec2/check_bot.sh
+
+# View live logs
+scripts/ec2/view_logs.sh
+
+# Restart bot service
+scripts/ec2/restart_bot.sh
+
+# Daily health check (6-point validation)
+scripts/ec2/daily_health_check.sh
+
+# SSH into instance
+scripts/ec2/connect.sh
+```
+
+### Health Monitoring
+
+See [`HEALTH_CHECK_CHEATSHEET.md`](../HEALTH_CHECK_CHEATSHEET.md) for comprehensive monitoring guide:
+- Daily health check routines
+- Common issues and fixes
+- Advanced monitoring commands
+- Lambda scheduler verification
+- Git repository sync checks
+
+### Automated Scheduling
+
+The deployment includes Lambda functions that automatically manage the instance:
+
+**Start Function** (`homeguard-start-instance`):
+- Triggers: 9:00 AM ET Monday-Friday
+- Action: Starts EC2 instance if stopped
+- Logs: `/aws/lambda/homeguard-start-instance` (CloudWatch)
+
+**Stop Function** (`homeguard-stop-instance`):
+- Triggers: 4:30 PM ET Monday-Friday
+- Action: Stops EC2 instance if running
+- Logs: `/aws/lambda/homeguard-stop-instance` (CloudWatch)
+
+**Cost Savings**: Running only during market hours (157.5 hrs/month) saves ~46% vs 24/7 operation.
+
+**Verify Scheduling**:
+```bash
+# Check if Lambda functions exist
+aws lambda list-functions | grep homeguard
+
+# View Lambda logs
+aws logs tail /aws/lambda/homeguard-start-instance --since 24h
+aws logs tail /aws/lambda/homeguard-stop-instance --since 24h
+
+# Check EventBridge rules
+aws events list-rules | grep homeguard
+```
+
+### Bot Service Management
+
+The trading bot runs as a systemd service with auto-restart:
+
+```bash
+# SSH to instance
+ssh -i ~/.ssh/homeguard-trading.pem ec2-user@<INSTANCE_IP>
+
+# Check service status
+sudo systemctl status homeguard-trading
+
+# View live logs
+sudo journalctl -u homeguard-trading -f
+
+# Restart service
+sudo systemctl restart homeguard-trading
+
+# View recent errors
+sudo journalctl -u homeguard-trading -p err -n 20
+```
+
+**Service Features**:
+- Auto-restart on failure (10-second delay)
+- Resource limits (1GB RAM, 150% CPU)
+- Logging to systemd journal + file logs
+- Starts automatically when instance boots
+
+---
+
 ## Next Steps
 
+After deployment:
+
 1. ✅ Deploy with `terraform apply`
-2. ✅ SSH and verify bot is running
-3. ✅ Monitor logs during first trading window
-4. ✅ Set up backups (EBS snapshots)
-5. ⚙️ Optional: Enable CloudWatch Logs for remote monitoring
-6. ⚙️ Optional: Set up SNS alerts for errors
+2. ✅ Wait for automated setup (~3-4 minutes)
+3. ✅ Run health check: `scripts\ec2\daily_health_check.bat` (or `.sh`)
+4. ✅ Verify bot is running: `scripts\ec2\check_bot.bat` (or `.sh`)
+5. ✅ Monitor first trading window: `scripts\ec2\view_logs.bat` (or `.sh`)
+6. ✅ Verify Lambda scheduling: Check CloudWatch logs for start/stop events
+7. ✅ Set up backups: Enable EBS snapshots (optional)
+8. 📖 Read [`HEALTH_CHECK_CHEATSHEET.md`](../HEALTH_CHECK_CHEATSHEET.md) for monitoring best practices
+
+**Daily Routine**:
+- Morning: Run `daily_health_check.bat/.sh` before market open
+- During market: Check `view_logs.bat/.sh` occasionally
+- Issues: Use `restart_bot.bat/.sh` if needed
 
 ---
 
 ## Cost Optimization Tips
 
-1. **Use t4g.small** (not t3.small) - 40% cheaper
-2. **Keep default 8 GB volume** - sufficient for trading only
-3. **Skip Elastic IP** unless you need static IP
-4. **Start with local logs** - add CloudWatch later if needed
-5. **Use free tier SNS** for alerts
-6. **Schedule stop/start** if not trading 24/7 (advanced)
+1. **✅ Automated scheduling** - Already configured! Lambda stops instance after market close (saves ~46%)
+2. **Use t4g.small** (not t3.small) - 40% cheaper ARM instances
+3. **Keep default 8 GB volume** - sufficient for trading only
+4. **Elastic IP** included - no additional cost when instance running, minimal when stopped
+5. **Start with local logs** - systemd journal sufficient for most needs
+6. **Use free tier SNS** for alerts (if you enable it)
+7. **Monitor costs** - Check AWS billing dashboard regularly
+
+**Current Setup Savings**:
+- Running only market hours: ~$7/month (vs ~$13/month 24/7)
+- t4g.small ARM: 40% cheaper than equivalent x86 instance
+- **Total monthly cost: ~$7.00**
 
 ---
 

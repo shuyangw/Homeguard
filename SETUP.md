@@ -64,3 +64,66 @@ pip install -r requirements.txt
 - `settings.ini` - Contains personal paths, never commit
 - `.env.example` - Safe template, can commit
 - `settings.ini.example` - Safe template, can commit
+
+---
+
+## Deployment Options
+
+After initial setup, you can run Homeguard in two ways:
+
+### Option 1: Local Execution (Default)
+
+Run backtests and trading directly on your local machine.
+
+**Best for**:
+- Development and testing
+- Running backtests
+- Learning and experimentation
+
+**Setup**: Complete steps 1-3 above, then follow:
+- [Backtesting Guide](docs/guides/BACKTESTING_GUIDE.md) - For backtesting
+- [Quick Start Trading](docs/guides/QUICK_START_TRADING.md) - For live paper trading
+
+### Option 2: Cloud Deployment (Production)
+
+Deploy trading bot to AWS EC2 with automated scheduling and monitoring.
+
+**Best for**:
+- 24/7 automated trading
+- Production trading bot
+- Remote monitoring and management
+
+**Key Features**:
+- ✅ Automated start/stop scheduling (9 AM - 4:30 PM ET Mon-Fri)
+- ✅ Systemd service with auto-restart on failure
+- ✅ SSH management scripts for easy monitoring
+- ✅ ~$7/month cost (46% savings vs 24/7 operation)
+
+**Setup Guides**:
+- **[Quick Start Deployment](docs/guides/QUICK_START_DEPLOYMENT.md)** - ⭐ Fast 5-minute cloud deployment
+- **[Complete Deployment Guide](docs/guides/DEPLOYMENT_GUIDE.md)** - Comprehensive Windows/Mac/Linux setup
+- **[Infrastructure Overview](docs/INFRASTRUCTURE_OVERVIEW.md)** - Complete AWS architecture and cost breakdown
+
+**Management**:
+- **[SSH Scripts Documentation](scripts/ec2/SSH_SCRIPTS_README.md)** - Quick-access management scripts (10 scripts)
+- **[Health Check Cheatsheet](HEALTH_CHECK_CHEATSHEET.md)** - Monitoring and troubleshooting guide
+
+**Current Deployment Info**:
+- Instance IP: 100.30.95.146
+- Instance ID: i-02500fe2392631ff2
+- Region: us-east-1 (N. Virginia)
+- Service: homeguard-trading.service (systemd)
+
+---
+
+## Next Steps
+
+**For Local Development**:
+1. Complete initial configuration above
+2. Follow [Backtesting Guide](docs/guides/BACKTESTING_GUIDE.md)
+3. Explore [Live Paper Trading Guide](docs/guides/LIVE_PAPER_TRADING.md)
+
+**For Cloud Deployment**:
+1. Complete initial configuration above
+2. Follow [Quick Start Deployment](docs/guides/QUICK_START_DEPLOYMENT.md)
+3. Use [SSH Scripts](scripts/ec2/) for daily monitoring

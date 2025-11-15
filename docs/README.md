@@ -93,6 +93,45 @@ This documentation is organized by topic for easy navigation. Select the categor
 
 ---
 
+## 🚀 Deployment & Infrastructure
+
+**Production deployment on AWS EC2 with automated scheduling and monitoring.**
+
+### Quick Start Guides
+- [**Quick Start Deployment**](guides/QUICK_START_DEPLOYMENT.md) - Fast 5-minute cloud deployment
+- [**Complete Deployment Guide**](guides/DEPLOYMENT_GUIDE.md) - Comprehensive setup for Windows/Mac/Linux
+- [**Infrastructure Overview**](INFRASTRUCTURE_OVERVIEW.md) - Complete AWS architecture, cost breakdown, daily operations
+
+### Infrastructure Details
+- [**Terraform README**](../terraform/README.md) - Infrastructure as code configuration and management
+- [**SSH Scripts Documentation**](../scripts/ec2/SSH_SCRIPTS_README.md) - Quick-access management scripts (10 scripts)
+- [**Health Check Cheatsheet**](../HEALTH_CHECK_CHEATSHEET.md) - Comprehensive monitoring guide
+
+### Live Trading Guides
+- [**Live Paper Trading Guide**](guides/LIVE_PAPER_TRADING.md) - Complete paper trading setup and usage
+- [**Quick Start Trading**](guides/QUICK_START_TRADING.md) - Fast start guide for live trading
+- [**OMR Strategy Architecture**](architecture/OMR_STRATEGY_ARCHITECTURE.md) - Overnight mean reversion deployment
+- [**Alpaca Paper Trading Guide**](guides/ALPACA_PAPER_TRADING_GUIDE.md) - Alpaca-specific setup and monitoring
+
+**Key Features**:
+- ✅ EC2 instance with Python 3.11 (Amazon Linux 2023, t4g.small ARM64)
+- ✅ Lambda-powered auto-start (9:00 AM ET) and auto-stop (4:30 PM ET) Monday-Friday
+- ✅ Systemd service with auto-restart on failure
+- ✅ SSH management scripts for status checks, logs, and restarts
+- ✅ Automated 6-point health monitoring
+- ✅ Infrastructure as code (Terraform)
+- ✅ ~$7/month cost (46% savings vs 24/7 operation)
+
+**Current Deployment**:
+- **Instance IP**: 100.30.95.146
+- **Instance ID**: i-02500fe2392631ff2
+- **Region**: us-east-1 (N. Virginia)
+- **Service**: homeguard-trading.service (systemd)
+
+**When to read**: When deploying to cloud, monitoring production bot, or managing infrastructure
+
+---
+
 ## 📝 Progress Tracking (Historical Record)
 
 **Historical progress documentation - tracks features, fixes, and improvements over time.**
@@ -128,9 +167,13 @@ Location: [`progress/`](progress/)
 
 **Run my first backtest** → [Backtesting Guide](guides/BACKTESTING_GUIDE.md)
 
+**Deploy to AWS cloud** → [Quick Start Deployment](guides/QUICK_START_DEPLOYMENT.md) ⭐ **NEW**
+
+**Monitor production bot** → [Health Check Cheatsheet](../HEALTH_CHECK_CHEATSHEET.md) ⭐ **NEW**
+
 **Create a custom strategy** → [Advanced Strategies Guide](guides/ADVANCED_STRATEGIES_GUIDE.md)
 
-**Validate strategy robustness** → [Regime Analysis User Guide](guides/REGIME_ANALYSIS_USER_GUIDE.md) ⭐ **NEW**
+**Validate strategy robustness** → [Regime Analysis User Guide](guides/REGIME_ANALYSIS_USER_GUIDE.md)
 
 **Prevent overfitting** → [Regime-Based Testing Architecture](architecture/REGIME_BASED_TESTING.md) ⭐ **NEW**
 
@@ -192,13 +235,26 @@ When adding new documentation:
 | API Reference | 4 | ✅ Complete | 100% |
 | Testing | 5 | ✅ Complete | 100% |
 | QuantStats | 3 | ✅ Complete | 100% |
+| Deployment & Infrastructure | 8 | ✅ Complete | 100% (NEW) |
 | Progress | 14+ | ✅ Complete | 100% (historical) |
 
-**Overall Status**: 🟢 **Excellent** (23+ comprehensive docs, fully organized)
+**Overall Status**: 🟢 **Excellent** (31+ comprehensive docs, fully organized)
 
 ---
 
 ## Recent Updates
+
+**2025-11-15** (AWS Deployment & Infrastructure):
+- ✅ **Complete AWS EC2 production deployment**
+  - EC2 instance with t4g.small ARM64 (Python 3.11)
+  - Lambda-powered automated scheduling (9 AM start, 4:30 PM stop ET Mon-Fri)
+  - Systemd service with auto-restart capabilities
+  - ~$7/month total cost (46% savings vs 24/7)
+- ✅ Created 10 SSH management scripts for easy monitoring (scripts/ec2/)
+- ✅ Automated 6-point health check system
+- ✅ Complete infrastructure documentation (8 comprehensive docs)
+- ✅ Terraform infrastructure as code configuration
+- ✅ Added "🚀 Deployment & Infrastructure" section to docs hub
 
 **2025-11-06** (Regime Analysis):
 - ✅ **All 4 Levels of Regime-Based Testing Complete**
@@ -236,6 +292,6 @@ When adding new documentation:
 
 ---
 
-**Last Updated**: 2025-11-05
+**Last Updated**: 2025-11-15
 **Maintained By**: Keep this index updated when adding/removing documentation
 **Review Frequency**: Monthly or after major changes
