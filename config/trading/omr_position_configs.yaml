@@ -1,0 +1,57 @@
+# ============================================================================
+# OMR Position Limit Configurations
+# ============================================================================
+# Different position sizing configurations for testing
+
+# Current Production (Conservative)
+conservative:
+  max_concurrent_positions: 3
+  position_size_pct: 0.15      # 15% per position
+  max_total_exposure_pct: 0.45 # 45% total (3 × 15%)
+  description: "Current production - proven Sharpe 3.28"
+
+# Original Specification (Moderate)
+moderate:
+  max_concurrent_positions: 5
+  position_size_pct: 0.15      # 15% per position
+  max_total_exposure_pct: 0.75 # 75% total (5 × 15%)
+  description: "Original backtest spec - from documentation"
+
+# Balanced (Middle Ground)
+balanced:
+  max_concurrent_positions: 4
+  position_size_pct: 0.15      # 15% per position
+  max_total_exposure_pct: 0.60 # 60% total (4 × 15%)
+  description: "Middle ground between production and original"
+
+# Aggressive (High Diversification)
+aggressive:
+  max_concurrent_positions: 7
+  position_size_pct: 0.12      # 12% per position
+  max_total_exposure_pct: 0.84 # 84% total (7 × 12%)
+  description: "High diversification, near-full capital deployment"
+
+# Ultra Conservative (Safety First)
+ultra_conservative:
+  max_concurrent_positions: 2
+  position_size_pct: 0.15      # 15% per position
+  max_total_exposure_pct: 0.30 # 30% total (2 × 15%)
+  description: "Minimum positions, maximum safety"
+
+# Maximum Diversification
+max_diversification:
+  max_concurrent_positions: 10
+  position_size_pct: 0.10      # 10% per position
+  max_total_exposure_pct: 1.00 # 100% total (10 × 10%)
+  description: "Maximum spread, full capital deployment"
+
+# Notes:
+# - Higher max_concurrent_positions = more diversification
+# - Lower position_size_pct = less risk per trade
+# - Higher max_total_exposure_pct = more capital at risk
+#
+# To test a configuration:
+# 1. Modify omr_trading_config.yaml to use these values
+# 2. Run backtest: python backtest_scripts/validate_overnight_strategy_v3_full_universe.py
+# 3. Compare Sharpe, total return, max drawdown
+# 4. Choose configuration with best risk-adjusted returns

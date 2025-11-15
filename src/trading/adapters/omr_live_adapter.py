@@ -6,8 +6,9 @@ Runs at 3:50 PM EST to generate overnight signals.
 """
 
 from typing import List, Dict, Optional
-from datetime import datetime, time
+from datetime import datetime, time, timedelta
 import pandas as pd
+import yfinance as yf
 
 from src.trading.adapters.strategy_adapter import StrategyAdapter
 from src.strategies.advanced.overnight_signal_generator import OvernightReversionSignals
@@ -192,16 +193,26 @@ class OMRLiveAdapter(StrategyAdapter):
                 for market_symbol in ['SPY', 'VIX']:
                     if market_symbol not in market_data:
                         try:
-                            df = self.broker.get_historical_bars(
-                                symbol=market_symbol,
-                                start=start_date,
-                                end=end_date,
-                                timeframe='1D'
-                            )
-                            if df is not None and not df.empty:
-                                market_data[market_symbol] = df
+                            # VIX is not available from Alpaca - use yfinance directly
+                            if market_symbol == 'VIX':
+                                logger.info("Fetching VIX data via yfinance (Alpaca does not provide VIX)")
+                                df = self._fetch_vix_yfinance(start_date, end_date)
+                                if df is not None and not df.empty:
+                                    market_data[market_symbol] = df
+                                    logger.info(f"[OK] Fetched {len(df)} days of VIX data via yfinance")
+                            else:
+                                # Use Alpaca for other symbols (SPY, etc.)
+                                df = self.broker.get_historical_bars(
+                                    symbol=market_symbol,
+                                    start=start_date,
+                                    end=end_date,
+                                    timeframe='1D'
+                                )
+                                if df is not None and not df.empty:
+                                    market_data[market_symbol] = df
                         except Exception as e:
                             logger.error(f"Error fetching {market_symbol}: {e}")
+                            # VIX errors are already handled in _fetch_vix_yfinance
 
             cache_status = "cached intraday" if intraday_cache_available else "live fetch"
             logger.info(
@@ -212,6 +223,50 @@ class OMRLiveAdapter(StrategyAdapter):
         except Exception as e:
             logger.error(f"Error in fetch_market_data: {e}")
             return {}
+
+    def _fetch_vix_yfinance(self, start_date: str, end_date: str) -> Optional[pd.DataFrame]:
+        """
+        Fetch VIX data via yfinance.
+
+        Alpaca doesn't provide VIX data, so we use yfinance as a fallback.
+        The VIX ticker on Yahoo Finance is ^VIX.
+
+        Args:
+            start_date: Start date in YYYY-MM-DD format
+            end_date: End date in YYYY-MM-DD format
+
+        Returns:
+            DataFrame with VIX data in OHLCV format, or None if fetch fails
+        """
+        try:
+            # Convert string dates to pandas Timestamps and add buffer
+            start = pd.Timestamp(start_date)
+            end = pd.Timestamp(end_date) + timedelta(days=1)
+
+            # Fetch VIX data using Yahoo Finance ticker ^VIX
+            vix_data = yf.download(
+                '^VIX',
+                start=start.strftime('%Y-%m-%d'),
+                end=end.strftime('%Y-%m-%d'),
+                progress=False,
+                auto_adjust=True  # Suppress FutureWarning
+            )
+
+            if vix_data is None or vix_data.empty:
+                logger.error("yfinance returned empty VIX data")
+                return None
+
+            # Ensure timezone-aware index for consistency with broker data
+            if vix_data.index.tz is None:
+                vix_data.index = vix_data.index.tz_localize('America/New_York')
+            else:
+                vix_data.index = vix_data.index.tz_convert('America/New_York')
+
+            return vix_data
+
+        except Exception as e:
+            logger.error(f"Failed to fetch VIX via yfinance: {e}")
+            return None
 
     def run_once(self) -> None:
         """

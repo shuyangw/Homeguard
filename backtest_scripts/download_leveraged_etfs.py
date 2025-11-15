@@ -4,6 +4,10 @@ Download historical data for leveraged ETFs for overnight mean reversion strateg
 This script downloads 10 years of daily data for leveraged ETFs
 to be used in the regime-based overnight mean reversion strategy.
 Daily data is sufficient for calculating overnight returns (close to next open).
+
+Usage:
+    conda activate fintech
+    python backtest_scripts/download_leveraged_etfs.py
 """
 
 import os

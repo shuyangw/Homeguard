@@ -442,7 +442,7 @@ class ExecutionEngine:
                 logger.success(f"Order filled: {order_id}")
                 return order
 
-            if status in [OrderStatus.CANCELLED.value, OrderStatus.EXPIRED.value, OrderStatus.REJECTED.value]:
+            if status in [OrderStatus.CANCELLED.value, OrderStatus.REJECTED.value]:
                 raise BrokerError(f"Order {order_id} failed with status: {status}")
 
             time.sleep(0.5)  # Check every 0.5 seconds

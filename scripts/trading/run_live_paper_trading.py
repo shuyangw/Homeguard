@@ -32,6 +32,7 @@ from src.trading.adapters import (
     TripleMACrossoverLiveAdapter,
     OMRLiveAdapter
 )
+from src.trading.config import load_omr_config
 from src.strategies.universe import EquityUniverse, ETFUniverse
 from src.utils.logger import logger, get_trading_logger, TradingLogger
 
@@ -576,12 +577,25 @@ class LiveTradingRunner:
                     else:
                         logger.warning("Adapter does not support intraday data pre-fetching")
 
+                # Check for periodic flush (for multi-day sessions)
+                if self.session_tracker.trading_logger.should_periodic_flush():
+                    logger.info("")
+                    logger.info("=" * 80)
+                    logger.info("PERIODIC LOG FLUSH")
+                    logger.info("=" * 80)
+                    self.session_tracker.trading_logger.flush_to_disk(reason="Periodic flush (multi-day session)")
+
                 # Check for end of day
                 if self._check_for_end_of_day():
                     logger.info("")
                     logger.info("=" * 80)
                     logger.info("END OF TRADING DAY - GENERATING REPORT")
                     logger.info("=" * 80)
+
+                    # Flush buffered logs to disk
+                    self.session_tracker.trading_logger.flush_to_disk(reason="Market closed (4:00 PM ET)")
+
+                    # Generate end-of-day report
                     self.session_tracker.generate_end_of_day_report(self.adapter.broker)
 
                 # Check if should run strategy
@@ -604,6 +618,10 @@ class LiveTradingRunner:
         logger.info("=" * 80)
         logger.info("GENERATING FINAL REPORT")
         logger.info("=" * 80)
+
+        # Flush buffered logs to disk before stopping
+        self.session_tracker.trading_logger.flush_to_disk(reason="Trading stopped")
+
         self.session_tracker.save_progress()
         self.session_tracker.generate_end_of_day_report(self.adapter.broker)
 
@@ -639,15 +657,28 @@ def create_triple_ma_adapter(broker, symbols, fast=20, medium=50, slow=200, posi
     )
 
 
-def create_omr_adapter(broker, symbols, min_probability=0.60, min_return=0.002, position_size=0.05, max_positions=3):
-    """Create Overnight Mean Reversion adapter."""
+def create_omr_adapter(broker, symbols=None, min_probability=None, min_return=None, position_size=None, max_positions=None, omr_config=None):
+    """
+    Create Overnight Mean Reversion adapter.
+
+    IMPORTANT: For production, pass omr_config from load_omr_config().
+    Individual parameters are only for testing/overrides.
+    """
+    # If config provided, use it (RECOMMENDED)
+    if omr_config is not None:
+        logger.info("Creating OMR adapter from production config")
+        adapter_params = omr_config.to_adapter_params()
+        return OMRLiveAdapter(broker=broker, **adapter_params)
+
+    # Fallback to individual parameters (for testing)
+    logger.warning("Creating OMR adapter with individual parameters (NOT using production config)")
     return OMRLiveAdapter(
         broker=broker,
-        symbols=symbols,
-        min_probability=min_probability,
-        min_expected_return=min_return,
-        max_positions=max_positions,
-        position_size=position_size
+        symbols=symbols if symbols is not None else [],
+        min_probability=min_probability if min_probability is not None else 0.60,
+        min_expected_return=min_return if min_return is not None else 0.002,
+        max_positions=max_positions if max_positions is not None else 3,
+        position_size=position_size if position_size is not None else 0.05
     )
 
 
@@ -739,12 +770,21 @@ def main():
         return 1
 
     # Select symbol universe
-    if args.universe == 'faang':
+    # IMPORTANT: For OMR strategy, ALWAYS use production config
+    omr_config = None  # Initialize
+    if args.strategy == 'omr':
+        logger.info("OMR strategy selected - loading production config...")
+        omr_config = load_omr_config()
+        symbols = omr_config.symbols
+        logger.info(f"Loaded {len(symbols)} symbols from production config")
+    elif args.universe == 'faang':
         symbols = EquityUniverse.FAANG
     elif args.universe == 'tech':
         symbols = EquityUniverse.TECH_GIANTS
     elif args.universe == 'leveraged':
-        symbols = ETFUniverse.LEVERAGED_3X[:10]  # First 10 for testing
+        # For non-OMR strategies, use first 10 for testing
+        symbols = ETFUniverse.LEVERAGED_3X[:10]
+        logger.warning("Using first 10 LEVERAGED_3X symbols (TEST MODE)")
     else:
         symbols = EquityUniverse.FAANG
 
@@ -804,12 +844,10 @@ def main():
                 max_positions=args.max_positions
             )
         elif args.strategy == 'omr':
+            # For OMR, use production config (already loaded above)
             adapter = create_omr_adapter(
-                broker, symbols,
-                min_probability=args.min_probability,
-                min_return=args.min_return,
-                position_size=args.position_size,
-                max_positions=args.max_positions
+                broker,
+                omr_config=omr_config  # Use production config
             )
         else:
             logger.error(f"Unknown strategy: {args.strategy}")

@@ -3,6 +3,10 @@ Download additional leveraged ETF data for optimization.
 
 This script downloads daily OHLCV data for additional leveraged ETFs
 to expand the symbol universe for overnight mean reversion strategy optimization.
+
+Usage:
+    conda activate fintech
+    python backtest_scripts/download_additional_etfs.py
 """
 
 import os

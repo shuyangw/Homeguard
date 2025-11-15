@@ -28,7 +28,8 @@ custom_theme = Theme({
 })
 
 # Create console instance with custom theme
-console = Console(theme=custom_theme, file=sys.stdout)
+# Force color output even when not in interactive terminal (for systemd logs)
+console = Console(theme=custom_theme, file=sys.stdout, force_terminal=True)
 
 
 class Logger:
@@ -154,25 +155,44 @@ class TradingLogger:
 
     Combines colored console output, file logging, and structured CSV logs.
     Maintains same logging theme and cadence as existing code.
+
+    Features:
+    - Buffered logging: Stores logs in memory during trading day
+    - Market close flush: Writes all logs to disk when market closes
+    - Immediate console output: Shows logs in real-time
+    - CSV logging: Structured data for trades and market checks
     """
 
-    def __init__(self, name: str, log_dir: Optional[Path] = None):
+    def __init__(self, name: str, log_dir: Optional[Path] = None, buffer_logs: bool = True, flush_interval_hours: Optional[float] = None):
         """
         Initialize trading logger.
 
         Args:
             name: Logger name (e.g., 'trading.OMR')
             log_dir: Directory for log files (optional)
+            buffer_logs: If True, buffer logs and write at market close (default: True)
+            flush_interval_hours: If set, automatically flush logs every N hours (optional)
+                                 Useful for multi-day sessions to prevent excessive memory usage.
+                                 Example: 24 for daily flush, 1 for hourly flush.
         """
         self.name = name
         self.log_dir = Path(log_dir) if log_dir else None
         self.csv_loggers: Dict[str, CSVLogger] = {}
+        self.buffer_logs = buffer_logs
+        self.log_buffer: List[str] = []  # Buffer for storing logs
+        self.log_file_path: Optional[Path] = None
+        self.flush_interval_hours = flush_interval_hours
+        self.last_flush_time = datetime.now()
 
-        # Create base logger for console + file
+        # Create base logger for console (no file logging if buffering)
         log_file = None
         if self.log_dir:
             self.log_dir.mkdir(parents=True, exist_ok=True)
-            log_file = self.log_dir / f"{datetime.now().strftime('%Y%m%d')}_{name}.log"
+            self.log_file_path = self.log_dir / f"{datetime.now().strftime('%Y%m%d')}_{name}.log"
+
+            # Only enable immediate file writing if not buffering
+            if not buffer_logs:
+                log_file = self.log_file_path
 
         self.logger = Logger(log_file=log_file)
 
@@ -255,34 +275,129 @@ class TradingLogger:
                 check_number
             ])
 
-    # Expose base logger methods for convenience
+    def _buffer_log(self, message: str):
+        """Add message to log buffer."""
+        timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        self.log_buffer.append(f"[{timestamp}] {message}")
+
+    def should_periodic_flush(self) -> bool:
+        """
+        Check if periodic flush is needed based on flush_interval_hours.
+
+        Returns:
+            True if enough time has elapsed since last flush, False otherwise
+        """
+        if not self.flush_interval_hours or not self.buffer_logs:
+            return False
+
+        hours_since_flush = (datetime.now() - self.last_flush_time).total_seconds() / 3600
+        return hours_since_flush >= self.flush_interval_hours
+
+    def flush_to_disk(self, reason: str = "Manual flush"):
+        """
+        Write all buffered logs to disk.
+
+        This should be called at market close (4:00 PM ET) to save the day's logs.
+        For multi-day sessions, the log file path is updated based on the current date,
+        ensuring each trading day gets its own log file.
+
+        Args:
+            reason: Reason for flushing (for logging purposes)
+        """
+        if not self.buffer_logs or not self.log_dir:
+            return  # Nothing to flush
+
+        if not self.log_buffer:
+            console.print(f"[dim][No buffered logs to flush][/dim]")
+            return
+
+        try:
+            # Update log file path based on current date (for multi-day sessions)
+            current_log_file = self.log_dir / f"{datetime.now().strftime('%Y%m%d')}_{self.name}.log"
+
+            # Write all buffered logs to file
+            with open(current_log_file, 'w', encoding='utf-8') as f:
+                f.write('\n'.join(self.log_buffer))
+                f.write('\n')
+
+            console.print(
+                f"[+] Flushed {len(self.log_buffer)} log entries to disk: {current_log_file}",
+                style="success"
+            )
+            console.print(f"[i] Flush reason: {reason}", style="info")
+
+            # Clear buffer after successful write
+            self.log_buffer.clear()
+
+            # Update last flush time for periodic flushing
+            self.last_flush_time = datetime.now()
+
+        except Exception as e:
+            console.print(f"[X] Error flushing logs to disk: {e}", style="error")
+
+    # Expose base logger methods for convenience (with buffering support)
     def success(self, message: str, to_file: bool = True):
         """Log success message (green)."""
-        self.logger.success(message, to_file=to_file)
+        # Always show on console
+        self.logger.success(message, to_file=False)
+
+        # Buffer if enabled, otherwise write immediately
+        if to_file and self.buffer_logs:
+            self._buffer_log(f"[+] {message}")
 
     def error(self, message: str, to_file: bool = True):
         """Log error message (red)."""
-        self.logger.error(message, to_file=to_file)
+        # Always show on console
+        self.logger.error(message, to_file=False)
+
+        # Buffer if enabled, otherwise write immediately
+        if to_file and self.buffer_logs:
+            self._buffer_log(f"[X] {message}")
 
     def warning(self, message: str, to_file: bool = True):
         """Log warning message (yellow)."""
-        self.logger.warning(message, to_file=to_file)
+        # Always show on console
+        self.logger.warning(message, to_file=False)
+
+        # Buffer if enabled, otherwise write immediately
+        if to_file and self.buffer_logs:
+            self._buffer_log(f"[!] {message}")
 
     def info(self, message: str, to_file: bool = True):
         """Log info message (cyan)."""
-        self.logger.info(message, to_file=to_file)
+        # Always show on console
+        self.logger.info(message, to_file=False)
+
+        # Buffer if enabled, otherwise write immediately
+        if to_file and self.buffer_logs:
+            self._buffer_log(f"[i] {message}")
 
     def header(self, message: str, to_file: bool = True):
         """Log header message (magenta)."""
-        self.logger.header(message, to_file=to_file)
+        # Always show on console
+        self.logger.header(message, to_file=False)
+
+        # Buffer if enabled, otherwise write immediately
+        if to_file and self.buffer_logs:
+            self._buffer_log(message)
 
     def separator(self, char: str = "=", length: int = 80, to_file: bool = True):
         """Print a separator line."""
-        self.logger.separator(char, length, to_file=to_file)
+        # Always show on console
+        self.logger.separator(char, length, to_file=False)
+
+        # Buffer if enabled, otherwise write immediately
+        if to_file and self.buffer_logs:
+            self._buffer_log(char * length)
 
     def blank(self, to_file: bool = True):
         """Print a blank line."""
-        self.logger.blank(to_file=to_file)
+        # Always show on console
+        self.logger.blank(to_file=False)
+
+        # Buffer if enabled, otherwise write immediately
+        if to_file and self.buffer_logs:
+            self._buffer_log("")
 
 
 # Global logger instance for convenience
@@ -307,20 +422,26 @@ def get_logger(log_file: Optional[Path] = None) -> Logger:
     return _global_logger
 
 
-def get_trading_logger(name: str, log_dir: Optional[Path] = None) -> TradingLogger:
+def get_trading_logger(name: str, log_dir: Optional[Path] = None, buffer_logs: bool = True, flush_interval_hours: Optional[float] = None) -> TradingLogger:
     """
     Get a trading logger instance with CSV logging capabilities.
 
     Args:
         name: Logger name (e.g., 'trading.OMR', 'MACrossover')
         log_dir: Directory for log files (optional)
+        buffer_logs: If True, buffer logs and write at market close (default: True)
+        flush_interval_hours: If set, automatically flush logs every N hours (optional)
+                             Useful for multi-day sessions (e.g., 24 for daily flush)
 
     Returns:
         TradingLogger instance
 
     Usage:
-        # Create trading logger
+        # Create trading logger with buffering (writes at market close)
         trading_logger = get_trading_logger('OMR', Path('logs/live_trading/paper'))
+
+        # For multi-day sessions, enable periodic flushing
+        trading_logger = get_trading_logger('OMR', Path('logs/live_trading/paper'), flush_interval_hours=24)
 
         # Add CSV loggers
         trading_logger.add_csv_logger(
@@ -329,14 +450,21 @@ def get_trading_logger(name: str, log_dir: Optional[Path] = None) -> TradingLogg
             ['timestamp', 'symbol', 'side', 'qty', 'price', 'status']
         )
 
-        # Log trades
+        # Log trades (buffered in memory)
         trading_logger.log_trade('TQQQ', 'buy', 100, 45.23, 'SUCCESS')
 
-        # Use regular logging methods
+        # Use regular logging methods (buffered in memory)
         trading_logger.success("Trade executed successfully")
         trading_logger.info("Market check complete")
+
+        # Check if periodic flush is needed (for long-running sessions)
+        if trading_logger.should_periodic_flush():
+            trading_logger.flush_to_disk(reason="Periodic flush")
+
+        # At market close (4:00 PM), flush logs to disk
+        trading_logger.flush_to_disk(reason="Market closed")
     """
-    return TradingLogger(name, log_dir)
+    return TradingLogger(name, log_dir, buffer_logs=buffer_logs, flush_interval_hours=flush_interval_hours)
 
 
 # Convenience functions for global logger

@@ -119,7 +119,7 @@ variable "create_cloudwatch_logs" {
 variable "log_retention_days" {
   description = "CloudWatch log retention in days (only if create_cloudwatch_logs = true)"
   type        = number
-  default     = 30
+  default     = 90  # Keep 3 months of trading bot logs
 
   validation {
     condition     = contains([1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400, 545, 731, 1827, 3653], var.log_retention_days)
@@ -146,6 +146,12 @@ variable "alert_email" {
 
 variable "create_cloudwatch_alarms" {
   description = "Create CloudWatch alarms for instance monitoring"
+  type        = bool
+  default     = false
+}
+
+variable "enable_scheduled_start_stop" {
+  description = "Enable automated start/stop of EC2 instance during market hours (saves ~70% on EC2 costs). Requires Elastic IP for static IP address when stopped. Starts at 9:00 AM ET, stops at 4:30 PM ET on weekdays."
   type        = bool
   default     = false
 }

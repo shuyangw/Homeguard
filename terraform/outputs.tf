@@ -2,37 +2,37 @@
 
 output "instance_id" {
   description = "EC2 instance ID"
-  value       = aws_instance.trading_bot.id
+  value       = aws_instance.homeguard_trading.id
 }
 
 output "instance_public_ip" {
   description = "Public IP address of the EC2 instance"
-  value       = var.create_elastic_ip ? aws_eip.trading_bot[0].public_ip : aws_instance.trading_bot.public_ip
+  value       = var.create_elastic_ip ? aws_eip.homeguard_trading[0].public_ip : aws_instance.homeguard_trading.public_ip
 }
 
 output "instance_public_dns" {
   description = "Public DNS name of the EC2 instance"
-  value       = aws_instance.trading_bot.public_dns
+  value       = aws_instance.homeguard_trading.public_dns
 }
 
 output "elastic_ip" {
   description = "Elastic IP address (if created)"
-  value       = var.create_elastic_ip ? aws_eip.trading_bot[0].public_ip : null
+  value       = var.create_elastic_ip ? aws_eip.homeguard_trading[0].public_ip : null
 }
 
 output "ssh_connection_command" {
   description = "SSH command to connect to the instance"
-  value       = "ssh -i ~/.ssh/${var.key_pair_name}.pem ec2-user@${var.create_elastic_ip ? aws_eip.trading_bot[0].public_ip : aws_instance.trading_bot.public_ip}"
+  value       = "ssh -i ~/.ssh/${var.key_pair_name}.pem ec2-user@${var.create_elastic_ip ? aws_eip.homeguard_trading[0].public_ip : aws_instance.homeguard_trading.public_ip}"
 }
 
 output "security_group_id" {
   description = "Security group ID"
-  value       = aws_security_group.trading_bot.id
+  value       = aws_security_group.homeguard_trading.id
 }
 
 output "ami_id" {
   description = "AMI ID used for the instance"
-  value       = aws_instance.trading_bot.ami
+  value       = aws_instance.homeguard_trading.ami
 }
 
 output "ami_name" {
@@ -52,7 +52,7 @@ output "sns_topic_arn" {
 
 output "instance_state" {
   description = "Current state of the EC2 instance"
-  value       = aws_instance.trading_bot.instance_state
+  value       = aws_instance.homeguard_trading.instance_state
 }
 
 output "root_volume_size" {
@@ -72,15 +72,15 @@ output "post_deployment_instructions" {
     Homeguard Trading Bot Deployed Successfully!
     ==========================================
 
-    Instance ID: ${aws_instance.trading_bot.id}
-    Public IP:   ${var.create_elastic_ip ? aws_eip.trading_bot[0].public_ip : aws_instance.trading_bot.public_ip}
+    Instance ID: ${aws_instance.homeguard_trading.id}
+    Public IP:   ${var.create_elastic_ip ? aws_eip.homeguard_trading[0].public_ip : aws_instance.homeguard_trading.public_ip}
 
     Next Steps:
     -----------
     1. Wait 3-5 minutes for user-data script to complete
 
     2. SSH to the instance:
-       ${format("ssh -i ~/.ssh/%s.pem ec2-user@%s", var.key_pair_name, var.create_elastic_ip ? aws_eip.trading_bot[0].public_ip : aws_instance.trading_bot.public_ip)}
+       ${format("ssh -i ~/.ssh/%s.pem ec2-user@%s", var.key_pair_name, var.create_elastic_ip ? aws_eip.homeguard_trading[0].public_ip : aws_instance.homeguard_trading.public_ip)}
 
     3. Check installation progress:
        tail -f /var/log/cloud-init-output.log
@@ -96,4 +96,29 @@ output "post_deployment_instructions" {
 
     ==========================================
     EOT
+}
+
+output "scheduled_start_stop_enabled" {
+  description = "Whether automated start/stop is enabled"
+  value       = var.enable_scheduled_start_stop
+}
+
+output "start_schedule" {
+  description = "Instance start schedule (if enabled)"
+  value       = var.enable_scheduled_start_stop ? "9:00 AM ET (Monday-Friday)" : null
+}
+
+output "stop_schedule" {
+  description = "Instance stop schedule (if enabled)"
+  value       = var.enable_scheduled_start_stop ? "4:30 PM ET (Monday-Friday)" : null
+}
+
+output "lambda_start_function" {
+  description = "Lambda function name for starting instance (if enabled)"
+  value       = var.enable_scheduled_start_stop ? aws_lambda_function.start_instance[0].function_name : null
+}
+
+output "lambda_stop_function" {
+  description = "Lambda function name for stopping instance (if enabled)"
+  value       = var.enable_scheduled_start_stop ? aws_lambda_function.stop_instance[0].function_name : null
 }

@@ -138,7 +138,7 @@ class AlpacaBroker(BrokerInterface):
             }
         except Exception as e:
             # Alpaca raises exception if no position found
-            logger.debug(f"No position found for {symbol}: {e}")
+            logger.info(f"No position found for {symbol}: {e}")
             return None
 
     # ==================== Order Methods ====================

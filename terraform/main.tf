@@ -47,7 +47,7 @@ data "aws_ami" "amazon_linux_2023_arm64" {
 }
 
 # Security Group - SSH access only
-resource "aws_security_group" "trading_bot" {
+resource "aws_security_group" "homeguard_trading" {
   name        = "homeguard-trading-bot-sg"
   description = "Security group for Homeguard trading bot - SSH access only"
 
@@ -75,12 +75,12 @@ resource "aws_security_group" "trading_bot" {
 }
 
 # EC2 Instance - Trading Bot
-resource "aws_instance" "trading_bot" {
+resource "aws_instance" "homeguard_trading" {
   ami           = data.aws_ami.amazon_linux_2023_arm64.id
   instance_type = var.instance_type
   key_name      = var.key_pair_name
 
-  vpc_security_group_ids = [aws_security_group.trading_bot.id]
+  vpc_security_group_ids = [aws_security_group.homeguard_trading.id]
 
   # Root volume configuration
   root_block_device {
@@ -125,17 +125,17 @@ resource "aws_instance" "trading_bot" {
 }
 
 # Elastic IP (optional - provides static IP)
-resource "aws_eip" "trading_bot" {
+resource "aws_eip" "homeguard_trading" {
   count = var.create_elastic_ip ? 1 : 0
 
-  instance = aws_instance.trading_bot.id
+  instance = aws_instance.homeguard_trading.id
   domain   = "vpc"
 
   tags = {
     Name = "homeguard-trading-bot-eip"
   }
 
-  depends_on = [aws_instance.trading_bot]
+  depends_on = [aws_instance.homeguard_trading]
 }
 
 # CloudWatch Log Group (optional - if you want to add CloudWatch logging later)
@@ -185,6 +185,6 @@ resource "aws_cloudwatch_metric_alarm" "instance_status_check" {
   alarm_actions       = var.create_sns_alerts ? [aws_sns_topic.trading_alerts[0].arn] : []
 
   dimensions = {
-    InstanceId = aws_instance.trading_bot.id
+    InstanceId = aws_instance.homeguard_trading.id
   }
 }

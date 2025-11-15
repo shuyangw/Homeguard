@@ -9,6 +9,7 @@ from datetime import datetime, time as dt_time
 
 from src.trading.brokers import AlpacaBroker
 from src.trading.adapters import OMRLiveAdapter
+from src.trading.config import load_omr_config
 from src.strategies.universe import ETFUniverse
 from src.strategies.advanced.market_regime_detector import MarketRegimeDetector
 from src.strategies.advanced.bayesian_reversion_model import BayesianReversionModel
@@ -45,11 +46,13 @@ def run_omr_paper_trading():
         logger.error("Failed to connect to Alpaca")
         return
 
-    # 2. Define universe (leveraged 3x ETFs)
-    symbols = ETFUniverse.LEVERAGED_3X
-    logger.info(f"Trading universe: {len(symbols)} leveraged 3x ETFs")
-    logger.info(f"  Bull ETFs: {ETFUniverse.LEVERAGED_3X[:3]}...")
-    logger.info(f"  Bear ETFs: {ETFUniverse.LEVERAGED_3X[1::2][:3]}...")
+    # 2. Load production config (AUTHORITATIVE)
+    logger.info("Loading production OMR configuration...")
+    omr_config = load_omr_config()
+    symbols = omr_config.symbols
+    logger.info(f"Trading universe: {len(symbols)} validated ETFs (from production config)")
+    logger.info(f"  First 3: {symbols[:3]}...")
+    logger.info(f"  Last 3: {symbols[-3:]}...")
 
     # 3. Initialize models (optional - can provide pre-trained models)
     logger.info("Initializing regime detector and Bayesian model...")
@@ -59,25 +62,24 @@ def run_omr_paper_trading():
     regime_detector = MarketRegimeDetector()
     bayesian_model = BayesianReversionModel()
 
-    # 4. Create OMR adapter
-    logger.info("Creating OMR adapter...")
+    # 4. Create OMR adapter from production config
+    logger.info("Creating OMR adapter from production config...")
+    adapter_params = omr_config.to_adapter_params()
     adapter = OMRLiveAdapter(
         broker=broker,
-        symbols=symbols,
-        min_probability=0.55,
-        min_expected_return=0.002,
-        max_positions=5,
-        position_size=0.10,
         regime_detector=regime_detector,
-        bayesian_model=bayesian_model
+        bayesian_model=bayesian_model,
+        **adapter_params  # Use config parameters
     )
 
-    logger.success("OMR adapter created")
+    logger.success("OMR adapter created from production config")
     logger.info("  Strategy: Overnight Mean Reversion")
-    logger.info("  Signal time: 3:50 PM EST")
-    logger.info("  Entry: 3:50 PM | Exit: Next day 9:31 AM")
-    logger.info("  Min probability: 55%")
-    logger.info("  Min expected return: 0.2%")
+    logger.info(f"  Signal time: {omr_config.entry_time}")
+    logger.info(f"  Entry: {omr_config.entry_time} | Exit: {omr_config.exit_time}")
+    logger.info(f"  Min probability: {omr_config.min_win_rate:.1%}")
+    logger.info(f"  Min expected return: {omr_config.min_expected_return:.2%}")
+    logger.info(f"  Position size: {omr_config.position_size_pct:.1%}")
+    logger.info(f"  Max positions: {omr_config.max_concurrent_positions}")
 
     # 5. Run strategy once (demo)
     logger.info("")
@@ -117,27 +119,28 @@ def run_omr_continuous():
     logger.info("OMR CONTINUOUS PAPER TRADING")
     logger.info("=" * 80)
 
-    # Initialize
+    # Initialize with production config
     broker = AlpacaBroker(mode='paper')
-    symbols = ETFUniverse.LEVERAGED_3X
+
+    # Load production config (AUTHORITATIVE)
+    logger.info("Loading production OMR configuration...")
+    omr_config = load_omr_config()
 
     regime_detector = MarketRegimeDetector()
     bayesian_model = BayesianReversionModel()
 
+    adapter_params = omr_config.to_adapter_params()
     adapter = OMRLiveAdapter(
         broker=broker,
-        symbols=symbols,
-        min_probability=0.55,
-        min_expected_return=0.002,
-        max_positions=5,
-        position_size=0.10,
         regime_detector=regime_detector,
-        bayesian_model=bayesian_model
+        bayesian_model=bayesian_model,
+        **adapter_params  # Use config parameters
     )
 
     logger.info("Starting continuous OMR trading...")
-    logger.info("  Signal time: 3:50 PM EST")
-    logger.info("  Exit time: 9:31 AM EST (next day)")
+    logger.info(f"  Symbols: {len(omr_config.symbols)} ETFs (production config)")
+    logger.info(f"  Signal time: {omr_config.entry_time}")
+    logger.info(f"  Exit time: {omr_config.exit_time} (next day)")
     logger.info("Press Ctrl+C to stop")
     logger.info("")
 

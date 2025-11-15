@@ -50,7 +50,7 @@ enable_detailed_monitoring = false
 
 # CloudWatch Logs (costs ~$0.50-1/month)
 create_cloudwatch_logs = false
-log_retention_days     = 30
+log_retention_days     = 90  # Keep 3 months if enabled
 
 # Email alerts via SNS (free tier eligible)
 create_sns_alerts      = false
@@ -58,3 +58,9 @@ alert_email            = ""  # Set your email if create_sns_alerts = true
 
 # CloudWatch alarms for instance monitoring
 create_cloudwatch_alarms = false
+
+# Automated start/stop during market hours
+# Saves ~70% on EC2 costs by running only 9 AM - 4:30 PM ET on weekdays
+# Requires create_elastic_ip = true for static IP when stopped
+# Lambda costs: ~$0.01/month (negligible)
+enable_scheduled_start_stop = false
