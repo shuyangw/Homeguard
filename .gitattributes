@@ -1,28 +1,33 @@
-# Set default behavior to automatically normalize line endings
-* text=auto eol=lf
+# Git Line Ending Configuration
+# Ensures consistent line endings across Windows/Mac/Linux
 
-# Explicitly declare text files
-*.py text eol=lf
-*.md text eol=lf
-*.ini text eol=lf
+# Auto-detect text files and normalize line endings to LF in repository
+* text=auto
+
+# Shell scripts must always use LF (Unix) line endings
 *.sh text eol=lf
+
+# Python files should use LF
+*.py text eol=lf
+
+# Markdown and documentation
+*.md text eol=lf
 *.txt text eol=lf
-*.json text eol=lf
+
+# Configuration files
 *.yaml text eol=lf
 *.yml text eol=lf
+*.json text eol=lf
+*.toml text eol=lf
+*.ini text eol=lf
 
-# Windows-specific files
-*.bat text eol=crlf
-*.cmd text eol=crlf
-
-# Binary files (no normalization)
-*.parquet binary
-*.csv binary
-*.pkl binary
-*.joblib binary
+# Binary files (do not modify)
 *.png binary
 *.jpg binary
 *.jpeg binary
 *.gif binary
 *.ico binary
 *.pdf binary
+*.parquet binary
+*.db binary
+*.sqlite binary
