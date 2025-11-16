@@ -29,8 +29,8 @@ from validate_overnight_strategy_v3_full_universe import (
     SimpleRegimeDetector,
     SimpleBayesianModel,
     load_data,
-    run_backtest,
-    calculate_metrics
+    backtest_strategy,
+    analyze_results
 )
 
 DATA_DIR = Path('data/leveraged_etfs')
@@ -121,18 +121,29 @@ def run_position_limit_test(config, data, spy_data, vix_data):
         v3.MAX_POSITION_SIZE = config['position_size']
         v3.MAX_TOTAL_EXPOSURE = config['max_exposure']
 
+        # Create regime detector and bayesian model
+        regime_detector = SimpleRegimeDetector(
+            bull_ma_period=200,
+            vix_threshold=25
+        )
+        bayesian_model = SimpleBayesianModel()
+
         # Run backtest
-        trades = run_backtest(
+        start_date = pd.Timestamp('2024-01-01')
+        end_date = pd.Timestamp('2024-11-14')
+
+        trades = backtest_strategy(
             data=data,
-            spy_data=spy_data,
-            vix_data=vix_data,
+            regime_detector=regime_detector,
+            bayesian_model=bayesian_model,
+            start_date=start_date,
+            end_date=end_date,
             symbols=PRODUCTION_SYMBOLS,
-            start_date='2024-01-01',
-            end_date='2024-11-14'
+            name=config['name']
         )
 
         # Calculate metrics
-        metrics = calculate_metrics(trades)
+        metrics = analyze_results(trades, name=config['name'])
 
         return {
             'config': config,

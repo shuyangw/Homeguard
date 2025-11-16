@@ -10,10 +10,10 @@ import pandas as pd
 import numpy as np
 from src.backtesting.optimization.grid_search import GridSearchOptimizer
 from src.backtesting.engine.backtest_engine import BacktestEngine
-from src.backtesting.base.strategy import Strategy
+from src.backtesting.base.strategy import BaseStrategy
 
 
-class BrokenStrategy(Strategy):
+class BrokenStrategy(BaseStrategy):
     """Strategy that raises errors for testing."""
 
     def __init__(self, should_fail=False):

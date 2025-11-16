@@ -13,13 +13,12 @@ from pathlib import Path
 from datetime import datetime, timedelta
 import pandas as pd
 
-# Add src to path
+# conftest.py already adds src to path
 project_root = Path(__file__).parent.parent
-sys.path.insert(0, str(project_root / "src"))
 
-from trading.brokers.alpaca_broker import AlpacaBroker
-from config.trading.config_loader import load_broker_config
-from utils.logger import logger
+from src.trading.brokers.alpaca_broker import AlpacaBroker
+from src.config.trading.config_loader import load_broker_config
+from src.utils.logger import logger
 
 
 def test_optimized_vix_fetch():

@@ -9,8 +9,8 @@ import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
 
-from backtesting.engine.backtest_engine import BacktestEngine
-from strategies.moving_average import MovingAverageCrossover
+from src.backtesting.engine.backtest_engine import BacktestEngine
+from src.strategies.base_strategies.moving_average import MovingAverageCrossover
 
 
 class TestBackwardCompatibility:
@@ -37,7 +37,7 @@ class TestBackwardCompatibility:
     def test_default_mode_is_single(self, simple_trending_data):
         """Test that default portfolio_mode is 'single' (backward compatible)."""
         engine = BacktestEngine(initial_capital=100000, fees=0.0)
-        strategy = MovingAverageCrossover(fast=5, slow=10)
+        strategy = MovingAverageCrossover(fast_window=5, slow_window=10)
 
         # Run without specifying portfolio_mode (should default to 'single')
         portfolio = engine.run_with_data(strategy, simple_trending_data)
@@ -50,7 +50,7 @@ class TestBackwardCompatibility:
     def test_explicit_single_mode(self, simple_trending_data):
         """Test explicit single-symbol mode."""
         engine = BacktestEngine(initial_capital=100000, fees=0.0)
-        strategy = MovingAverageCrossover(fast=5, slow=10)
+        strategy = MovingAverageCrossover(fast_window=5, slow_window=10)
 
         # Explicitly specify single mode
         portfolio = engine.run_with_data(strategy, simple_trending_data)

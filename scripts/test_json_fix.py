@@ -5,10 +5,10 @@ Quick test to verify JSON serialization fix for strategy_class.
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+# conftest.py already adds src to path
 
-from strategies import MovingAverageCrossover
-from gui.utils.config_manager import ConfigManager
+from src.strategies.base_strategies.moving_average import MovingAverageCrossover
+from src.gui.utils.config_manager import ConfigManager
 import tempfile
 
 # Create a test config with strategy_class

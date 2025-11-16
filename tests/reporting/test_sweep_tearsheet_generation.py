@@ -7,25 +7,22 @@ from pathlib import Path
 import tempfile
 import pandas as pd
 
-# Add src to path
-sys.path.insert(0, str(Path(__file__).parent.parent.parent / 'src'))
+# conftest.py already adds src to path
 
-from backtesting.optimization.sweep_runner import SweepRunner
-from backtesting.engine.backtest_engine import BacktestEngine
-from backtesting.strategies.examples.ma_crossover import MovingAverageCrossover
-from data.loaders.csv_loader import CSVDataLoader
+from src.backtesting.optimization.sweep_runner import SweepRunner
+from src.backtesting.engine.backtest_engine import BacktestEngine
+from src.strategies.base_strategies.moving_average import MovingAverageCrossover
 
 
 def test_sweep_generates_tearsheets():
     """Test that sweep runner stores portfolios that can be used for tearsheet generation."""
 
     # Setup
-    data_loader = CSVDataLoader(data_dir="data/sample")  # Use whatever data directory exists
-    engine = BacktestEngine(data_loader=data_loader)
+    engine = BacktestEngine(initial_capital=100000, fees=0.0)
     runner = SweepRunner(engine=engine, max_workers=2, show_progress=False)
 
     # Create a simple strategy
-    strategy = MovingAverageCrossover(fast_period=10, slow_period=20)
+    strategy = MovingAverageCrossover(fast_window=10, slow_window=20)
 
     # Run a mini sweep (just 2 symbols to test)
     symbols = ["AAPL", "MSFT"]
