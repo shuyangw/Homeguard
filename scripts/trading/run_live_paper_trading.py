@@ -51,7 +51,8 @@ class TradingSessionTracker:
         """
         self.log_dir = log_dir
         self.strategy_name = strategy_name
-        self.session_start = datetime.now()
+        eastern = pytz.timezone('US/Eastern')
+        self.session_start = datetime.now(pytz.UTC).astimezone(eastern)
         self.session_date = self.session_start.strftime('%Y%m%d')
 
         # Session metrics
@@ -187,7 +188,8 @@ class TradingSessionTracker:
 
     def generate_end_of_day_report(self, broker: AlpacaBroker):
         """Generate end-of-day summary report."""
-        session_end = datetime.now()
+        eastern = pytz.timezone('US/Eastern')
+        session_end = datetime.now(pytz.UTC).astimezone(eastern)
         session_duration = (session_end - self.session_start).total_seconds() / 3600  # Hours
 
         # Get account metrics
@@ -447,9 +449,13 @@ class LiveTradingRunner:
                 # Log market check to session tracker
                 self.session_tracker.log_check(market_open)
 
+                # Convert to EST for display
+                eastern = pytz.timezone('US/Eastern')
+                now_est = datetime.now(pytz.UTC).astimezone(eastern)
+
                 # Log comprehensive status
                 logger.info(
-                    f"[{now.strftime('%H:%M:%S')}] "
+                    f"[{now_est.strftime('%H:%M:%S')}] "
                     f"Market: {market_status_str} | "
                     f"Checks: {self.session_tracker.total_checks} | "
                     f"Runs: {self.session_tracker.total_runs} | "
@@ -458,8 +464,10 @@ class LiveTradingRunner:
                 )
 
             except Exception as e:
+                eastern = pytz.timezone('US/Eastern')
+                now_est = datetime.now(pytz.UTC).astimezone(eastern)
                 logger.error(f"MARKET CHECK FAILED: {e}")
-                logger.error(f"API call to is_market_open() failed at {now.strftime('%H:%M:%S')}")
+                logger.error(f"API call to is_market_open() failed at {now_est.strftime('%H:%M:%S')}")
                 # Log as failed check
                 self.session_tracker.log_check(False)
 
