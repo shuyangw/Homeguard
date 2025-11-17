@@ -496,6 +496,12 @@ class LiveTradingRunner:
             logger.info(f"EXECUTING STRATEGY ({action.upper()}): {datetime.now()}")
             logger.info("=" * 80)
 
+            # Safety check: verify market is open before executing
+            if not self.adapter.broker.is_market_open():
+                logger.warning("Market is CLOSED - skipping strategy execution")
+                logger.warning("This should not happen if schedule is configured correctly")
+                return
+
             if action == 'exit':
                 # Close overnight positions (for OMR)
                 if hasattr(self.adapter, 'close_overnight_positions'):
