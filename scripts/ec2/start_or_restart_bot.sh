@@ -129,7 +129,7 @@ sleep 2
 if ps -p $NEW_PID > /dev/null; then
     echo -e "${GREEN}=========================================="
     echo "✅ Trading bot started successfully!"
-    echo "==========================================${NC}"
+    echo -e "==========================================${NC}"
     echo ""
     echo "  PID: $NEW_PID"
     echo "  Log file: $LOG_FILE"
@@ -146,10 +146,13 @@ if ps -p $NEW_PID > /dev/null; then
 else
     echo -e "${RED}=========================================="
     echo "❌ Failed to start trading bot"
-    echo "==========================================${NC}"
+    echo -e "==========================================${NC}"
     echo ""
     echo "Check the log file for errors:"
     echo "  cat $LOG_FILE"
     echo ""
     exit 1
 fi
+
+# Reset terminal colors
+printf "${NC}"
