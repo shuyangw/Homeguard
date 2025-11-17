@@ -4,8 +4,8 @@
 # Run this script ON the EC2 instance to pull latest code changes
 #
 # Usage:
-#   ./update_repo.sh           # Update code only
-#   ./update_repo.sh --restart # Update code and restart bot
+#   ./instance_update_repo.sh           # Update code only
+#   ./instance_update_repo.sh --restart # Update code and restart bot
 #
 
 set -e  # Exit on error
@@ -81,19 +81,16 @@ if [ "$RESTART_BOT" = true ]; then
         echo "Restarting trading bot..."
         echo ""
 
-        # Use the restart script if it exists
-        if [ -f "$SCRIPT_DIR/restart_bot.sh" ]; then
-            "$SCRIPT_DIR/restart_bot.sh"
-        else
-            echo "⚠️  restart_bot.sh not found - please restart manually"
-        fi
+        # Restart using systemd (bot is managed by systemd service)
+        sudo systemctl restart homeguard-trading
+        echo "✅ Bot restarted via systemd"
     else
         echo "ℹ️  Bot was not running - skipping restart"
     fi
 elif [ "$BOT_RUNNING" = true ]; then
     echo "⚠️  Trading bot is still running with OLD code"
-    echo "   Run './update_repo.sh --restart' to restart with new code"
-    echo "   Or manually restart: ./restart_bot.sh"
+    echo "   Run './instance_update_repo.sh --restart' to restart with new code"
+    echo "   Or manually restart: sudo systemctl restart homeguard-trading"
 fi
 
 echo ""

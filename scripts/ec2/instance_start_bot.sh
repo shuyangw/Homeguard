@@ -10,7 +10,8 @@
 #   - Homeguard repository cloned in ~/Homeguard
 #
 # Usage:
-#   ~/start_or_restart_bot.sh
+#   ~/Homeguard/scripts/ec2/instance_start_bot.sh
+#   Or copy to home: ~/start_trading_bot.sh
 #
 
 set -e
