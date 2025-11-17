@@ -29,9 +29,9 @@ alias bot-update='echo "🔄 Updating..."; (cd ~/Homeguard && git pull && echo "
 alias bot-restart='echo "🔄 Restarting..."; sudo systemctl restart homeguard-trading && echo "✅ Restarted!"'
 alias bot-start='sudo systemctl start homeguard-trading'
 alias bot-stop='sudo systemctl stop homeguard-trading'
-alias bot-status='sudo systemctl status homeguard-trading --no-pager'
-alias bot-logs='SYSTEMD_COLORS=1 sudo journalctl -u homeguard-trading -f --output=short'
-alias bot-logs-recent='SYSTEMD_COLORS=1 sudo journalctl -u homeguard-trading -n 100 --no-pager --output=short'
+alias bot-status='SYSTEMD_COLORS=1 sudo systemctl status homeguard-trading --no-pager'
+alias bot-logs='sudo journalctl -u homeguard-trading -f --output=cat --no-hostname'
+alias bot-logs-recent='sudo journalctl -u homeguard-trading -n 100 --no-pager --output=cat --no-hostname'
 
 # Welcome Banner (with colors!)
 if [ -n "$PS1" ]; then
