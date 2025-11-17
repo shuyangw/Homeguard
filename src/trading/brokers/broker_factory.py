@@ -21,7 +21,7 @@ import yaml
 from .broker_interface import BrokerInterface
 from src.utils.logger import get_logger
 
-logger = get_logger(__name__)
+logger = get_logger()  # Use global logger (no file creation)
 
 
 class BrokerFactory:

@@ -25,7 +25,7 @@ from src.trading.core.position_manager import PositionManager
 from src.trading.strategies.omr_live_strategy import OMRLiveStrategy
 from src.utils.logger import get_logger
 
-logger = get_logger(__name__)
+logger = get_logger()  # Use global logger (no file creation)
 
 
 class PaperTradingBot:

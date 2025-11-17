@@ -17,7 +17,7 @@ from src.strategies.advanced.overnight_signal_generator import OvernightReversio
 from src.trading.brokers.broker_interface import BrokerInterface, OrderSide, OrderType
 from src.utils.logger import get_logger
 
-logger = get_logger(__name__)
+logger = get_logger()  # Use global logger (no file creation)
 
 
 class OMRLiveStrategy:

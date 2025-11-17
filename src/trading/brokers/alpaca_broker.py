@@ -43,7 +43,7 @@ from .broker_interface import (
 )
 from src.utils.logger import get_logger
 
-logger = get_logger(__name__)
+logger = get_logger()  # Use global logger (no file creation)
 
 
 class AlpacaBroker(BrokerInterface):
