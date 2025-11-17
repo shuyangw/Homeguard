@@ -116,9 +116,12 @@ echo ""
 echo "Starting trading bot..."
 echo ""
 
-# Create timestamped log file
+# Create timestamped log file in date-based subdirectory
+DATE=$(date +%Y%m%d)
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-LOG_FILE="$LOG_DIR/${TIMESTAMP}_bot_startup.log"
+DATE_DIR="$LOG_DIR/$DATE"
+mkdir -p "$DATE_DIR"
+LOG_FILE="$DATE_DIR/${TIMESTAMP}_bot_startup.log"
 
 # Start the bot in background with nohup
 nohup $PYTHON_CMD "$TRADING_SCRIPT" > "$LOG_FILE" 2>&1 &

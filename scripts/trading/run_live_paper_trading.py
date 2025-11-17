@@ -49,11 +49,16 @@ class TradingSessionTracker:
             log_dir: Directory for log files
             strategy_name: Name of the strategy
         """
-        self.log_dir = log_dir
         self.strategy_name = strategy_name
         eastern = pytz.timezone('US/Eastern')
         self.session_start = datetime.now(pytz.UTC).astimezone(eastern)
         self.session_date = self.session_start.strftime('%Y%m%d')
+
+        # Create date-based subdirectory to organize logs by day
+        # e.g., logs/live_trading/paper/20251117/
+        date_subdir = log_dir / self.session_date
+        date_subdir.mkdir(parents=True, exist_ok=True)
+        self.log_dir = date_subdir
 
         # Session metrics
         self.total_checks = 0
@@ -66,14 +71,14 @@ class TradingSessionTracker:
         self.signals_log: List[Dict] = []
         self.minute_progress: List[Dict] = []
 
-        # Create session log files
-        self.session_log_file = log_dir / f"{self.session_date}_{strategy_name}_session.json"
-        self.summary_file = log_dir / f"{self.session_date}_{strategy_name}_summary.md"
-        self.trades_log_file = log_dir / f"{self.session_date}_{strategy_name}_trades.csv"
-        self.market_checks_log_file = log_dir / f"{self.session_date}_{strategy_name}_market_checks.csv"
+        # Create session log files (now in date subdirectory)
+        self.session_log_file = date_subdir / f"{self.session_date}_{strategy_name}_session.json"
+        self.summary_file = date_subdir / f"{self.session_date}_{strategy_name}_summary.md"
+        self.trades_log_file = date_subdir / f"{self.session_date}_{strategy_name}_trades.csv"
+        self.market_checks_log_file = date_subdir / f"{self.session_date}_{strategy_name}_market_checks.csv"
 
-        # Create trading logger with CSV logging
-        self.trading_logger = get_trading_logger(strategy_name, log_dir)
+        # Create trading logger with CSV logging (use date subdirectory)
+        self.trading_logger = get_trading_logger(strategy_name, date_subdir)
 
         # Add CSV loggers for trades and market checks
         self.trading_logger.add_csv_logger(
