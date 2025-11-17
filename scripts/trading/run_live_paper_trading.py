@@ -521,13 +521,16 @@ class LiveTradingRunner:
 
     def _check_for_end_of_day(self) -> bool:
         """Check if it's end of trading day (4:00 PM EST)."""
-        now = datetime.now()
+        # Convert to EST for time comparison
+        eastern = pytz.timezone('US/Eastern')
+        now_est = datetime.now(pytz.UTC).astimezone(eastern)
+
         # Market close is 4:00 PM EST
         market_close = dt_time(16, 0)
 
         # If past market close and we haven't generated report today
-        if now.time() >= market_close:
-            report_file = self.log_dir / f"{now.strftime('%Y%m%d')}_{self.session_tracker.strategy_name}_summary.md"
+        if now_est.time() >= market_close:
+            report_file = self.log_dir / f"{now_est.strftime('%Y%m%d')}_{self.session_tracker.strategy_name}_summary.md"
             if not report_file.exists():
                 return True
         return False
@@ -550,11 +553,14 @@ class LiveTradingRunner:
                 # Log minute progress
                 self._log_minute_progress()
 
+                # Convert to EST for all time comparisons
+                eastern = pytz.timezone('US/Eastern')
+                now_est = datetime.now(pytz.UTC).astimezone(eastern)
+
                 # Check for market open to pre-load historical data (once per day)
-                now = datetime.now()
                 if (not self.data_preloaded_today and
-                    now.time() >= dt_time(9, 30) and
-                    now.time() <= dt_time(9, 35) and
+                    now_est.time() >= dt_time(9, 30) and
+                    now_est.time() <= dt_time(9, 35) and
                     self.adapter.broker.is_market_open()):
 
                     logger.info("")
@@ -569,7 +575,7 @@ class LiveTradingRunner:
                         logger.warning("Adapter does not support data pre-loading")
 
                 # Reset flag at midnight for new trading day
-                if now.time() < dt_time(0, 5):  # Reset between midnight and 12:05 AM
+                if now_est.time() < dt_time(0, 5):  # Reset between midnight and 12:05 AM EST
                     if self.data_preloaded_today:
                         self.data_preloaded_today = False
                         logger.info("Reset data pre-load flag for new trading day")
@@ -582,8 +588,8 @@ class LiveTradingRunner:
                 # Pre-fetch 5 minutes before execution to have fresh data with network buffer
                 if (self.enable_intraday_prefetch and
                     not self.intraday_prefetched_today and
-                    now.time() >= dt_time(15, 45) and
-                    now.time() <= dt_time(15, 48) and
+                    now_est.time() >= dt_time(15, 45) and
+                    now_est.time() <= dt_time(15, 48) and
                     self.adapter.broker.is_market_open()):
 
                     logger.info("")
