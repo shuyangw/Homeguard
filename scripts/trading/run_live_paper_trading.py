@@ -25,6 +25,7 @@ import json
 from datetime import datetime, time as dt_time
 from typing import Optional, Dict, List
 from dotenv import load_dotenv
+import pytz
 
 from src.trading.brokers import AlpacaBroker
 from src.trading.adapters import (
@@ -358,25 +359,28 @@ class LiveTradingRunner:
         # Check for execution_times (new format for overnight strategies)
         execution_times = schedule.get('execution_times')
         if execution_times:
-            now = datetime.now()
-            current_time = now.time()
+            # Convert current UTC time to EST for comparison with schedule times
+            eastern = pytz.timezone('US/Eastern')
+            now_utc = datetime.now(pytz.UTC)
+            now_est = now_utc.astimezone(eastern)
+            current_time = now_est.time()
 
             for exec_config in execution_times:
                 target_time = datetime.strptime(exec_config['time'], '%H:%M').time()
                 action = exec_config['action']
 
                 # Run if within 1 minute of target time
-                time_diff = abs((datetime.combine(now.date(), current_time) -
-                               datetime.combine(now.date(), target_time)).total_seconds())
+                time_diff = abs((datetime.combine(now_est.date(), current_time) -
+                               datetime.combine(now_est.date(), target_time)).total_seconds())
 
                 if time_diff < 60:
                     # Check if we already ran this action within last minute
                     if action == 'entry' and self.last_run_time:
-                        seconds_since_last = (now - self.last_run_time).total_seconds()
+                        seconds_since_last = (now_utc.replace(tzinfo=None) - self.last_run_time).total_seconds()
                         if seconds_since_last < 60:
                             continue
                     elif action == 'exit' and self.last_exit_time:
-                        seconds_since_last = (now - self.last_exit_time).total_seconds()
+                        seconds_since_last = (now_utc.replace(tzinfo=None) - self.last_exit_time).total_seconds()
                         if seconds_since_last < 60:
                             continue
 
@@ -387,18 +391,21 @@ class LiveTradingRunner:
         # Check specific time (legacy single-time format)
         specific_time = schedule.get('specific_time')
         if specific_time:
-            now = datetime.now()
+            # Convert current UTC time to EST for comparison with schedule times
+            eastern = pytz.timezone('US/Eastern')
+            now_utc = datetime.now(pytz.UTC)
+            now_est = now_utc.astimezone(eastern)
             target_time = datetime.strptime(specific_time, '%H:%M').time()
-            current_time = now.time()
+            current_time = now_est.time()
 
             # Run if within 1 minute of target time
-            time_diff = abs((datetime.combine(now.date(), current_time) -
-                           datetime.combine(now.date(), target_time)).total_seconds())
+            time_diff = abs((datetime.combine(now_est.date(), current_time) -
+                           datetime.combine(now_est.date(), target_time)).total_seconds())
 
             if time_diff < 60:
                 # Check if we already ran within last minute
                 if self.last_run_time:
-                    seconds_since_last = (now - self.last_run_time).total_seconds()
+                    seconds_since_last = (now_utc.replace(tzinfo=None) - self.last_run_time).total_seconds()
                     if seconds_since_last < 60:
                         return None
                 return 'entry'  # Default to entry action
