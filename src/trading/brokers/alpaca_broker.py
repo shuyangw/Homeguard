@@ -25,6 +25,7 @@ from alpaca.trading.enums import OrderSide as AlpacaOrderSide, TimeInForce as Al
 from alpaca.data.historical import StockHistoricalDataClient
 from alpaca.data.requests import StockBarsRequest, StockLatestQuoteRequest, StockLatestTradeRequest
 from alpaca.data.timeframe import TimeFrame, TimeFrameUnit
+from alpaca.data.enums import DataFeed
 
 from .broker_interface import (
     BrokerInterface,
@@ -321,7 +322,11 @@ class AlpacaBroker(BrokerInterface):
     def get_latest_quote(self, symbol: str) -> Dict:
         """Get latest bid/ask quote."""
         try:
-            request = StockLatestQuoteRequest(symbol_or_symbols=[symbol])
+            feed = DataFeed.IEX if self.paper else DataFeed.SIP
+            request = StockLatestQuoteRequest(
+                symbol_or_symbols=[symbol],
+                feed=feed
+            )
             quotes = self.data_client.get_stock_latest_quote(request)
             quote = quotes[symbol]
 
@@ -342,7 +347,11 @@ class AlpacaBroker(BrokerInterface):
     def get_latest_trade(self, symbol: str) -> Dict:
         """Get latest trade."""
         try:
-            request = StockLatestTradeRequest(symbol_or_symbols=[symbol])
+            feed = DataFeed.IEX if self.paper else DataFeed.SIP
+            request = StockLatestTradeRequest(
+                symbol_or_symbols=[symbol],
+                feed=feed
+            )
             trades = self.data_client.get_stock_latest_trade(request)
             trade = trades[symbol]
 
@@ -370,11 +379,16 @@ class AlpacaBroker(BrokerInterface):
             # Translate timeframe string to Alpaca TimeFrame
             tf = self._translate_timeframe(timeframe)
 
+            # Use IEX feed for paper trading (free tier)
+            # SIP feed requires paid subscription
+            feed = DataFeed.IEX if self.paper else DataFeed.SIP
+
             request = StockBarsRequest(
                 symbol_or_symbols=symbols,
                 timeframe=tf,
                 start=start,
-                end=end
+                end=end,
+                feed=feed
             )
 
             bars = self.data_client.get_stock_bars(request)

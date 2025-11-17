@@ -240,14 +240,14 @@ class TradingSessionTracker:
             report.append(f"**Total Positions:** {len(positions)}")
             report.append("")
             for pos in positions:
-                pnl = float(pos.unrealized_pl)
-                pnl_pct = float(pos.unrealized_plpc) * 100
-                report.append(f"### {pos.symbol}")
-                report.append(f"- **Quantity:** {pos.qty}")
-                report.append(f"- **Entry Price:** ${float(pos.avg_entry_price):.2f}")
-                report.append(f"- **Current Price:** ${float(pos.current_price):.2f}")
+                pnl = float(pos['unrealized_pnl'])
+                pnl_pct = float(pos['unrealized_pnl_pct']) * 100
+                report.append(f"### {pos['symbol']}")
+                report.append(f"- **Quantity:** {pos['quantity']}")
+                report.append(f"- **Entry Price:** ${float(pos['avg_entry_price']):.2f}")
+                report.append(f"- **Current Price:** ${float(pos['current_price']):.2f}")
                 report.append(f"- **Unrealized P&L:** ${pnl:,.2f} ({pnl_pct:+.2f}%)")
-                report.append(f"- **Market Value:** ${float(pos.market_value):,.2f}")
+                report.append(f"- **Market Value:** ${float(pos['market_value']):,.2f}")
                 report.append("")
         else:
             report.append("No open positions")
