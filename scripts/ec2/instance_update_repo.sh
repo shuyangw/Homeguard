@@ -10,6 +10,9 @@
 
 set -e  # Exit on error
 
+# Save current directory to return to it at the end
+ORIGINAL_DIR="$(pwd)"
+
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 REPO_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 RESTART_BOT=false
@@ -120,3 +123,6 @@ echo ""
 echo "=========================================="
 echo "Update complete!"
 echo "=========================================="
+
+# Return to original directory
+cd "$ORIGINAL_DIR"
