@@ -6,7 +6,7 @@
 # It will start the trading bot if not running, or restart it if already running.
 #
 # Prerequisites:
-#   - .env file in home directory with Alpaca credentials
+#   - .env file in Homeguard repository with Alpaca credentials
 #   - Homeguard repository cloned in ~/Homeguard
 #
 # Usage:
@@ -17,10 +17,10 @@ set -e
 
 # Configuration
 REPO_DIR="$HOME/Homeguard"
-ENV_FILE="$HOME/.env"
+ENV_FILE="$REPO_DIR/.env"
 LOG_DIR="$HOME/logs/live_trading/paper"
 TRADING_SCRIPT="$REPO_DIR/scripts/trading/run_live_paper_trading.py"
-PYTHON_CMD="python3"
+PYTHON_CMD="$REPO_DIR/venv/bin/python"
 PROCESS_NAME="run_live_paper_trading.py"
 
 # Colors for output
@@ -40,9 +40,10 @@ if [ ! -f "$ENV_FILE" ]; then
     echo -e "${RED}❌ Error: .env file not found at $ENV_FILE${NC}"
     echo "Please create .env file with your Alpaca credentials:"
     echo ""
-    echo "ALPACA_API_KEY=your_api_key"
-    echo "ALPACA_SECRET_KEY=your_secret_key"
-    echo "ALPACA_PAPER=true"
+    echo "ALPACA_PAPER_KEY_ID=your_api_key"
+    echo "ALPACA_PAPER_SECRET_KEY=your_secret_key"
+    echo ""
+    echo "Or check the Terraform deployment created it correctly."
     exit 1
 fi
 
