@@ -24,11 +24,13 @@ Quick scripts to manage your Homeguard Trading Bot on AWS EC2.
 
 | Script | Purpose | Usage |
 |--------|---------|-------|
-| **connect.sh** | SSH into instance | `./connect.sh` |
-| **check_bot.sh** | Check bot status | `./check_bot.sh` |
-| **view_logs.sh** | View live logs | `./view_logs.sh` |
-| **restart_bot.sh** | Restart bot service | `./restart_bot.sh` |
-| **daily_health_check.sh** | Automated health check | `./daily_health_check.sh` |
+| **local_start_instance.sh** | Start EC2 instance | `./local_start_instance.sh` |
+| **local_stop_instance.sh** | Stop EC2 instance | `./local_stop_instance.sh` |
+| **local_connect.sh** | SSH into instance | `./local_connect.sh` |
+| **local_check_bot.sh** | Check bot status | `./local_check_bot.sh` |
+| **local_view_logs.sh** | View live logs | `./local_view_logs.sh` |
+| **local_restart_bot.sh** | Restart bot service | `./local_restart_bot.sh` |
+| **local_health_check.sh** | Automated health check | `./local_health_check.sh` |
 
 ---
 
