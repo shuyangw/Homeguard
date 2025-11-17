@@ -55,39 +55,62 @@ if [ -n "$(git status --porcelain)" ]; then
     echo ""
 fi
 
+# Get current commit hash before pulling
+BEFORE_COMMIT=$(git rev-parse HEAD)
+
 # Pull latest changes
 echo "Pulling latest changes from origin..."
-git pull --ff-only origin $(git branch --show-current)
+PULL_OUTPUT=$(git pull --ff-only origin $(git branch --show-current) 2>&1)
+PULL_EXIT_CODE=$?
 
-if [ $? -ne 0 ]; then
+if [ $PULL_EXIT_CODE -ne 0 ]; then
+    echo "$PULL_OUTPUT"
     echo ""
     echo "❌ Git pull failed!"
     echo "You may need to resolve conflicts manually"
     exit 1
 fi
 
-echo ""
-echo "✅ Repository updated successfully!"
+# Get commit hash after pulling
+AFTER_COMMIT=$(git rev-parse HEAD)
+
+# Check if any changes were pulled
+CHANGES_PULLED=false
+if [ "$BEFORE_COMMIT" != "$AFTER_COMMIT" ]; then
+    CHANGES_PULLED=true
+fi
+
+echo "$PULL_OUTPUT"
 echo ""
 
-# Show what changed
-echo "Recent commits:"
-git log --oneline -5
-echo ""
+if [ "$CHANGES_PULLED" = true ]; then
+    echo "✅ New changes pulled!"
+    echo ""
+    echo "What changed:"
+    git log --oneline $BEFORE_COMMIT..$AFTER_COMMIT
+    echo ""
+else
+    echo "✅ Already up to date (no changes)"
+    echo ""
+fi
 
 # Handle bot restart if requested
 if [ "$RESTART_BOT" = true ]; then
     if [ "$BOT_RUNNING" = true ]; then
-        echo "Restarting trading bot..."
-        echo ""
+        if [ "$CHANGES_PULLED" = true ]; then
+            echo "Restarting trading bot with new code..."
+            echo ""
 
-        # Restart using systemd (bot is managed by systemd service)
-        sudo systemctl restart homeguard-trading
-        echo "✅ Bot restarted via systemd"
+            # Restart using systemd (bot is managed by systemd service)
+            sudo systemctl restart homeguard-trading
+            echo "✅ Bot restarted via systemd"
+        else
+            echo "ℹ️  No changes pulled - skipping restart"
+        fi
     else
         echo "ℹ️  Bot was not running - skipping restart"
     fi
-elif [ "$BOT_RUNNING" = true ]; then
+elif [ "$BOT_RUNNING" = true ] && [ "$CHANGES_PULLED" = true ]; then
     echo "⚠️  Trading bot is still running with OLD code"
     echo "   Run './instance_update_repo.sh --restart' to restart with new code"
     echo "   Or manually restart: sudo systemctl restart homeguard-trading"
