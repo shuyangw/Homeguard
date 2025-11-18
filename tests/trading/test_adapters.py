@@ -49,7 +49,7 @@ def mock_broker():
 
     broker.get_historical_bars.side_effect = get_historical_bars
 
-    # Mock positions
+    # Mock positions (returned as list of dicts, as real Alpaca broker does)
     broker.get_positions.return_value = []
 
     return broker
@@ -344,8 +344,15 @@ class TestOMRLiveAdapter:
 
         schedule = adapter.get_schedule()
 
-        assert schedule['specific_time'] == '15:50'  # 3:50 PM EST
+        # OMR has TWO execution times: entry at 3:50 PM and exit at 9:31 AM
+        assert 'execution_times' in schedule
+        assert len(schedule['execution_times']) == 2
+        assert schedule['execution_times'][0]['time'] == '15:50'  # 3:50 PM EST entry
+        assert schedule['execution_times'][0]['action'] == 'entry'
+        assert schedule['execution_times'][1]['time'] == '09:31'  # 9:31 AM EST exit
+        assert schedule['execution_times'][1]['action'] == 'exit'
         assert schedule['market_hours_only'] == True
+        assert schedule['strategy_type'] == 'overnight'
 
     @patch('src.trading.adapters.omr_live_adapter.datetime')
     def test_should_run_now_correct_time(self, mock_datetime, mock_broker):
@@ -381,12 +388,17 @@ class TestOMRLiveAdapter:
 
     def test_close_overnight_positions(self, mock_broker):
         """Test closing overnight positions."""
-        # Create mock position
-        mock_position = Mock()
-        mock_position.symbol = 'TQQQ'
-        mock_position.qty = 100
-        mock_position.avg_entry_price = 50.0
-        mock_position.current_price = 52.0
+        # Create mock position as dict (as returned by real Alpaca broker)
+        mock_position = {
+            'symbol': 'TQQQ',
+            'quantity': 100,
+            'avg_entry_price': 50.0,
+            'current_price': 52.0,
+            'market_value': 5200.0,
+            'unrealized_pnl': 200.0,
+            'unrealized_pnl_pct': 0.04,
+            'side': 'long'
+        }
 
         mock_broker.get_positions.return_value = [mock_position]
 
