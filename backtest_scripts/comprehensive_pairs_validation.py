@@ -15,12 +15,14 @@ Usage:
 
 import sys
 from pathlib import Path
-sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
 
 import pandas as pd
 import numpy as np
 from typing import Dict, List, Tuple
 import json
+
+from utils.path_setup import setup_project_paths
+ROOT_DIR = setup_project_paths()
 from datetime import datetime
 
 from backtesting.engine.backtest_engine import BacktestEngine

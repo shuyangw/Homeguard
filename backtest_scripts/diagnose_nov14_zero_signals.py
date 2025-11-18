@@ -13,9 +13,11 @@ import pandas as pd
 import yfinance as yf
 from datetime import datetime, timedelta
 
+from utils.path_setup import setup_project_paths
+ROOT_DIR = setup_project_paths()
+
 # Add src to path
 project_root = Path(__file__).parent.parent
-sys.path.insert(0, str(project_root / "src"))
 
 from strategies.advanced.market_regime_detector import MarketRegimeDetector
 from strategies.advanced.overnight_signal_generator import OvernightSignalGenerator

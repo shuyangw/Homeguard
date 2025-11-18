@@ -4,11 +4,13 @@ Quick test of regime-based modules with minimal data.
 
 import sys
 from pathlib import Path
-sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
 
 import pandas as pd
 import numpy as np
 from utils import logger
+
+from utils.path_setup import setup_project_paths
+ROOT_DIR = setup_project_paths()
 
 logger.info("Starting quick regime module test...")
 

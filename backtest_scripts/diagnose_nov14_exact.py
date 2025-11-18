@@ -5,10 +5,12 @@ Diagnose Nov 14 using EXACT 3:50 PM VIX value of 20.11
 import sys
 import os
 from pathlib import Path
+
+from utils.path_setup import setup_project_paths
+ROOT_DIR = setup_project_paths()
 import pandas as pd
 import numpy as np
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from src.strategies.advanced.market_regime_detector import MarketRegimeDetector
 
 def load_data():

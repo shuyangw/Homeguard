@@ -14,11 +14,13 @@ import os
 import sys
 from pathlib import Path
 from datetime import datetime, timedelta
+
+from utils.path_setup import setup_project_paths
+ROOT_DIR = setup_project_paths()
 import pandas as pd
 import numpy as np
 
 # Add src to path for imports
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from src.utils.logger import logger
 
 try:

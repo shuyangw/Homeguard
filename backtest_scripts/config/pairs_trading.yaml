@@ -1,0 +1,50 @@
+# Pairs Trading Strategy Configuration
+
+# Inherit from default backtest settings
+extends: "default_backtest.yaml"
+
+# Strategy-specific parameters
+strategy:
+  name: "pairs_trading"
+
+  # Entry signal parameters
+  entry_z_score: 2.0  # Enter when z-score exceeds this threshold
+
+  # Exit signal parameters
+  exit_z_score: 0.5  # Exit when z-score returns to this level
+
+  # Lookback period for calculating spread statistics
+  lookback_period: 60  # days
+
+  # Hedge ratio calculation method
+  hedge_ratio_method: "ols"  # ols, tls, or dynamic
+
+  # Stop loss (percentage loss on position)
+  stop_loss_pct: 0.05  # 5% stop loss
+
+  # Maximum holding period (days)
+  max_holding_period: 20
+
+# Pairs to trade
+pairs:
+  - ["SPY", "IWM"]  # Large cap vs small cap
+  - ["QQQ", "DIA"]  # Tech vs industrials
+  - ["XLF", "XLI"]  # Financials vs industrials
+
+# Data settings (override defaults)
+data:
+  # Pairs trading needs more history for cointegration testing
+  lookback_days: 252  # 1 year of history for initial calibration
+
+# Risk management (override defaults)
+risk:
+  # Conservative position sizing for pairs (need capital for both legs)
+  position_size_pct: 0.05  # 5% per leg = 10% total per pair
+
+  # Maximum pairs to trade concurrently
+  max_positions: 3  # Each pair uses 2 positions
+
+# Output settings
+output:
+  output_dir: "output/validation"
+  reports_dir: "reports/validation"

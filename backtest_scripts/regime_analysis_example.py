@@ -18,12 +18,14 @@ OPTIMIZED VERSION:
 
 import sys
 from pathlib import Path
-sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
 
 import time
 from backtesting.engine.backtest_engine import BacktestEngine
 from backtesting.chunking.walk_forward import WalkForwardValidator
 from backtesting.regimes.analyzer import RegimeAnalyzer
+
+from utils.path_setup import setup_project_paths
+ROOT_DIR = setup_project_paths()
 from strategies.base_strategies.moving_average import MovingAverageCrossover
 from utils import logger
 

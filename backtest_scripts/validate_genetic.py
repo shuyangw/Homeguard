@@ -10,10 +10,12 @@ from pathlib import Path
 from datetime import datetime
 
 # Add src to path
-sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
 
 from backtesting.engine.backtest_engine import BacktestEngine
 from backtesting.optimization import GeneticOptimizer, RandomSearchOptimizer
+
+from utils.path_setup import setup_project_paths
+ROOT_DIR = setup_project_paths()
 from strategies.base_strategies.moving_average import MovingAverageCrossover
 from utils import logger
 

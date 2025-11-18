@@ -8,7 +8,9 @@ import os
 import sys
 from pathlib import Path
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from utils.path_setup import setup_project_paths
+ROOT_DIR = setup_project_paths()
+
 
 import pandas as pd
 from src.utils.logger import logger

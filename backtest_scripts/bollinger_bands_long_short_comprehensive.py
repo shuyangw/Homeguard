@@ -13,7 +13,9 @@ OPTIMAL PARAMETERS (proven on AAPL long-only):
 
 import sys
 from pathlib import Path
-sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
+
+from utils.path_setup import setup_project_paths
+ROOT_DIR = setup_project_paths()
 
 from backtesting.engine.backtest_engine import BacktestEngine
 from strategies.base_strategies.mean_reversion_long_short import MeanReversionLongShort

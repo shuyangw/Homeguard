@@ -13,11 +13,13 @@ Tests:
 
 import sys
 from pathlib import Path
+
+from utils.path_setup import setup_project_paths
+ROOT_DIR = setup_project_paths()
 import pandas as pd
 import numpy as np
 
 # Add src to path
-sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.backtesting.engine.data_loader import DataLoader
 from src.backtesting.utils.pairs import PairsUtils

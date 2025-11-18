@@ -6,7 +6,9 @@ Investigate why Sharpe improves but total returns worsen.
 
 import sys
 from pathlib import Path
-sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
+
+from utils.path_setup import setup_project_paths
+ROOT_DIR = setup_project_paths()
 
 import pandas as pd
 from backtesting.engine.backtest_engine import BacktestEngine

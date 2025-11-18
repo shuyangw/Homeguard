@@ -6,8 +6,10 @@ Quick diagnostic to see if strategy works at all.
 import sys
 from pathlib import Path
 
+from utils.path_setup import setup_project_paths
+ROOT_DIR = setup_project_paths()
+
 # Add src to path
-sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
 
 from backtesting.engine.backtest_engine import BacktestEngine
 from strategies.advanced.volatility_targeted_momentum import VolatilityTargetedMomentum

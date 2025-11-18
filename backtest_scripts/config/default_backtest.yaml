@@ -1,0 +1,70 @@
+# Default Backtest Configuration
+# This file contains common settings for all backtest scripts.
+# Override values via CLI arguments or by creating custom config files.
+
+# Backtest time period
+backtest:
+  start_date: "2020-01-01"
+  end_date: "2024-12-31"
+  initial_cash: 100000
+
+# Risk management settings
+risk:
+  # Position sizing method: fixed_percent, kelly, volatility_target, equal_weight, custom
+  position_sizing_method: "fixed_percent"
+
+  # Position size as percentage of portfolio (0.0 to 1.0)
+  position_size_pct: 0.10  # 10% per trade (moderate risk)
+
+  # Stop loss percentage (optional)
+  stop_loss_pct: null  # null = no stop loss
+
+  # Maximum number of concurrent positions
+  max_positions: 5
+
+# Transaction costs
+costs:
+  # Commission as decimal (0.001 = 0.1% = 10 basis points)
+  commission: 0.001  # $1 per $1000 traded (Interactive Brokers typical)
+
+  # Slippage as decimal
+  slippage: 0.0005  # 5 basis points
+
+# Data settings
+data:
+  # Cache directory for downloaded data
+  cache_dir: "data/cache"
+
+  # Force re-download even if cached data exists
+  force_download: false
+
+  # Data provider (yfinance is default)
+  provider: "yfinance"
+
+# Output settings
+output:
+  # Save trade logs to CSV
+  save_trades: true
+
+  # Generate markdown reports
+  save_reports: true
+
+  # Output directory
+  output_dir: "output/validation"
+
+  # Reports directory
+  reports_dir: "reports/validation"
+
+  # Include timestamp in filenames
+  timestamp_files: true
+
+  # Timestamp format (YYYYMMDD_HHMMSS)
+  timestamp_format: "%Y%m%d_%H%M%S"
+
+# Logging
+logging:
+  # Log level: DEBUG, INFO, WARNING, ERROR
+  level: "INFO"
+
+  # Show progress bars
+  show_progress: true

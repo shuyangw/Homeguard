@@ -24,10 +24,12 @@ from datetime import datetime
 import pandas as pd
 import numpy as np
 import warnings
+
+from utils.path_setup import setup_project_paths
+ROOT_DIR = setup_project_paths()
 warnings.filterwarnings('ignore')
 
 # Add src to path
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from src.utils.logger import logger
 from src.config import get_backtest_results_dir
 

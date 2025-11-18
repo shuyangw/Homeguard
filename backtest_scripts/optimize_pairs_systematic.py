@@ -22,9 +22,11 @@ import json
 from itertools import product
 import time
 
+from utils.path_setup import setup_project_paths
+ROOT_DIR = setup_project_paths()
+
 # Add project root to path
 project_root = Path(__file__).parent.parent
-sys.path.insert(0, str(project_root))
 
 from src.backtesting.engine.backtest_engine import BacktestEngine
 from src.strategies.advanced.pairs_trading import PairsTrading

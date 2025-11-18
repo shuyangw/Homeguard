@@ -10,12 +10,14 @@ This script validates that regime detection is:
 
 import sys
 from pathlib import Path
-sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
 
 from backtesting.engine.backtest_engine import BacktestEngine
 from strategies.base_strategies.moving_average import MovingAverageCrossover
 from backtesting.regimes.detector import TrendDetector, VolatilityDetector, DrawdownDetector
 from backtesting.regimes.analyzer import RegimeAnalyzer
+
+from utils.path_setup import setup_project_paths
+ROOT_DIR = setup_project_paths()
 from backtesting.utils.risk_config import RiskConfig
 from utils import logger
 import pandas as pd

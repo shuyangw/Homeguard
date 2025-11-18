@@ -1,0 +1,63 @@
+# Overnight Mean Reversion Strategy Configuration
+
+# Inherit from default backtest settings
+extends: "default_backtest.yaml"
+
+# Strategy-specific parameters
+strategy:
+  name: "overnight_mean_reversion"
+
+  # Entry threshold (RSI or percentage deviation)
+  entry_threshold: 30  # Enter when RSI < 30 (oversold)
+
+  # Exit next day at market open
+  exit_at_open: true
+
+  # Use VIX filter
+  use_vix_filter: true
+  vix_threshold: 20  # Only trade when VIX < 20 (low volatility)
+
+  # Maximum holding period
+  max_holding_period: 1  # Overnight only (1 day)
+
+  # Position direction
+  direction: "long_only"  # long_only, short_only, or both
+
+# Symbol universe
+symbols:
+  # Top 5 performers from validation
+  - "QQQ"   # Nasdaq 100
+  - "TQQQ"  # 3x Nasdaq
+  - "SOXL"  # 3x Semiconductors
+  - "TECL"  # 3x Technology
+  - "SPY"   # S&P 500
+
+# Data settings
+data:
+  # Need VIX data for filtering
+  additional_symbols:
+    - "^VIX"
+
+# Risk management
+risk:
+  # Moderate risk for overnight holds
+  position_size_pct: 0.15  # 15% per position
+
+  # Diversify across 3-5 symbols
+  max_positions: 5
+
+  # Hard stop loss for overnight risk
+  stop_loss_pct: 0.03  # 3% stop
+
+# Schedule (for live trading reference)
+schedule:
+  # Entry time (market close minus buffer)
+  entry_time: "15:50"  # 3:50 PM EST
+
+  # Exit time (market open plus buffer)
+  exit_time: "09:31"  # 9:31 AM EST
+
+# Output settings
+output:
+  output_dir: "output/validation"
+  reports_dir: "reports/validation"

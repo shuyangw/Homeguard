@@ -8,11 +8,13 @@ import sys
 import os
 from pathlib import Path
 from datetime import datetime
+
+from utils.path_setup import setup_project_paths
+ROOT_DIR = setup_project_paths()
 import pandas as pd
 import numpy as np
 
 # Add src to path
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from src.strategies.advanced.market_regime_detector import MarketRegimeDetector
 from src.utils.logger import logger
 

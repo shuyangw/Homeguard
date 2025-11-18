@@ -8,12 +8,14 @@ Configuration: Optimal settings from walk-forward validation
 
 import sys
 import os
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import pandas as pd
 import numpy as np
 from pathlib import Path
 from datetime import datetime, timedelta
+
+from utils.path_setup import setup_project_paths
+ROOT_DIR = setup_project_paths()
 from src.utils.logger import logger
 from src.config import get_backtest_results_dir
 

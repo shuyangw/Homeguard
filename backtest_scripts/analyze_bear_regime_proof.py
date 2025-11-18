@@ -9,8 +9,10 @@ import sys
 import os
 from pathlib import Path
 
+from utils.path_setup import setup_project_paths
+ROOT_DIR = setup_project_paths()
+
 # Add src to path
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from src.config import get_backtest_results_dir
 
 # Load trades

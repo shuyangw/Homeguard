@@ -15,9 +15,11 @@ import yfinance as yf
 
 # Add src to path
 project_root = Path(__file__).parent.parent
-sys.path.insert(0, str(project_root / "src"))
 
 from trading.brokers.alpaca_broker import AlpacaBroker
+
+from utils.path_setup import setup_project_paths
+ROOT_DIR = setup_project_paths()
 from utils.logger import logger
 
 def test_alpaca_vix_fetch():

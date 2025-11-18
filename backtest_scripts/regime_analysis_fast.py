@@ -21,12 +21,14 @@ NOTE: Daily data is less precise than intraday but sufficient for:
 
 import sys
 from pathlib import Path
-sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
 
 import time
 import pandas as pd
 from backtesting.engine.backtest_engine import BacktestEngine
 from backtesting.chunking.walk_forward import WalkForwardValidator
+
+from utils.path_setup import setup_project_paths
+ROOT_DIR = setup_project_paths()
 from backtesting.regimes.analyzer import RegimeAnalyzer
 from strategies.base_strategies.moving_average import MovingAverageCrossover
 from utils import logger

@@ -1,0 +1,128 @@
+# Common Date Ranges for Backtesting
+# Predefined time periods for consistent testing across strategies
+
+# Full periods
+full_periods:
+  # Maximum historical data
+  max_history:
+    start: "2000-01-01"
+    end: "2024-12-31"
+    description: "Full 25-year history"
+
+  # 5-year window (good balance)
+  five_years:
+    start: "2020-01-01"
+    end: "2024-12-31"
+    description: "5 years including COVID and recovery"
+
+  # 3-year window (recent market)
+  three_years:
+    start: "2022-01-01"
+    end: "2024-12-31"
+    description: "Recent 3 years"
+
+  # Last year
+  one_year:
+    start: "2024-01-01"
+    end: "2024-12-31"
+    description: "Last 12 months"
+
+# Market regime periods
+regimes:
+  # Bull markets
+  bull_2019_2021:
+    start: "2019-01-01"
+    end: "2021-12-31"
+    description: "Strong bull market pre-COVID through recovery"
+
+  bull_2009_2015:
+    start: "2009-01-01"
+    end: "2015-12-31"
+    description: "Post-financial crisis recovery"
+
+  # Bear markets
+  bear_2022:
+    start: "2022-01-01"
+    end: "2022-12-31"
+    description: "2022 bear market (inflation fears)"
+
+  bear_2008:
+    start: "2008-01-01"
+    end: "2009-03-31"
+    description: "Financial crisis bear market"
+
+  # Crisis periods
+  covid_crash:
+    start: "2020-02-01"
+    end: "2020-04-30"
+    description: "COVID-19 market crash"
+
+  covid_recovery:
+    start: "2020-04-01"
+    end: "2021-12-31"
+    description: "Post-COVID recovery rally"
+
+  # Neutral/choppy markets
+  neutral_2015_2016:
+    start: "2015-01-01"
+    end: "2016-12-31"
+    description: "Sideways choppy market"
+
+# Walk-forward validation periods
+walk_forward:
+  # In-sample (training)
+  in_sample:
+    start: "2020-01-01"
+    end: "2022-12-31"
+    description: "3-year training period"
+
+  # Out-of-sample (testing)
+  out_of_sample:
+    start: "2023-01-01"
+    end: "2024-12-31"
+    description: "2-year testing period"
+
+  # Alternative split
+  in_sample_alt:
+    start: "2019-01-01"
+    end: "2021-12-31"
+    description: "Alternative 3-year training"
+
+  out_of_sample_alt:
+    start: "2022-01-01"
+    end: "2024-12-31"
+    description: "Alternative 3-year testing"
+
+# Monthly crisis analysis periods
+crisis_analysis:
+  # Recent volatility spikes
+  recent_crises:
+    - start: "2020-02-01"
+      end: "2020-03-31"
+      label: "COVID Crash"
+
+    - start: "2022-06-01"
+      end: "2022-06-30"
+      label: "June 2022 Selloff"
+
+    - start: "2023-03-01"
+      end: "2023-03-31"
+      label: "Banking Crisis"
+
+    - start: "2024-08-01"
+      end: "2024-08-31"
+      label: "August 2024 Volatility"
+
+# Optimization periods
+optimization:
+  # Shorter period for faster iteration
+  fast_test:
+    start: "2023-01-01"
+    end: "2024-12-31"
+    description: "2-year quick test"
+
+  # Longer period for robust optimization
+  robust_test:
+    start: "2020-01-01"
+    end: "2024-12-31"
+    description: "5-year comprehensive test"

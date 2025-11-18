@@ -11,9 +11,11 @@ Expected result: Long-short should dramatically outperform in bear markets.
 import sys
 from pathlib import Path
 
+from utils.path_setup import setup_project_paths
+ROOT_DIR = setup_project_paths()
+
 # Add src to path
 project_root = Path(__file__).parent.parent
-sys.path.insert(0, str(project_root / 'src'))
 
 from backtesting.engine.backtest_engine import BacktestEngine
 from strategies.base_strategies.mean_reversion import MeanReversion

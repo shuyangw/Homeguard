@@ -17,8 +17,10 @@ from pathlib import Path
 import pandas as pd
 from datetime import datetime
 
+from utils.path_setup import setup_project_paths
+ROOT_DIR = setup_project_paths()
+
 # Add src to path
-sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.backtesting.engine.backtest_engine import BacktestEngine
 from src.strategies.advanced.pairs_trading import PairsTrading

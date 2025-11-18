@@ -22,10 +22,12 @@ from datetime import datetime
 import pandas as pd
 
 # Add src to path
-sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
 
 from backtesting.engine.backtest_engine import BacktestEngine
 from backtesting.optimization import GridSearchOptimizer
+
+from utils.path_setup import setup_project_paths
+ROOT_DIR = setup_project_paths()
 from strategies.advanced.volatility_targeted_momentum import VolatilityTargetedMomentum
 from backtesting.utils.risk_config import RiskConfig
 from utils import logger

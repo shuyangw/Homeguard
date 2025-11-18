@@ -15,8 +15,10 @@ from pathlib import Path
 from datetime import datetime, timedelta
 import sys
 
+from utils.path_setup import setup_project_paths
+ROOT_DIR = setup_project_paths()
+
 # Add src to path
-sys.path.append(str(Path(__file__).parent.parent / 'src'))
 
 from strategies.advanced.overnight_mean_reversion import OvernightMeanReversionStrategy
 from strategies.advanced.market_regime_detector import MarketRegimeDetector

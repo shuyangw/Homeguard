@@ -14,10 +14,12 @@ Date: November 11, 2025
 
 import sys
 from pathlib import Path
+
+from utils.path_setup import setup_project_paths
+ROOT_DIR = setup_project_paths()
 import pandas as pd
 
 # Add parent directory to path
-sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.utils import logger
 from src.config import get_backtest_results_dir

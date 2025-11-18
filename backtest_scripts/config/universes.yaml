@@ -1,0 +1,140 @@
+# Symbol Universe Definitions
+# Reusable symbol lists for different market segments
+
+# Major indices
+indices:
+  sp500: ["SPY"]
+  nasdaq: ["QQQ"]
+  dow: ["DIA"]
+  russell2000: ["IWM"]
+  all_indices: ["SPY", "QQQ", "DIA", "IWM"]
+
+# Technology sector
+technology:
+  faang:
+    - "AAPL"  # Apple
+    - "AMZN"  # Amazon
+    - "GOOGL" # Google
+    - "META"  # Meta (Facebook)
+    - "NFLX"  # Netflix
+
+  semiconductors:
+    - "NVDA"  # NVIDIA
+    - "AMD"   # Advanced Micro Devices
+    - "INTC"  # Intel
+    - "MU"    # Micron
+    - "AVGO"  # Broadcom
+
+  software:
+    - "MSFT"  # Microsoft
+    - "CRM"   # Salesforce
+    - "ADBE"  # Adobe
+    - "NOW"   # ServiceNow
+
+# Leveraged ETFs
+leveraged:
+  # 3x Long
+  triple_long:
+    - "TQQQ"  # 3x Nasdaq
+    - "UPRO"  # 3x S&P 500
+    - "SOXL"  # 3x Semiconductors
+    - "TECL"  # 3x Technology
+    - "FAS"   # 3x Financials
+
+  # 3x Short (inverse)
+  triple_short:
+    - "SQQQ"  # 3x Inverse Nasdaq
+    - "SPXU"  # 3x Inverse S&P 500
+    - "SOXS"  # 3x Inverse Semiconductors
+
+  # 2x Long
+  double_long:
+    - "SSO"   # 2x S&P 500
+    - "QLD"   # 2x Nasdaq
+    - "UWM"   # 2x Russell 2000
+
+# Volatility products
+volatility:
+  vix_etfs:
+    - "UVXY"  # 1.5x Short-term VIX futures
+    - "SVXY"  # -0.5x Short VIX futures
+    - "VXX"   # Short-term VIX futures
+    - "VIXY"  # Short-term VIX futures
+
+  vix_index:
+    - "^VIX"  # CBOE Volatility Index
+
+# Sector ETFs
+sectors:
+  technology: ["XLK"]
+  financials: ["XLF"]
+  healthcare: ["XLV"]
+  energy: ["XLE"]
+  consumer_discretionary: ["XLY"]
+  consumer_staples: ["XLP"]
+  industrials: ["XLI"]
+  materials: ["XLB"]
+  real_estate: ["XLRE"]
+  utilities: ["XLU"]
+  communication: ["XLC"]
+
+  all_sectors:
+    - "XLK"   # Technology
+    - "XLF"   # Financials
+    - "XLV"   # Healthcare
+    - "XLE"   # Energy
+    - "XLY"   # Consumer Discretionary
+    - "XLP"   # Consumer Staples
+    - "XLI"   # Industrials
+    - "XLB"   # Materials
+    - "XLRE"  # Real Estate
+    - "XLU"   # Utilities
+    - "XLC"   # Communication
+
+# Common pairs for pairs trading
+pairs_trading:
+  # Index pairs (mean reversion)
+  index_pairs:
+    - ["SPY", "IWM"]   # Large vs Small cap
+    - ["QQQ", "DIA"]   # Tech vs Industrials
+    - ["SPY", "QQQ"]   # Broad vs Tech
+
+  # Sector pairs
+  sector_pairs:
+    - ["XLF", "XLI"]   # Financials vs Industrials
+    - ["XLK", "XLE"]   # Tech vs Energy
+    - ["XLY", "XLP"]   # Discretionary vs Staples
+
+  # Leveraged pairs (higher volatility)
+  leveraged_pairs:
+    - ["TQQQ", "SQQQ"] # 3x Long vs 3x Short Nasdaq
+    - ["UPRO", "SPXU"] # 3x Long vs 3x Short S&P
+    - ["SOXL", "SOXS"] # 3x Long vs 3x Short Semiconductors
+
+  # Volatility pairs
+  volatility_pairs:
+    - ["SPY", "UVXY"]  # S&P 500 vs VIX
+    - ["QQQ", "UVXY"]  # Nasdaq vs VIX
+    - ["XLY", "UVXY"]  # Consumer Disc vs VIX
+
+# Curated universes for testing
+production:
+  # Conservative universe (validated strategies)
+  conservative:
+    - "SPY"   # S&P 500
+    - "QQQ"   # Nasdaq 100
+    - "IWM"   # Russell 2000
+
+  # Aggressive universe (higher risk/reward)
+  aggressive:
+    - "TQQQ"  # 3x Nasdaq
+    - "SOXL"  # 3x Semiconductors
+    - "TECL"  # 3x Technology
+
+  # Overnight mean reversion winners
+  omr_top_5:
+    - "QQQ"   # Nasdaq 100
+    - "TQQQ"  # 3x Nasdaq
+    - "SOXL"  # 3x Semiconductors
+    - "TECL"  # 3x Technology
+    - "SPY"   # S&P 500

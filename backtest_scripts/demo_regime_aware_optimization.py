@@ -17,10 +17,12 @@ import sys
 from pathlib import Path
 
 # Add src to path
-sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
 
 from backtesting.engine.backtest_engine import BacktestEngine
 from backtesting.optimization import GridSearchOptimizer, RegimeAwareOptimizer
+
+from utils.path_setup import setup_project_paths
+ROOT_DIR = setup_project_paths()
 from strategies.base_strategies.moving_average import MovingAverageCrossover
 from strategies.base_strategies.mean_reversion import RSIMeanReversion, MeanReversion
 from backtesting.utils.risk_config import RiskConfig

@@ -13,8 +13,10 @@ import sys
 from pathlib import Path
 from datetime import datetime
 
+from utils.path_setup import setup_project_paths
+ROOT_DIR = setup_project_paths()
+
 # Add src to path
-sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.data_engine.api.alpaca_client import AlpacaClient
 from src.data_engine.orchestration.ingestion_pipeline import IngestionPipeline

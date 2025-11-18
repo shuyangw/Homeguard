@@ -17,10 +17,12 @@ import pandas as pd
 import numpy as np
 import yfinance as yf
 import warnings
+
+from utils.path_setup import setup_project_paths
+ROOT_DIR = setup_project_paths()
 warnings.filterwarnings('ignore')
 
 # Add src to path
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from src.utils.logger import logger
 from src.strategies.advanced.market_regime_detector import MarketRegimeDetector
 from src.strategies.advanced.bayesian_reversion_model import BayesianReversionModel
