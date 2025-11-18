@@ -79,8 +79,13 @@ class TradingSessionTracker:
         self.trades_log_file = date_subdir / f"{self.session_datetime}_{strategy_name}_trades.csv"
         self.market_checks_log_file = date_subdir / f"{self.session_datetime}_{strategy_name}_market_checks.csv"
 
-        # Create trading logger with CSV logging (use date subdirectory)
-        self.trading_logger = get_trading_logger(strategy_name, date_subdir)
+        # Create trading logger with CSV logging and 5-minute auto-flush
+        # flush_interval_hours: 5 minutes = 5/60 hours = 0.0833 hours
+        self.trading_logger = get_trading_logger(
+            strategy_name,
+            date_subdir,
+            flush_interval_hours=5/60  # Auto-flush every 5 minutes
+        )
 
         # Add CSV loggers for trades and market checks
         self.trading_logger.add_csv_logger(
