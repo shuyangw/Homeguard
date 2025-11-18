@@ -376,24 +376,24 @@ class OMRLiveAdapter(StrategyAdapter):
 
             for position in positions:
                 try:
-                    # Calculate P&L
-                    entry_price = float(position.avg_entry_price)
-                    current_price = float(position.current_price)
-                    qty = int(position.qty)
+                    # Calculate P&L (positions are dicts, not objects)
+                    entry_price = float(position['avg_entry_price'])
+                    current_price = float(position['current_price'])
+                    qty = int(position['quantity'])
 
                     pnl = (current_price - entry_price) * qty
                     pnl_pct = (current_price - entry_price) / entry_price * 100
 
                     logger.info(
-                        f"Closing {position.symbol}: {qty} shares "
-                        f"@ ${entry_price:.2f} → ${current_price:.2f} "
+                        f"Closing {position['symbol']}: {qty} shares "
+                        f"@ ${entry_price:.2f} -> ${current_price:.2f} "
                         f"(P&L: ${pnl:+.2f}, {pnl_pct:+.2f}%)"
                     )
 
                     # Place market order to close
                     side = 'sell' if qty > 0 else 'buy'
                     order = self.execution_engine.place_market_order(
-                        symbol=position.symbol,
+                        symbol=position['symbol'],
                         qty=abs(qty),
                         side=side
                     )
@@ -401,10 +401,10 @@ class OMRLiveAdapter(StrategyAdapter):
                     if order:
                         logger.success(f"Close order placed: {order.id}")
                     else:
-                        logger.error(f"Failed to close {position.symbol}")
+                        logger.error(f"Failed to close {position['symbol']}")
 
                 except Exception as e:
-                    logger.error(f"Error closing {position.symbol}: {e}")
+                    logger.error(f"Error closing {position.get('symbol', 'UNKNOWN')}: {e}")
                     continue
 
             logger.info("Overnight position closing complete")

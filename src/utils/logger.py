@@ -188,7 +188,8 @@ class TradingLogger:
         log_file = None
         if self.log_dir:
             self.log_dir.mkdir(parents=True, exist_ok=True)
-            self.log_file_path = self.log_dir / f"{datetime.now().strftime('%Y%m%d')}_{name}.log"
+            # Include both date and start time to avoid overwriting logs on multiple runs per day
+            self.log_file_path = self.log_dir / f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{name}.log"
 
             # Only enable immediate file writing if not buffering
             if not buffer_logs:

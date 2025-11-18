@@ -405,12 +405,12 @@ class StrategyAdapter(ABC):
 
             logger.info(f"Current positions: {len(broker_positions)} (broker), {len(managed_positions)} (managed)")
 
-            # Log broker positions
+            # Log broker positions (positions are dicts, not objects)
             for pos in broker_positions:
-                pnl_pct = (float(pos.current_price) - float(pos.avg_entry_price)) / float(pos.avg_entry_price) * 100
+                pnl_pct = (float(pos['current_price']) - float(pos['avg_entry_price'])) / float(pos['avg_entry_price']) * 100
                 logger.info(
-                    f"  {pos.symbol}: {pos.qty} shares @ ${float(pos.avg_entry_price):.2f} "
-                    f"(current: ${float(pos.current_price):.2f}, P&L: {pnl_pct:+.2f}%)"
+                    f"  {pos['symbol']}: {pos['quantity']} shares @ ${float(pos['avg_entry_price']):.2f} "
+                    f"(current: ${float(pos['current_price']):.2f}, P&L: {pnl_pct:+.2f}%)"
                 )
 
         except Exception as e:

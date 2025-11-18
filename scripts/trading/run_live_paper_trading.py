@@ -53,6 +53,8 @@ class TradingSessionTracker:
         eastern = pytz.timezone('US/Eastern')
         self.session_start = datetime.now(pytz.UTC).astimezone(eastern)
         self.session_date = self.session_start.strftime('%Y%m%d')
+        # Include start time to avoid overwriting logs on multiple runs per day
+        self.session_datetime = self.session_start.strftime('%Y%m%d_%H%M%S')
 
         # Create date-based subdirectory to organize logs by day
         # e.g., logs/live_trading/paper/20251117/
@@ -71,11 +73,11 @@ class TradingSessionTracker:
         self.signals_log: List[Dict] = []
         self.minute_progress: List[Dict] = []
 
-        # Create session log files (now in date subdirectory)
-        self.session_log_file = date_subdir / f"{self.session_date}_{strategy_name}_session.json"
-        self.summary_file = date_subdir / f"{self.session_date}_{strategy_name}_summary.md"
-        self.trades_log_file = date_subdir / f"{self.session_date}_{strategy_name}_trades.csv"
-        self.market_checks_log_file = date_subdir / f"{self.session_date}_{strategy_name}_market_checks.csv"
+        # Create session log files with date and time to prevent overwriting
+        self.session_log_file = date_subdir / f"{self.session_datetime}_{strategy_name}_session.json"
+        self.summary_file = date_subdir / f"{self.session_datetime}_{strategy_name}_summary.md"
+        self.trades_log_file = date_subdir / f"{self.session_datetime}_{strategy_name}_trades.csv"
+        self.market_checks_log_file = date_subdir / f"{self.session_datetime}_{strategy_name}_market_checks.csv"
 
         # Create trading logger with CSV logging (use date subdirectory)
         self.trading_logger = get_trading_logger(strategy_name, date_subdir)
