@@ -536,7 +536,9 @@ class LiveTradingRunner:
 
         # If past market close and we haven't generated report today
         if now_est.time() >= market_close:
-            report_file = self.log_dir / f"{now_est.strftime('%Y%m%d')}_{self.session_tracker.strategy_name}_summary.md"
+            # Check in the date subdirectory (where files are actually saved)
+            date_dir = self.log_dir / now_est.strftime('%Y%m%d')
+            report_file = date_dir / f"{now_est.strftime('%Y%m%d')}_{self.session_tracker.strategy_name}_summary.md"
             if not report_file.exists():
                 return True
         return False
