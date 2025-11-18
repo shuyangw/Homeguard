@@ -193,6 +193,56 @@ class TradingSessionTracker:
         with open(self.session_log_file, 'w') as f:
             json.dump(progress_data, f, indent=2)
 
+    def save_journalctl_logs(self):
+        """
+        Export journalctl entries for this session to a log file.
+
+        This captures all systemd journal logs for the homeguard-trading service
+        since the session started, providing a complete record of console output.
+        """
+        import subprocess
+        import platform
+
+        # Only run on Linux (EC2) - skip on Windows/macOS during development
+        if platform.system() != 'Linux':
+            logger.debug("Skipping journalctl export (not on Linux)")
+            return
+
+        try:
+            # Format session start time for journalctl --since parameter
+            # journalctl expects format like "2025-11-18 18:41:43"
+            since_time = self.session_start.strftime('%Y-%m-%d %H:%M:%S')
+
+            # Export journalctl entries for homeguard-trading service since session start
+            journalctl_file = self.log_dir / f"{self.session_datetime}_{self.strategy_name}_journalctl.log"
+
+            cmd = [
+                'journalctl',
+                '-u', 'homeguard-trading',
+                '--since', since_time,
+                '--no-pager',
+                '--output', 'short-iso'  # ISO timestamps for consistency
+            ]
+
+            logger.info(f"Exporting journalctl logs since {since_time}...")
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+
+            if result.returncode == 0:
+                # Write journalctl output to file
+                with open(journalctl_file, 'w') as f:
+                    f.write(result.stdout)
+
+                # Count lines for feedback
+                line_count = len(result.stdout.splitlines())
+                logger.success(f"Saved {line_count} journalctl entries to {journalctl_file.name}")
+            else:
+                logger.error(f"Failed to export journalctl: {result.stderr}")
+
+        except subprocess.TimeoutExpired:
+            logger.error("Timeout while exporting journalctl logs")
+        except Exception as e:
+            logger.error(f"Error exporting journalctl logs: {e}")
+
     def generate_end_of_day_report(self, broker: AlpacaBroker):
         """Generate end-of-day summary report."""
         eastern = pytz.timezone('US/Eastern')
@@ -631,6 +681,9 @@ class LiveTradingRunner:
                     # Flush buffered logs to disk
                     self.session_tracker.trading_logger.flush_to_disk(reason="Market closed (4:00 PM ET)")
 
+                    # Export journalctl logs for this session
+                    self.session_tracker.save_journalctl_logs()
+
                     # Generate end-of-day report
                     self.session_tracker.generate_end_of_day_report(self.adapter.broker)
 
@@ -657,6 +710,9 @@ class LiveTradingRunner:
 
         # Flush buffered logs to disk before stopping
         self.session_tracker.trading_logger.flush_to_disk(reason="Trading stopped")
+
+        # Export journalctl logs for this session
+        self.session_tracker.save_journalctl_logs()
 
         self.session_tracker.save_progress()
         self.session_tracker.generate_end_of_day_report(self.adapter.broker)
