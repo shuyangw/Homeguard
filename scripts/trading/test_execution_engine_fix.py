@@ -13,6 +13,10 @@ from datetime import datetime
 ROOT_DIR = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT_DIR))
 
+# Load environment variables from .env file
+from dotenv import load_dotenv
+load_dotenv(ROOT_DIR / '.env')
+
 from src.trading.brokers.alpaca_broker import AlpacaBroker
 from src.trading.brokers.broker_interface import OrderSide, OrderType
 from src.trading.core.execution_engine import ExecutionEngine
