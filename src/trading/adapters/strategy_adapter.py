@@ -11,7 +11,7 @@ from datetime import datetime, timedelta
 import pandas as pd
 
 from src.strategies.core import StrategySignals, Signal
-from src.trading.brokers.broker_interface import BrokerInterface
+from src.trading.brokers.broker_interface import BrokerInterface, OrderSide, OrderType
 from src.trading.core.execution_engine import ExecutionEngine
 from src.trading.core.position_manager import PositionManager
 from src.utils.logger import logger
@@ -370,23 +370,22 @@ class StrategyAdapter(ABC):
                 )
 
                 if signal.direction == 'BUY':
-                    order = self.execution_engine.place_market_order(
-                        symbol=signal.symbol,
-                        qty=qty,
-                        side='buy'
-                    )
+                    side = OrderSide.BUY
                 elif signal.direction == 'SELL':
-                    order = self.execution_engine.place_market_order(
-                        symbol=signal.symbol,
-                        qty=qty,
-                        side='sell'
-                    )
+                    side = OrderSide.SELL
                 else:
                     logger.warning(f"Unknown direction: {signal.direction}")
                     continue
 
+                order = self.execution_engine.execute_order(
+                    symbol=signal.symbol,
+                    quantity=qty,
+                    side=side,
+                    order_type=OrderType.MARKET
+                )
+
                 if order:
-                    logger.success(f"Order placed: {order.id}")
+                    logger.success(f"Order placed: {order.get('order_id', 'UNKNOWN')}")
                 else:
                     logger.error(f"Failed to place order for {signal.symbol}")
 

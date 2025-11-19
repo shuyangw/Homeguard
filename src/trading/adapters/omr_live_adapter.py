@@ -15,7 +15,7 @@ from src.strategies.advanced.overnight_signal_generator import OvernightReversio
 from src.strategies.advanced.market_regime_detector import MarketRegimeDetector
 from src.strategies.advanced.bayesian_reversion_model import BayesianReversionModel
 from src.strategies.universe import ETFUniverse
-from src.trading.brokers.broker_interface import BrokerInterface
+from src.trading.brokers.broker_interface import BrokerInterface, OrderSide, OrderType
 from src.trading.utils.portfolio_health_check import PortfolioHealthChecker
 from src.utils.logger import logger
 
@@ -391,15 +391,16 @@ class OMRLiveAdapter(StrategyAdapter):
                     )
 
                     # Place market order to close
-                    side = 'sell' if qty > 0 else 'buy'
-                    order = self.execution_engine.place_market_order(
+                    side = OrderSide.SELL if qty > 0 else OrderSide.BUY
+                    order = self.execution_engine.execute_order(
                         symbol=position['symbol'],
-                        qty=abs(qty),
-                        side=side
+                        quantity=abs(qty),
+                        side=side,
+                        order_type=OrderType.MARKET
                     )
 
                     if order:
-                        logger.success(f"Close order placed: {order.id}")
+                        logger.success(f"Close order placed: {order.get('order_id', 'UNKNOWN')}")
                     else:
                         logger.error(f"Failed to close {position['symbol']}")
 

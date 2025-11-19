@@ -407,13 +407,13 @@ class TestOMRLiveAdapter:
         )
 
         # Mock execution engine
-        adapter.execution_engine.place_market_order = Mock(return_value=Mock(id='order_123'))
+        adapter.execution_engine.execute_order = Mock(return_value={'order_id': 'order_123'})
 
         # Close positions
         adapter.close_overnight_positions()
 
         # Should have placed sell order
-        adapter.execution_engine.place_market_order.assert_called_once()
+        adapter.execution_engine.execute_order.assert_called_once()
 
     def test_close_overnight_positions_no_positions(self, mock_broker):
         """Test closing overnight positions when none exist."""
@@ -424,13 +424,13 @@ class TestOMRLiveAdapter:
         )
 
         # Mock execution engine
-        adapter.execution_engine.place_market_order = Mock()
+        adapter.execution_engine.execute_order = Mock()
 
         # Close positions (should do nothing)
         adapter.close_overnight_positions()
 
         # Should not place any orders
-        adapter.execution_engine.place_market_order.assert_not_called()
+        adapter.execution_engine.execute_order.assert_not_called()
 
 
 class TestAdapterIntegration:
@@ -446,7 +446,7 @@ class TestAdapterIntegration:
         )
 
         # Mock execution engine
-        adapter.execution_engine.place_market_order = Mock(return_value=Mock(id='order_123'))
+        adapter.execution_engine.execute_order = Mock(return_value={'order_id': 'order_123'})
 
         # Run once
         adapter.run_once()
