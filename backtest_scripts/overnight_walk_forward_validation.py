@@ -162,6 +162,10 @@ def load_data():
     spy_df.columns = [col.lower() for col in spy_df.columns]
     vix_df.columns = [col.lower() for col in vix_df.columns]
 
+    # Ensure index is DatetimeIndex for proper date filtering
+    spy_df.index = pd.to_datetime(spy_df.index)
+    vix_df.index = pd.to_datetime(vix_df.index)
+
     data['SPY'] = spy_df
     data['^VIX'] = vix_df
 
@@ -179,6 +183,8 @@ def load_data():
                 df.columns = [col[0] for col in df.columns]
             # Normalize column names to lowercase (production expects lowercase)
             df.columns = [col.lower() for col in df.columns]
+            # Ensure index is DatetimeIndex for proper date filtering
+            df.index = pd.to_datetime(df.index)
             data[symbol] = df
             loaded += 1
 
