@@ -93,7 +93,10 @@ class OvernightReversionSignals:
         if timestamp.time() != time(15, 50):
             return []
 
-        logger.info(f"Generating overnight signals for {timestamp.date()}")
+        # Clear signal generation start marker
+        start_msg = f"=== SIGNAL GENERATION START: {timestamp.strftime('%Y-%m-%d %H:%M:%S')} ==="
+        logger.info(start_msg)
+        print(f"\n{start_msg}", flush=True)
 
         # Get current market regime
         spy_data = market_data.get('SPY')
@@ -107,14 +110,25 @@ class OvernightReversionSignals:
             spy_data, vix_data, timestamp
         )
 
-        logger.info(f"Current regime: {regime} (confidence: {regime_confidence:.2f})")
+        # Get VIX level for logging
+        current_vix = float(vix_data['close'].iloc[-1])
+        current_spy = float(spy_data['close'].iloc[-1])
+
+        # Log regime detection results (INFO level, always visible)
+        regime_msg = f"REGIME DETECTION: {regime} (confidence: {regime_confidence:.2f}) | SPY: ${current_spy:.2f} | VIX: {current_vix:.2f}"
+        logger.info(regime_msg)
+        # Force immediate console output for regime detection
+        print(f"[REGIME] {regime_msg}", flush=True)
 
         # CRITICAL: Skip trading in BEAR regime (negative edge, causes catastrophic losses)
         if self.skip_bear_regime and regime == 'BEAR':
-            logger.warning(
-                "BEAR regime detected - SKIPPING ALL TRADES "
-                "(BEAR has -1.31 Sharpe, 100% of BEAR trades occurred in negative months)"
+            bear_msg = (
+                "BEAR REGIME - SKIPPING ALL TRADES "
+                f"(BEAR has -1.31 Sharpe, SPY=${current_spy:.2f}, VIX={current_vix:.2f})"
             )
+            logger.warning(bear_msg)
+            # Force immediate console output for critical trade blocking
+            print(f"[WARNING] {bear_msg}", flush=True)
             return []
 
         # Get regime-specific parameters
@@ -136,9 +150,15 @@ class OvernightReversionSignals:
 
         # Generate signals for each symbol
         signals = []
+        symbols_evaluated = 0
+        symbols_in_data = 0
+
         for symbol in self.symbols:
             if symbol not in market_data:
                 continue
+
+            symbols_in_data += 1
+            symbols_evaluated += 1
 
             signal = self._evaluate_symbol(
                 symbol, market_data[symbol], regime,
@@ -149,6 +169,14 @@ class OvernightReversionSignals:
             if signal:
                 signals.append(signal)
 
+        # Log evaluation summary
+        signals_before_limit = len(signals)
+        logger.info(
+            f"Signal evaluation: {symbols_evaluated} symbols checked, "
+            f"{signals_before_limit} passed filters "
+            f"(min prob: {regime_min_probability:.0%}, min return: {regime_min_return:.2%})"
+        )
+
         # Sort by signal strength and take top positions
         signals.sort(key=lambda x: x['signal_strength'], reverse=True)
         signals = signals[:regime_max_positions]
@@ -156,7 +184,13 @@ class OvernightReversionSignals:
         # Add position sizing
         signals = self._add_position_sizing(signals, regime_params)
 
-        logger.info(f"Generated {len(signals)} signals for overnight holding")
+        # Final summary
+        summary_msg = (
+            f"Generated {len(signals)} signals for overnight holding "
+            f"({signals_before_limit} candidates -> top {len(signals)} by signal strength)"
+        )
+        logger.info(summary_msg)
+        print(f"[SIGNALS] {summary_msg}", flush=True)
 
         return signals
 
