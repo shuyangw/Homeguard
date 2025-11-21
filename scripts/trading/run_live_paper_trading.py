@@ -524,8 +524,9 @@ class LiveTradingRunner:
                     f"Signals: {self.session_tracker.total_signals} | "
                     f"Orders: {self.session_tracker.successful_orders}/{self.session_tracker.total_orders}"
                 )
-                # Use print() instead of logger to bypass buffering and appear immediately in journalctl
-                print(f" {status_msg}", flush=True)
+                # Use Rich console directly for colored output that bypasses logger buffering
+                from src.utils.logger import console
+                console.print(f" [info]{status_msg}[/info]")
 
             except Exception as e:
                 eastern = pytz.timezone('US/Eastern')
