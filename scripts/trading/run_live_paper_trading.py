@@ -515,7 +515,7 @@ class LiveTradingRunner:
                 eastern = pytz.timezone('US/Eastern')
                 now_est = datetime.now(pytz.UTC).astimezone(eastern)
 
-                # Log comprehensive status
+                # Log comprehensive status (direct console output for real-time visibility)
                 status_msg = (
                     f"[{now_est.strftime('%H:%M:%S')}] "
                     f"Market: {market_status_str} | "
@@ -524,8 +524,7 @@ class LiveTradingRunner:
                     f"Signals: {self.session_tracker.total_signals} | "
                     f"Orders: {self.session_tracker.successful_orders}/{self.session_tracker.total_orders}"
                 )
-                logger.info(status_msg)
-                # Force immediate console output (bypasses logger buffer)
+                # Use print() instead of logger to bypass buffering and appear immediately in journalctl
                 print(f" {status_msg}", flush=True)
 
             except Exception as e:
@@ -671,10 +670,6 @@ class LiveTradingRunner:
 
                 # Check for periodic flush (for multi-day sessions)
                 if self.session_tracker.trading_logger.should_periodic_flush():
-                    logger.info("")
-                    logger.info("=" * 80)
-                    logger.info("PERIODIC LOG FLUSH")
-                    logger.info("=" * 80)
                     self.session_tracker.trading_logger.flush_to_disk(reason="Periodic flush (multi-day session)")
 
                 # Check for end of day
