@@ -89,8 +89,8 @@ class OvernightReversionSignals:
         Returns:
             List of trading signals sorted by strength
         """
-        # Check if it's 3:50 PM
-        if timestamp.time() != time(15, 50):
+        # Check if it's 3:50 PM (compare hour and minute only, ignore seconds)
+        if timestamp.hour != 15 or timestamp.minute != 50:
             return []
 
         # Clear signal generation start marker
