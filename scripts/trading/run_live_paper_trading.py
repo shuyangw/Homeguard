@@ -516,7 +516,7 @@ class LiveTradingRunner:
                 now_est = datetime.now(pytz.UTC).astimezone(eastern)
 
                 # Log comprehensive status
-                logger.info(
+                status_msg = (
                     f"[{now_est.strftime('%H:%M:%S')}] "
                     f"Market: {market_status_str} | "
                     f"Checks: {self.session_tracker.total_checks} | "
@@ -524,6 +524,9 @@ class LiveTradingRunner:
                     f"Signals: {self.session_tracker.total_signals} | "
                     f"Orders: {self.session_tracker.successful_orders}/{self.session_tracker.total_orders}"
                 )
+                logger.info(status_msg)
+                # Force immediate console output (bypasses logger buffer)
+                print(f" {status_msg}", flush=True)
 
             except Exception as e:
                 eastern = pytz.timezone('US/Eastern')
