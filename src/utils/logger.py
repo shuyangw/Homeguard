@@ -309,7 +309,7 @@ class TradingLogger:
             return  # Nothing to flush
 
         if not self.log_buffer:
-            console.print(f"[dim][No buffered logs to flush][/dim]")
+            # Silent - no logs to flush
             return
 
         try:
@@ -321,11 +321,7 @@ class TradingLogger:
                 f.write('\n'.join(self.log_buffer))
                 f.write('\n')
 
-            console.print(
-                f"[+] Flushed {len(self.log_buffer)} log entries to disk: {current_log_file}",
-                style="success"
-            )
-            console.print(f"[i] Flush reason: {reason}", style="info")
+            # Silent on success - only log errors
 
             # Clear buffer after successful write
             self.log_buffer.clear()
