@@ -105,7 +105,7 @@ This documentation is organized by topic for easy navigation. Select the categor
 ### Infrastructure Details
 - [**Terraform README**](../terraform/README.md) - Infrastructure as code configuration and management
 - [**SSH Scripts Documentation**](../scripts/ec2/SSH_SCRIPTS_README.md) - Quick-access management scripts (10 scripts)
-- [**Health Check Cheatsheet**](../HEALTH_CHECK_CHEATSHEET.md) - Comprehensive monitoring guide
+- [**Health Check Cheatsheet**](HEALTH_CHECK_CHEATSHEET.md) - Comprehensive monitoring guide
 
 ### Live Trading Guides
 - [**Live Paper Trading Guide**](guides/LIVE_PAPER_TRADING.md) - Complete paper trading setup and usage
@@ -169,7 +169,7 @@ Location: [`progress/`](progress/)
 
 **Deploy to AWS cloud** → [Quick Start Deployment](guides/QUICK_START_DEPLOYMENT.md) ⭐ **NEW**
 
-**Monitor production bot** → [Health Check Cheatsheet](../HEALTH_CHECK_CHEATSHEET.md) ⭐ **NEW**
+**Monitor production bot** → [Health Check Cheatsheet](HEALTH_CHECK_CHEATSHEET.md) ⭐ **NEW**
 
 **Create a custom strategy** → [Advanced Strategies Guide](guides/ADVANCED_STRATEGIES_GUIDE.md)
 

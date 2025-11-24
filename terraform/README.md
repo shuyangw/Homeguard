@@ -575,7 +575,7 @@ scripts/ec2/connect.sh
 
 ### Health Monitoring
 
-See [`HEALTH_CHECK_CHEATSHEET.md`](../HEALTH_CHECK_CHEATSHEET.md) for comprehensive monitoring guide:
+See [`HEALTH_CHECK_CHEATSHEET.md`](../docs/HEALTH_CHECK_CHEATSHEET.md) for comprehensive monitoring guide:
 - Daily health check routines
 - Common issues and fixes
 - Advanced monitoring commands
@@ -651,7 +651,7 @@ After deployment:
 5. ✅ Monitor first trading window: `scripts\ec2\view_logs.bat` (or `.sh`)
 6. ✅ Verify Lambda scheduling: Check CloudWatch logs for start/stop events
 7. ✅ Set up backups: Enable EBS snapshots (optional)
-8. 📖 Read [`HEALTH_CHECK_CHEATSHEET.md`](../HEALTH_CHECK_CHEATSHEET.md) for monitoring best practices
+8. 📖 Read [`HEALTH_CHECK_CHEATSHEET.md`](../docs/HEALTH_CHECK_CHEATSHEET.md) for monitoring best practices
 
 **Daily Routine**:
 - Morning: Run `daily_health_check.bat/.sh` before market open

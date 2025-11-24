@@ -106,7 +106,7 @@ Deploy trading bot to AWS EC2 with automated scheduling and monitoring.
 
 **Management**:
 - **[SSH Scripts Documentation](scripts/ec2/SSH_SCRIPTS_README.md)** - Quick-access management scripts (10 scripts)
-- **[Health Check Cheatsheet](HEALTH_CHECK_CHEATSHEET.md)** - Monitoring and troubleshooting guide
+- **[Health Check Cheatsheet](docs/HEALTH_CHECK_CHEATSHEET.md)** - Monitoring and troubleshooting guide
 
 **Current Deployment Info**:
 - Instance IP: 100.30.95.146

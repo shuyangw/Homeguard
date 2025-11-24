@@ -82,7 +82,7 @@ Update docs when modifying user-facing functionality.
 - **ALWAYS** update `docs/INFRASTRUCTURE_OVERVIEW.md` when modifying AWS resources
 - Update `terraform/README.md` when changing Terraform configuration
 - Update `scripts/ec2/` documentation when adding/modifying management scripts
-- Keep `HEALTH_CHECK_CHEATSHEET.md` current with monitoring procedures
+- Keep `docs/HEALTH_CHECK_CHEATSHEET.md` current with monitoring procedures
 - Document cost changes, instance type modifications, or scheduling updates
 - Infrastructure docs must reflect actual deployed resources
 - Details: [`.claude/documentation.md`](.claude/documentation.md)

@@ -37,18 +37,17 @@ A comprehensive VectorBT-based backtesting framework for testing stock trading s
 
 **Windows:**
 ```bash
-# Double-click start_gui.bat in the root directory
-# Or run from command line:
-start_gui.bat
+# Run from command line:
+scripts\start_gui.bat
 ```
 
 **macOS/Linux:**
 ```bash
 # Make script executable (first time only)
-chmod +x start_gui.sh
+chmod +x scripts/start_gui.sh
 
 # Run the launcher
-./start_gui.sh
+scripts/start_gui.sh
 ```
 
 The GUI provides:
@@ -286,7 +285,7 @@ scripts/ec2/daily_health_check.sh    # Linux/Mac
 - **[Infrastructure Overview](docs/INFRASTRUCTURE_OVERVIEW.md)** - Complete AWS architecture and cost breakdown
 - **[Terraform README](terraform/README.md)** - Deployment instructions and configuration
 - **[SSH Scripts README](scripts/ec2/SSH_SCRIPTS_README.md)** - Management scripts documentation
-- **[Health Check Cheatsheet](HEALTH_CHECK_CHEATSHEET.md)** - Monitoring and troubleshooting guide
+- **[Health Check Cheatsheet](docs/HEALTH_CHECK_CHEATSHEET.md)** - Monitoring and troubleshooting guide
 - **[Preflight Checklist](terraform/PREFLIGHT_CHECKLIST.md)** - Pre-deployment requirements
 
 **Current Deployment:**

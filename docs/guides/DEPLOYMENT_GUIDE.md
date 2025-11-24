@@ -701,7 +701,7 @@ scripts\ec2\restart_bot.bat         # Windows
 scripts/ec2/restart_bot.sh          # Linux/Mac
 ```
 
-**Comprehensive Monitoring Guide**: See [`HEALTH_CHECK_CHEATSHEET.md`](../../HEALTH_CHECK_CHEATSHEET.md) for:
+**Comprehensive Monitoring Guide**: See [`HEALTH_CHECK_CHEATSHEET.md`](../HEALTH_CHECK_CHEATSHEET.md) for:
 - Complete monitoring commands
 - Common issues and fixes
 - Lambda scheduler verification
