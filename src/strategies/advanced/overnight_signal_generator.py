@@ -89,9 +89,9 @@ class OvernightReversionSignals:
         Returns:
             List of trading signals sorted by strength
         """
-        # Check if it's 3:50 PM (compare hour and minute only, ignore seconds)
-        if timestamp.hour != 15 or timestamp.minute != 50:
-            return []
+        # NOTE: Time validation removed - caller (bot/scheduler) is responsible for
+        # calling at the correct time. This allows flexible scheduling windows.
+        # Previously: if timestamp.hour != 15 or timestamp.minute != 50: return []
 
         # Clear signal generation start marker
         start_msg = f"=== SIGNAL GENERATION START: {timestamp.strftime('%Y-%m-%d %H:%M:%S')} ==="

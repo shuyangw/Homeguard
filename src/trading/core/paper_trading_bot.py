@@ -234,8 +234,11 @@ class PaperTradingBot:
         if self._is_within_window(current_time, self.entry_time, self.entry_window):
             if self.last_entry_check != datetime.now().date():
                 logger.info(f"\nEntry window active ({current_time})")
-                self._execute_entry_signals()
-                self.last_entry_check = datetime.now().date()
+                entry_completed = self._execute_entry_signals()
+                # Only mark as checked if signal generation completed successfully
+                # This allows retries if there was a failure (e.g., data fetch error)
+                if entry_completed:
+                    self.last_entry_check = datetime.now().date()
 
         # Check for exit signals (9:31 AM ± 30s)
         if self._is_within_window(current_time, self.exit_time, self.exit_window):
@@ -244,20 +247,30 @@ class PaperTradingBot:
                 self._execute_exit_signals()
                 self.last_exit_check = datetime.now().date()
 
-    def _execute_entry_signals(self) -> None:
-        """Generate and execute entry signals."""
+    def _execute_entry_signals(self) -> bool:
+        """
+        Generate and execute entry signals.
+
+        Returns:
+            True if signal generation completed successfully (even if no signals),
+            False if there was a failure that should allow retry.
+        """
         logger.header("Generating Entry Signals")
 
         try:
             # Get current market data (simplified - would need real implementation)
             current_data = self._fetch_current_data()
 
+            if not current_data:
+                logger.error("Failed to fetch market data - will retry")
+                return False  # Allow retry
+
             # Generate signals
             signals = self.strategy.generate_entry_signals(current_data, self.broker)
 
             if not signals:
                 logger.info("No entry signals generated")
-                return
+                return True  # Completed successfully, just no signals
 
             # Check risk limits
             account = self.broker.get_account()
@@ -307,11 +320,13 @@ class PaperTradingBot:
                     logger.error(f"Failed to execute entry for {signal['symbol']}: {e}")
 
             logger.success(f"Executed {executed_count}/{len(signals)} entry signals")
+            return True  # Completed successfully
 
         except Exception as e:
             logger.error(f"Error executing entry signals: {e}")
             import traceback
             traceback.print_exc()
+            return False  # Allow retry on error
 
     def _execute_exit_signals(self) -> None:
         """Generate and execute exit signals."""

@@ -210,8 +210,7 @@ class TradingSessionTracker:
 
         # Only run on Linux (EC2) - skip on Windows/macOS during development
         if platform.system() != 'Linux':
-            logger.debug("Skipping journalctl export (not on Linux)")
-            return
+            return  # Silently skip journalctl export on non-Linux
 
         try:
             # Format session start time for journalctl --since parameter

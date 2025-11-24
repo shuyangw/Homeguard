@@ -45,13 +45,16 @@ fi
 
 # Check current instance state
 echo "Checking instance state..."
+set +e  # Temporarily disable exit on error to capture AWS errors
 INSTANCE_STATE=$(aws ec2 describe-instances \
     --instance-ids "$INSTANCE_ID" \
     --region "$REGION" \
     --query 'Reservations[0].Instances[0].State.Name' \
     --output text 2>&1)
+AWS_EXIT_CODE=$?
+set -e  # Re-enable exit on error
 
-if [ $? -ne 0 ]; then
+if [ $AWS_EXIT_CODE -ne 0 ]; then
     echo -e "${RED}❌ Error: Failed to check instance state${NC}"
     echo ""
     echo "Error details:"

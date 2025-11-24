@@ -81,7 +81,7 @@ class OMRLiveStrategy:
 
         # Initialize components
         self.regime_detector = MarketRegimeDetector()
-        self.bayesian_model = BayesianReversionModel()
+        self.bayesian_model = BayesianReversionModel(data_frequency='daily')
 
         # Prepare daily data for regime detection
         spy_daily = self._resample_to_daily(historical_data['SPY'])
@@ -136,17 +136,30 @@ class OMRLiveStrategy:
         logger.info("Generating entry signals...")
 
         # Check VIX threshold
+        current_vix = None
         try:
-            vix_quote = broker.get_latest_quote('VIX')
-            current_vix = (vix_quote['bid'] + vix_quote['ask']) / 2
+            # First try to get VIX from current_data (pre-fetched via yfinance)
+            if 'VIX' in current_data and not current_data['VIX'].empty:
+                vix_df = current_data['VIX']
+                current_vix = vix_df['close'].iloc[-1]
+                logger.info(f"Using VIX from current_data: {current_vix:.2f}")
+            else:
+                # Fallback: Fetch VIX via yfinance
+                import yfinance as yf
+                vix_ticker = yf.Ticker('^VIX')
+                vix_info = vix_ticker.info
+                current_vix = vix_info.get('regularMarketPrice') or vix_info.get('previousClose')
+                if current_vix:
+                    logger.info(f"Fetched VIX via yfinance: {current_vix:.2f}")
 
-            if current_vix > self.vix_threshold:
+            if current_vix is not None and current_vix > self.vix_threshold:
                 logger.warning(f"VIX ({current_vix:.2f}) exceeds threshold ({self.vix_threshold}). No trading.")
                 return []
 
         except Exception as e:
             logger.error(f"Failed to check VIX: {e}")
-            return []
+            # Continue without VIX check rather than blocking all trading
+            logger.warning("Proceeding without VIX filter due to fetch error")
 
         # Generate signals using signal generator
         # This returns all signals already filtered and ranked

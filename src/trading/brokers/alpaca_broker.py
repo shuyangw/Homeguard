@@ -239,15 +239,36 @@ class AlpacaBroker(BrokerInterface):
     ) -> List[Dict]:
         """Get orders with optional filters."""
         try:
-            # Translate status filter
-            status_filter = status.value if status else 'all'
+            from alpaca.trading.requests import GetOrdersRequest
+            from alpaca.trading.enums import QueryOrderStatus
 
-            # Get orders from Alpaca
-            orders = self.trading_client.get_orders(
+            # Translate status filter (handle both enum and string)
+            if status is None:
+                status_filter = QueryOrderStatus.ALL
+            elif isinstance(status, str):
+                status_map = {
+                    'open': QueryOrderStatus.OPEN,
+                    'closed': QueryOrderStatus.CLOSED,
+                    'all': QueryOrderStatus.ALL
+                }
+                status_filter = status_map.get(status.lower(), QueryOrderStatus.ALL)
+            else:
+                # Assume it's our internal OrderStatus enum
+                status_map = {
+                    'open': QueryOrderStatus.OPEN,
+                    'closed': QueryOrderStatus.CLOSED,
+                }
+                status_filter = status_map.get(status.value.lower(), QueryOrderStatus.ALL)
+
+            # Build request object
+            request = GetOrdersRequest(
                 status=status_filter,
                 after=start_date,
                 until=end_date
             )
+
+            # Get orders from Alpaca
+            orders = self.trading_client.get_orders(filter=request)
 
             # Translate to standardized format
             return [self._translate_order(order) for order in orders]
