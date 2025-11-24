@@ -158,8 +158,8 @@ class OMRLiveStrategy:
 
         except Exception as e:
             logger.error(f"Failed to check VIX: {e}")
-            # Continue without VIX check rather than blocking all trading
-            logger.warning("Proceeding without VIX filter due to fetch error")
+            logger.error("Blocking trading - VIX check is required for risk management")
+            return []
 
         # Generate signals using signal generator
         # This returns all signals already filtered and ranked
