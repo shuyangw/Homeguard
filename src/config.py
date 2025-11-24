@@ -116,9 +116,9 @@ def get_models_dir() -> Path:
     Get the directory for trained model artifacts (pickle files, etc.).
 
     Returns:
-        Path: output/models
+        Path: models/ (in project root)
     """
-    models_dir = get_output_dir() / "models"
+    models_dir = PROJECT_ROOT / "models"
     models_dir.mkdir(parents=True, exist_ok=True)
     return models_dir
 

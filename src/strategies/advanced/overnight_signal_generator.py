@@ -98,6 +98,12 @@ class OvernightReversionSignals:
         logger.info(start_msg)
         print(f"\n{start_msg}", flush=True)
 
+        # Log model status
+        model_symbols = len(self.bayesian_model.regime_probabilities) if self.bayesian_model.trained else 0
+        model_status = f"Bayesian model: {'LOADED' if self.bayesian_model.trained else 'NOT TRAINED'} ({model_symbols} symbols)"
+        logger.info(model_status)
+        print(f"[MODEL] {model_status}", flush=True)
+
         # Get current market regime
         spy_data = market_data.get('SPY')
         vix_data = market_data.get('VIX')
@@ -286,8 +292,12 @@ class OvernightReversionSignals:
                 'current_price': current_price
             }
 
+        except ValueError as e:
+            # ValueError includes "Model not trained yet" - this is critical
+            logger.error(f"Model error for {symbol}: {e}")
+            return None
         except Exception as e:
-            logger.debug(f"Error evaluating {symbol}: {e}")
+            logger.warning(f"Error evaluating {symbol}: {e}")
             return None
 
     def _calculate_signal_strength(

@@ -69,7 +69,27 @@ class OMRLiveAdapter(StrategyAdapter):
         # Initialize Bayesian model if not provided
         if bayesian_model is None:
             bayesian_model = BayesianReversionModel()
-            logger.info("Created new BayesianReversionModel (untrained)")
+            # Try to load pre-trained model from disk
+            try:
+                bayesian_model.load_model()
+                model_symbols = set(bayesian_model.regime_probabilities.keys())
+                trading_symbols = set(symbols)
+                covered = trading_symbols & model_symbols
+                missing = trading_symbols - model_symbols
+
+                logger.success(f"Loaded pre-trained Bayesian model")
+                logger.info(f"  Model covers {len(covered)}/{len(trading_symbols)} trading symbols")
+
+                if missing:
+                    logger.warning(f"  Missing from model ({len(missing)}): {sorted(missing)}")
+                    logger.warning("  These symbols will not generate signals until model is retrained")
+
+            except FileNotFoundError:
+                logger.warning("No pre-trained Bayesian model found - will train at market open")
+                logger.warning(f"Expected model at: {bayesian_model.model_path}")
+            except Exception as e:
+                logger.error(f"Failed to load Bayesian model: {e}")
+                logger.warning("Will train at market open")
 
         # Create pure OMR strategy with injected symbols
         strategy = OvernightReversionSignals(
@@ -97,6 +117,10 @@ class OMRLiveAdapter(StrategyAdapter):
         self.min_probability = min_probability
         self.min_expected_return = min_expected_return
 
+        # Store references for training
+        self._bayesian_model = bayesian_model
+        self._regime_detector = regime_detector
+
         # Initialize portfolio health checker
         self.health_checker = PortfolioHealthChecker(
             broker=broker,
@@ -112,6 +136,91 @@ class OMRLiveAdapter(StrategyAdapter):
         logger.info(f"  Signal time: 3:50 PM EST")
         logger.info(f"  Entry: 3:50 PM | Exit: Next day 9:31 AM")
         logger.info(f"  Portfolio health checks: ENABLED")
+
+    def preload_historical_data(self) -> None:
+        """
+        Pre-load historical data and train Bayesian model if needed.
+
+        Extends parent method to:
+        1. Fetch historical data for all symbols + SPY + VIX
+        2. Train Bayesian model if not already trained
+        """
+        # Call parent to fetch historical data
+        super().preload_historical_data()
+
+        # Also fetch SPY and VIX for training if not in cache
+        if self._data_cache is not None:
+            end_date = datetime.now()
+            start_date = end_date - timedelta(days=self.data_lookback_days)
+
+            for market_symbol in ['SPY', 'VIX']:
+                if market_symbol not in self._data_cache:
+                    try:
+                        if market_symbol == 'VIX':
+                            df = self._fetch_vix_yfinance(start_date, end_date)
+                        else:
+                            df = self.broker.get_historical_bars(
+                                symbol=market_symbol,
+                                start=start_date,
+                                end=end_date,
+                                timeframe='1D'
+                            )
+
+                        if df is not None and not df.empty:
+                            self._data_cache[market_symbol] = df
+                            logger.info(f"Fetched {market_symbol}: {len(df)} days")
+                    except Exception as e:
+                        logger.error(f"Error fetching {market_symbol}: {e}")
+
+        # Train Bayesian model if not already trained
+        if not self._bayesian_model.trained:
+            self._train_bayesian_model()
+
+    def _train_bayesian_model(self) -> None:
+        """Train the Bayesian model using cached historical data."""
+        if self._data_cache is None or len(self._data_cache) == 0:
+            logger.error("Cannot train Bayesian model: no historical data available")
+            return
+
+        if 'SPY' not in self._data_cache or 'VIX' not in self._data_cache:
+            logger.error("Cannot train Bayesian model: missing SPY or VIX data")
+            return
+
+        try:
+            logger.info("Training Bayesian model with historical data...")
+
+            # Prepare data for training (need daily OHLCV)
+            spy_data = self._data_cache['SPY']
+            vix_data = self._data_cache['VIX']
+
+            # Normalize column names to lowercase for consistency
+            historical_data = {}
+            for symbol, df in self._data_cache.items():
+                df_copy = df.copy()
+                df_copy.columns = [c.lower() if isinstance(c, str) else c[0].lower() for c in df_copy.columns]
+                historical_data[symbol] = df_copy
+
+            # Also normalize SPY and VIX
+            spy_normalized = spy_data.copy()
+            spy_normalized.columns = [c.lower() if isinstance(c, str) else c[0].lower() for c in spy_normalized.columns]
+
+            vix_normalized = vix_data.copy()
+            vix_normalized.columns = [c.lower() if isinstance(c, str) else c[0].lower() for c in vix_normalized.columns]
+
+            # Train the model
+            self._bayesian_model.train(
+                historical_data=historical_data,
+                regime_detector=self._regime_detector,
+                spy_data=spy_normalized,
+                vix_data=vix_normalized
+            )
+
+            logger.success(f"Bayesian model trained on {len(historical_data)} symbols")
+
+        except Exception as e:
+            logger.error(f"Failed to train Bayesian model: {e}")
+            import traceback
+            traceback.print_exc()
 
     def fetch_market_data(self) -> Dict[str, pd.DataFrame]:
         """
