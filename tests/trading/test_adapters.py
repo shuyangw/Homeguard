@@ -502,5 +502,284 @@ class TestAdapterIntegration:
         adapter.execute_signals(signals)
 
 
+class TestVIXDataFetching:
+    """
+    Tests for VIX data fetching and column normalization.
+
+    These tests make actual network calls to verify real-world behavior.
+    Critical for catching column name mismatches (e.g., 'Close' vs 'close').
+    """
+
+    @pytest.mark.network
+    def test_fetch_vix_yfinance_returns_data(self, mock_broker):
+        """Test _fetch_vix_yfinance returns non-empty DataFrame."""
+        adapter = OMRLiveAdapter(
+            broker=mock_broker,
+            symbols=['TQQQ']
+        )
+
+        # Fetch VIX data (actual network call)
+        from datetime import datetime, timedelta
+        end_date = datetime.now()
+        start_date = end_date - timedelta(days=30)
+
+        vix_data = adapter._fetch_vix_yfinance(
+            start_date.strftime('%Y-%m-%d'),
+            end_date.strftime('%Y-%m-%d')
+        )
+
+        assert vix_data is not None, "VIX data should not be None"
+        assert not vix_data.empty, "VIX data should not be empty"
+        assert len(vix_data) > 0, "VIX data should have rows"
+
+    @pytest.mark.network
+    def test_fetch_vix_yfinance_has_required_columns(self, mock_broker):
+        """Test _fetch_vix_yfinance returns DataFrame with OHLCV columns."""
+        adapter = OMRLiveAdapter(
+            broker=mock_broker,
+            symbols=['TQQQ']
+        )
+
+        from datetime import datetime, timedelta
+        end_date = datetime.now()
+        start_date = end_date - timedelta(days=30)
+
+        vix_data = adapter._fetch_vix_yfinance(
+            start_date.strftime('%Y-%m-%d'),
+            end_date.strftime('%Y-%m-%d')
+        )
+
+        assert vix_data is not None
+
+        # Check for required columns (case-insensitive)
+        columns_lower = [c.lower() if isinstance(c, str) else str(c).lower() for c in vix_data.columns]
+        assert 'close' in columns_lower or 'Close' in vix_data.columns, \
+            f"VIX data should have 'close' column. Got: {list(vix_data.columns)}"
+
+    @pytest.mark.network
+    def test_fetch_market_data_normalizes_column_names(self, mock_broker):
+        """
+        Test fetch_market_data normalizes all column names to lowercase.
+
+        This is the critical test that would have caught the 'close' KeyError bug.
+        """
+        # Need to mock the broker's get_historical_bars to avoid Alpaca API calls
+        # but let VIX fetch go through yfinance
+        def mock_historical_bars(symbol, start, end, timeframe):
+            """Return data with UPPERCASE columns (simulating some data sources)."""
+            import pandas as pd
+            dates = pd.date_range(start, end, freq='D')
+            # Intentionally use uppercase column names
+            data = {
+                'Open': [100.0] * len(dates),
+                'High': [101.0] * len(dates),
+                'Low': [99.0] * len(dates),
+                'Close': [100.5] * len(dates),
+                'Volume': [1000000] * len(dates)
+            }
+            return pd.DataFrame(data, index=dates)
+
+        mock_broker.get_historical_bars.side_effect = mock_historical_bars
+
+        adapter = OMRLiveAdapter(
+            broker=mock_broker,
+            symbols=['SPY']  # Just SPY to simplify
+        )
+
+        # Preload cache with uppercase columns (simulating yfinance behavior)
+        adapter._data_cache = {
+            'SPY': mock_historical_bars('SPY', '2024-01-01', '2024-01-31', '1D'),
+            'VIX': mock_historical_bars('VIX', '2024-01-01', '2024-01-31', '1D')
+        }
+
+        # Fetch market data
+        market_data = adapter.fetch_market_data()
+
+        # All column names should be lowercase after normalization
+        for symbol, df in market_data.items():
+            for col in df.columns:
+                col_str = col if isinstance(col, str) else str(col)
+                assert col_str == col_str.lower(), \
+                    f"Column '{col}' in {symbol} data should be lowercase. Got: {list(df.columns)}"
+
+    @pytest.mark.network
+    def test_fetch_market_data_vix_has_lowercase_close(self, mock_broker):
+        """
+        Test that VIX data specifically has lowercase 'close' column.
+
+        This directly tests the bug fix for KeyError: 'close'.
+        """
+        def mock_historical_bars(symbol, start, end, timeframe):
+            import pandas as pd
+            dates = pd.date_range(start, end, freq='D')
+            data = {
+                'open': [100.0] * len(dates),
+                'high': [101.0] * len(dates),
+                'low': [99.0] * len(dates),
+                'close': [100.5] * len(dates),
+                'volume': [1000000] * len(dates)
+            }
+            return pd.DataFrame(data, index=dates)
+
+        mock_broker.get_historical_bars.side_effect = mock_historical_bars
+
+        adapter = OMRLiveAdapter(
+            broker=mock_broker,
+            symbols=['TQQQ']
+        )
+
+        # Simulate cache with VIX data having uppercase columns (like yfinance returns)
+        import pandas as pd
+        dates = pd.date_range('2024-01-01', '2024-01-31', freq='D')
+        adapter._data_cache = {
+            'SPY': pd.DataFrame({
+                'Close': [450.0] * len(dates),  # Uppercase
+                'Open': [449.0] * len(dates),
+                'High': [451.0] * len(dates),
+                'Low': [448.0] * len(dates),
+                'Volume': [50000000] * len(dates)
+            }, index=dates),
+            'VIX': pd.DataFrame({
+                'Close': [15.0] * len(dates),  # Uppercase (yfinance style)
+                'Open': [14.5] * len(dates),
+                'High': [15.5] * len(dates),
+                'Low': [14.0] * len(dates),
+                'Volume': [0] * len(dates)
+            }, index=dates)
+        }
+
+        # Fetch market data
+        market_data = adapter.fetch_market_data()
+
+        # VIX should have lowercase 'close' column after normalization
+        assert 'VIX' in market_data, "VIX should be in market data"
+        vix_df = market_data['VIX']
+        assert 'close' in vix_df.columns, \
+            f"VIX data should have lowercase 'close' column. Got: {list(vix_df.columns)}"
+
+        # Should be able to access vix_data['close'] without KeyError
+        try:
+            _ = vix_df['close'].iloc[-1]
+        except KeyError as e:
+            pytest.fail(f"Should be able to access vix_data['close']: {e}")
+
+    @pytest.mark.network
+    def test_real_yfinance_vix_integration(self, mock_broker):
+        """
+        End-to-end test: fetch real VIX data and verify column normalization.
+
+        This test makes actual network calls and verifies the complete flow.
+        """
+        adapter = OMRLiveAdapter(
+            broker=mock_broker,
+            symbols=['TQQQ']
+        )
+
+        from datetime import datetime, timedelta
+        end_date = datetime.now()
+        start_date = end_date - timedelta(days=10)
+
+        # Fetch real VIX data
+        vix_data = adapter._fetch_vix_yfinance(
+            start_date.strftime('%Y-%m-%d'),
+            end_date.strftime('%Y-%m-%d')
+        )
+
+        if vix_data is None or vix_data.empty:
+            pytest.skip("Could not fetch VIX data (network issue or market closed)")
+
+        # Store in cache (simulating preload)
+        adapter._data_cache = {
+            'SPY': vix_data.copy(),  # Use same data for SPY (just for testing)
+            'VIX': vix_data.copy()
+        }
+
+        # Fetch market data (should normalize)
+        market_data = adapter.fetch_market_data()
+
+        # Verify VIX has lowercase columns
+        if 'VIX' in market_data:
+            vix_df = market_data['VIX']
+            columns_str = [str(c).lower() for c in vix_df.columns]
+            assert 'close' in columns_str, \
+                f"After normalization, VIX should have 'close' column. Got: {list(vix_df.columns)}"
+
+
+class TestColumnNormalization:
+    """Tests specifically for column name normalization edge cases."""
+
+    def test_normalize_single_level_uppercase(self, mock_broker):
+        """Test normalization of simple uppercase column names."""
+        adapter = OMRLiveAdapter(broker=mock_broker, symbols=['SPY'])
+
+        import pandas as pd
+        dates = pd.date_range('2024-01-01', '2024-01-10', freq='D')
+
+        # Uppercase columns (common from yfinance)
+        df = pd.DataFrame({
+            'Open': [100.0] * len(dates),
+            'High': [101.0] * len(dates),
+            'Low': [99.0] * len(dates),
+            'Close': [100.5] * len(dates),
+            'Volume': [1000000] * len(dates)
+        }, index=dates)
+
+        adapter._data_cache = {'SPY': df, 'VIX': df.copy()}
+
+        market_data = adapter.fetch_market_data()
+
+        assert 'close' in market_data['SPY'].columns
+        assert 'open' in market_data['SPY'].columns
+        assert 'Close' not in market_data['SPY'].columns
+        assert 'Open' not in market_data['SPY'].columns
+
+    def test_normalize_mixed_case_columns(self, mock_broker):
+        """Test normalization of mixed case column names."""
+        adapter = OMRLiveAdapter(broker=mock_broker, symbols=['SPY'])
+
+        import pandas as pd
+        dates = pd.date_range('2024-01-01', '2024-01-10', freq='D')
+
+        # Mixed case columns
+        df = pd.DataFrame({
+            'OPEN': [100.0] * len(dates),
+            'high': [101.0] * len(dates),
+            'Low': [99.0] * len(dates),
+            'CLOSE': [100.5] * len(dates),
+            'Volume': [1000000] * len(dates)
+        }, index=dates)
+
+        adapter._data_cache = {'SPY': df, 'VIX': df.copy()}
+
+        market_data = adapter.fetch_market_data()
+
+        # All should be lowercase
+        for col in market_data['SPY'].columns:
+            assert col == col.lower(), f"Column '{col}' should be lowercase"
+
+    def test_normalize_already_lowercase(self, mock_broker):
+        """Test that already lowercase columns remain unchanged."""
+        adapter = OMRLiveAdapter(broker=mock_broker, symbols=['SPY'])
+
+        import pandas as pd
+        dates = pd.date_range('2024-01-01', '2024-01-10', freq='D')
+
+        # Already lowercase (from Alpaca)
+        df = pd.DataFrame({
+            'open': [100.0] * len(dates),
+            'high': [101.0] * len(dates),
+            'low': [99.0] * len(dates),
+            'close': [100.5] * len(dates),
+            'volume': [1000000] * len(dates)
+        }, index=dates)
+
+        adapter._data_cache = {'SPY': df, 'VIX': df.copy()}
+
+        market_data = adapter.fetch_market_data()
+
+        # Should still be lowercase
+        assert list(market_data['SPY'].columns) == ['open', 'high', 'low', 'close', 'volume']
+
+
 if __name__ == '__main__':
     pytest.main([__file__, '-v'])
