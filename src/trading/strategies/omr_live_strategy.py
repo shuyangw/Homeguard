@@ -135,30 +135,57 @@ class OMRLiveStrategy:
 
         logger.info("Generating entry signals...")
 
-        # Check VIX threshold
+        # Check VIX threshold (3 fallback sources for resilience)
         current_vix = None
+        vix_source = None
+
+        # Source 1: Pre-fetched VIX from current_data
         try:
-            # First try to get VIX from current_data (pre-fetched via yfinance)
             if 'VIX' in current_data and not current_data['VIX'].empty:
                 vix_df = current_data['VIX']
-                current_vix = vix_df['close'].iloc[-1]
-                logger.info(f"Using VIX from current_data: {current_vix:.2f}")
-            else:
-                # Fallback: Fetch VIX via yfinance
+                current_vix = float(vix_df['close'].iloc[-1])
+                vix_source = "current_data cache"
+        except Exception as e:
+            logger.warning(f"VIX source 1 (cache) failed: {e}")
+
+        # Source 2: yfinance Ticker.info API
+        if current_vix is None:
+            try:
                 import yfinance as yf
                 vix_ticker = yf.Ticker('^VIX')
                 vix_info = vix_ticker.info
                 current_vix = vix_info.get('regularMarketPrice') or vix_info.get('previousClose')
                 if current_vix:
-                    logger.info(f"Fetched VIX via yfinance: {current_vix:.2f}")
+                    current_vix = float(current_vix)
+                    vix_source = "yfinance Ticker.info"
+            except Exception as e:
+                logger.warning(f"VIX source 2 (Ticker.info) failed: {e}")
 
-            if current_vix is not None and current_vix > self.vix_threshold:
-                logger.warning(f"VIX ({current_vix:.2f}) exceeds threshold ({self.vix_threshold}). No trading.")
-                return []
+        # Source 3: yfinance download API (different endpoint)
+        if current_vix is None:
+            try:
+                import yfinance as yf
+                vix_df = yf.download('^VIX', period='1d', progress=False)
+                if not vix_df.empty:
+                    # Handle multi-level columns from yfinance
+                    if hasattr(vix_df.columns, 'levels'):
+                        close_col = [c for c in vix_df.columns if c[0].lower() == 'close'][0]
+                        current_vix = float(vix_df[close_col].iloc[-1])
+                    else:
+                        current_vix = float(vix_df['Close'].iloc[-1])
+                    vix_source = "yfinance download"
+            except Exception as e:
+                logger.warning(f"VIX source 3 (download) failed: {e}")
 
-        except Exception as e:
-            logger.error(f"Failed to check VIX: {e}")
-            logger.error("Blocking trading - VIX check is required for risk management")
+        # Evaluate VIX result
+        if current_vix is None:
+            logger.error("All 3 VIX sources failed - blocking trading for safety")
+            return []
+
+        logger.info(f"VIX = {current_vix:.2f} (source: {vix_source})")
+
+        if current_vix > self.vix_threshold:
+            logger.warning(f"VIX ({current_vix:.2f}) exceeds threshold ({self.vix_threshold}). No trading.")
             return []
 
         # Generate signals using signal generator
