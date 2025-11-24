@@ -327,7 +327,21 @@ class OMRLiveAdapter(StrategyAdapter):
             logger.info(
                 f"Fetched data for {len(market_data)} symbols ({cache_status})"
             )
-            return market_data
+
+            # Normalize column names to lowercase for consistency
+            # (yfinance returns 'Close', Alpaca returns 'close', etc.)
+            normalized_data = {}
+            for symbol, df in market_data.items():
+                df_copy = df.copy()
+                # Handle both single-level and multi-level column names
+                if hasattr(df_copy.columns, 'levels'):
+                    # Multi-level columns (e.g., from yfinance with multiple tickers)
+                    df_copy.columns = [c[0].lower() if isinstance(c, tuple) else c.lower() for c in df_copy.columns]
+                else:
+                    df_copy.columns = [c.lower() if isinstance(c, str) else str(c).lower() for c in df_copy.columns]
+                normalized_data[symbol] = df_copy
+
+            return normalized_data
 
         except Exception as e:
             logger.error(f"Error in fetch_market_data: {e}")
