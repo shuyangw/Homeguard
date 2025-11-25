@@ -78,51 +78,50 @@ if "%INSTANCE_STATE%"=="stopping" (
     exit /b 0
 )
 
-if "%INSTANCE_STATE%"=="running" (
-    echo [WARNING] This will stop the trading bot and shut down the instance.
-    echo.
-    set /p CONFIRM="Are you sure you want to stop the instance? (y/N): "
-
-    if /i not "!CONFIRM!"=="y" (
-        echo.
-        echo Operation cancelled.
-        exit /b 0
-    )
-
-    echo.
-    echo Stopping instance...
-
-    aws ec2 stop-instances --instance-ids %INSTANCE_ID% --region %REGION% >nul
-
-    if %ERRORLEVEL% neq 0 (
-        echo [ERROR] Failed to stop instance
-        exit /b 1
-    )
-
-    echo [SUCCESS] Instance stop command sent
-    echo.
-    echo Waiting for instance to stop (this may take 1-2 minutes)...
-
-    aws ec2 wait instance-stopped --instance-ids %INSTANCE_ID% --region %REGION%
-
-    if %ERRORLEVEL% neq 0 (
-        echo [ERROR] Timeout waiting for instance to stop
-        exit /b 1
-    )
-
-    echo.
-    echo ==========================================
-    echo Instance Stopped Successfully!
-    echo ==========================================
-    echo.
-    echo To start the instance again:
-    echo   scripts\ec2\local_start_instance.bat
-    echo.
-
-) else (
+if not "%INSTANCE_STATE%"=="running" (
     echo [WARNING] Instance is in state: %INSTANCE_STATE%
     echo Cannot stop instance in this state
     exit /b 1
 )
+
+echo [WARNING] This will stop the trading bot and shut down the instance.
+echo.
+set /p CONFIRM="Are you sure you want to stop the instance? (y/N): "
+
+if /i not "!CONFIRM!"=="y" (
+    echo.
+    echo Operation cancelled.
+    exit /b 0
+)
+
+echo.
+echo Stopping instance...
+
+aws ec2 stop-instances --instance-ids %INSTANCE_ID% --region %REGION% >nul
+
+if %ERRORLEVEL% neq 0 (
+    echo [ERROR] Failed to stop instance
+    exit /b 1
+)
+
+echo [SUCCESS] Instance stop command sent
+echo.
+echo Waiting for instance to stop (this may take 1-2 minutes)...
+
+aws ec2 wait instance-stopped --instance-ids %INSTANCE_ID% --region %REGION%
+
+if %ERRORLEVEL% neq 0 (
+    echo [ERROR] Timeout waiting for instance to stop
+    exit /b 1
+)
+
+echo.
+echo ==========================================
+echo Instance Stopped Successfully!
+echo ==========================================
+echo.
+echo To start the instance again:
+echo   scripts\ec2\local_start_instance.bat
+echo.
 
 endlocal

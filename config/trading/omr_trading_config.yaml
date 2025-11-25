@@ -37,7 +37,6 @@ strategy:
     - FAZ     # Financials Bear 3x
     - USD     # Ultra Semiconductors 3x
     - UDOW    # Dow 30 Bull 3x
-    - UYG     # Financials Bull 2x
     - SOXL    # Semiconductors Bull 3x
     - TECL    # Tech Bull 3x
     - UPRO    # S&P 500 Bull 3x
