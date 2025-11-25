@@ -230,6 +230,7 @@ class OvernightReversionSignals:
             # Get open price (first bar after 9:30 AM)
             open_data = today_data.between_time(time(9, 30), time(9, 31))
             if open_data.empty:
+                logger.debug(f"  {symbol}: No open data at 9:30 AM")
                 return None
 
             open_price = open_data['open'].iloc[0]
@@ -237,6 +238,7 @@ class OvernightReversionSignals:
             # Get current price (3:50 PM)
             current_data = today_data.between_time(time(15, 50), time(15, 50))
             if current_data.empty:
+                logger.debug(f"  {symbol}: No data at 3:50 PM")
                 return None
 
             current_price = current_data['close'].iloc[-1]
@@ -250,12 +252,29 @@ class OvernightReversionSignals:
             )
 
             if prob_data is None:
+                logger.info(f"  {symbol}: No probability data (intraday: {intraday_return:+.2%})")
                 return None
 
-            # Apply filters
-            if (prob_data['probability'] < min_probability or
-                prob_data['expected_return'] < min_expected_return or
-                prob_data['sample_size'] < 30):
+            # Log individual prediction details
+            prob = prob_data['probability']
+            exp_ret = prob_data['expected_return']
+            sample_size = prob_data['sample_size']
+
+            # Apply filters with detailed rejection logging
+            rejection_reasons = []
+            if prob < min_probability:
+                rejection_reasons.append(f"prob {prob:.1%} < {min_probability:.0%}")
+            if exp_ret < min_expected_return:
+                rejection_reasons.append(f"exp_ret {exp_ret:.2%} < {min_expected_return:.2%}")
+            if sample_size < 30:
+                rejection_reasons.append(f"samples {sample_size} < 30")
+
+            if rejection_reasons:
+                logger.info(
+                    f"  {symbol}: REJECT | intraday: {intraday_return:+.2%} | "
+                    f"prob: {prob:.1%} | exp_ret: {exp_ret:.2%} | n={sample_size} | "
+                    f"reason: {', '.join(rejection_reasons)}"
+                )
                 return None
 
             # Calculate signal strength
@@ -268,6 +287,11 @@ class OvernightReversionSignals:
             # Large up move -> expect pullback (SHORT)
             if abs(intraday_return) < 0.01:
                 # Flat day, skip
+                logger.info(
+                    f"  {symbol}: REJECT | intraday: {intraday_return:+.2%} | "
+                    f"prob: {prob:.1%} | exp_ret: {exp_ret:.2%} | "
+                    f"reason: flat day (|move| < 1%)"
+                )
                 return None
 
             direction = 'BUY' if intraday_return < 0 else 'SHORT'
@@ -275,6 +299,12 @@ class OvernightReversionSignals:
             # For leveraged inverse ETFs, reverse the logic
             if symbol in ['SQQQ', 'SPXU', 'SDOW', 'TZA', 'SOXS', 'FAZ', 'LABD', 'TECS', 'QID', 'SDS']:
                 direction = 'SHORT' if direction == 'BUY' else 'BUY'
+
+            # Log successful signal
+            logger.info(
+                f"  {symbol}: PASS | {direction} | intraday: {intraday_return:+.2%} | "
+                f"prob: {prob:.1%} | exp_ret: {exp_ret:.2%} | strength: {signal_strength:.2f}"
+            )
 
             return {
                 'symbol': symbol,
@@ -294,10 +324,10 @@ class OvernightReversionSignals:
 
         except ValueError as e:
             # ValueError includes "Model not trained yet" - this is critical
-            logger.error(f"Model error for {symbol}: {e}")
+            logger.error(f"  {symbol}: Model error - {e}")
             return None
         except Exception as e:
-            logger.warning(f"Error evaluating {symbol}: {e}")
+            logger.warning(f"  {symbol}: Error - {e}")
             return None
 
     def _calculate_signal_strength(
