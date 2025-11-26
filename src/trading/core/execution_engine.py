@@ -277,10 +277,15 @@ class ExecutionEngine:
 
         for attempt in range(self.max_retries):
             try:
-                order = self.broker.cancel_order(order_id)
-                self.orders[order_id] = order
-                logger.success(f"Order cancelled: {order_id}")
-                return order
+                cancelled = self.broker.cancel_order(order_id)
+                if cancelled:
+                    # Fetch updated order after successful cancellation
+                    order = self.broker.get_order(order_id)
+                    self.orders[order_id] = order
+                    logger.success(f"Order cancelled: {order_id}")
+                    return order
+                else:
+                    raise BrokerError(f"Failed to cancel order {order_id}")
 
             except BrokerError as e:
                 logger.warning(f"Cancel attempt {attempt + 1}/{self.max_retries} failed: {e}")

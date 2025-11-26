@@ -4,19 +4,36 @@ Broker Abstraction Layer
 Provides broker-agnostic interface for trading operations.
 
 Components:
-- BrokerInterface: Abstract protocol defining all broker operations
-- BrokerFactory: Factory for creating broker instances from config
-- AlpacaBroker: Alpaca implementation of BrokerInterface
-- IBBroker: Interactive Brokers implementation (future)
-- TDAmeritradeBroker: TD Ameritrade implementation (future)
+- interfaces/: Focused, composable interfaces (ISP)
+    - AccountInterface: Account info and connection
+    - MarketHoursInterface: Market schedule
+    - MarketDataInterface: Quotes, trades, bars
+    - OrderManagementInterface: Order retrieval/cancellation
+    - StockTradingInterface: Stock positions and orders
+    - OptionsTradingInterface: Options chains, positions, orders
+- BrokerInterface: Composite interface (backward compatibility)
+- BrokerFactory: Factory for creating broker instances
+- AlpacaBroker: Alpaca implementation
 """
 
-from .broker_interface import (
-    BrokerInterface,
+# New focused interfaces (preferred)
+from .interfaces import (
+    # Interfaces
+    AccountInterface,
+    MarketHoursInterface,
+    MarketDataInterface,
+    OrderManagementInterface,
+    StockTradingInterface,
+    OptionsTradingInterface,
+    OptionLeg,
+    # Enums
     OrderSide,
     OrderType,
     OrderStatus,
     TimeInForce,
+    OptionType,
+    OptionRight,
+    # Exceptions
     BrokerError,
     BrokerConnectionError,
     BrokerAuthError,
@@ -25,18 +42,35 @@ from .broker_interface import (
     OrderNotFoundError,
     NoPositionError,
     SymbolNotFoundError,
+    OptionsNotSupportedError,
 )
+
+# Composite interface (backward compatibility)
+from .broker_interface import BrokerInterface
+
+# Factory and implementations
 from .broker_factory import BrokerFactory
 from .alpaca_broker import AlpacaBroker
 
 __all__ = [
-    # Interface
+    # New focused interfaces
+    "AccountInterface",
+    "MarketHoursInterface",
+    "MarketDataInterface",
+    "OrderManagementInterface",
+    "StockTradingInterface",
+    "OptionsTradingInterface",
+    "OptionLeg",
+    # Composite interface (backward compat)
     "BrokerInterface",
-    # Enums
+    # Order enums
     "OrderSide",
     "OrderType",
     "OrderStatus",
     "TimeInForce",
+    # Options enums
+    "OptionType",
+    "OptionRight",
     # Exceptions
     "BrokerError",
     "BrokerConnectionError",
@@ -46,6 +80,7 @@ __all__ = [
     "OrderNotFoundError",
     "NoPositionError",
     "SymbolNotFoundError",
+    "OptionsNotSupportedError",
     # Factory
     "BrokerFactory",
     # Implementations

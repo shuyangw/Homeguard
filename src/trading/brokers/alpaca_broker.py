@@ -99,8 +99,8 @@ class AlpacaBroker(BrokerInterface):
             logger.error(f"Failed to get account: {e}")
             raise BrokerConnectionError(f"Alpaca API error: {e}")
 
-    def get_positions(self) -> List[Dict]:
-        """Get all current positions (translated to standard format)."""
+    def get_stock_positions(self) -> List[Dict]:
+        """Get all current stock positions (translated to standard format)."""
         try:
             positions = self.trading_client.get_all_positions()
 
@@ -122,8 +122,8 @@ class AlpacaBroker(BrokerInterface):
             logger.error(f"Failed to get positions: {e}")
             raise BrokerConnectionError(f"Alpaca API error: {e}")
 
-    def get_position(self, symbol: str) -> Optional[Dict]:
-        """Get specific position by symbol."""
+    def get_stock_position(self, symbol: str) -> Optional[Dict]:
+        """Get specific stock position by symbol."""
         try:
             pos = self.trading_client.get_open_position(symbol)
 
@@ -144,7 +144,7 @@ class AlpacaBroker(BrokerInterface):
 
     # ==================== Order Methods ====================
 
-    def place_order(
+    def place_stock_order(
         self,
         symbol: str,
         quantity: int,
@@ -155,7 +155,7 @@ class AlpacaBroker(BrokerInterface):
         time_in_force: TimeInForce = TimeInForce.DAY,
         **kwargs
     ) -> Dict:
-        """Place order (broker-agnostic interface)."""
+        """Place stock order (broker-agnostic interface)."""
         try:
             # Translate to Alpaca-specific enums
             alpaca_side = AlpacaOrderSide.BUY if side == OrderSide.BUY else AlpacaOrderSide.SELL
@@ -293,15 +293,15 @@ class AlpacaBroker(BrokerInterface):
             logger.error(f"Failed to get open orders: {e}")
             raise BrokerConnectionError(f"Alpaca API error: {e}")
 
-    def close_position(
+    def close_stock_position(
         self,
         symbol: str,
         quantity: Optional[int] = None
     ) -> Dict:
-        """Close a position (or partial position)."""
+        """Close a stock position (or partial position)."""
         try:
             # Get current position
-            position = self.get_position(symbol)
+            position = self.get_stock_position(symbol)
             if position is None:
                 raise NoPositionError(f"No position for {symbol}")
 
@@ -314,7 +314,7 @@ class AlpacaBroker(BrokerInterface):
 
             # Place market order to close
             logger.info(f"Closing position: {symbol} {qty_to_close} shares")
-            return self.place_order(
+            return self.place_stock_order(
                 symbol=symbol,
                 quantity=qty_to_close,
                 side=side,
@@ -326,8 +326,8 @@ class AlpacaBroker(BrokerInterface):
             logger.error(f"Failed to close position {symbol}: {e}")
             raise BrokerConnectionError(f"Alpaca API error: {e}")
 
-    def close_all_positions(self) -> List[Dict]:
-        """Close all open positions."""
+    def close_all_stock_positions(self) -> List[Dict]:
+        """Close all open stock positions."""
         try:
             # Alpaca has a built-in method for this
             result = self.trading_client.close_all_positions(cancel_orders=True)

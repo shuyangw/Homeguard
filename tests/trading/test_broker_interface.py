@@ -5,7 +5,7 @@ Tests that verify broker implementations conform to the BrokerInterface contract
 """
 
 import pytest
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from src.trading.brokers.broker_interface import (
     OrderSide,
@@ -156,7 +156,11 @@ class TestBrokerInterface:
         # Note: In mock broker, order is already filled
         # In real broker, you'd cancel before fill
         cancelled = broker.cancel_order(order['order_id'])
-        assert cancelled['order_id'] == order['order_id']
+        assert cancelled is True
+
+        # Verify order status changed
+        cancelled_order = broker.get_order(order['order_id'])
+        assert cancelled_order['status'] == OrderStatus.CANCELLED.value
 
     # ==================== Position Tests ====================
 
@@ -222,16 +226,17 @@ class TestBrokerInterface:
 
     def test_get_bars(self, broker):
         """Test getting historical bars."""
-        bars = broker.get_bars('AAPL', '1Day', limit=10)
+        end = datetime.now()
+        start = end - timedelta(days=10)
+        bars_df = broker.get_bars(['AAPL'], '1Day', start, end)
 
-        assert len(bars) > 0
-        bar = bars[0]
-        assert 'timestamp' in bar
-        assert 'open' in bar
-        assert 'high' in bar
-        assert 'low' in bar
-        assert 'close' in bar
-        assert 'volume' in bar
+        assert len(bars_df) > 0
+        # DataFrame should have MultiIndex (symbol, timestamp) and OHLCV columns
+        assert 'open' in bars_df.columns
+        assert 'high' in bars_df.columns
+        assert 'low' in bars_df.columns
+        assert 'close' in bars_df.columns
+        assert 'volume' in bars_df.columns
 
     # ==================== Utility Tests ====================
 
@@ -242,10 +247,11 @@ class TestBrokerInterface:
 
     def test_get_market_hours(self, broker):
         """Test getting market hours."""
-        hours = broker.get_market_hours()
+        open_time, close_time = broker.get_market_hours(datetime.now())
 
-        assert 'is_open' in hours
-        assert isinstance(hours['is_open'], bool)
+        assert isinstance(open_time, datetime)
+        assert isinstance(close_time, datetime)
+        assert open_time < close_time
 
     def test_test_connection(self, broker):
         """Test connection test."""
