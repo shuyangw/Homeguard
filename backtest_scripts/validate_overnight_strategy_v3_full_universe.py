@@ -2,7 +2,7 @@
 Validate overnight mean reversion strategy - V3 FULL UNIVERSE TEST.
 
 This version tests ALL 23 leveraged ETFs to find optimal symbol selection.
-Ensures alignment with Reddit strategy:
+Ensures alignment with strategy specification:
 - Entry: 3:50 PM (simulated as daily close price)
 - Exit: Next day open (9:31 AM)
 - Holding period: Overnight only
@@ -124,7 +124,7 @@ class SimpleBayesianModel:
                 continue
 
             # CRITICAL: Overnight return = (next_open - today_close) / today_close
-            # This matches Reddit strategy: enter at close (3:50 PM), exit at next open
+            # This matches OMR strategy: enter at close (3:50 PM), exit at next open
             df['overnight_return'] = (df['Open'].shift(-1) - df['Close']) / df['Close']
             df['intraday_return'] = (df['Close'] - df['Open']) / df['Open']
 
@@ -406,7 +406,7 @@ def main():
     logger.info("\n" + "="*80)
     logger.info("OVERNIGHT MEAN REVERSION - V3 FULL UNIVERSE TEST")
     logger.info("="*80)
-    logger.info("\nExecution Timing (matching Reddit strategy):")
+    logger.info("\nExecution Timing (matching OMR strategy):")
     logger.info("  Entry: 3:50 PM (simulated as daily CLOSE price)")
     logger.info("  Exit: Next day 9:31 AM (actual OPEN price)")
     logger.info("  Holding Period: Overnight only (~16 hours)")
