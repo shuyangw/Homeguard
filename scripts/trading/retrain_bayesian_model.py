@@ -1,13 +1,14 @@
 """
-Retrain Bayesian Model with Full LEVERAGED_3X Universe.
+Retrain Bayesian Model with Production Trading Symbols.
 
 Downloads historical data and trains the Bayesian reversion model
-on all 20 leveraged 3x ETF symbols.
+on symbols from the trading config (omr_trading_config.yaml).
 
 Usage:
     python scripts/trading/retrain_bayesian_model.py
     python scripts/trading/retrain_bayesian_model.py --years 5
     python scripts/trading/retrain_bayesian_model.py --dry-run
+    python scripts/trading/retrain_bayesian_model.py --config config/trading/omr_trading_config.yaml
 """
 
 import sys
@@ -21,12 +22,33 @@ import argparse
 from datetime import datetime, timedelta
 import pandas as pd
 import yfinance as yf
+import yaml
 
 from src.utils.logger import logger
 from src.strategies.universe import ETFUniverse
 from src.strategies.advanced.bayesian_reversion_model import BayesianReversionModel
 from src.strategies.advanced.market_regime_detector import MarketRegimeDetector
 from src.settings import get_models_dir
+
+
+def load_symbols_from_config(config_path: Path) -> list:
+    """
+    Load trading symbols from the OMR trading config file.
+
+    Args:
+        config_path: Path to the YAML config file
+
+    Returns:
+        List of symbols from the config
+    """
+    with open(config_path, 'r') as f:
+        config = yaml.safe_load(f)
+
+    symbols = config.get('strategy', {}).get('symbols', [])
+    if not symbols:
+        raise ValueError(f"No symbols found in config: {config_path}")
+
+    return symbols
 
 
 def download_historical_data(symbols: list, years: int = 10) -> dict:
@@ -94,21 +116,30 @@ def download_historical_data(symbols: list, years: int = 10) -> dict:
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Retrain Bayesian model with full universe')
+    parser = argparse.ArgumentParser(description='Retrain Bayesian model with production symbols')
     parser.add_argument('--years', type=int, default=10, help='Years of historical data (default: 10)')
     parser.add_argument('--dry-run', action='store_true', help='Show what would be done without training')
+    parser.add_argument('--config', type=str,
+                        default=str(PROJECT_ROOT / 'config' / 'trading' / 'omr_trading_config.yaml'),
+                        help='Path to trading config file (default: config/trading/omr_trading_config.yaml)')
     args = parser.parse_args()
 
     logger.info("=" * 70)
     logger.info("BAYESIAN MODEL RETRAINING")
     logger.info("=" * 70)
 
-    # Get symbols to train
-    symbols = ETFUniverse.LEVERAGED_3X.copy()
+    # Get symbols from config file
+    config_path = Path(args.config)
+    if not config_path.exists():
+        logger.error(f"Config file not found: {config_path}")
+        return 1
+
+    symbols = load_symbols_from_config(config_path)
     market_symbols = ['SPY', '^VIX']
     all_symbols = symbols + market_symbols
 
-    logger.info(f"Target symbols: {len(symbols)} leveraged 3x ETFs")
+    logger.info(f"Config file: {config_path}")
+    logger.info(f"Target symbols: {len(symbols)} production ETFs")
     logger.info(f"  {symbols}")
     logger.info(f"Plus market indicators: {market_symbols}")
     logger.info(f"Training period: {args.years} years")
@@ -183,11 +214,11 @@ def main():
     model_symbols = list(bayesian_model.regime_probabilities.keys())
     logger.info(f"Model trained on {len(model_symbols)} symbols:")
 
-    # Check coverage of LEVERAGED_3X
+    # Check coverage of production config symbols
     covered = [s for s in symbols if s in model_symbols]
     missing = [s for s in symbols if s not in model_symbols]
 
-    logger.info(f"\nLEVERAGED_3X coverage: {len(covered)}/{len(symbols)}")
+    logger.info(f"\nProduction config coverage: {len(covered)}/{len(symbols)}")
     logger.info(f"  Covered: {covered}")
     if missing:
         logger.warning(f"  Missing: {missing}")

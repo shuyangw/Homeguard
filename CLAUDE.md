@@ -98,6 +98,14 @@ Update docs when modifying user-facing functionality.
 - Ask before pushing: "Ready to push to remote?"
 - Details: [`.claude/git_workflow.md`](.claude/git_workflow.md)
 
+### Live Trading
+**CRITICAL**: Watch for common live trading issues.
+- **Type mismatches** - API data comes as strings; always convert explicitly
+- **VIX data resilience** - Must have fallbacks for VIX fetch failures
+- **Bayesian model coverage** - Model must be trained with ALL trading universe symbols
+- **Market hours** - Trading only at 3:50 PM ET, exits at 9:35 AM ET
+- Details: [`.claude/live_trading.md`](.claude/live_trading.md)
+
 ### Common Type Issues
 Pylance/VectorBT type annotation patterns.
 - DataFrame.xs() type hints
@@ -115,6 +123,7 @@ Pylance/VectorBT type annotation patterns.
 ├── environment.md           # Python environment setup
 ├── git_workflow.md          # Git commit and push guidelines
 ├── gui_design.md           # GUI design standards
+├── live_trading.md         # Live trading issues and pitfalls
 ├── logging.md              # Logging requirements
 ├── project_structure.md    # File organization rules
 ├── risk_management.md      # Position sizing and risk
@@ -188,6 +197,7 @@ Pylance/VectorBT type annotation patterns.
 
 - **Running a backtest** → Use config-driven system, see [`.claude/backtesting.md`](.claude/backtesting.md)
 - **Before backtesting work** → Read [`.claude/backtesting.md`](.claude/backtesting.md)
+- **Live trading issues** → Read [`.claude/live_trading.md`](.claude/live_trading.md)
 - **Adding GUI components** → Read [`.claude/gui_design.md`](.claude/gui_design.md)
 - **Writing tests** → Read [`.claude/testing.md`](.claude/testing.md)
 - **Implementing risk features** → Read [`.claude/risk_management.md`](.claude/risk_management.md)
