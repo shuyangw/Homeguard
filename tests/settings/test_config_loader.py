@@ -6,7 +6,7 @@ import pytest
 import tempfile
 from pathlib import Path
 
-from src.config.loader import (
+from src.settings.loader import (
     load_yaml,
     merge_dicts,
     apply_overrides,
@@ -14,7 +14,7 @@ from src.config.loader import (
     load_config_dict,
     load_config,
 )
-from src.config.schema import BacktestConfig, BacktestMode
+from src.settings.schema import BacktestConfig, BacktestMode
 
 
 class TestMergeDicts:

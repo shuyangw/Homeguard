@@ -14,7 +14,7 @@ from datetime import datetime, timedelta
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from src.config import get_output_dir
+from src.settings import get_output_dir
 from src.visualization.charts.candlestick import CandlestickChart
 from src.visualization.charts.lightweight_html import LightweightChartsHTML
 from src.visualization.charts.mplfinance_chart import MplfinanceChart

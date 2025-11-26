@@ -30,7 +30,7 @@ warnings.filterwarnings('ignore')
 
 # Add src to path
 from src.utils.logger import logger
-from src.config import get_backtest_results_dir
+from src.settings import get_backtest_results_dir
 
 # CRITICAL UPDATE (2025-11-13): Now using PRODUCTION modules for backtest parity
 # These match the exact implementations used in live trading

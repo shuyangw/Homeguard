@@ -638,7 +638,7 @@ class GeneticOptimizer(BaseOptimizer):
             return None
 
         from datetime import datetime
-        from src.config import get_backtest_results_dir
+        from src.settings import get_backtest_results_dir
 
         if output_dir is None:
             base_dir = get_backtest_results_dir()
@@ -698,7 +698,7 @@ class GeneticOptimizer(BaseOptimizer):
     ) -> Path:
         """Export optimization results to CSV."""
         from datetime import datetime
-        from src.config import get_backtest_results_dir
+        from src.settings import get_backtest_results_dir
 
         if output_dir is None:
             base_dir = get_backtest_results_dir()

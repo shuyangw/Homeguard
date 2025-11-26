@@ -381,7 +381,7 @@ class LiveTradingRunner:
         # Setup logging directory
         if log_dir is None:
             # Use configured output directory from settings.ini
-            from src.config import get_live_trading_dir
+            from src.settings import get_live_trading_dir
             log_dir = get_live_trading_dir(mode='paper')
 
         log_dir.mkdir(parents=True, exist_ok=True)

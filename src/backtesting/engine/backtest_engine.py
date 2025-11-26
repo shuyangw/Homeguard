@@ -235,7 +235,7 @@ class BacktestEngine:
         Example:
             >>> engine = BacktestEngine(initial_capital=50000, fees=0.001)
             >>> strategy = MovingAverageCrossover(fast=10, slow=50)
-            >>> from src.config import get_backtest_results_dir
+            >>> from src.settings import get_backtest_results_dir
             >>> portfolio = engine.run_and_report(
             ...     strategy=strategy,
             ...     symbols=['AAPL'],

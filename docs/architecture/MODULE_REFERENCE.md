@@ -20,7 +20,7 @@
 
 ## Root Level Modules
 
-### `src/config/` (Package)
+### `src/settings/` (Package)
 **Purpose**: Consolidated configuration management for application settings and config-driven backtesting
 
 **Submodules**:
@@ -58,11 +58,11 @@
 **Usage Example**:
 ```python
 # Application settings
-from src.config import settings, get_backtest_results_dir
+from src.settings import settings, get_backtest_results_dir
 results_dir = get_backtest_results_dir()
 
 # Config-driven backtest
-from src.config import load_config
+from src.settings import load_config
 config = load_config("config/backtesting/omr_backtest.yaml")
 print(config.strategy.name)
 print(config.symbols.list)

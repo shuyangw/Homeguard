@@ -22,7 +22,7 @@ import pandas as pd
 # Add parent directory to path
 
 from src.utils import logger
-from src.config import get_backtest_results_dir
+from src.settings import get_backtest_results_dir
 from src.backtesting.engine.multi_pair_portfolio import (
     MultiPairPortfolio,
     PairConfig,

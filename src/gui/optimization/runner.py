@@ -19,7 +19,7 @@ from src.backtesting.engine.backtest_engine import BacktestEngine
 from src.backtesting.optimization import GridSearchOptimizer, RandomSearchOptimizer, GeneticOptimizer, BAYESIAN_AVAILABLE
 if BAYESIAN_AVAILABLE:
     from backtesting.optimization import BayesianOptimizer
-from src.config import get_log_output_dir
+from src.settings import get_log_output_dir
 from gui.utils.error_logger import log_info, log_error, log_exception
 
 

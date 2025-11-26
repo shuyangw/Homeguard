@@ -7,7 +7,7 @@ from pathlib import Path
 from alpaca.data import TimeFrame
 import threading
 
-from src.config import settings, OS_ENVIRONMENT
+from src.settings import settings, OS_ENVIRONMENT
 
 
 def get_base_path():

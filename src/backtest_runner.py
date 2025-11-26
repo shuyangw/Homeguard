@@ -27,7 +27,7 @@ from src.strategies.base_strategies.mean_reversion import MeanReversion, RSIMean
 from src.strategies.base_strategies.momentum import MomentumStrategy, BreakoutStrategy
 from src.visualization.config import VisualizationConfig
 from src.visualization.integration import BacktestVisualizer
-from src.config import get_log_output_dir, get_backtest_results_dir
+from src.settings import get_log_output_dir, get_backtest_results_dir
 from src.utils import logger
 
 
@@ -138,7 +138,7 @@ def run_backtest(
     # Generate output directory for results (use configured output_dir from settings.ini)
     if output_dir is None and (quantstats or visualize):
         from datetime import datetime
-        from src.config import get_backtest_results_dir
+        from src.settings import get_backtest_results_dir
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         symbols_str = '_'.join(symbol_list)
         results_dir = get_backtest_results_dir()
@@ -413,7 +413,7 @@ def _resolve_symbols(config: 'BacktestConfig') -> List[str]:
     Returns:
         List of symbol strings
     """
-    from src.config import get_symbol_universe
+    from src.settings import get_symbol_universe
 
     symbols_config = config.symbols
 
@@ -445,7 +445,7 @@ def _resolve_dates(config: 'BacktestConfig') -> tuple:
     Returns:
         Tuple of (start_date, end_date) strings
     """
-    from src.config import get_date_preset
+    from src.settings import get_date_preset
 
     dates_config = config.dates
 
@@ -719,7 +719,7 @@ def run_from_config(config: 'BacktestConfig') -> None:
     Args:
         config: Validated BacktestConfig object
     """
-    from src.config import BacktestMode
+    from src.settings import BacktestMode
 
     mode = config.mode
 
@@ -814,7 +814,7 @@ Available strategies:
 
     # =========== Config-driven mode ===========
     if args.config:
-        from src.config import load_config, BacktestMode
+        from src.settings import load_config, BacktestMode
 
         try:
             config = load_config(args.config)

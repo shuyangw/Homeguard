@@ -554,7 +554,7 @@ class RandomSearchOptimizer(BaseOptimizer):
         """
         from pathlib import Path
         from datetime import datetime
-        from src.config import get_backtest_results_dir
+        from src.settings import get_backtest_results_dir
 
         # Determine output directory
         if output_dir is None:

@@ -5,7 +5,7 @@ Tests for config schema validation (Pydantic models).
 import pytest
 from pydantic import ValidationError
 
-from src.config.schema import (
+from src.settings.schema import (
     BacktestConfig,
     BacktestMode,
     PositionSizingMethod,

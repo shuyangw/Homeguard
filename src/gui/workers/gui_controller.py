@@ -20,7 +20,7 @@ from src.backtesting.utils.risk_config import RiskConfig
 import pandas as pd
 
 from gui.utils.error_logger import log_error, log_info, log_exception
-from src.config import get_log_output_dir, get_tearsheet_frequency
+from src.settings import get_log_output_dir, get_tearsheet_frequency
 from src.backtesting.engine.results_aggregator import ResultsAggregator
 from src.backtesting.engine.trade_logger import TradeLogger
 from src.backtesting.engine.multi_symbol_metrics import MultiSymbolMetrics

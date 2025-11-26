@@ -10,8 +10,8 @@ from pathlib import Path
 from typing import Dict, Any, Optional
 from copy import deepcopy
 
-from src.config.schema import BacktestConfig
-from src.config.defaults import DEFAULT_CONFIG
+from src.settings.schema import BacktestConfig
+from src.settings.defaults import DEFAULT_CONFIG
 
 
 def load_yaml(file_path: Path) -> Dict[str, Any]:

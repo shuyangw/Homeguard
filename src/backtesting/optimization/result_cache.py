@@ -21,7 +21,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 
-from src.config import get_log_output_dir
+from src.settings import get_log_output_dir
 from src.utils import logger
 
 

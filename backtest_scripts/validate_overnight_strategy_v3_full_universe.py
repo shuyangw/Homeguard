@@ -28,7 +28,7 @@ ROOT_DIR = setup_project_paths()
 warnings.filterwarnings('ignore')
 
 from src.utils.logger import logger
-from src.config import get_backtest_results_dir
+from src.settings import get_backtest_results_dir
 
 DATA_DIR = Path('data/leveraged_etfs')
 

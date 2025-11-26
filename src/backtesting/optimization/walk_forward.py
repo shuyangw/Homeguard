@@ -42,7 +42,7 @@ from pathlib import Path
 
 from src.backtesting.engine.backtest_engine import BacktestEngine
 from src.backtesting.optimization.base_optimizer import BaseOptimizer
-from src.config import get_backtest_results_dir
+from src.settings import get_backtest_results_dir
 from src.utils import logger
 
 

@@ -6,11 +6,11 @@ This module consolidates:
 2. Config-driven backtesting - YAML configuration with Pydantic validation
 
 Usage - Application Settings:
-    from src.config import settings, OS_ENVIRONMENT
-    from src.config import get_backtest_results_dir, get_output_dir
+    from src.settings import settings, OS_ENVIRONMENT
+    from src.settings import get_backtest_results_dir, get_output_dir
 
 Usage - Config-driven Backtesting:
-    from src.config import load_config, BacktestConfig
+    from src.settings import load_config, BacktestConfig
 
     # Load from YAML file
     config = load_config("config/backtesting/omr_backtest.yaml")
@@ -29,7 +29,7 @@ Usage - Config-driven Backtesting:
 # ============================================================================
 # Application Settings (from settings.ini)
 # ============================================================================
-from src.config.settings import (
+from src.settings.settings import (
     # Settings objects
     settings,
     OS_ENVIRONMENT,
@@ -50,7 +50,7 @@ from src.config.settings import (
 # ============================================================================
 # Config-driven Backtesting
 # ============================================================================
-from src.config.schema import (
+from src.settings.schema import (
     BacktestConfig,
     BacktestMode,
     PositionSizingMethod,
@@ -65,7 +65,7 @@ from src.config.schema import (
     OutputSettings,
 )
 
-from src.config.loader import (
+from src.settings.loader import (
     load_config,
     load_config_dict,
     validate_config,
@@ -75,7 +75,7 @@ from src.config.loader import (
     get_nested,
 )
 
-from src.config.defaults import (
+from src.settings.defaults import (
     DEFAULT_CONFIG,
     DATE_PRESETS,
     SYMBOL_UNIVERSES,

@@ -21,7 +21,7 @@ from src.strategies.advanced.pairs_trading import PairsTrading
 from src.backtesting.engine.backtest_engine import BacktestEngine
 from src.backtesting.utils.risk_config import RiskConfig
 from src.backtesting.engine.metrics import PerformanceMetrics
-from src.config import get_backtest_results_dir
+from src.settings import get_backtest_results_dir
 
 
 @dataclass

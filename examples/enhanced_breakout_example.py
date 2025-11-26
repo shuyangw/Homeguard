@@ -13,7 +13,7 @@ Period: 2023-2024
 
 from backtesting.engine.backtest_engine import BacktestEngine
 from strategies import BreakoutStrategy
-from src.config import get_output_dir
+from src.settings import get_output_dir
 
 
 def main():

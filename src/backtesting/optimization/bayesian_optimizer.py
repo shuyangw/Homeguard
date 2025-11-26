@@ -475,7 +475,7 @@ class BayesianOptimizer(BaseOptimizer):
     ) -> Path:
         """Export optimization results to CSV file."""
         from datetime import datetime
-        from src.config import get_backtest_results_dir
+        from src.settings import get_backtest_results_dir
 
         # Determine output directory
         if output_dir is None:
@@ -559,7 +559,7 @@ class BayesianOptimizer(BaseOptimizer):
             return None
 
         from datetime import datetime
-        from src.config import get_backtest_results_dir
+        from src.settings import get_backtest_results_dir
 
         # Determine output directory
         if output_dir is None:

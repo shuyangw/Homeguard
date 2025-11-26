@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Union, List, Optional
 from datetime import datetime
 
-from src.config import settings, OS_ENVIRONMENT
+from src.settings import settings, OS_ENVIRONMENT
 from src.utils import logger
 from src.backtesting.utils.market_calendar import MarketCalendar
 

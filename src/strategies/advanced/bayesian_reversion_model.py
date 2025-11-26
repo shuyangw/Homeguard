@@ -15,7 +15,7 @@ import pickle
 from pathlib import Path
 from src.utils.logger import logger
 from src.strategies.advanced.market_regime_detector import MarketRegimeDetector
-from src.config import get_models_dir
+from src.settings import get_models_dir
 
 
 class BayesianReversionModel:

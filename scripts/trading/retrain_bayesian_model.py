@@ -26,7 +26,7 @@ from src.utils.logger import logger
 from src.strategies.universe import ETFUniverse
 from src.strategies.advanced.bayesian_reversion_model import BayesianReversionModel
 from src.strategies.advanced.market_regime_detector import MarketRegimeDetector
-from src.config import get_models_dir
+from src.settings import get_models_dir
 
 
 def download_historical_data(symbols: list, years: int = 10) -> dict:
