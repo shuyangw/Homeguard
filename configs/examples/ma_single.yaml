@@ -1,0 +1,39 @@
+# Moving Average Crossover - Single Backtest
+# Usage: python -m src.backtest_runner --config configs/examples/ma_single.yaml
+
+mode: single
+
+strategy:
+  name: MovingAverageCrossover
+  parameters:
+    fast_window: 10
+    slow_window: 50
+    ma_type: sma
+
+symbols:
+  list: [SPY]
+
+dates:
+  start: "2023-01-01"
+  end: "2024-01-01"
+
+backtest:
+  initial_capital: 100000
+  fees: 0.001
+  slippage: 0.0005
+  benchmark: SPY
+  market_hours_only: true
+  allow_shorts: false
+
+risk:
+  enabled: true
+  position_sizing_method: fixed_percent
+  position_size_pct: 0.10
+  max_positions: 5
+
+output:
+  save_trades: true
+  save_reports: true
+  quantstats: false
+  visualize: false
+  verbosity: 1

@@ -1,0 +1,41 @@
+# Moving Average Crossover - Multi-Symbol Sweep
+# Usage: python -m src.backtest_runner --config configs/examples/ma_sweep.yaml
+
+mode: sweep
+
+strategy:
+  name: MovingAverageCrossover
+  parameters:
+    fast_window: 10
+    slow_window: 50
+    ma_type: sma
+
+symbols:
+  universe: technology.mag7  # AAPL, MSFT, GOOGL, AMZN, NVDA, META, TSLA
+
+dates:
+  start: "2023-01-01"
+  end: "2024-12-31"
+
+backtest:
+  initial_capital: 100000
+  fees: 0.001
+  slippage: 0.0005
+  benchmark: SPY
+
+risk:
+  position_sizing_method: fixed_percent
+  position_size_pct: 0.10
+  max_positions: 5
+
+sweep:
+  sort_by: "Sharpe Ratio"
+  top_n: 10
+  parallel: true
+  max_workers: 4
+  export_csv: true
+  export_html: true
+
+output:
+  save_reports: true
+  verbosity: 1

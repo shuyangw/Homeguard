@@ -20,30 +20,52 @@
 
 ## Root Level Modules
 
-### `src/config.py`
-**Purpose**: Global configuration and settings management
+### `src/config/` (Package)
+**Purpose**: Consolidated configuration management for application settings and config-driven backtesting
+
+**Submodules**:
+- `settings.py`: Application settings from `settings.ini` (OS detection, directory paths)
+- `schema.py`: Pydantic models for backtest configuration validation
+- `loader.py`: YAML loading with inheritance support (`extends:` directive)
+- `defaults.py`: Default configuration values, date presets, symbol universes
 
 **Key Classes**:
-- `Config`: Singleton configuration manager
+- `BacktestConfig`: Root configuration model for backtests
+- `BacktestMode`: Enum (single, sweep, optimize, walk_forward)
+- `StrategyConfig`, `SymbolsConfig`, `DatesConfig`: Sub-configuration models
 
 **Key Functions**:
-- `load_settings()`: Loads from `settings.ini`
-- `get_data_directory()`: Returns data storage path
-- `get_log_directory()`: Returns log output path
+- `load_config(path)`: Load and validate YAML config file
+- `get_backtest_results_dir()`: Returns backtest output directory
+- `get_symbol_universe(name)`: Get predefined symbol list
+- `get_date_preset(name)`: Get predefined date range
 
-**Configuration Sections**:
-- OS-specific paths (Windows/macOS/Linux)
-- Data directory location
-- Log output directory
-- Tearsheet frequency settings
+**Configuration Types**:
+1. **Application Settings** (from `settings.ini`):
+   - OS-specific paths (Windows/macOS/Linux)
+   - Data directory, log output directory
+   - Tearsheet frequency settings
 
-**Dependencies**: `configparser`, `pathlib`
+2. **Backtest Config** (from YAML files):
+   - Strategy selection and parameters
+   - Symbol lists/universes
+   - Date ranges/presets
+   - Risk management settings
+   - Mode-specific settings (sweep, optimization, walk-forward)
+
+**Dependencies**: `pydantic`, `yaml`, `configparser`, `pathlib`
 
 **Usage Example**:
 ```python
-from config import Config
-config = Config()
-data_dir = config.get_data_directory()
+# Application settings
+from src.config import settings, get_backtest_results_dir
+results_dir = get_backtest_results_dir()
+
+# Config-driven backtest
+from src.config import load_config
+config = load_config("configs/examples/omr_backtest.yaml")
+print(config.strategy.name)
+print(config.symbols.list)
 ```
 
 ---
@@ -69,28 +91,39 @@ client = AlpacaClient(ALPACA_API_KEY, ALPACA_SECRET_KEY)
 ---
 
 ### `src/backtest_runner.py`
-**Purpose**: CLI entry point for running backtests
+**Purpose**: CLI entry point for running backtests (supports both traditional CLI and config-driven modes)
 
 **Key Functions**:
 - `main()`: CLI argument parser and execution
-- `run_single_backtest()`: Single symbol backtest
-- `run_sweep()`: Multi-symbol backtest
-- `run_optimization()`: Parameter optimization (future)
+- `run_backtest()`: Single symbol backtest (traditional mode)
+- `sweep_backtest()`: Multi-symbol sweep (traditional mode)
+- `run_from_config()`: Config-driven backtest entry point
+- `run_single_from_config()`, `run_sweep_from_config()`, etc.: Mode-specific handlers
 
-**CLI Arguments**:
+**CLI Arguments (Config Mode - RECOMMENDED)**:
+- `--config`: Path to YAML config file
+- `--mode`: Override mode from config (single/sweep/optimize/walk_forward)
+
+**CLI Arguments (Traditional Mode)**:
 - `--strategy`: Strategy class name
 - `--symbols`: Ticker symbols (comma-separated)
 - `--start`: Start date (YYYY-MM-DD)
 - `--end`: End date (YYYY-MM-DD)
-- `--initial-capital`: Starting capital
+- `--capital`: Starting capital
 - `--fees`: Trading fees (decimal)
-- `--slippage`: Slippage (decimal)
-- `--risk-profile`: Risk profile (conservative/moderate/aggressive)
+- `--sweep`: Run multi-symbol sweep
+- `--optimize`: Run parameter optimization
+- `--quantstats`: Generate QuantStats tearsheet
 
-**Dependencies**: `argparse`, `BacktestEngine`, `strategies`
+**Dependencies**: `argparse`, `BacktestEngine`, `src.config`, `src.strategies.registry`
 
-**Usage Example**:
+**Usage Examples**:
 ```bash
+# Config-driven (RECOMMENDED)
+python -m src.backtest_runner --config configs/examples/omr_backtest.yaml
+python -m src.backtest_runner --config configs/examples/ma_sweep.yaml --mode sweep
+
+# Traditional CLI
 python -m src.backtest_runner \
   --strategy MovingAverageCrossover \
   --symbols AAPL,MSFT \
@@ -1129,6 +1162,50 @@ trading_data = data[data.index.map(calendar.is_market_day)]
 ---
 
 ## Strategy Layer
+
+### Strategy Registry
+
+#### `src/strategies/registry.py`
+**Purpose**: Unified strategy registry for dynamic strategy lookup by name
+
+**Key Functions**:
+- `get_strategy_class(name)`: Get strategy class by name or display name
+- `list_strategies()`: List all available strategy class names
+- `list_strategy_display_names()`: Get mapping of display names to class names
+- `get_strategy_info(name)`: Get strategy info including parameters
+- `register_strategy(name, cls, display_name)`: Register custom strategy at runtime
+
+**Registered Strategies**:
+- `MovingAverageCrossover`, `TripleMovingAverage`
+- `MeanReversion`, `RSIMeanReversion`, `MeanReversionLongShort`
+- `MomentumStrategy`, `BreakoutStrategy`
+- `VolatilityTargetedMomentum`, `OvernightMeanReversion`
+- `CrossSectionalMomentum`, `PairsTrading`
+
+**Features**:
+- Lazy loading to avoid import chain issues
+- Supports both class names and display names
+- Case-insensitive name lookup
+- Strategy class caching
+
+**Usage Example**:
+```python
+from src.strategies.registry import get_strategy_class, list_strategies
+
+# Get strategy by name
+strategy_cls = get_strategy_class("MovingAverageCrossover")
+strategy_cls = get_strategy_class("Moving Average Crossover")  # Display name also works
+
+# List available strategies
+print(list_strategies())
+# ['BreakoutStrategy', 'CrossSectionalMomentum', 'MeanReversion', ...]
+
+# Get strategy info
+info = get_strategy_info("MovingAverageCrossover")
+print(info['parameters'])  # {'fast_window': 10, 'slow_window': 50}
+```
+
+---
 
 ### Base Strategy Classes
 

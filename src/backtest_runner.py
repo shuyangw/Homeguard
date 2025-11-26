@@ -2,14 +2,20 @@
 Main interface for running backtests with trading strategies.
 
 Usage:
+    # Traditional CLI usage:
     python backtest_runner.py --strategy MovingAverageCrossover --symbols AAPL --start 2023-01-01 --end 2024-01-01
     python backtest_runner.py --strategy MeanReversion --symbols AAPL,MSFT,GOOGL --start 2023-01-01 --end 2024-01-01
+
+    # Config-driven usage (NEW):
+    python -m src.backtest_runner --config configs/examples/omr_backtest.yaml
+    python -m src.backtest_runner --config configs/ma_sweep.yaml --mode sweep
 """
 
 import argparse
 import sys
+from datetime import datetime
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 
 from src.backtesting.engine.backtest_engine import BacktestEngine
 from src.backtesting.engine.metrics import PerformanceMetrics
@@ -21,7 +27,7 @@ from src.strategies.base_strategies.mean_reversion import MeanReversion, RSIMean
 from src.strategies.base_strategies.momentum import MomentumStrategy, BreakoutStrategy
 from src.visualization.config import VisualizationConfig
 from src.visualization.integration import BacktestVisualizer
-from src.config import get_log_output_dir
+from src.config import get_log_output_dir, get_backtest_results_dir
 from src.utils import logger
 
 
@@ -393,6 +399,343 @@ def sweep_backtest(
     )
 
 
+# ============================================================================
+# Config-driven backtest functions
+# ============================================================================
+
+def _resolve_symbols(config: 'BacktestConfig') -> List[str]:
+    """
+    Resolve symbols from config (list, universe reference, or file).
+
+    Args:
+        config: BacktestConfig object
+
+    Returns:
+        List of symbol strings
+    """
+    from src.config import get_symbol_universe
+
+    symbols_config = config.symbols
+
+    if symbols_config.list:
+        return symbols_config.list
+
+    if symbols_config.universe:
+        return get_symbol_universe(symbols_config.universe)
+
+    if symbols_config.file:
+        file_path = Path(symbols_config.file)
+        if not file_path.exists():
+            raise FileNotFoundError(f"Symbols file not found: {file_path}")
+
+        with open(file_path, 'r') as f:
+            symbols = [line.strip() for line in f if line.strip() and not line.startswith('#')]
+        return symbols
+
+    raise ValueError("No symbols source specified in config")
+
+
+def _resolve_dates(config: 'BacktestConfig') -> tuple:
+    """
+    Resolve start and end dates from config (explicit or preset).
+
+    Args:
+        config: BacktestConfig object
+
+    Returns:
+        Tuple of (start_date, end_date) strings
+    """
+    from src.config import get_date_preset
+
+    dates_config = config.dates
+
+    if dates_config.preset:
+        preset = get_date_preset(dates_config.preset)
+        return preset['start'], preset['end']
+
+    return dates_config.start, dates_config.end
+
+
+def _get_strategy_instance(config: 'BacktestConfig'):
+    """
+    Get strategy instance from config.
+
+    Handles both parameter styles:
+    - **kwargs style (most strategies): strategy_cls(fast_window=10, slow_window=50)
+    - params dict style (OMR, etc.): strategy_cls(params={'key': value})
+
+    Args:
+        config: BacktestConfig object
+
+    Returns:
+        Instantiated strategy object
+    """
+    from src.strategies.registry import get_strategy_class
+
+    strategy_cls = get_strategy_class(config.strategy.name)
+    params = config.strategy.parameters
+
+    if not params:
+        return strategy_cls()
+
+    try:
+        return strategy_cls(**params)
+    except TypeError:
+        return strategy_cls(params=params)
+
+
+def _create_output_dir(config: 'BacktestConfig', mode_suffix: str = "") -> Optional[Path]:
+    """
+    Create output directory for results.
+
+    Args:
+        config: BacktestConfig object
+        mode_suffix: Optional suffix for mode (e.g., "_sweep")
+
+    Returns:
+        Path to output directory, or None if output disabled
+    """
+    if config.output.directory:
+        output_dir = Path(config.output.directory)
+    elif config.output.quantstats or config.output.save_reports:
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        results_dir = get_backtest_results_dir()
+        output_dir = results_dir / f"{timestamp}_{config.strategy.name}{mode_suffix}"
+    else:
+        return None
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    return output_dir
+
+
+def run_single_from_config(config: 'BacktestConfig') -> None:
+    """
+    Run single backtest from config.
+
+    Args:
+        config: Validated BacktestConfig object
+    """
+    symbols = _resolve_symbols(config)
+    start_date, end_date = _resolve_dates(config)
+    strategy = _get_strategy_instance(config)
+
+    engine = BacktestEngine(
+        initial_capital=config.backtest.initial_capital,
+        fees=config.backtest.fees,
+        slippage=config.backtest.slippage,
+        allow_shorts=config.backtest.allow_shorts,
+    )
+
+    output_dir = _create_output_dir(config)
+
+    if config.output.quantstats and output_dir:
+        portfolio = engine.run_and_report(
+            strategy=strategy,
+            symbols=symbols,
+            start_date=start_date,
+            end_date=end_date,
+            output_dir=output_dir
+        )
+    else:
+        portfolio = engine.run(
+            strategy=strategy,
+            symbols=symbols,
+            start_date=start_date,
+            end_date=end_date
+        )
+
+    if config.output.visualize and output_dir:
+        viz_config = VisualizationConfig.from_args(
+            verbosity=config.output.verbosity,
+            enable_charts=True,
+            enable_logs=True
+        )
+
+        visualizer = BacktestVisualizer(viz_config)
+        loader = DataLoader()
+
+        if len(symbols) == 1:
+            price_data = loader.load_single_symbol(symbols[0], start_date, end_date)
+        else:
+            price_data = loader.load_symbols(symbols, start_date, end_date)
+
+        visualizer.visualize_backtest(
+            portfolio=portfolio,
+            strategy_name=config.strategy.name,
+            symbols=symbols,
+            start_date=start_date,
+            end_date=end_date,
+            initial_capital=config.backtest.initial_capital,
+            fees=config.backtest.fees,
+            price_data=price_data,
+            output_dir=output_dir
+        )
+
+    logger.success(f"Backtest complete: {config.strategy.name}")
+    if output_dir:
+        logger.info(f"Results saved to: {output_dir}")
+
+
+def run_sweep_from_config(config: 'BacktestConfig') -> None:
+    """
+    Run sweep backtest from config.
+
+    Args:
+        config: Validated BacktestConfig object
+    """
+    symbols = _resolve_symbols(config)
+    start_date, end_date = _resolve_dates(config)
+    strategy = _get_strategy_instance(config)
+
+    engine = BacktestEngine(
+        initial_capital=config.backtest.initial_capital,
+        fees=config.backtest.fees,
+        slippage=config.backtest.slippage,
+        allow_shorts=config.backtest.allow_shorts,
+    )
+
+    sweep_runner = SweepRunner(
+        engine=engine,
+        max_workers=config.sweep.max_workers,
+        show_progress=(config.output.verbosity >= 1)
+    )
+
+    output_dir = _create_output_dir(config, "_sweep")
+    output_str = str(output_dir) if output_dir else None
+
+    sweep_runner.run_and_report(
+        strategy=strategy,
+        symbols=symbols,
+        start_date=start_date,
+        end_date=end_date,
+        output_dir=output_str,
+        sort_by=config.sweep.sort_by,
+        top_n=config.sweep.top_n,
+        export_csv=config.sweep.export_csv,
+        export_html=config.sweep.export_html,
+        parallel=config.sweep.parallel
+    )
+
+    logger.success(f"Sweep complete: {config.strategy.name}")
+    if output_dir:
+        logger.info(f"Results saved to: {output_dir}")
+
+
+def run_optimize_from_config(config: 'BacktestConfig') -> None:
+    """
+    Run optimization from config.
+
+    Args:
+        config: Validated BacktestConfig object
+    """
+    from src.strategies.registry import get_strategy_class
+
+    symbols = _resolve_symbols(config)
+    start_date, end_date = _resolve_dates(config)
+    strategy_cls = get_strategy_class(config.strategy.name)
+
+    engine = BacktestEngine(
+        initial_capital=config.backtest.initial_capital,
+        fees=config.backtest.fees,
+        slippage=config.backtest.slippage,
+        allow_shorts=config.backtest.allow_shorts,
+    )
+
+    if not config.optimization.param_grid:
+        logger.error("No param_grid specified in optimization config")
+        sys.exit(1)
+
+    results = engine.optimize(
+        strategy_class=strategy_cls,
+        param_grid=config.optimization.param_grid,
+        symbols=symbols,
+        start_date=start_date,
+        end_date=end_date,
+        metric=config.optimization.metric
+    )
+
+    logger.blank()
+    logger.success("Optimization complete!")
+    logger.metric(f"Best parameters: {results['best_params']}")
+    logger.metric(f"Best {config.optimization.metric}: {results['best_value']:.4f}")
+
+
+def run_walk_forward_from_config(config: 'BacktestConfig') -> None:
+    """
+    Run walk-forward validation from config.
+
+    Args:
+        config: Validated BacktestConfig object
+    """
+    from src.backtesting.optimization.walk_forward import WalkForwardOptimizer
+    from src.backtesting.optimization.grid_search import GridSearchOptimizer
+    from src.backtesting.engine.backtest_engine import BacktestEngine
+    from src.strategies.registry import get_strategy_class
+
+    symbols = _resolve_symbols(config)
+    start_date, end_date = _resolve_dates(config)
+    strategy_cls = get_strategy_class(config.strategy.name)
+
+    if not config.optimization.param_grid:
+        logger.error("No param_grid specified for walk-forward (needed for optimization)")
+        sys.exit(1)
+
+    output_dir = _create_output_dir(config, "_walk_forward")
+
+    engine = BacktestEngine(
+        initial_capital=config.backtest.initial_capital,
+        fees=config.backtest.fees,
+        slippage=config.backtest.slippage,
+        allow_shorts=config.backtest.allow_shorts,
+    )
+
+    base_optimizer = GridSearchOptimizer(engine)
+
+    walk_forward = WalkForwardOptimizer(engine, base_optimizer)
+
+    results = walk_forward.analyze(
+        strategy_class=strategy_cls,
+        param_space=config.optimization.param_grid,
+        symbols=symbols,
+        start_date=start_date,
+        end_date=end_date,
+        train_months=config.walk_forward.train_months,
+        test_months=config.walk_forward.test_months,
+        step_months=config.walk_forward.step_months,
+        metric=config.optimization.metric,
+        export_results=config.walk_forward.export_results
+    )
+
+    if output_dir:
+        logger.info(f"Walk-forward results saved to: {output_dir}")
+
+    logger.success("Walk-forward validation complete!")
+
+
+def run_from_config(config: 'BacktestConfig') -> None:
+    """
+    Run backtest based on config mode.
+
+    Args:
+        config: Validated BacktestConfig object
+    """
+    from src.config import BacktestMode
+
+    mode = config.mode
+
+    if mode == BacktestMode.SINGLE:
+        run_single_from_config(config)
+    elif mode == BacktestMode.SWEEP:
+        run_sweep_from_config(config)
+    elif mode == BacktestMode.OPTIMIZE:
+        run_optimize_from_config(config)
+    elif mode == BacktestMode.WALK_FORWARD:
+        run_walk_forward_from_config(config)
+    else:
+        logger.error(f"Unknown backtest mode: {mode}")
+        sys.exit(1)
+
+
 def main():
     """
     Main command-line interface.
@@ -402,7 +745,11 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Simple backtest
+  # Config-driven backtest (RECOMMENDED)
+  python -m src.backtest_runner --config configs/examples/omr_backtest.yaml
+  python -m src.backtest_runner --config configs/ma_sweep.yaml --mode sweep
+
+  # Simple backtest (traditional)
   python backtest_runner.py --strategy MovingAverageCrossover --symbols AAPL --start 2023-01-01 --end 2024-01-01
 
   # Backtest with custom parameters
@@ -421,13 +768,23 @@ Available strategies:
   - RSIMeanReversion
   - MomentumStrategy
   - BreakoutStrategy
+  - VolatilityTargetedMomentum
+  - OvernightMeanReversion
+  - CrossSectionalMomentum
+  - PairsTrading
         """
     )
 
-    parser.add_argument('--strategy', type=str, required=True, help='Strategy name')
+    # Config-driven mode (NEW)
+    parser.add_argument('--config', type=str, help='Path to YAML config file (enables config-driven mode)')
+    parser.add_argument('--mode', type=str, choices=['single', 'sweep', 'optimize', 'walk_forward'],
+                       help='Override mode from config file')
+
+    # Traditional mode (strategy, symbols, dates required unless using --config)
+    parser.add_argument('--strategy', type=str, help='Strategy name')
     parser.add_argument('--symbols', type=str, help='Comma-separated symbols')
-    parser.add_argument('--start', type=str, required=True, help='Start date (YYYY-MM-DD)')
-    parser.add_argument('--end', type=str, required=True, help='End date (YYYY-MM-DD)')
+    parser.add_argument('--start', type=str, help='Start date (YYYY-MM-DD)')
+    parser.add_argument('--end', type=str, help='End date (YYYY-MM-DD)')
     parser.add_argument('--capital', type=float, default=100000.0, help='Initial capital (default: 100000)')
     parser.add_argument('--fees', type=float, default=0.001, help='Trading fees as decimal (default: 0.001)')
     parser.add_argument('--params', type=str, help='Strategy parameters (e.g., "fast_window=10,slow_window=30")')
@@ -454,6 +811,43 @@ Available strategies:
     parser.add_argument('--max-workers', type=int, default=4, help='Max parallel workers for sweep (default: 4)')
 
     args = parser.parse_args()
+
+    # =========== Config-driven mode ===========
+    if args.config:
+        from src.config import load_config, BacktestMode
+
+        try:
+            config = load_config(args.config)
+
+            # Override mode if specified on command line
+            if args.mode:
+                config.mode = BacktestMode(args.mode)
+
+            logger.info(f"Running config-driven backtest: {args.config}")
+            logger.info(f"Mode: {config.mode.value}")
+            logger.info(f"Strategy: {config.strategy.name}")
+
+            run_from_config(config)
+            return
+
+        except FileNotFoundError as e:
+            logger.error(f"Config file not found: {e}")
+            sys.exit(1)
+        except Exception as e:
+            logger.error(f"Failed to load config: {e}")
+            sys.exit(1)
+
+    # =========== Traditional CLI mode ===========
+    # Validate required arguments for traditional mode
+    if not args.strategy:
+        logger.error("--strategy required (or use --config for config-driven mode)")
+        sys.exit(1)
+    if not args.start:
+        logger.error("--start required (or use --config for config-driven mode)")
+        sys.exit(1)
+    if not args.end:
+        logger.error("--end required (or use --config for config-driven mode)")
+        sys.exit(1)
 
     if args.sweep:
         if not args.symbols and not args.universe and not args.symbols_file:

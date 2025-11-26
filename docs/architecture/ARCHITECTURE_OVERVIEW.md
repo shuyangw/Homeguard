@@ -640,6 +640,14 @@ python -m gui
 - 📋 Additional broker integrations (TastyTrade, IBKR)
 
 ### Recently Deployed
+- ✅ **Config-driven backtesting** - YAML-based backtest configuration (November 2025)
+  - Single command: `python -m src.backtest_runner --config path/to/config.yaml`
+  - Supports all modes: single, sweep, optimize, walk-forward
+  - Pydantic-validated configuration schema with inheritance (`extends:` directive)
+  - Predefined date presets and symbol universes
+  - Strategy registry with lazy loading (no import chain issues)
+  - See [configs/examples/](../../configs/examples/) for example configs
+
 - ✅ **Broker interface refactoring** - ISP-compliant interface design (November 2025)
   - 6 focused interfaces: AccountInterface, MarketHoursInterface, MarketDataInterface, OrderManagementInterface, StockTradingInterface, OptionsTradingInterface
   - BrokerInterface is now a composite interface (backward compatible)

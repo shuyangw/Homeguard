@@ -47,7 +47,8 @@ class OvernightMeanReversionStrategy(BaseStrategy):
                 - position_size: Base position size (default 0.20)
                 - data_dir: Directory with historical data
         """
-        super().__init__(params)
+        params = params or {}
+        super().__init__(**params)
 
         # Extract parameters
         self.min_probability = params.get('min_probability', 0.55)

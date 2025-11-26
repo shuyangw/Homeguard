@@ -1,9 +1,20 @@
+"""
+Application settings and environment configuration.
+
+This module provides environment-specific settings loaded from settings.ini,
+including directory paths, OS detection, and configuration utilities.
+
+Migrated from src/config.py for package consolidation.
+"""
+
 import configparser
 import platform
 from pathlib import Path
 
-SETTINGS_FILE = Path(__file__).resolve().parent / "../settings.ini"
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
+SETTINGS_FILE = Path(__file__).resolve().parent.parent.parent / "settings.ini"
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+
 
 def get_os_environment():
     """
@@ -23,6 +34,7 @@ def get_os_environment():
         # Default to linux for unknown systems
         return 'linux'
 
+
 def _load_settings():
     config = configparser.ConfigParser()
     if not SETTINGS_FILE.exists():
@@ -30,6 +42,7 @@ def _load_settings():
 
     config.read(SETTINGS_FILE)
     return config
+
 
 # Load settings and detect OS
 settings = _load_settings()

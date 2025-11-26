@@ -26,6 +26,8 @@ Write clean, maintainable code following project conventions.
 
 ### Backtesting Guidelines
 **CRITICAL**: Avoid lookahead bias, survivorship bias, and overfitting.
+- **ALWAYS use the config-driven backtesting system** - don't write ad-hoc scripts
+- Run backtests via: `python -m src.backtest_runner --config configs/examples/ma_single.yaml`
 - Consult `backtest_guidelines/guidelines.md` before modifying backtest code
 - Use market calendar for trading day filtering
 - Apply proper risk management
@@ -120,6 +122,42 @@ Pylance/VectorBT type annotation patterns.
 └── type_issues.md          # Common Pylance type fixes
 ```
 
+## Defensive Mindset
+
+**CRITICAL**: Always assume something can go wrong. Be realistic, not optimistic.
+
+### Verification Over Assumption
+- **Never assume code works** - always run and verify
+- **Never assume tests pass** - run the full test suite after changes
+- **Never assume files exist** - check before reading/writing
+- **Never assume APIs return expected data** - handle edge cases
+
+### After Making Changes
+- Run relevant tests immediately - don't batch verification
+- Check for import errors by actually importing the module
+- Verify file writes by reading back the content
+- Test edge cases, not just the happy path
+
+### When Reporting Status
+- Don't say "fixed" until verified with tests
+- Don't say "complete" until all edge cases are handled
+- Report failures and partial successes honestly
+- If something might break, say so explicitly
+
+### Common Failure Points
+- **Data type mismatches** - str vs int, float vs Decimal, datetime vs str timestamps
+- Import cycles when adding new modules
+- Missing dependencies in different environments
+- Path issues between Windows/macOS/Linux
+- Race conditions in parallel code
+- Silent failures that return None instead of raising
+
+### Error Handling Philosophy
+- Fail fast and loud - don't hide errors
+- Log all exceptions with full context
+- Return explicit error states, not silent None
+- Test error paths, not just success paths
+
 ## Getting Started
 
 1. **Read this overview** - Understand the quick reference topics
@@ -143,9 +181,12 @@ Pylance/VectorBT type annotation patterns.
 11. ✅ Consult `backtest_guidelines/guidelines.md` before backtesting changes
 12. ✅ **Timestamp all documentation files (YYYYMMDD_filename.md format)**
 13. ✅ **NEVER push to remote without explicit user permission**
+14. ✅ **Use config-driven backtesting system** - don't write ad-hoc backtest scripts
+15. ✅ **Verify before claiming success** - run tests, don't assume code works
 
 ## When to Consult Detailed Guides
 
+- **Running a backtest** → Use config-driven system, see [`.claude/backtesting.md`](.claude/backtesting.md)
 - **Before backtesting work** → Read [`.claude/backtesting.md`](.claude/backtesting.md)
 - **Adding GUI components** → Read [`.claude/gui_design.md`](.claude/gui_design.md)
 - **Writing tests** → Read [`.claude/testing.md`](.claude/testing.md)

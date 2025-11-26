@@ -1,0 +1,43 @@
+# Moving Average Crossover - Walk-Forward Validation
+# Usage: python -m src.backtest_runner --config configs/examples/walk_forward_ma.yaml
+
+mode: walk_forward
+
+strategy:
+  name: MovingAverageCrossover
+  parameters: {}  # Parameters will be optimized in each window
+
+symbols:
+  list: [SPY, QQQ]
+
+dates:
+  start: "2018-01-01"
+  end: "2024-12-31"
+
+backtest:
+  initial_capital: 100000
+  fees: 0.001
+  slippage: 0.0005
+  benchmark: SPY
+
+risk:
+  position_sizing_method: fixed_percent
+  position_size_pct: 0.10
+  max_positions: 5
+
+optimization:
+  metric: sharpe_ratio
+  param_grid:
+    fast_window: [5, 10, 15, 20]
+    slow_window: [30, 50, 80]
+  n_jobs: 4
+
+walk_forward:
+  train_months: 12
+  test_months: 6
+  step_months: 6
+  export_results: true
+
+output:
+  save_reports: true
+  verbosity: 1

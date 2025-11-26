@@ -12,33 +12,25 @@ def get_strategy_registry() -> Dict[str, Type[BaseStrategy]]:
     Get all available strategy classes.
 
     Returns:
-        Dictionary mapping strategy name -> strategy class
+        Dictionary mapping strategy display name -> strategy class
     """
-    from strategies import (
-        MovingAverageCrossover,
-        TripleMovingAverage,
-        MeanReversion,
-        RSIMeanReversion,
-        MomentumStrategy,
-        BreakoutStrategy,
-        VolatilityTargetedMomentum,
-        OvernightMeanReversion,
-        CrossSectionalMomentum,
-        PairsTrading
+    from src.strategies.registry import (
+        get_strategy_class,
+        list_strategy_display_names
     )
 
-    return {
-        'Moving Average Crossover': MovingAverageCrossover,
-        'Triple Moving Average': TripleMovingAverage,
-        'Mean Reversion': MeanReversion,
-        'RSI Mean Reversion': RSIMeanReversion,
-        'Momentum Strategy': MomentumStrategy,
-        'Breakout Strategy': BreakoutStrategy,
-        'Volatility Targeted Momentum': VolatilityTargetedMomentum,
-        'Overnight Mean Reversion': OvernightMeanReversion,
-        'Cross-Sectional Momentum': CrossSectionalMomentum,
-        'Pairs Trading': PairsTrading
-    }
+    # Build registry from display names
+    display_names = list_strategy_display_names()
+    registry = {}
+
+    for display_name, class_name in display_names.items():
+        try:
+            registry[display_name] = get_strategy_class(class_name)
+        except (ImportError, AttributeError):
+            # Skip strategies that can't be loaded
+            pass
+
+    return registry
 
 
 def get_strategy_parameters(strategy_class: Type[BaseStrategy]) -> Dict[str, Any]:

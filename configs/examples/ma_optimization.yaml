@@ -1,0 +1,36 @@
+# Moving Average Crossover - Parameter Optimization
+# Usage: python -m src.backtest_runner --config configs/examples/ma_optimization.yaml
+
+mode: optimize
+
+strategy:
+  name: MovingAverageCrossover
+  parameters: {}  # Parameters will be optimized
+
+symbols:
+  list: [SPY]
+
+dates:
+  preset: optimization.robust_test  # 2020-01-01 to 2024-12-31
+
+backtest:
+  initial_capital: 100000
+  fees: 0.001
+  slippage: 0.0005
+  benchmark: SPY
+
+risk:
+  position_sizing_method: fixed_percent
+  position_size_pct: 0.10
+  max_positions: 5
+
+optimization:
+  metric: sharpe_ratio
+  param_grid:
+    fast_window: [5, 10, 15, 20]
+    slow_window: [30, 40, 50, 60, 80]
+  n_jobs: 4
+
+output:
+  save_reports: true
+  verbosity: 1

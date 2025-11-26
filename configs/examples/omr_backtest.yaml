@@ -1,0 +1,39 @@
+# Overnight Mean Reversion Strategy - Single Backtest
+# Usage: python -m src.backtest_runner --config configs/examples/omr_backtest.yaml
+
+mode: single
+
+strategy:
+  name: OvernightMeanReversion
+  parameters:
+    min_probability: 0.55
+    min_expected_return: 0.002
+    max_positions: 5
+
+symbols:
+  list: [QQQ, TQQQ, SOXL, TECL, SPY]
+
+dates:
+  preset: full_periods.five_years  # 2020-01-01 to 2024-12-31
+
+backtest:
+  initial_capital: 100000
+  fees: 0.001
+  slippage: 0.0005
+  benchmark: SPY
+  market_hours_only: true
+  allow_shorts: false
+
+risk:
+  enabled: true
+  position_sizing_method: fixed_percent
+  position_size_pct: 0.15
+  max_positions: 5
+  stop_loss_pct: 0.03
+
+output:
+  save_trades: true
+  save_reports: true
+  quantstats: true
+  visualize: false
+  verbosity: 1

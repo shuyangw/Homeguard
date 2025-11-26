@@ -1,0 +1,40 @@
+# Comprehensive Test - Multi-symbol with Mean Reversion strategy
+# Tests: config loading, symbol resolution, date handling, risk management
+
+mode: single
+
+strategy:
+  name: MeanReversion
+  parameters:
+    window: 20
+    num_std: 2.0
+    exit_at_middle: true
+
+symbols:
+  list: [SPY, QQQ, IWM, DIA]
+
+dates:
+  start: "2023-01-01"
+  end: "2024-06-30"
+
+backtest:
+  initial_capital: 100000
+  fees: 0.001
+  slippage: 0.0005
+  benchmark: SPY
+  market_hours_only: true
+  allow_shorts: false
+
+risk:
+  enabled: true
+  position_sizing_method: fixed_percent
+  position_size_pct: 0.15
+  max_positions: 4
+  stop_loss_pct: 0.02
+
+output:
+  save_trades: true
+  save_reports: false
+  quantstats: false
+  visualize: false
+  verbosity: 1
