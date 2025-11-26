@@ -1941,14 +1941,58 @@ When adding/modifying modules, update:
 
 ## Trading System Layer
 
+### Broker Interface Architecture (ISP-Compliant)
+
+The broker abstraction layer follows the **Interface Segregation Principle (ISP)**, providing focused, composable interfaces instead of one monolithic interface. This enables:
+- Support for multiple broker backends (Alpaca, TastyTrade, IBKR, etc.)
+- Options trading support without affecting stock-only brokers
+- Clean separation of concerns
+
+**Interface Hierarchy**:
+```
+AccountInterface              ← Account info, connection testing
+MarketHoursInterface          ← Market schedule queries
+MarketDataInterface           ← Quotes, trades, historical bars
+OrderManagementInterface      ← Order retrieval, cancellation
+  ├─ StockTradingInterface    ← Stock positions, orders (inherits OrderManagement)
+  └─ OptionsTradingInterface  ← Options chains, orders (inherits OrderManagement)
+
+BrokerInterface               ← Composite: Account + MarketHours + MarketData + StockTrading
+```
+
+---
+
+### `src/trading/brokers/interfaces/` (Directory)
+**Purpose**: Focused, composable interfaces following ISP
+
+**Files**:
+- `base.py`: Shared enums (`OrderSide`, `OrderType`, `OrderStatus`, `TimeInForce`, `OptionType`, `OptionRight`) and exceptions (`BrokerError`, `InvalidOrderError`, etc.)
+- `account.py`: `AccountInterface` - `get_account()`, `test_connection()`
+- `market_hours.py`: `MarketHoursInterface` - `is_market_open()`, `get_market_hours(date)`
+- `market_data.py`: `MarketDataInterface` - `get_latest_quote()`, `get_latest_trade()`, `get_bars()`
+- `order_management.py`: `OrderManagementInterface` - `cancel_order()`, `get_order()`, `get_orders()`
+- `stock_trading.py`: `StockTradingInterface` - `get_stock_positions()`, `place_stock_order()`, `close_stock_position()`
+- `options_trading.py`: `OptionsTradingInterface` - `get_option_chain()`, `place_option_order()`, `OptionLeg` dataclass
+
+**Dependencies**: `ABC`, `Enum`, `dataclasses`, `datetime`, `pandas`
+
+---
+
 ### `src/trading/brokers/broker_interface.py`
-**Purpose**: Abstract broker protocol
+**Purpose**: Composite interface for backward compatibility
 
-**Key Classes**: `BrokerInterface`, `OrderSide`, `OrderType`, `OrderStatus`, `TimeInForce`
+**Key Classes**: `BrokerInterface` (inherits `AccountInterface`, `MarketHoursInterface`, `MarketDataInterface`, `StockTradingInterface`)
 
-**Methods**: 30+ broker operations (account, orders, positions, market data)
+**Backward Compatibility Aliases**:
+- `get_positions()` → `get_stock_positions()`
+- `get_position()` → `get_stock_position()`
+- `place_order()` → `place_stock_order()`
+- `close_position()` → `close_stock_position()`
+- `close_all_positions()` → `close_all_stock_positions()`
 
-**Dependencies**: `Protocol`, `Enum`, `datetime`
+**Note**: Does NOT inherit `OptionsTradingInterface` - options support is opt-in per broker
+
+**Dependencies**: `interfaces/*`, `ABC`
 
 ---
 
@@ -1956,6 +2000,10 @@ When adding/modifying modules, update:
 **Purpose**: Alpaca Markets API implementation
 
 **Features**: Paper/live trading, real-time data, WebSocket streaming, historical bars
+
+**Implements**: `BrokerInterface` (full stock trading support)
+
+**Method Names**: Uses new interface methods (`get_stock_positions`, `place_stock_order`, etc.)
 
 **Configuration**: Via `.env` (ALPACA_API_KEY, ALPACA_SECRET_KEY, ALPACA_PAPER)
 
@@ -2291,9 +2339,19 @@ When adding/modifying modules, update:
 
 ---
 
-**Last Updated**: 2025-11-15
-**Total Modules**: 90+ modules across 9 major components (including infrastructure)
-**Lines of Code**: ~45,000 LOC
+**Last Updated**: 2025-11-25
+**Total Modules**: 100+ modules across 9 major components (including infrastructure)
+**Lines of Code**: ~47,000 LOC
+
+**Recent Additions** (2025-11-25):
+- Broker Interface Refactoring - ISP-Compliant Design (15 files)
+  - 7 new focused interface files in `src/trading/brokers/interfaces/`
+  - `BrokerInterface` now composite of focused interfaces (backward compatible)
+  - Backward-compatible method aliases for existing code
+  - Standardized return types (`cancel_order` → bool, `get_bars` → DataFrame)
+  - New `OptionsTradingInterface` for future options support
+  - 39 new interface compliance tests (`tests/trading/test_interface_compliance.py`)
+  - All 131 trading tests pass, OMR live strategy unaffected
 
 **Recent Additions** (2025-11-15):
 - Infrastructure & Deployment Layer (30+ new components)

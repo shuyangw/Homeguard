@@ -1,7 +1,7 @@
 # Homeguard Backtesting Framework - Architecture Overview
 
-**Version**: 1.1
-**Last Updated**: 2025-11-11
+**Version**: 1.2
+**Last Updated**: 2025-11-25
 **Status**: Current
 
 ---
@@ -630,14 +630,24 @@ python -m gui
 - ✅ New position sizing methods (add to `PositionSizer`)
 - ✅ New data sources (implement API client interface)
 - ✅ New risk constraints (add to `RiskManager`)
+- ✅ New brokers (implement focused interfaces - ISP-compliant design)
 
 ### Planned Enhancements
-- 📋 Options trading support
+- 🚧 Options trading support (interface ready: `OptionsTradingInterface`)
 - 📋 Futures trading support
 - 📋 Intraday rebalancing
 - 📋 Machine learning strategy integration
+- 📋 Additional broker integrations (TastyTrade, IBKR)
 
 ### Recently Deployed
+- ✅ **Broker interface refactoring** - ISP-compliant interface design (November 2025)
+  - 6 focused interfaces: AccountInterface, MarketHoursInterface, MarketDataInterface, OrderManagementInterface, StockTradingInterface, OptionsTradingInterface
+  - BrokerInterface is now a composite interface (backward compatible)
+  - Backward-compatible method aliases preserve existing code
+  - Ready for multi-broker support (Alpaca, TastyTrade, IBKR)
+  - 39 new interface compliance tests
+  - See [MODULE_REFERENCE.md](MODULE_REFERENCE.md#trading-system-layer) for details
+
 - ✅ **Live trading integration** - Paper trading deployed to AWS EC2 with automated scheduling (November 2025)
   - EC2 instance with Python 3.11 (t4g.small ARM64)
   - Lambda-powered auto-start/stop (9 AM - 4:30 PM ET Mon-Fri)
@@ -657,6 +667,6 @@ python -m gui
 
 ---
 
-**Last Updated**: 2025-11-15
+**Last Updated**: 2025-11-25
 **Maintainers**: Update this doc when adding/removing/moving major modules
 **Review Frequency**: After any architectural changes
