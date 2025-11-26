@@ -143,26 +143,60 @@ Before deploying live trading updates:
 - [ ] Graceful fallbacks for data source failures
 - [ ] Circuit breakers for repeated failures
 
+## EC2 Connection Settings
+
+**CRITICAL**: Use the correct SSH settings when connecting to the trading EC2 instance.
+
+### Connection Details
+- **Instance IP**: `100.30.95.146` (check AWS console if changed)
+- **Username**: `ec2-user` (Amazon Linux 2 - NOT `ubuntu`!)
+- **Key file**: `~/.ssh/homeguard-trading.pem`
+- **Key name in AWS**: `homeguard-trading`
+
+### Quick Connect (Windows)
+```batch
+ssh -i "%USERPROFILE%\.ssh\homeguard-trading.pem" ec2-user@100.30.95.146
+```
+
+### Quick Connect (Linux/Mac)
+```bash
+ssh -i ~/.ssh/homeguard-trading.pem ec2-user@100.30.95.146
+```
+
+### Connection Script
+Use the provided scripts for convenience:
+- Windows: `scripts/ec2/connect.bat`
+- Linux/Mac: `scripts/ec2/local_connect.sh`
+
+### Common Connection Errors
+
+| Error | Cause | Fix |
+|-------|-------|-----|
+| `Permission denied (publickey)` | Wrong username | Use `ec2-user`, not `ubuntu` |
+| `Permission denied (publickey)` | Wrong key file | Check `~/.ssh/homeguard-trading.pem` exists |
+| `Connection refused` | Instance stopped | Start instance via AWS console |
+| `Connection timed out` | Wrong IP | Check current IP in AWS console |
+
 ## Monitoring and Debugging
 
 ### Check EC2 Service Status
 ```bash
-ssh ec2-user@100.30.95.146 "sudo systemctl status homeguard-trading.service"
+ssh -i ~/.ssh/homeguard-trading.pem ec2-user@100.30.95.146 "sudo systemctl status homeguard-trading.service"
 ```
 
 ### View Recent Logs
 ```bash
-ssh ec2-user@100.30.95.146 "sudo journalctl -u homeguard-trading.service --since '1 hour ago'"
+ssh -i ~/.ssh/homeguard-trading.pem ec2-user@100.30.95.146 "sudo journalctl -u homeguard-trading.service --since '1 hour ago'"
 ```
 
-### Check Specific Trading Window (e.g., 3:50 PM UTC = 20:50)
+### Check Specific Trading Window (e.g., 3:50 PM ET = 20:50 UTC)
 ```bash
-ssh ec2-user@100.30.95.146 "sudo journalctl -u homeguard-trading.service --since '2025-11-25 20:45' --until '2025-11-25 21:00'"
+ssh -i ~/.ssh/homeguard-trading.pem ec2-user@100.30.95.146 "sudo journalctl -u homeguard-trading.service --since '2025-11-25 20:45' --until '2025-11-25 21:00'"
 ```
 
 ### Restart Service After Updates
 ```bash
-ssh ec2-user@100.30.95.146 "cd ~/Homeguard && git pull && sudo systemctl restart homeguard-trading.service"
+ssh -i ~/.ssh/homeguard-trading.pem ec2-user@100.30.95.146 "cd ~/Homeguard && git pull && sudo systemctl restart homeguard-trading.service"
 ```
 
 ## Common "No Signals" Causes
