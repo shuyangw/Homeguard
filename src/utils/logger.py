@@ -106,6 +106,10 @@ class Logger:
         """Log dimmed message (dim white)."""
         self._log(message, style="dim", to_file=to_file)
 
+    def debug(self, message: str, to_file: bool = True):
+        """Log debug message (dim white). Used for verbose diagnostic output."""
+        self._log(f"[D] {message}", style="dim", to_file=to_file)
+
     def separator(self, char: str = "=", length: int = 80, to_file: bool = True):
         """Print a separator line."""
         self._log(char * length, to_file=to_file)
@@ -396,6 +400,15 @@ class TradingLogger:
         if to_file and self.buffer_logs:
             self._buffer_log("")
 
+    def debug(self, message: str, to_file: bool = True):
+        """Log debug message (dim white). Used for verbose diagnostic output."""
+        # Always show on console
+        self.logger.debug(message, to_file=False)
+
+        # Buffer if enabled, otherwise write immediately
+        if to_file and self.buffer_logs:
+            self._buffer_log(f"[D] {message}")
+
 
 # Global logger instance for convenience
 _global_logger = Logger()
@@ -513,6 +526,11 @@ def neutral(message: str, to_file: bool = False):
 def dim(message: str, to_file: bool = False):
     """Log dim message using global logger."""
     _global_logger.dim(message, to_file=to_file)
+
+
+def debug(message: str, to_file: bool = False):
+    """Log debug message using global logger."""
+    _global_logger.debug(message, to_file=to_file)
 
 
 def separator(char: str = "=", length: int = 80, to_file: bool = False):
