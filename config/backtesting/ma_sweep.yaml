@@ -1,5 +1,5 @@
 # Moving Average Crossover - Multi-Symbol Sweep
-# Usage: python -m src.backtest_runner --config configs/examples/ma_sweep.yaml
+# Usage: python -m src.backtest_runner --config config/backtesting/ma_sweep.yaml
 
 mode: sweep
 

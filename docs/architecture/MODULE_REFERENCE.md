@@ -63,7 +63,7 @@ results_dir = get_backtest_results_dir()
 
 # Config-driven backtest
 from src.config import load_config
-config = load_config("configs/examples/omr_backtest.yaml")
+config = load_config("config/backtesting/omr_backtest.yaml")
 print(config.strategy.name)
 print(config.symbols.list)
 ```
@@ -120,8 +120,8 @@ client = AlpacaClient(ALPACA_API_KEY, ALPACA_SECRET_KEY)
 **Usage Examples**:
 ```bash
 # Config-driven (RECOMMENDED)
-python -m src.backtest_runner --config configs/examples/omr_backtest.yaml
-python -m src.backtest_runner --config configs/examples/ma_sweep.yaml --mode sweep
+python -m src.backtest_runner --config config/backtesting/omr_backtest.yaml
+python -m src.backtest_runner --config config/backtesting/ma_sweep.yaml --mode sweep
 
 # Traditional CLI
 python -m src.backtest_runner \

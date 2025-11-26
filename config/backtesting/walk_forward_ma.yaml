@@ -1,5 +1,5 @@
 # Moving Average Crossover - Walk-Forward Validation
-# Usage: python -m src.backtest_runner --config configs/examples/walk_forward_ma.yaml
+# Usage: python -m src.backtest_runner --config config/backtesting/walk_forward_ma.yaml
 
 mode: walk_forward
 

@@ -27,7 +27,7 @@ Write clean, maintainable code following project conventions.
 ### Backtesting Guidelines
 **CRITICAL**: Avoid lookahead bias, survivorship bias, and overfitting.
 - **ALWAYS use the config-driven backtesting system** - don't write ad-hoc scripts
-- Run backtests via: `python -m src.backtest_runner --config configs/examples/ma_single.yaml`
+- Run backtests via: `python -m src.backtest_runner --config config/backtesting/ma_single.yaml`
 - Consult `backtest_guidelines/guidelines.md` before modifying backtest code
 - Use market calendar for trading day filtering
 - Apply proper risk management

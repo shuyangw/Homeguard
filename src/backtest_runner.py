@@ -7,8 +7,8 @@ Usage:
     python backtest_runner.py --strategy MeanReversion --symbols AAPL,MSFT,GOOGL --start 2023-01-01 --end 2024-01-01
 
     # Config-driven usage (NEW):
-    python -m src.backtest_runner --config configs/examples/omr_backtest.yaml
-    python -m src.backtest_runner --config configs/ma_sweep.yaml --mode sweep
+    python -m src.backtest_runner --config config/backtesting/omr_backtest.yaml
+    python -m src.backtest_runner --config config/backtesting/ma_sweep.yaml --mode sweep
 """
 
 import argparse

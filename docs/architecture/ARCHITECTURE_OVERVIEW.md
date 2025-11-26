@@ -646,7 +646,7 @@ python -m gui
   - Pydantic-validated configuration schema with inheritance (`extends:` directive)
   - Predefined date presets and symbol universes
   - Strategy registry with lazy loading (no import chain issues)
-  - See [configs/examples/](../../configs/examples/) for example configs
+  - See [config/backtesting/](../../config/backtesting/) for example configs
 
 - ✅ **Broker interface refactoring** - ISP-compliant interface design (November 2025)
   - 6 focused interfaces: AccountInterface, MarketHoursInterface, MarketDataInterface, OrderManagementInterface, StockTradingInterface, OptionsTradingInterface

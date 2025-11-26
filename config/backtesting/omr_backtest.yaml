@@ -1,5 +1,5 @@
 # Overnight Mean Reversion Strategy - Single Backtest
-# Usage: python -m src.backtest_runner --config configs/examples/omr_backtest.yaml
+# Usage: python -m src.backtest_runner --config config/backtesting/omr_backtest.yaml
 
 mode: single
 

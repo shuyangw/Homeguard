@@ -1,5 +1,5 @@
 # Moving Average Crossover - Parameter Optimization
-# Usage: python -m src.backtest_runner --config configs/examples/ma_optimization.yaml
+# Usage: python -m src.backtest_runner --config config/backtesting/ma_optimization.yaml
 
 mode: optimize
 

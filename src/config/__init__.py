@@ -13,7 +13,7 @@ Usage - Config-driven Backtesting:
     from src.config import load_config, BacktestConfig
 
     # Load from YAML file
-    config = load_config("configs/examples/omr_backtest.yaml")
+    config = load_config("config/backtesting/omr_backtest.yaml")
 
     # Load with CLI overrides
     config = load_config("config.yaml", overrides={

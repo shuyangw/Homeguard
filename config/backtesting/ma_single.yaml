@@ -1,5 +1,5 @@
 # Moving Average Crossover - Single Backtest
-# Usage: python -m src.backtest_runner --config configs/examples/ma_single.yaml
+# Usage: python -m src.backtest_runner --config config/backtesting/ma_single.yaml
 
 mode: single
 
