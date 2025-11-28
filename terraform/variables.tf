@@ -155,3 +155,27 @@ variable "enable_scheduled_start_stop" {
   type        = bool
   default     = false
 }
+
+# ===== DISCORD BOT (OPTIONAL ADDON) =====
+
+variable "discord_token" {
+  description = "Discord bot token for the observability bot (optional - leave empty to disable)"
+  type        = string
+  sensitive   = true
+  default     = ""
+  # Recommended: Set via environment variable TF_VAR_discord_token
+}
+
+variable "anthropic_api_key" {
+  description = "Anthropic API key for Claude-powered investigations (optional - required if discord_token is set)"
+  type        = string
+  sensitive   = true
+  default     = ""
+  # Recommended: Set via environment variable TF_VAR_anthropic_api_key
+}
+
+variable "discord_allowed_channels" {
+  description = "Comma-separated Discord channel IDs allowed to use the bot (optional - leave empty for all channels)"
+  type        = string
+  default     = ""
+}

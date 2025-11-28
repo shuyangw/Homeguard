@@ -4,12 +4,13 @@ This Terraform module deploys the Homeguard trading bot to AWS EC2 with automate
 
 ## Features
 
-- ✅ **Automated deployment** - `terraform apply` → fully configured in 5 minutes
+- ✅ **Automated deployment** - `terraform apply` -> fully configured in 5 minutes
 - ✅ **ARM64 optimized** - t4g instances (40% cheaper than x86)
 - ✅ **Production-ready** - systemd service, auto-restart, log rotation
 - ✅ **Secure** - IMDSv2, SSH-only access, encrypted EBS volumes
 - ✅ **Cost-optimized** - ~$13/month for complete infrastructure
 - ✅ **Optional features** - CloudWatch, SNS alerts, Elastic IP
+- ✅ **Discord bot addon** - Optional read-only observability via natural language
 
 ---
 
@@ -198,6 +199,32 @@ alert_email       = "you@example.com"  # Free tier eligible
 # CloudWatch alarms
 create_cloudwatch_alarms = true  # Requires create_sns_alerts = true
 ```
+
+### Discord Bot (Optional Addon)
+
+The Discord bot provides read-only observability through natural language queries.
+
+**Configuration**:
+```hcl
+# In terraform.tfvars (recommended: use environment variables instead)
+discord_token            = ""  # Get from Discord Developer Portal
+anthropic_api_key        = ""  # Get from console.anthropic.com
+discord_allowed_channels = ""  # Comma-separated channel IDs
+```
+
+**Recommended: Use environment variables**:
+```bash
+export TF_VAR_discord_token="your_bot_token"
+export TF_VAR_anthropic_api_key="sk-ant-api03-..."
+export TF_VAR_discord_allowed_channels="123456789012345678"
+```
+
+**Post-deployment setup**:
+1. Follow the Discord bot setup guide: `docs/guides/20251127_DISCORD_BOT_SETUP.md`
+2. Start the service: `sudo systemctl start homeguard-discord`
+3. Verify: `sudo systemctl status homeguard-discord`
+
+**Cost**: ~$5-15/month in Claude API usage (pay-per-query)
 
 ---
 
@@ -514,18 +541,19 @@ This Terraform module creates:
 - ✅ **EC2 instance** (t4g.small, Amazon Linux 2023 ARM64)
 - ✅ **Security group** (SSH access only)
 - ✅ **EBS volume** (8 GB GP3, encrypted)
-- ✅ **Automated setup** (installs Python, clones repo, creates systemd service)
+- ✅ **Automated setup** (installs Python, clones repo, creates systemd services)
 - ✅ **Lambda scheduling** (auto-start 9:00 AM, auto-stop 4:30 PM ET Mon-Fri)
 - ✅ **EventBridge rules** (cron triggers for Lambda functions)
 - ✅ **IAM roles & policies** (Lambda permissions for EC2 control)
 - ✅ **CloudWatch Log Groups** (Lambda execution logs, 90-day retention)
 - ⚙️ **Optional**: Elastic IP, SNS alerts
+- ⚙️ **Optional**: Discord bot (read-only observability addon)
 
 **Not included**:
-- ❌ Load balancer (not needed)
-- ❌ Auto-scaling (single instance sufficient)
-- ❌ RDS database (no external DB required)
-- ❌ VPC (uses default VPC)
+- Load balancer (not needed)
+- Auto-scaling (single instance sufficient)
+- RDS database (no external DB required)
+- VPC (uses default VPC)
 
 ---
 

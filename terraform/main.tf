@@ -96,10 +96,13 @@ resource "aws_instance" "homeguard_trading" {
 
   # User data script - automated setup
   user_data = templatefile("${path.module}/user-data.sh", {
-    git_repo_url    = var.git_repo_url
-    git_branch      = var.git_branch
-    alpaca_key_id   = var.alpaca_key_id
-    alpaca_secret   = var.alpaca_secret
+    git_repo_url             = var.git_repo_url
+    git_branch               = var.git_branch
+    alpaca_key_id            = var.alpaca_key_id
+    alpaca_secret            = var.alpaca_secret
+    discord_token            = var.discord_token
+    anthropic_api_key        = var.anthropic_api_key
+    discord_allowed_channels = var.discord_allowed_channels
   })
 
   # Enable detailed monitoring (costs $2.10/month extra, optional)
