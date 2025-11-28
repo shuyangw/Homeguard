@@ -33,6 +33,8 @@ ProtectSystem=strict
 ProtectHome=read-only
 ReadOnlyPaths=/home/ec2-user/Homeguard
 ReadOnlyPaths=/home/ec2-user/logs
+# Allow writing to discord bot log directory
+ReadWritePaths=/home/ec2-user/logs/discord_bot
 # Allow writing to /tmp for any temp files
 ReadWritePaths=/tmp
 
