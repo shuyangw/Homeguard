@@ -13,6 +13,8 @@ from datetime import datetime
 import sys
 import csv
 
+from src.utils.timezone import tz
+
 # Define custom theme for consistent coloring
 custom_theme = Theme({
     "success": "bold green",
@@ -186,14 +188,14 @@ class TradingLogger:
         self.log_buffer: List[str] = []  # Buffer for storing logs
         self.log_file_path: Optional[Path] = None
         self.flush_interval_hours = flush_interval_hours
-        self.last_flush_time = datetime.now()
+        self.last_flush_time = tz.now()
 
         # Create base logger for console (no file logging if buffering)
         log_file = None
         if self.log_dir:
             self.log_dir.mkdir(parents=True, exist_ok=True)
             # Include both date and start time to avoid overwriting logs on multiple runs per day
-            self.log_file_path = self.log_dir / f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{name}.log"
+            self.log_file_path = self.log_dir / f"{tz.datetime_str()}_{name}.log"
 
             # Only enable immediate file writing if not buffering
             if not buffer_logs:
@@ -236,7 +238,7 @@ class TradingLogger:
             order_id: Order ID (optional)
             error: Error message if failed (optional)
         """
-        timestamp = datetime.now().isoformat()
+        timestamp = tz.iso_timestamp()
 
         # Log to CSV if available
         if 'trades' in self.csv_loggers:
@@ -270,7 +272,7 @@ class TradingLogger:
             market_open: Whether market is open
             check_number: Check sequence number
         """
-        timestamp = datetime.now().isoformat()
+        timestamp = tz.iso_timestamp()
 
         # Log to CSV if available
         if 'market_checks' in self.csv_loggers:
@@ -282,7 +284,7 @@ class TradingLogger:
 
     def _buffer_log(self, message: str):
         """Add message to log buffer."""
-        timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        timestamp = tz.timestamp()
         self.log_buffer.append(f"[{timestamp}] {message}")
 
     def should_periodic_flush(self) -> bool:
@@ -295,7 +297,7 @@ class TradingLogger:
         if not self.flush_interval_hours or not self.buffer_logs:
             return False
 
-        hours_since_flush = (datetime.now() - self.last_flush_time).total_seconds() / 3600
+        hours_since_flush = tz.hours_since(self.last_flush_time)
         return hours_since_flush >= self.flush_interval_hours
 
     def flush_to_disk(self, reason: str = "Manual flush"):
@@ -318,7 +320,7 @@ class TradingLogger:
 
         try:
             # Update log file path based on current date (for multi-day sessions)
-            current_log_file = self.log_dir / f"{datetime.now().strftime('%Y%m%d')}_{self.name}.log"
+            current_log_file = self.log_dir / f"{tz.date_str()}_{self.name}.log"
 
             # Write all buffered logs to file
             with open(current_log_file, 'w', encoding='utf-8') as f:
@@ -331,7 +333,7 @@ class TradingLogger:
             self.log_buffer.clear()
 
             # Update last flush time for periodic flushing
-            self.last_flush_time = datetime.now()
+            self.last_flush_time = tz.now()
 
         except Exception as e:
             console.print(f"[X] Error flushing logs to disk: {e}", style="error")
@@ -339,73 +341,81 @@ class TradingLogger:
     # Expose base logger methods for convenience (with buffering support)
     def success(self, message: str, to_file: bool = True):
         """Log success message (green)."""
-        # Always show on console
-        self.logger.success(message, to_file=False)
+        # If buffering disabled, write directly to base logger's file
+        write_to_base = to_file and not self.buffer_logs
+        self.logger.success(message, to_file=write_to_base)
 
-        # Buffer if enabled, otherwise write immediately
+        # Buffer if enabled
         if to_file and self.buffer_logs:
             self._buffer_log(f"[+] {message}")
 
     def error(self, message: str, to_file: bool = True):
         """Log error message (red)."""
-        # Always show on console
-        self.logger.error(message, to_file=False)
+        # If buffering disabled, write directly to base logger's file
+        write_to_base = to_file and not self.buffer_logs
+        self.logger.error(message, to_file=write_to_base)
 
-        # Buffer if enabled, otherwise write immediately
+        # Buffer if enabled
         if to_file and self.buffer_logs:
             self._buffer_log(f"[X] {message}")
 
     def warning(self, message: str, to_file: bool = True):
         """Log warning message (yellow)."""
-        # Always show on console
-        self.logger.warning(message, to_file=False)
+        # If buffering disabled, write directly to base logger's file
+        write_to_base = to_file and not self.buffer_logs
+        self.logger.warning(message, to_file=write_to_base)
 
-        # Buffer if enabled, otherwise write immediately
+        # Buffer if enabled
         if to_file and self.buffer_logs:
             self._buffer_log(f"[!] {message}")
 
     def info(self, message: str, to_file: bool = True):
         """Log info message (cyan)."""
-        # Always show on console
-        self.logger.info(message, to_file=False)
+        # If buffering disabled, write directly to base logger's file
+        write_to_base = to_file and not self.buffer_logs
+        self.logger.info(message, to_file=write_to_base)
 
-        # Buffer if enabled, otherwise write immediately
+        # Buffer if enabled
         if to_file and self.buffer_logs:
             self._buffer_log(f"[i] {message}")
 
     def header(self, message: str, to_file: bool = True):
         """Log header message (magenta)."""
-        # Always show on console
-        self.logger.header(message, to_file=False)
+        # If buffering disabled, write directly to base logger's file
+        write_to_base = to_file and not self.buffer_logs
+        self.logger.header(message, to_file=write_to_base)
 
-        # Buffer if enabled, otherwise write immediately
+        # Buffer if enabled
         if to_file and self.buffer_logs:
             self._buffer_log(message)
 
     def separator(self, char: str = "=", length: int = 80, to_file: bool = True):
         """Print a separator line."""
-        # Always show on console
-        self.logger.separator(char, length, to_file=False)
+        # If buffering disabled, write directly to base logger's file
+        write_to_base = to_file and not self.buffer_logs
+        self.logger.separator(char, length, to_file=write_to_base)
 
-        # Buffer if enabled, otherwise write immediately
+        # Buffer if enabled
         if to_file and self.buffer_logs:
             self._buffer_log(char * length)
 
     def blank(self, to_file: bool = True):
         """Print a blank line."""
-        # Always show on console
-        self.logger.blank(to_file=False)
+        # If buffering disabled, write directly to base logger's file
+        write_to_base = to_file and not self.buffer_logs
+        self.logger.blank(to_file=write_to_base)
 
-        # Buffer if enabled, otherwise write immediately
+        # Buffer if enabled
         if to_file and self.buffer_logs:
             self._buffer_log("")
 
     def debug(self, message: str, to_file: bool = True):
         """Log debug message (dim white). Used for verbose diagnostic output."""
-        # Always show on console
-        self.logger.debug(message, to_file=False)
+        # If buffering disabled, write directly to base logger's file
+        write_to_base = to_file and not self.buffer_logs
+        self.logger.debug(message, to_file=write_to_base)
 
-        # Buffer if enabled, otherwise write immediately
+        # Buffer if enabled
         if to_file and self.buffer_logs:
             self._buffer_log(f"[D] {message}")
 

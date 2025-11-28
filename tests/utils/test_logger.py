@@ -226,7 +226,8 @@ class TestTradingLogger:
         """Test TradingLogger initialization with log directory."""
         with tempfile.TemporaryDirectory() as tmpdir:
             log_dir = Path(tmpdir)
-            trading_logger = TradingLogger('TestStrategy', log_dir)
+            # Use buffer_logs=False to enable immediate file writing
+            trading_logger = TradingLogger('TestStrategy', log_dir, buffer_logs=False)
 
             assert trading_logger.name == 'TestStrategy'
             assert trading_logger.log_dir == log_dir
@@ -235,7 +236,7 @@ class TestTradingLogger:
             # Log something to trigger file creation
             trading_logger.info("Test message")
 
-            # Verify log file was created
+            # Verify log file was created (immediate write with buffer_logs=False)
             log_files = list(log_dir.glob('*.log'))
             assert len(log_files) == 1
             assert 'TestStrategy' in log_files[0].name
@@ -366,7 +367,8 @@ class TestTradingLogger:
         """Test that TradingLogger exposes base logger methods."""
         with tempfile.TemporaryDirectory() as tmpdir:
             log_dir = Path(tmpdir)
-            trading_logger = TradingLogger('TestStrategy', log_dir)
+            # Use buffer_logs=False to enable immediate file writing
+            trading_logger = TradingLogger('TestStrategy', log_dir, buffer_logs=False)
 
             # These should not raise exceptions
             trading_logger.success("Success message")
@@ -376,7 +378,7 @@ class TestTradingLogger:
             trading_logger.separator("=", 80)
             trading_logger.blank()
 
-            # Verify log file has content
+            # Verify log file has content (immediate write with buffer_logs=False)
             log_files = list(log_dir.glob('*.log'))
             assert len(log_files) == 1
             content = log_files[0].read_text()
@@ -450,8 +452,8 @@ class TestIntegration:
         with tempfile.TemporaryDirectory() as tmpdir:
             log_dir = Path(tmpdir)
 
-            # Create trading logger
-            trading_logger = get_trading_logger('OMR', log_dir)
+            # Create trading logger with buffer_logs=False for immediate file writing
+            trading_logger = get_trading_logger('OMR', log_dir, buffer_logs=False)
 
             # Add CSV loggers
             trades_file = log_dir / 'trades.csv'

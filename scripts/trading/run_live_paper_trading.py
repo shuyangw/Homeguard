@@ -36,6 +36,7 @@ from src.trading.adapters import (
 from src.trading.config import load_omr_config
 from src.strategies.universe import EquityUniverse, ETFUniverse
 from src.utils.logger import logger, get_trading_logger, TradingLogger
+from src.utils.timezone import tz
 
 
 class TradingSessionTracker:
@@ -50,11 +51,10 @@ class TradingSessionTracker:
             strategy_name: Name of the strategy
         """
         self.strategy_name = strategy_name
-        eastern = pytz.timezone('US/Eastern')
-        self.session_start = datetime.now(pytz.UTC).astimezone(eastern)
-        self.session_date = self.session_start.strftime('%Y%m%d')
+        self.session_start = tz.now()
+        self.session_date = tz.date_str()
         # Include start time to avoid overwriting logs on multiple runs per day
-        self.session_datetime = self.session_start.strftime('%Y%m%d_%H%M%S')
+        self.session_datetime = tz.datetime_str()
 
         # Create date-based subdirectory to organize logs by day
         # e.g., logs/live_trading/paper/20251117/
@@ -104,7 +104,7 @@ class TradingSessionTracker:
     def log_check(self, market_open: bool):
         """Log a schedule check to memory and CSV file."""
         self.total_checks += 1
-        timestamp = datetime.now().isoformat()
+        timestamp = tz.iso_timestamp()
 
         self.minute_progress.append({
             'timestamp': timestamp,
@@ -121,7 +121,7 @@ class TradingSessionTracker:
         self.total_runs += 1
         self.total_signals += signals_count
         self.minute_progress.append({
-            'timestamp': datetime.now().isoformat(),
+            'timestamp': tz.iso_timestamp(),
             'type': 'run',
             'signals': signals_count,
             'total_runs': self.total_runs
@@ -130,7 +130,7 @@ class TradingSessionTracker:
     def log_signal(self, symbol: str, direction: str, price: float, confidence: float):
         """Log a trading signal."""
         self.signals_log.append({
-            'timestamp': datetime.now().isoformat(),
+            'timestamp': tz.iso_timestamp(),
             'symbol': symbol,
             'direction': direction,
             'price': price,
@@ -145,7 +145,7 @@ class TradingSessionTracker:
         else:
             self.failed_orders += 1
 
-        timestamp = datetime.now().isoformat()
+        timestamp = tz.iso_timestamp()
 
         self.orders_log.append({
             'timestamp': timestamp,
@@ -249,8 +249,7 @@ class TradingSessionTracker:
 
     def generate_end_of_day_report(self, broker: AlpacaBroker):
         """Generate end-of-day summary report."""
-        eastern = pytz.timezone('US/Eastern')
-        session_end = datetime.now(pytz.UTC).astimezone(eastern)
+        session_end = tz.now()
         session_duration = (session_end - self.session_start).total_seconds() / 3600  # Hours
 
         # Get account metrics
@@ -422,10 +421,8 @@ class LiveTradingRunner:
         # Check for execution_times (new format for overnight strategies)
         execution_times = schedule.get('execution_times')
         if execution_times:
-            # Convert current UTC time to EST for comparison with schedule times
-            eastern = pytz.timezone('US/Eastern')
-            now_utc = datetime.now(pytz.UTC)
-            now_est = now_utc.astimezone(eastern)
+            # Get current time in EST for comparison with schedule times
+            now_est = tz.now()
             current_time = now_est.time()
 
             for exec_config in execution_times:
@@ -439,11 +436,11 @@ class LiveTradingRunner:
                 if time_diff < 60:
                     # Check if we already ran this action within last minute
                     if action == 'entry' and self.last_run_time:
-                        seconds_since_last = (now_utc.replace(tzinfo=None) - self.last_run_time).total_seconds()
+                        seconds_since_last = tz.seconds_since(self.last_run_time)
                         if seconds_since_last < 60:
                             continue
                     elif action == 'exit' and self.last_exit_time:
-                        seconds_since_last = (now_utc.replace(tzinfo=None) - self.last_exit_time).total_seconds()
+                        seconds_since_last = tz.seconds_since(self.last_exit_time)
                         if seconds_since_last < 60:
                             continue
 
@@ -454,10 +451,8 @@ class LiveTradingRunner:
         # Check specific time (legacy single-time format)
         specific_time = schedule.get('specific_time')
         if specific_time:
-            # Convert current UTC time to EST for comparison with schedule times
-            eastern = pytz.timezone('US/Eastern')
-            now_utc = datetime.now(pytz.UTC)
-            now_est = now_utc.astimezone(eastern)
+            # Get current time in EST for comparison with schedule times
+            now_est = tz.now()
             target_time = datetime.strptime(specific_time, '%H:%M').time()
             current_time = now_est.time()
 
@@ -468,7 +463,7 @@ class LiveTradingRunner:
             if time_diff < 60:
                 # Check if we already ran within last minute
                 if self.last_run_time:
-                    seconds_since_last = (now_utc.replace(tzinfo=None) - self.last_run_time).total_seconds()
+                    seconds_since_last = tz.seconds_since(self.last_run_time)
                     if seconds_since_last < 60:
                         return None
                 return 'entry'  # Default to entry action
@@ -477,8 +472,7 @@ class LiveTradingRunner:
         # For interval-based strategies, check minimum time between runs
         interval = schedule.get('interval', '5min')
         if self.last_run_time:
-            now = datetime.now()
-            seconds_since_last = (now - self.last_run_time).total_seconds()
+            seconds_since_last = tz.seconds_since(self.last_run_time)
 
             # Parse interval
             if 'min' in interval:
@@ -497,11 +491,11 @@ class LiveTradingRunner:
 
     def _log_minute_progress(self, force: bool = False):
         """Log minute-by-minute progress with comprehensive market status."""
-        now = datetime.now()
+        now = tz.now()
 
         # Log every 15 seconds or if forced
         log_interval = self.check_interval if self.check_interval >= 15 else 15
-        if force or self.last_progress_log is None or (now - self.last_progress_log).total_seconds() >= log_interval:
+        if force or self.last_progress_log is None or tz.seconds_since(self.last_progress_log) >= log_interval:
             # Query market status with error handling
             try:
                 market_open = self.adapter.broker.is_market_open()
@@ -510,9 +504,8 @@ class LiveTradingRunner:
                 # Log market check to session tracker
                 self.session_tracker.log_check(market_open)
 
-                # Convert to EST for display
-                eastern = pytz.timezone('US/Eastern')
-                now_est = datetime.now(pytz.UTC).astimezone(eastern)
+                # Use EST time for display
+                now_est = tz.now()
 
                 # Log comprehensive status (direct console output for real-time visibility)
                 status_msg = (
@@ -528,8 +521,7 @@ class LiveTradingRunner:
                 console.print(f" [info]{status_msg}[/info]")
 
             except Exception as e:
-                eastern = pytz.timezone('US/Eastern')
-                now_est = datetime.now(pytz.UTC).astimezone(eastern)
+                now_est = tz.now()
                 logger.error(f"MARKET CHECK FAILED: {e}")
                 logger.error(f"API call to is_market_open() failed at {now_est.strftime('%H:%M:%S')}")
                 # Log as failed check
@@ -552,7 +544,7 @@ class LiveTradingRunner:
         try:
             logger.info("")
             logger.info("=" * 80)
-            logger.info(f"EXECUTING STRATEGY ({action.upper()}): {datetime.now()}")
+            logger.info(f"EXECUTING STRATEGY ({action.upper()}): {tz.timestamp()}")
             logger.info("=" * 80)
 
             # Safety check: verify market is open before executing
@@ -566,7 +558,7 @@ class LiveTradingRunner:
                 if hasattr(self.adapter, 'close_overnight_positions'):
                     logger.info("Closing overnight positions...")
                     self.adapter.close_overnight_positions()
-                    self.last_exit_time = datetime.now()
+                    self.last_exit_time = tz.now()
                     logger.success("Overnight positions closed")
                 else:
                     logger.warning("Adapter does not support position closing")
@@ -574,7 +566,7 @@ class LiveTradingRunner:
                 # Normal entry logic - run strategy
                 self.adapter.run_once()
                 self.session_tracker.log_run(0)  # Will need to get actual signal count
-                self.last_run_time = datetime.now()
+                self.last_run_time = tz.now()
 
             logger.info(f"Next check in {self.check_interval} seconds")
             self._log_minute_progress(force=True)
@@ -586,9 +578,8 @@ class LiveTradingRunner:
 
     def _check_for_end_of_day(self) -> bool:
         """Check if it's end of trading day (4:00 PM EST)."""
-        # Convert to EST for time comparison
-        eastern = pytz.timezone('US/Eastern')
-        now_est = datetime.now(pytz.UTC).astimezone(eastern)
+        # Get current time in EST
+        now_est = tz.now()
 
         # Market close is 4:00 PM EST
         market_close = dt_time(16, 0)
@@ -618,9 +609,8 @@ class LiveTradingRunner:
                 # Log minute progress
                 self._log_minute_progress()
 
-                # Convert to EST for all time comparisons
-                eastern = pytz.timezone('US/Eastern')
-                now_est = datetime.now(pytz.UTC).astimezone(eastern)
+                # Use EST for all time comparisons
+                now_est = tz.now()
 
                 # Check for market open to pre-load historical data (once per day)
                 if (not self.data_preloaded_today and

@@ -17,6 +17,25 @@ import sys
 from pathlib import Path
 from logging.handlers import RotatingFileHandler
 from datetime import datetime
+import time
+
+from src.utils.timezone import tz
+
+
+class ESTFormatter(logging.Formatter):
+    """
+    Custom logging formatter that uses EST/ET timezone for timestamps.
+
+    This ensures consistent EST timestamps regardless of system timezone.
+    """
+
+    def formatTime(self, record, datefmt=None):
+        """Override formatTime to use EST timezone."""
+        # Convert the record's created time (UTC timestamp) to EST
+        ct = tz.from_utc(datetime.utcfromtimestamp(record.created))
+        if datefmt:
+            return ct.strftime(datefmt)
+        return ct.strftime('%Y-%m-%d %H:%M:%S')
 
 
 def get_trading_logger(
@@ -63,8 +82,8 @@ def get_trading_logger(
     log_path = Path(log_dir)
     log_path.mkdir(parents=True, exist_ok=True)
 
-    # Log file with date prefix for easy identification
-    today = datetime.now().strftime("%Y%m%d")
+    # Log file with date prefix for easy identification (EST date)
+    today = tz.date_str()
     log_file = log_path / f"trading_{today}.log"
 
     # ===== FILE HANDLER (Rotating) =====
@@ -84,7 +103,8 @@ def get_trading_logger(
 
     # ===== FORMATTER =====
     # Format: [2025-01-15 15:50:23] [INFO] [homeguard-trading] Message here
-    formatter = logging.Formatter(
+    # Uses ESTFormatter to ensure consistent EST timestamps
+    formatter = ESTFormatter(
         fmt='[%(asctime)s] [%(levelname)s] [%(name)s] %(message)s',
         datefmt='%Y-%m-%d %H:%M:%S'
     )
@@ -136,8 +156,8 @@ def get_execution_logger(log_dir: str = "/home/ec2-user/logs") -> logging.Logger
     log_path = Path(log_dir)
     log_path.mkdir(parents=True, exist_ok=True)
 
-    # Separate file for executions
-    today = datetime.now().strftime("%Y%m%d")
+    # Separate file for executions (EST date)
+    today = tz.date_str()
     log_file = log_path / f"executions_{today}.log"
 
     # Rotating file handler (5MB per file, 10 backups)
@@ -149,7 +169,8 @@ def get_execution_logger(log_dir: str = "/home/ec2-user/logs") -> logging.Logger
     )
 
     # Simple format for execution logs (easier to parse)
-    formatter = logging.Formatter(
+    # Uses ESTFormatter to ensure consistent EST timestamps
+    formatter = ESTFormatter(
         fmt='[%(asctime)s] %(message)s',
         datefmt='%Y-%m-%d %H:%M:%S'
     )
@@ -179,7 +200,7 @@ def cleanup_old_logs(log_dir: str = "/home/ec2-user/logs", keep_days: int = 30):
     if not log_path.exists():
         return
 
-    cutoff_date = datetime.now() - timedelta(days=keep_days)
+    cutoff_date = tz.now() - timedelta(days=keep_days)
     deleted_count = 0
     deleted_size = 0
 
