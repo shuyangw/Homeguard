@@ -70,3 +70,8 @@ pytest==8.3.5
 # Optional: Bayesian Optimization (Phase 4b)
 # Uncomment to enable BayesianOptimizer
 # scikit-optimize>=0.9.0
+
+# Discord Bot (Optional observability addon)
+# Uncomment to enable Discord monitoring bot
+# discord.py>=2.3.0
+# anthropic>=0.39.0

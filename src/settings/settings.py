@@ -136,6 +136,21 @@ def get_models_dir() -> Path:
     return models_dir
 
 
+def get_discord_bot_log_dir() -> Path:
+    """
+    Get the directory for Discord bot logs.
+
+    Returns:
+        Path: Configured discord bot log directory
+    """
+    try:
+        log_dir = settings.get(OS_ENVIRONMENT, 'discord_bot_log_dir')
+        return Path(log_dir)
+    except (configparser.NoSectionError, configparser.NoOptionError):
+        # Fallback to output_dir/discord_bot if not configured
+        return get_output_dir() / "discord_bot"
+
+
 def get_tearsheet_frequency():
     """
     Get the tearsheet frequency for data resampling.

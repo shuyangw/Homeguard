@@ -1979,6 +1979,179 @@ logger.error("Failed to load data")
 
 ---
 
+## Discord Bot Layer (Optional)
+
+> **Note**: This is an optional observability addon. It is fully isolated from core trading/backtesting modules and can be disabled without affecting system functionality.
+
+### `src/discord_bot/__init__.py`
+**Purpose**: Module initialization for Discord bot
+
+**Exports**: `__version__`
+
+---
+
+### `src/discord_bot/config.py`
+**Purpose**: Configuration management for Discord bot
+
+**Key Classes**:
+- `DiscordBotConfig`: Configuration dataclass
+  - `discord_token`: Discord bot token
+  - `anthropic_api_key`: Anthropic API key
+  - `allowed_channel_ids`: Set of allowed channel IDs
+  - `allowed_user_ids`: Set of allowed user IDs
+  - `max_iterations`: Max investigation steps (default: 10)
+  - `command_timeout`: Command timeout seconds (default: 30)
+  - `max_output_size`: Max output chars (default: 50000)
+
+**Key Functions**:
+- `load_config()`: Load configuration from environment
+
+**Dependencies**: `os`, `dataclasses`, `pathlib`
+
+---
+
+### `src/discord_bot/security.py`
+**Purpose**: Read-only command validation and output sanitization
+
+**Key Constants**:
+- `ALLOWED_COMMAND_PREFIXES`: 50+ allowed read-only commands (tail, cat, grep, ps, etc.)
+- `BLOCKED_PATTERNS`: 30+ blocked patterns (rm, sudo, systemctl restart, etc.)
+
+**Key Functions**:
+- `validate_command(command)`: Check if command is allowed
+  - Returns `ValidationResult(is_allowed, reason, command)`
+- `sanitize_output(text)`: Mask secrets in output
+  - Masks API keys, passwords, AWS credentials, tokens
+- `is_channel_allowed(channel_id, allowed_set)`: Check channel permissions
+- `is_user_allowed(user_id, allowed_set)`: Check user permissions
+
+**Security Model**:
+- Whitelist-only: Commands must start with allowed prefix
+- Double-check: Even allowed prefixes blocked if contain dangerous patterns
+- Output sanitization: Secrets masked before Discord
+
+**Dependencies**: `re`, `dataclasses`
+
+---
+
+### `src/discord_bot/executor.py`
+**Purpose**: Safe async subprocess execution
+
+**Key Classes**:
+- `ExecutionResult`: Result dataclass
+  - `stdout`, `stderr`, `exit_code`
+  - `timed_out`, `blocked`, `block_reason`
+  - `format_output()`: Format for display
+
+- `CommandExecutor`: Async command executor
+  - `execute(command, timeout, working_dir)`: Execute command
+  - `_decode_and_truncate(data)`: Decode and limit output size
+
+**Execution Flow**:
+1. Validate command against security rules
+2. If blocked, return immediately with reason
+3. Execute via `asyncio.create_subprocess_shell`
+4. Apply timeout (max 120 seconds)
+5. Truncate output if > max_output_size
+6. Sanitize output to mask secrets
+
+**Dependencies**: `asyncio`, `security`
+
+---
+
+### `src/discord_bot/investigator.py`
+**Purpose**: Claude-powered trading system investigator
+
+**Key Constants**:
+- `SYSTEM_PROMPT`: Homeguard-specific prompt for Claude
+  - Emphasizes READ-ONLY mode
+  - Lists allowed commands
+  - Describes log file structure and locations
+- `TOOLS`: Tool definition for `run_shell_command`
+
+**Key Classes**:
+- `InvestigationSession`: Tracks investigation state
+  - `messages`, `iteration`, `commands_executed`
+
+- `InvestigationResult`: Final result
+  - `answer`, `commands_executed`, `iterations`
+  - `duration_seconds`, `success`, `error`
+
+- `TradingInvestigator`: Main investigator class
+  - `investigate(query, user_id)`: Run multi-step investigation
+  - Uses ReAct pattern: question → tool call → analyze → repeat
+  - Max 10 iterations per investigation
+
+**ReAct Pattern**:
+1. User asks question
+2. Claude analyzes and requests shell command
+3. Executor runs command (read-only only)
+4. Claude analyzes output
+5. Repeat until answer found or max iterations
+
+**Dependencies**: `anthropic`, `executor`, `config`
+
+---
+
+### `src/discord_bot/formatters.py`
+**Purpose**: Discord message formatting utilities
+
+**Key Constants**:
+- `MAX_MESSAGE_LENGTH`: 2000 (Discord limit)
+- `MAX_EMBED_DESCRIPTION`: 4096
+
+**Key Functions**:
+- `split_message(text, max_length)`: Split long messages
+- `format_code_block(text, language)`: Wrap in code block
+- `format_investigation_result(answer, commands, iterations, duration)`: Format result
+- `format_error(error, context)`: Format error message
+- `truncate_for_discord(text, max_length)`: Truncate with indicator
+
+**Dependencies**: None (standard library only)
+
+---
+
+### `src/discord_bot/main.py`
+**Purpose**: Discord bot entry point using Slash Commands
+
+**Key Classes**:
+- `TradingMonitorBot(commands.Bot)`: Main bot class
+  - Inherits from discord.py `commands.Bot`
+  - Contains `TradingInvestigator` instance
+  - Auto-syncs slash commands on startup
+- `RateLimiter`: Token bucket rate limiter
+  - Per-user: 5/min, 20/hour, 10s cooldown
+  - Global: 15/min
+
+**Slash Commands** (type `/` in Discord to see autocomplete):
+| Command | Description |
+|---------|-------------|
+| `/ask <question>` | Natural language investigation |
+| `/status` | Quick health check |
+| `/signals` | Today's trading signals |
+| `/trades` | Today's executed trades |
+| `/logs [lines]` | Recent log entries (default 50) |
+| `/errors` | Search for errors |
+| `/help` | Show available commands |
+| `/ping` | Check bot latency |
+| `/botstats` | Show bot statistics |
+
+**Key Features**:
+- Slash commands with autocomplete
+- Auto-sync commands on startup
+- Rate limiting (per-user and global)
+- Concurrency limit (max 5 investigations)
+- DM blocking
+
+**Execution**:
+```bash
+python -m src.discord_bot.main
+```
+
+**Dependencies**: `discord.py`, `dotenv`, `investigator`, `formatters`, `security`
+
+---
+
 ## Module Dependency Graph
 
 ```

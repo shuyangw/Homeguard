@@ -1,0 +1,40 @@
+[Unit]
+Description=Homeguard Discord Monitor Bot - Read-only Observability
+Documentation=https://github.com/shuyangw/Homeguard
+After=network-online.target homeguard-trading.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ec2-user
+Group=ec2-user
+WorkingDirectory=/home/ec2-user/Homeguard
+ExecStart=/home/ec2-user/Homeguard/venv/bin/python -m src.discord_bot.main
+EnvironmentFile=/home/ec2-user/Homeguard/.env
+
+# Restart behavior
+Restart=always
+RestartSec=10
+TimeoutStopSec=30
+
+# Restart limits (prevent rapid restart loops)
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=homeguard-discord
+
+# Security hardening (read-only bot should have minimal privileges)
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadOnlyPaths=/home/ec2-user/Homeguard
+ReadOnlyPaths=/home/ec2-user/logs
+# Allow writing to /tmp for any temp files
+ReadWritePaths=/tmp
+
+[Install]
+WantedBy=multi-user.target

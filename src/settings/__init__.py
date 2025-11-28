@@ -44,6 +44,7 @@ from src.settings.settings import (
     get_backtest_tests_dir,
     get_live_trading_dir,
     get_models_dir,
+    get_discord_bot_log_dir,
     get_tearsheet_frequency,
 )
 
@@ -97,6 +98,7 @@ __all__ = [
     "get_backtest_tests_dir",
     "get_live_trading_dir",
     "get_models_dir",
+    "get_discord_bot_log_dir",
     "get_tearsheet_frequency",
     # =========== Backtest Config Classes ===========
     "BacktestConfig",

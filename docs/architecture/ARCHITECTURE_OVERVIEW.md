@@ -1,7 +1,7 @@
 # Homeguard Backtesting Framework - Architecture Overview
 
-**Version**: 1.2
-**Last Updated**: 2025-11-25
+**Version**: 1.3
+**Last Updated**: 2025-11-27
 **Status**: Current
 
 ---
@@ -25,10 +25,15 @@ Homeguard is a professional-grade backtesting framework for algorithmic trading 
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                    LAYER 5: GUI (PRESENTATION)              │
-│  Flet-based graphical interface for non-technical users     │
-│  - Setup View, Run View, Results View                       │
-│  - Thread-safe worker communication via queues              │
+│                    LAYER 5: PRESENTATION                    │
+│                                                             │
+│  ┌─────────────────────┐    ┌─────────────────────────┐    │
+│  │     GUI (Flet)      │    │  Discord Bot (Optional) │    │
+│  │  - Setup View       │    │  - Natural language     │    │
+│  │  - Run View         │    │    queries via Claude   │    │
+│  │  - Results View     │    │  - Read-only observer   │    │
+│  │  - Thread-safe      │    │  - EC2 log inspection   │    │
+│  └─────────────────────┘    └─────────────────────────┘    │
 └────────────────────────┬────────────────────────────────────┘
                          │
 ┌────────────────────────▼────────────────────────────────────┐
@@ -328,6 +333,43 @@ portfolio = engine.run_with_data(strategy, data)
 - Config management, symbol downloader, data inspector, trade inspector, run history
 
 **Dependencies**: Flet, Threading, Queue
+
+---
+
+### Layer 5b: Discord Bot (Optional Addon)
+
+**Purpose**: Read-only observability for live trading via natural language queries
+
+**Design Principles**:
+- **Fully Isolated**: No imports from trading/backtesting/gui modules
+- **Read-Only**: Cannot modify files or control services
+- **Optional**: Trading system operates independently; bot failure has zero impact
+
+**Key Components** ([src/discord_bot/](../../src/discord_bot/)):
+
+- **TradingInvestigator** ([investigator.py](../../src/discord_bot/investigator.py))
+  - Claude-powered ReAct agent
+  - Multi-step investigation via shell commands
+  - Homeguard-specific system prompt
+
+- **CommandExecutor** ([executor.py](../../src/discord_bot/executor.py))
+  - Async subprocess execution
+  - Read-only command whitelist
+  - Timeout and output truncation
+
+- **Security** ([security.py](../../src/discord_bot/security.py))
+  - 50+ allowed read-only commands
+  - 30+ blocked dangerous patterns
+  - Output sanitization (masks secrets)
+
+- **Discord Bot** ([main.py](../../src/discord_bot/main.py))
+  - Commands: `!ask`, `!status`, `!signals`, `!trades`, `!logs`, `!errors`
+  - Channel-restricted access
+  - Deferred response pattern
+
+**Deployment**: Separate systemd service (`homeguard-discord.service`)
+
+**Dependencies**: discord.py, anthropic
 
 ---
 
