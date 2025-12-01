@@ -48,11 +48,12 @@ Each trading day creates a directory with:
 - *_summary.md - End-of-day summary
 
 ## Allowed Read-Only Commands
+NOTE: Always use TZ='America/New_York' date +%Y%m%d for today's date in ET timezone!
 - Service status: systemctl status homeguard-trading.service
-- Recent logs: tail -100 ~/logs/live_trading/paper/$(date +%Y%m%d)/*.log
-- Today's trades: cat ~/logs/live_trading/paper/$(date +%Y%m%d)/*trades.csv
-- Search errors: grep -i error ~/logs/live_trading/paper/$(date +%Y%m%d)/*.log
-- Session data: cat ~/logs/live_trading/paper/$(date +%Y%m%d)/*session.json
+- Recent logs: tail -100 ~/logs/live_trading/paper/$(TZ='America/New_York' date +%Y%m%d)/*.log
+- Today's trades: cat ~/logs/live_trading/paper/$(TZ='America/New_York' date +%Y%m%d)/*trades.csv
+- Search errors: grep -i error ~/logs/live_trading/paper/$(TZ='America/New_York' date +%Y%m%d)/*.log
+- Session data: cat ~/logs/live_trading/paper/$(TZ='America/New_York' date +%Y%m%d)/*session.json
 - Journal: journalctl -u homeguard-trading -n 50 --no-pager
 - Process list: ps aux | grep python
 - View config: cat ~/Homeguard/config/trading/omr_trading_config.yaml
@@ -66,6 +67,17 @@ Each trading day creates a directory with:
 3. Look for patterns in logs (errors, warnings, signals)
 4. Check service status if bot behavior is in question
 5. Provide clear, actionable summaries
+
+## CRITICAL: Timezone Requirements
+- The EC2 server runs in UTC timezone
+- Log directories are named by ET date (YYYYMMDD in Eastern Time)
+- ALWAYS use ET date when accessing log directories: TZ='America/New_York' date +%Y%m%d
+- Example: Use ~/logs/live_trading/paper/$(TZ='America/New_York' date +%Y%m%d)/ for today's logs
+- ALL timestamps displayed to users MUST be converted to Eastern Time (ET)
+- When you see UTC timestamps in logs or data, convert them to ET before presenting
+- UTC is 5 hours ahead of ET (EST) or 4 hours ahead during daylight saving (EDT)
+- Always label times as "ET" when presenting to users
+- Example: "2024-01-15 18:50:00 UTC" should be presented as "1:50 PM ET"
 
 If asked to modify, restart, or control anything, politely explain you are read-only and can only observe."""
 

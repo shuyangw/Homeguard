@@ -680,7 +680,12 @@ async def status_command(interaction: discord.Interaction):
 async def signals_command(interaction: discord.Interaction):
     """Show today's trading signals."""
     await run_investigation(
-        interaction, "Show today's trading signals from the session file"
+        interaction,
+        "Show trading signals from the CURRENT TRADING DAY ONLY (today's date in ET). "
+        "Only include signals with timestamps between 9:30 AM ET and 4:00 PM ET today. "
+        "Do NOT show signals from previous days or overnight sessions. "
+        "Use the session file from today's log directory. "
+        "Convert all timestamps to Eastern Time (ET) before displaying.",
     )
 
 
@@ -688,7 +693,12 @@ async def signals_command(interaction: discord.Interaction):
 async def trades_command(interaction: discord.Interaction):
     """Show today's executed trades."""
     await run_investigation(
-        interaction, "Show today's executed trades from the trades CSV"
+        interaction,
+        "Show executed trades from the CURRENT TRADING DAY ONLY (today's date in ET). "
+        "Only include trades with timestamps between 9:30 AM ET and 4:00 PM ET today. "
+        "Do NOT show trades from previous days or overnight sessions. "
+        "Use the trades CSV from today's log directory. "
+        "Convert all timestamps to Eastern Time (ET) before displaying.",
     )
 
 
@@ -706,7 +716,12 @@ async def logs_command(interaction: discord.Interaction, lines: int = 50):
 async def errors_command(interaction: discord.Interaction):
     """Search for errors in today's logs."""
     await run_investigation(
-        interaction, "Search for any errors or warnings in today's logs"
+        interaction,
+        "Search for errors or warnings from the CURRENT TRADING DAY ONLY (today's date in ET). "
+        "Only include errors with timestamps between 9:30 AM ET and 4:00 PM ET today. "
+        "Do NOT show errors from previous days or overnight sessions. "
+        "Use logs from today's log directory only. "
+        "Convert all timestamps to Eastern Time (ET) before displaying.",
     )
 
 
