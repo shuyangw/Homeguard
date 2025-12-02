@@ -44,11 +44,12 @@ def cancel_all_orders(broker):
         cancelled = 0
         for order in orders:
             try:
-                broker.cancel_order(order.id)
-                logger.info(f"Cancelled order: {order.id} ({order.symbol})")
+                order_id = order['order_id']
+                broker.cancel_order(str(order_id))
+                logger.info(f"Cancelled order: {order_id} ({order['symbol']})")
                 cancelled += 1
             except Exception as e:
-                logger.error(f"Failed to cancel order {order.id}: {e}")
+                logger.error(f"Failed to cancel order {order_id}: {e}")
 
         logger.success(f"Cancelled {cancelled}/{len(orders)} orders")
         return cancelled
@@ -60,7 +61,8 @@ def cancel_all_orders(broker):
 def close_all_positions(broker):
     """Close all open positions."""
     try:
-        positions = broker.get_positions()
+        from src.trading.brokers.broker_interface import OrderSide, OrderType
+        positions = broker.get_stock_positions()
         if not positions:
             logger.info("No open positions to close")
             return 0
@@ -68,23 +70,91 @@ def close_all_positions(broker):
         closed = 0
         for pos in positions:
             try:
-                # Submit market sell order
-                from src.trading.brokers.broker_interface import OrderSide, OrderType
-                order = broker.submit_order(
-                    symbol=pos.symbol,
-                    qty=abs(float(pos.qty)),
-                    side=OrderSide.SELL if float(pos.qty) > 0 else OrderSide.BUY,
+                symbol = pos['symbol']
+                qty = abs(int(pos['quantity']))
+                side = OrderSide.SELL if pos['quantity'] > 0 else OrderSide.BUY
+                order = broker.place_stock_order(
+                    symbol=symbol,
+                    quantity=qty,
+                    side=side,
                     order_type=OrderType.MARKET
                 )
-                logger.info(f"Closed position: {pos.symbol} ({pos.qty} shares)")
+                logger.info(f"Closed position: {symbol} ({qty} shares)")
                 closed += 1
             except Exception as e:
-                logger.error(f"Failed to close position {pos.symbol}: {e}")
+                logger.error(f"Failed to close position {pos.get('symbol', 'unknown')}: {e}")
 
         logger.success(f"Closed {closed}/{len(positions)} positions")
         return closed
     except Exception as e:
         logger.error(f"Error getting positions: {e}")
+        return 0
+
+
+def force_entry_order(broker, symbol: str, quantity: int):
+    """Submit a forced test entry order (bypassing strategy signals)."""
+    logger.info("")
+    logger.header("=" * 60)
+    logger.info("FORCED ENTRY - SUBMITTING TEST BUY ORDER")
+    logger.header("=" * 60)
+
+    try:
+        from src.trading.brokers.broker_interface import OrderSide, OrderType
+        order = broker.place_stock_order(
+            symbol=symbol,
+            quantity=quantity,
+            side=OrderSide.BUY,
+            order_type=OrderType.MARKET
+        )
+        logger.success(f"Test order submitted: BUY {quantity} {symbol}")
+        logger.info(f"Order details: {order}")
+        return order
+    except Exception as e:
+        logger.error(f"Failed to submit test order: {e}")
+        return None
+
+
+def force_exit_order(broker, symbol: str = None):
+    """Close positions for forced test (or specific symbol)."""
+    logger.info("")
+    logger.header("=" * 60)
+    logger.info("FORCED EXIT - CLOSING TEST POSITIONS")
+    logger.header("=" * 60)
+
+    try:
+        from src.trading.brokers.broker_interface import OrderSide, OrderType
+        positions = broker.get_stock_positions()
+
+        if not positions:
+            logger.info("No positions to close")
+            return 0
+
+        closed = 0
+        for pos in positions:
+            pos_symbol = pos['symbol']
+            # If symbol specified, only close that one
+            if symbol and pos_symbol != symbol:
+                continue
+
+            qty = abs(int(pos['quantity']))
+            side = OrderSide.SELL if pos['quantity'] > 0 else OrderSide.BUY
+
+            order = broker.place_stock_order(
+                symbol=pos_symbol,
+                quantity=qty,
+                side=side,
+                order_type=OrderType.MARKET
+            )
+            logger.success(f"Exit order submitted: {side.name} {qty} {pos_symbol}")
+            logger.info(f"Order details: {order}")
+            closed += 1
+
+        if closed == 0 and symbol:
+            logger.warning(f"No position found for {symbol}")
+
+        return closed
+    except Exception as e:
+        logger.error(f"Failed to submit exit order: {e}")
         return 0
 
 
@@ -203,6 +273,23 @@ def main():
         action='store_true',
         help='Show timing without executing trades'
     )
+    parser.add_argument(
+        '--force-orders',
+        action='store_true',
+        help='Submit actual test orders (bypasses strategy signal generation)'
+    )
+    parser.add_argument(
+        '--test-symbol',
+        type=str,
+        default='SPY',
+        help='Symbol to use for forced test orders (default: SPY)'
+    )
+    parser.add_argument(
+        '--test-quantity',
+        type=int,
+        default=1,
+        help='Quantity for forced test orders (default: 1)'
+    )
 
     args = parser.parse_args()
 
@@ -236,6 +323,10 @@ def main():
         logger.warning("DRY RUN - No trades will be executed")
         logger.info("Remove --dry-run to execute actual trades")
         return 0
+
+    if args.force_orders:
+        logger.warning(f"FORCE ORDERS MODE: Will submit actual {args.test_symbol} orders (qty={args.test_quantity})")
+        logger.warning("This bypasses strategy signal generation")
 
     # Check API credentials
     api_key = os.getenv('ALPACA_API_KEY') or os.getenv('ALPACA_PAPER_KEY_ID')
@@ -288,21 +379,30 @@ def main():
         logger.info("")
         logger.warning(f"[Phase 1] Waiting {args.exit_interval}s until first exit...")
         time.sleep(args.exit_interval)
-        run_exit_logic(adapter)
+        if args.force_orders:
+            force_exit_order(broker, args.test_symbol)
+        else:
+            run_exit_logic(adapter)
         show_account_status(broker)
 
         # Phase 2: Entry (simulated 3:50 PM)
         logger.info("")
         logger.warning(f"[Phase 2] Waiting {args.entry_interval}s until entry...")
         time.sleep(args.entry_interval)
-        run_entry_logic(adapter)
+        if args.force_orders:
+            force_entry_order(broker, args.test_symbol, args.test_quantity)
+        else:
+            run_entry_logic(adapter)
         show_account_status(broker)
 
         # Phase 3: Final Exit (simulated next day 9:31 AM)
         logger.info("")
         logger.warning(f"[Phase 3] Waiting {args.final_exit_interval}s until final exit...")
         time.sleep(args.final_exit_interval)
-        run_exit_logic(adapter)
+        if args.force_orders:
+            force_exit_order(broker, args.test_symbol)
+        else:
+            run_exit_logic(adapter)
         show_account_status(broker)
 
     except KeyboardInterrupt:
