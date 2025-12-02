@@ -248,19 +248,19 @@ def main():
         from src.trading.adapters.omr_live_adapter import OMRLiveAdapter
         from src.trading.config import load_omr_config
 
-        broker = AlpacaBroker(paper=True)
+        broker = AlpacaBroker(
+            api_key=api_key,
+            secret_key=secret_key,
+            paper=True
+        )
         logger.success("Connected to Alpaca Paper Trading")
 
         # Load OMR config
         config = load_omr_config()
 
-        # Create adapter
-        adapter = OMRLiveAdapter(
-            broker=broker,
-            symbols=config.symbols,
-            position_size=config.position_size,
-            max_positions=config.max_positions
-        )
+        # Create adapter using production config pattern
+        adapter_params = config.to_adapter_params()
+        adapter = OMRLiveAdapter(broker=broker, **adapter_params)
         logger.success("OMR adapter initialized")
 
     except Exception as e:
