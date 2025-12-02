@@ -96,9 +96,12 @@ def run_exit_logic(adapter):
     logger.header("=" * 60)
 
     try:
-        # Run the adapter's exit logic
-        adapter.run_once(action='exit')
-        logger.success("Exit logic completed")
+        # Run the adapter's exit logic - uses close_overnight_positions
+        if hasattr(adapter, 'close_overnight_positions'):
+            adapter.close_overnight_positions()
+            logger.success("Exit logic completed")
+        else:
+            logger.warning("Adapter does not support position closing")
     except Exception as e:
         logger.error(f"Exit logic failed: {e}")
 
@@ -116,8 +119,8 @@ def run_entry_logic(adapter):
             logger.info("Pre-fetching intraday data...")
             adapter.prefetch_intraday_data()
 
-        # Run the adapter's entry logic
-        adapter.run_once(action='entry')
+        # Run the adapter's entry logic (run_once generates signals and enters positions)
+        adapter.run_once()
         logger.success("Entry logic completed")
     except Exception as e:
         logger.error(f"Entry logic failed: {e}")
@@ -132,17 +135,19 @@ def show_account_status(broker):
 
     try:
         account = broker.get_account()
-        logger.info(f"Portfolio Value: ${float(account.portfolio_value):,.2f}")
-        logger.info(f"Buying Power: ${float(account.buying_power):,.2f}")
-        logger.info(f"Cash: ${float(account.cash):,.2f}")
+        # Account is a dict with keys: portfolio_value, buying_power, cash, equity
+        logger.info(f"Portfolio Value: ${account['portfolio_value']:,.2f}")
+        logger.info(f"Buying Power: ${account['buying_power']:,.2f}")
+        logger.info(f"Cash: ${account['cash']:,.2f}")
 
-        positions = broker.get_positions()
+        positions = broker.get_stock_positions()
         if positions:
             logger.info(f"\nOpen Positions ({len(positions)}):")
             for pos in positions:
-                pnl = float(pos.unrealized_pl)
-                pnl_pct = float(pos.unrealized_plpc) * 100
-                logger.info(f"  {pos.symbol}: {pos.qty} shares @ ${float(pos.avg_entry_price):.2f} "
+                # Position is a dict with keys: symbol, quantity, avg_entry_price, current_price, unrealized_pl, unrealized_plpc
+                pnl = pos.get('unrealized_pl', 0)
+                pnl_pct = pos.get('unrealized_plpc', 0) * 100
+                logger.info(f"  {pos['symbol']}: {pos['quantity']} shares @ ${pos['avg_entry_price']:.2f} "
                            f"(P&L: ${pnl:+.2f} / {pnl_pct:+.2f}%)")
         else:
             logger.info("\nNo open positions")
@@ -151,7 +156,8 @@ def show_account_status(broker):
         if orders:
             logger.info(f"\nOpen Orders ({len(orders)}):")
             for order in orders:
-                logger.info(f"  {order.symbol}: {order.side} {order.qty} @ {order.type}")
+                # Order is a dict with keys: order_id, symbol, side, qty, type, status
+                logger.info(f"  {order['symbol']}: {order['side']} {order['qty']} @ {order['type']}")
         else:
             logger.info("\nNo open orders")
 
