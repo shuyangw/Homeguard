@@ -18,6 +18,7 @@ from src.strategies.universe import ETFUniverse
 from src.trading.brokers.broker_interface import BrokerInterface, OrderSide, OrderType
 from src.trading.utils.portfolio_health_check import PortfolioHealthChecker
 from src.utils.logger import logger
+from src.utils.timezone import tz
 
 
 class OMRLiveAdapter(StrategyAdapter):
@@ -150,7 +151,7 @@ class OMRLiveAdapter(StrategyAdapter):
 
         # Also fetch SPY and VIX for training if not in cache
         if self._data_cache is not None:
-            end_date = datetime.now()
+            end_date = tz.now()
             start_date = end_date - timedelta(days=self.data_lookback_days)
 
             for market_symbol in ['SPY', 'VIX']:
@@ -234,7 +235,7 @@ class OMRLiveAdapter(StrategyAdapter):
             from datetime import timedelta
 
             market_data = {}
-            end_date = datetime.now()
+            end_date = tz.now()
             start_date = end_date - timedelta(days=self.data_lookback_days)
 
             # Check if intraday cache is available
@@ -398,7 +399,7 @@ class OMRLiveAdapter(StrategyAdapter):
         Overrides base class to add pre-entry health validation.
         """
         logger.info("=" * 60)
-        logger.info(f"Running {self.__class__.__name__} at {datetime.now()}")
+        logger.info(f"Running {self.__class__.__name__} at {tz.now()}")
         logger.info("=" * 60)
 
         try:
@@ -463,7 +464,7 @@ class OMRLiveAdapter(StrategyAdapter):
         Should be called at 9:31 AM to exit positions entered at 3:50 PM.
         """
         try:
-            now = datetime.now()
+            now = tz.now()
             if now.time() < time(9, 30) or now.time() > time(9, 35):
                 logger.warning(
                     f"close_overnight_positions called at {now.time()}, "
