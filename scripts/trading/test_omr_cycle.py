@@ -209,8 +209,8 @@ def main():
     # Load environment
     load_dotenv()
 
-    # Calculate schedule
-    now = datetime.now()
+    # Calculate schedule (use Eastern Time for display)
+    now = tz.now()
     start_time = now + timedelta(seconds=args.start_delay)
     exit1_time = start_time + timedelta(seconds=args.exit_interval)
     entry_time = exit1_time + timedelta(seconds=args.entry_interval)
@@ -222,14 +222,14 @@ def main():
     logger.header("=" * 70)
     logger.info("OMR STRATEGY CYCLE TEST")
     logger.header("=" * 70)
-    logger.info(f"Current time: {now.strftime('%H:%M:%S')}")
+    logger.info(f"Current time: {now.strftime('%H:%M:%S')} ET")
     logger.info(f"Total test duration: {total_duration} seconds ({total_duration/60:.1f} minutes)")
     logger.info("")
-    logger.info("Schedule:")
-    logger.info(f"  Start:           {start_time.strftime('%H:%M:%S')} (in {args.start_delay}s)")
-    logger.info(f"  Exit #1 (9:31):  {exit1_time.strftime('%H:%M:%S')} (T+{args.exit_interval}s)")
-    logger.info(f"  Entry (3:50):    {entry_time.strftime('%H:%M:%S')} (T+{args.exit_interval + args.entry_interval}s)")
-    logger.info(f"  Exit #2 (9:31):  {exit2_time.strftime('%H:%M:%S')} (T+{total_duration - args.start_delay}s)")
+    logger.info("Schedule (ET):")
+    logger.info(f"  Start:           {start_time.strftime('%H:%M:%S')} ET (in {args.start_delay}s)")
+    logger.info(f"  Exit #1 (9:31):  {exit1_time.strftime('%H:%M:%S')} ET (T+{args.exit_interval}s)")
+    logger.info(f"  Entry (3:50):    {entry_time.strftime('%H:%M:%S')} ET (T+{args.exit_interval + args.entry_interval}s)")
+    logger.info(f"  Exit #2 (9:31):  {exit2_time.strftime('%H:%M:%S')} ET (T+{total_duration - args.start_delay}s)")
     logger.header("=" * 70)
 
     if args.dry_run:
