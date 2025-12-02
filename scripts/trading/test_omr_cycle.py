@@ -245,13 +245,12 @@ def main():
 
     try:
         from src.trading.brokers.alpaca_broker import AlpacaBroker
-        from src.trading.adapters.omr_adapter import OMRLiveAdapter
+        from src.trading.adapters.omr_live_adapter import OMRLiveAdapter, load_omr_config
 
         broker = AlpacaBroker(paper=True)
         logger.success("Connected to Alpaca Paper Trading")
 
         # Load OMR config
-        from src.trading.adapters.omr_adapter import load_omr_config
         config = load_omr_config()
 
         # Create adapter
