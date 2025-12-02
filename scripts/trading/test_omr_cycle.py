@@ -226,8 +226,8 @@ def show_account_status(broker):
         if orders:
             logger.info(f"\nOpen Orders ({len(orders)}):")
             for order in orders:
-                # Order is a dict with keys: order_id, symbol, side, qty, type, status
-                logger.info(f"  {order['symbol']}: {order['side']} {order['qty']} @ {order['type']}")
+                # Order is a dict with keys: order_id, symbol, side, quantity, order_type, status
+                logger.info(f"  {order['symbol']}: {order['side']} {order['quantity']} @ {order['order_type']}")
         else:
             logger.info("\nNo open orders")
 
