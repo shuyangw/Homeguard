@@ -33,6 +33,27 @@ Write clean, maintainable code following project conventions.
 - Apply proper risk management
 - Details: [`.claude/backtesting.md`](.claude/backtesting.md)
 
+### Existing Backtest Tools (CHECK BEFORE CREATING NEW)
+**CRITICAL**: Before creating any new backtest-related script or tool, check if one already exists below. Extend existing tools rather than creating duplicates.
+
+| Tool | Location | Purpose |
+|------|----------|---------|
+| **Standard Report** | `scripts/backtest/run_standard_report.py` | Monthly Sharpe/drawdown reports for any strategy |
+| **Config-Driven Runner** | `python -m src.backtest_runner` | Main backtest runner with YAML configs |
+| **Walk-Forward** | `config/backtesting/lgbm_walk_forward.yaml` | Out-of-sample validation |
+
+**Standard Report Generator**:
+- Module: `src/backtesting/reporting/standard_report.py`
+- Usage: `python scripts/backtest/run_standard_report.py --strategy <name> --symbols <list>`
+- Outputs: Console, Markdown, CSV to `settings.ini` output directory
+- Symbol lists: `backtest_lists/*.csv`
+
+**Adding New Backtest Tools**:
+- Add new modules to `src/backtesting/` (not standalone scripts)
+- Register in appropriate `__init__.py`
+- Document in this table
+- Prefer extending `StandardReportGenerator` for new report types
+
 ### Risk Management
 **CRITICAL**: All backtests MUST use proper position sizing.
 - Default: 10% per trade (moderate risk profile)
@@ -104,6 +125,7 @@ Update docs when modifying user-facing functionality.
 - **VIX data resilience** - Must have fallbacks for VIX fetch failures
 - **Bayesian model coverage** - Model must be trained with ALL trading universe symbols
 - **Market hours** - Trading only at 3:50 PM ET, exits at 9:35 AM ET
+- **Timezone handling** - ALWAYS use `from src.utils.timezone import tz` and `tz.now()` instead of `datetime.now()`. EC2 instances run in UTC; the timezone utility ensures consistent Eastern Time handling.
 - Details: [`.claude/live_trading.md`](.claude/live_trading.md)
 
 ### Common Type Issues
@@ -192,6 +214,7 @@ Pylance/VectorBT type annotation patterns.
 13. ✅ **NEVER push to remote without explicit user permission**
 14. ✅ **Use config-driven backtesting system** - don't write ad-hoc backtest scripts
 15. ✅ **Verify before claiming success** - run tests, don't assume code works
+16. ✅ **Check existing backtest tools first** - see "Existing Backtest Tools" table before creating new ones
 
 ## When to Consult Detailed Guides
 
