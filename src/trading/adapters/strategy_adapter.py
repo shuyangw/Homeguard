@@ -9,12 +9,14 @@ from abc import ABC, abstractmethod
 from typing import List, Dict, Optional
 from datetime import datetime, timedelta
 import pandas as pd
+import pytz
 
 from src.strategies.core import StrategySignals, Signal
 from src.trading.brokers.broker_interface import BrokerInterface, OrderSide, OrderType
 from src.trading.core.execution_engine import ExecutionEngine
 from src.trading.core.position_manager import PositionManager
 from src.utils.logger import logger
+from src.utils.timezone import now as get_now_et
 
 
 class StrategyAdapter(ABC):
@@ -134,18 +136,25 @@ class StrategyAdapter(ABC):
         """
         try:
             logger.info("Pre-fetching today's intraday data...")
-            now = datetime.now()
-            market_open_today = now.replace(hour=9, minute=30, second=0, microsecond=0)
+            # Use Eastern Time for market hours (market opens 9:30 AM ET)
+            now_et = get_now_et()
+            market_open_today = now_et.replace(hour=9, minute=30, second=0, microsecond=0)
+
+            # Convert to UTC for API calls (Alpaca expects UTC)
+            now_utc = now_et.astimezone(pytz.UTC)
+            market_open_utc = market_open_today.astimezone(pytz.UTC)
+
+            logger.info(f"Fetching intraday data from {market_open_today.strftime('%H:%M')} ET to {now_et.strftime('%H:%M')} ET")
 
             self._intraday_cache = {}
 
             for symbol in self.symbols:
                 try:
-                    # Fetch intraday bars from market open to now
+                    # Fetch intraday bars from market open to now (using UTC for API)
                     df = self.broker.get_historical_bars(
                         symbol=symbol,
-                        start=market_open_today,
-                        end=now,
+                        start=market_open_utc,
+                        end=now_utc,
                         timeframe='1Min'  # 1-minute bars for intraday
                     )
 
@@ -158,10 +167,10 @@ class StrategyAdapter(ABC):
                     logger.error(f"Error pre-fetching intraday data for {symbol}: {e}")
                     continue
 
-            self._intraday_cache_time = now
+            self._intraday_cache_time = now_et
             logger.success(
                 f"Pre-fetched intraday data for {len(self._intraday_cache)}/{len(self.symbols)} symbols "
-                f"({now.strftime('%H:%M')} update)"
+                f"({now_et.strftime('%H:%M')} ET update)"
             )
 
         except Exception as e:
