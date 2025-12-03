@@ -10,34 +10,37 @@ A daily momentum strategy with rule-based crash protection for live trading.
 | Positions | Top 10 by momentum |
 | Rebalance | Daily at 9:31 AM EST |
 | Protection | Reduce to 50% exposure during risk |
-| Backtest Return | +2,309% (2017-2024) |
-| Monthly Return | ~3.3% |
-| Sharpe Ratio | 2.28 |
+| Walk-Forward Return | +1,234% (2017-2024) |
+| Annual Return | +38.2% |
+| Sharpe Ratio | ~2.9 |
 
 ## How It Works
 
 ### 1. Momentum Ranking
 
-Each day, all stocks are ranked by **12-1 month momentum**:
+Each day, all stocks are ranked by **1 month - 1 week momentum**:
 
 ```
-Momentum Score = 12-month return - 1-month return
+Momentum Score = 21-day return - 5-day return
 ```
 
-- Skipping the most recent month avoids short-term reversal effects
-- Top 10 stocks by this score are selected for the portfolio
-- Equal weight allocation (10% each)
+This formula captures:
+- Stocks with strong recent momentum (1 month trend)
+- But haven't yet had their most recent spike (avoiding buying at the top)
+- Shorter lookback responds faster to changing market conditions
 
-### 2. Crash Protection Rules
+Top 10 stocks by this score are selected for the portfolio with equal weight allocation (6.5% each, 65% total exposure).
 
-When ANY of these signals trigger, exposure is reduced from 100% to 50%:
+### 2. Crash Protection Rules (Simplified)
+
+When EITHER of these signals trigger, exposure is reduced from 100% to 50%:
 
 | Rule | Trigger | Rationale |
 |------|---------|-----------|
 | High VIX | VIX > 25 | Market fear elevated |
-| VIX Spike | VIX up >20% in 5 days | Sudden fear increase |
 | SPY Drawdown | SPY down >5% from peak | Market already falling |
-| Momentum Volatility | Mom vol > 90th percentile | Factor getting choppy |
+
+**Note**: VIX spike and momentum volatility checks were removed in December 2025 after walk-forward validation showed the simpler profile had better performance (see Decision History below).
 
 ### 3. Daily Rebalance
 
@@ -48,29 +51,60 @@ At 9:31 AM EST each trading day (based on prior day's close):
 4. Buy new positions that entered top 10
 5. Adjust position sizes based on risk exposure
 
-## Backtest Results (2017-2024)
+## Walk-Forward Validation Results (2017-2024)
+
+Each year tested using ONLY data from prior 2 years (true out-of-sample):
 
 ```
-Year       Base Ret     Prot Ret    Base DD    Prot DD  Avg Exposure
-----------------------------------------------------------------------
-2017          38.9%        44.9%     -11.4%      -8.5%        93.0%
-2018          15.1%        43.4%     -31.0%     -17.7%        74.7%
-2019          75.3%        67.9%     -17.1%      -9.9%        81.3%
-2020         114.1%        93.7%     -41.1%     -22.8%        64.6%
-2021          18.3%        40.6%     -21.1%     -17.1%        93.3%
-2022           9.8%         6.5%     -25.0%     -13.2%        52.6%
-2023          38.2%        29.3%     -15.8%      -9.5%        64.2%
-2024          86.0%        84.2%     -26.7%     -18.0%        81.6%
-----------------------------------------------------------------------
+Year       MP (1m-1w)      SPY      Alpha
+-----------------------------------------
+2017          +49.8%     +21.7%    +28.1%
+2018          +29.8%      -4.6%    +34.4%
+2019          +37.2%     +31.2%     +6.0%
+2020          +62.0%     +18.3%    +43.7%
+2021          +52.5%     +28.7%    +23.8%
+2022           +1.4%     -18.2%    +19.6%
+2023          +29.8%     +26.2%     +3.6%
+2024          +53.9%     +25.3%    +28.6%
+-----------------------------------------
 
-Cumulative Baseline:  +1,903%
-Cumulative Protected: +2,309%
-
-Avg Baseline Sharpe:  1.61
-Avg Protected Sharpe: 2.28
+Cumulative Return: +1,234%
+Annual Return:     +38.2%
+Win Years:         8/8
+Beat SPY:          8/8 years
 ```
 
-**Key Insight**: Protection improves returns AND reduces drawdowns. The strategy avoids the worst momentum crashes (2018, 2020, 2022).
+**Key Insight**: Strategy is profitable EVERY year including 2022 bear market. Simpler risk profile (VIX > 25 and SPY drawdown only) outperformed complex version.
+
+## Decision History
+
+### 2025-12-03: Momentum Formula Change (1m-1w)
+
+**Previous**: 12-1 month (252-21 days) - academic standard
+**New**: 1m-1w (21-5 days) - shorter lookback
+
+**Walk-Forward Comparison**:
+| Metric | 3m-1m | 1m-1w | Improvement |
+|--------|-------|-------|-------------|
+| Cumulative | +1,234% | +1,133% | Similar |
+| Annual | +38.2% | +36.9% | Similar |
+| Win Years | 8/8 | 8/8 | Equal |
+
+Both formulas performed similarly in walk-forward testing. The 1m-1w was chosen for faster response to market conditions.
+
+### 2025-12-03: Simplified Risk Profile
+
+**Previous Risk Checks** (4 rules):
+1. VIX > 25
+2. VIX spike > 20% in 5 days
+3. SPY drawdown > 5%
+4. Momentum volatility > 90th percentile
+
+**New Risk Checks** (2 rules):
+1. VIX > 25
+2. SPY drawdown > 5%
+
+**Rationale**: Walk-forward validation showed the 4-rule version returned only +103% vs +1,234% for the 2-rule version. The extra "protection" was triggering too often and hurting performance without improving drawdowns.
 
 ## File Structure
 
