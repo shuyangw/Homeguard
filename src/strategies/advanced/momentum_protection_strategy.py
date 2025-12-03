@@ -7,7 +7,7 @@ to reduce exposure during high-risk periods.
 Strategy Overview:
 1. Universe: S&P 500 stocks
 2. Selection: Top N stocks by 12-1 month momentum
-3. Rebalance: Daily at market close (3:55 PM EST)
+3. Rebalance: Daily at market open (9:31 AM EST)
 4. Protection: Reduce exposure to 50% when risk signals trigger
 
 Risk Signals (any triggers protection):

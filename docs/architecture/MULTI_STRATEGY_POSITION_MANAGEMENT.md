@@ -4,35 +4,85 @@ This document describes the architecture for running multiple trading strategies
 
 ## Overview
 
-The system supports running multiple strategies (OMR, MP) in the same process with:
+The system supports running **N strategies** concurrently with:
 - Independent position tracking per strategy
 - Toggle mechanism to enable/disable strategies
 - Atomic state persistence with file locking
 - Conflict prevention between strategies
 - Graceful shutdown coordination
+- Execution lock serialization
+
+### Active Strategies
+
+| ID | Name | Description | Status |
+|----|------|-------------|--------|
+| `omr` | Overnight Mean Reversion | Leveraged ETF overnight holds | Active |
+| `mp` | Momentum Protection | S&P 500 momentum with crash protection | Active |
+| `pairs` | Pairs Trading | Statistical arbitrage (future) | Planned |
+| `vol` | Volatility Harvesting | VIX term structure (future) | Planned |
 
 ## Strategy Configuration
 
 ### Capital Allocation
 
-| Strategy | Position Size | Max Positions | Max Exposure |
-|----------|---------------|---------------|--------------|
-| OMR      | 15%           | 3             | 45%          |
-| MP       | 6.5%          | 10            | 65%          |
-| **Combined** | -         | 13            | **110%**     |
+| Strategy | Position Size | Max Positions | Max Exposure | Execution Time |
+|----------|---------------|---------------|--------------|----------------|
+| OMR      | 15%           | 3             | 45%          | 9:31 AM (exit), 3:50 PM (entry) |
+| MP       | 6.5%          | 10            | 65%          | 9:31 AM (rebalance) |
+| *Future* | TBD           | TBD           | TBD          | TBD |
+| **Combined** | -         | 13+           | **110%+**    | - |
 
-**Note:** Combined exposure can exceed 100%. In practice, both strategies rarely reach maximum allocation simultaneously. If buying power is insufficient, orders are prioritized by signal strength.
+**Note:** Combined exposure can exceed 100%. In practice, strategies rarely reach maximum allocation simultaneously. If buying power is insufficient, orders are prioritized by signal strength.
 
 ### Universe Isolation
 
-Strategies trade non-overlapping universes to prevent conflicts:
+Strategies MUST trade non-overlapping universes to prevent conflicts:
 
-| Strategy | Universe | Symbols |
-|----------|----------|---------|
-| OMR      | Leveraged ETFs | TQQQ, SOXL, UPRO, etc. |
-| MP       | S&P 500 (excluding leveraged ETFs) | AAPL, MSFT, NVDA, etc. |
+| Strategy | Universe | Example Symbols | Universe Source |
+|----------|----------|-----------------|-----------------|
+| OMR      | Leveraged ETFs | TQQQ, SOXL, UPRO | `ETFUniverse.LEVERAGED_3X` |
+| MP       | S&P 500 (filtered) | AAPL, MSFT, NVDA | `backtest_lists/sp500-2025.csv` |
+| *pairs*  | Cointegrated pairs | XOM/CVX, KO/PEP | TBD |
+| *vol*    | VIX products | VXX, UVXY, SVXY | TBD |
 
 Universe isolation is validated on startup. If overlap is detected, the system logs an error and refuses to start.
+
+### Adding a New Strategy
+
+To add a new strategy to the system:
+
+1. **Create Strategy Adapter** in `src/trading/adapters/`:
+   ```python
+   class NewStrategyAdapter(StrategyAdapter):
+       STRATEGY_NAME = 'new_strat'  # Unique identifier
+
+       def get_schedule(self) -> Dict:
+           return {
+               'execution_times': [
+                   {'time': 'HH:MM', 'action': 'entry/exit/rebalance'}
+               ],
+               'market_hours_only': True
+           }
+   ```
+
+2. **Define Universe** - Must not overlap with existing strategies
+
+3. **Register in Toggle Config** (`config/trading/strategy_toggle.yaml`):
+   ```yaml
+   strategies:
+     new_strat:
+       enabled: false
+       shutdown_requested: false
+   ```
+
+4. **Add Systemd Service** (for EC2 deployment):
+   ```bash
+   # /etc/systemd/system/homeguard-newstrat.service
+   ```
+
+5. **Update Documentation**:
+   - Add to this file's strategy tables
+   - Create `docs/architecture/NEW_STRATEGY_ARCHITECTURE.md`
 
 ## State Files
 
@@ -519,17 +569,60 @@ On restart:
 
 ## Trading Schedule
 
-| Time (EST) | OMR Action | MP Action |
-|------------|------------|-----------|
-| 9:30 AM    | Pre-load historical data | Pre-load historical data |
-| 9:31 AM    | Close overnight positions | - |
-| 3:43 PM    | Pre-fetch intraday data | - |
-| 3:45 PM    | - | Pre-fetch intraday data |
-| 3:50 PM    | Open new positions (4 min max) | - |
-| 3:55 PM    | - | Rebalance positions (4 min max) |
-| 4:00 PM    | Generate EOD report | Generate EOD report |
+### Daily Timeline (All Times EST)
 
-**Staggered Pre-fetch:** Data pre-fetch is staggered to avoid rate limiting from data provider.
+```
+ 9:30 AM ─┬─ [OMR] Pre-load historical data (VIX, SPY, leveraged ETFs)
+          └─ [MP]  Pre-load historical data (S&P 500, VIX via yfinance)
+
+ 9:31 AM ─┬─ [OMR] EXIT: Sell all overnight positions (TQQQ, SOXL, etc.)
+          │        └─ Execution lock held for ~1-2 min
+          │
+          └─ [MP]  REBALANCE: Buy/sell based on prior day's momentum rankings
+                   ├─ Sell stocks that dropped out of top 10
+                   ├─ Buy stocks that entered top 10
+                   └─ Execution lock held for ~2-4 min (after OMR releases)
+
+ 3:43 PM ── [OMR] Pre-fetch intraday data for entry signals
+
+ 3:50 PM ── [OMR] ENTRY: Open new overnight positions
+                  ├─ Generate signals (Bayesian + regime filter)
+                  ├─ Buy selected leveraged ETFs (TQQQ, SOXL, UPRO, etc.)
+                  └─ Execution lock held for ~4 min max
+
+ 4:00 PM ─┬─ [OMR] Generate EOD report
+          └─ [MP]  Generate EOD report
+```
+
+### Execution Lock Sequence
+
+At **9:31 AM**, both strategies run but are serialized by execution lock:
+
+```
+9:31:00 → [OMR] Acquires lock, starts selling overnight positions
+9:31:45 → [OMR] Releases lock after selling complete
+9:31:46 → [MP]  Acquires lock, starts rebalancing
+9:33:30 → [MP]  Releases lock after rebalancing complete
+```
+
+### Strategy Execution Details
+
+| Strategy | Signal Source | Universe | Trades/Day | Execution Time |
+|----------|--------------|----------|------------|----------------|
+| **OMR** | Bayesian model + VIX regime | 6 leveraged ETFs | 3-5 entry, 3-5 exit | ~1-2 min |
+| **MP** | 12-1 month momentum | 503 S&P 500 stocks | 0-4 (avg 1.3) | ~2-4 min |
+
+### What Each Strategy Trades
+
+**OMR (Overnight Mean Reversion)**:
+- Buys at 3:50 PM, sells at 9:31 AM next day
+- Trades: TQQQ, SOXL, UPRO, SPXL, TECL, FNGU
+- Holds ~16 hours overnight
+
+**MP (Momentum Protection)**:
+- Rebalances at 9:31 AM based on prior day's close
+- Trades: Any of 503 S&P 500 stocks
+- Holds until stock drops out of top 10 (days to weeks)
 
 ## Monitoring
 

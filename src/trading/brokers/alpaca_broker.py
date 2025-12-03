@@ -558,7 +558,7 @@ class AlpacaBroker(BrokerInterface):
     def _translate_order(self, alpaca_order) -> Dict:
         """Translate Alpaca order to standardized format."""
         return {
-            'order_id': alpaca_order.id,
+            'order_id': str(alpaca_order.id),
             'symbol': alpaca_order.symbol,
             'quantity': int(alpaca_order.qty),
             'side': alpaca_order.side.value,

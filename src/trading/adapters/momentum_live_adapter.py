@@ -2,7 +2,7 @@
 Momentum Protection Live Trading Adapter.
 
 Connects momentum strategy with crash protection to live trading infrastructure.
-Rebalances daily at 3:55 PM EST based on momentum rankings and risk signals.
+Rebalances daily at 9:31 AM EST based on momentum rankings and risk signals.
 """
 
 from typing import List, Dict, Optional, Any
@@ -97,23 +97,35 @@ class MomentumSignalWrapper(StrategySignals):
 
         # Convert to base Signal objects
         signals = []
+        now = timestamp or datetime.now()
+
         for ms in momentum_signals:
+            # Get latest price for this symbol
+            price = 0.0
+            if ms.symbol in market_data and 'close' in market_data[ms.symbol].columns:
+                price = float(market_data[ms.symbol]['close'].iloc[-1])
+
             if ms.action == 'buy':
                 signals.append(Signal(
+                    timestamp=now,
                     symbol=ms.symbol,
-                    direction='long',
-                    strength=ms.weight,
+                    direction='BUY',
+                    confidence=ms.weight,  # Use weight as confidence
+                    price=price,
                     metadata={
                         'momentum_score': ms.momentum_score,
                         'rank': ms.rank,
-                        'risk_exposure': risk_signals.exposure_pct
+                        'risk_exposure': risk_signals.exposure_pct,
+                        'weight': ms.weight  # Keep original weight for position sizing
                     }
                 ))
             elif ms.action == 'sell':
                 signals.append(Signal(
+                    timestamp=now,
                     symbol=ms.symbol,
-                    direction='exit',
-                    strength=1.0,
+                    direction='SELL',
+                    confidence=1.0,
+                    price=price,
                     metadata={'action': 'sell'}
                 ))
 
@@ -124,8 +136,8 @@ class MomentumLiveAdapter(StrategyAdapter):
     """
     Live trading adapter for Momentum Protection strategy.
 
-    Rebalances at 3:55 PM EST based on:
-    - 12-1 month momentum rankings
+    Rebalances at 9:31 AM EST based on:
+    - 12-1 month momentum rankings (from prior day's close)
     - Rule-based crash protection signals
 
     Positions are held until next day's rebalance.
@@ -223,7 +235,7 @@ class MomentumLiveAdapter(StrategyAdapter):
         logger.info(f"[MP]   Position size: {position_size:.0%}")
         logger.info(f"[MP]   Reduced exposure: {reduced_exposure:.0%}")
         logger.info(f"[MP]   VIX threshold: {vix_threshold}")
-        logger.info(f"[MP]   Rebalance time: 3:55 PM EST")
+        logger.info(f"[MP]   Rebalance time: 9:31 AM EST")
         logger.info(f"[MP]   Portfolio health checks: ENABLED")
 
     def _load_sp500_symbols(self) -> List[str]:
@@ -591,8 +603,8 @@ class MomentumLiveAdapter(StrategyAdapter):
             logger.info(f"[MP] Portfolio value: ${portfolio_value:,.2f}")
 
             # Separate buy and sell signals
-            buy_signals = [s for s in signals if s.direction == 'long']
-            sell_signals = [s for s in signals if s.direction == 'exit']
+            buy_signals = [s for s in signals if s.direction == 'BUY']
+            sell_signals = [s for s in signals if s.direction == 'SELL']
 
             # Execute sells first
             for signal in sell_signals:
@@ -621,7 +633,8 @@ class MomentumLiveAdapter(StrategyAdapter):
             # Execute buys
             for signal in buy_signals:
                 symbol = signal.symbol
-                target_value = portfolio_value * self.position_size * signal.strength * self.top_n
+                weight = signal.metadata.get('weight', signal.confidence) if signal.metadata else signal.confidence
+                target_value = portfolio_value * self.position_size * weight * self.top_n
 
                 # Skip if already at target
                 current_value = current_positions.get(symbol, 0)
@@ -683,11 +696,12 @@ class MomentumLiveAdapter(StrategyAdapter):
         """
         Get scheduling configuration.
 
-        Momentum rebalances once daily at 3:55 PM EST.
+        Momentum rebalances once daily at 9:31 AM EST.
+        Rankings are based on prior day's close, so we trade at open.
         """
         return {
             'execution_times': [
-                {'time': '15:55', 'action': 'rebalance'}  # 3:55 PM - Rebalance
+                {'time': '09:31', 'action': 'rebalance'}  # 9:31 AM EST - Rebalance at open
             ],
             'market_hours_only': True,
             'strategy_type': 'daily'  # Indicates daily rebalancing
@@ -737,7 +751,7 @@ class MomentumLiveAdapter(StrategyAdapter):
 if __name__ == "__main__":
     logger.info("[MP] Momentum Protection Live Trading Adapter")
     logger.info("[MP] " + "=" * 60)
-    logger.info("[MP] Rebalances at 3:55 PM EST based on:")
+    logger.info("[MP] Rebalances at 9:31 AM EST based on:")
     logger.info("[MP]   - 12-1 month momentum rankings")
     logger.info("[MP]   - Rule-based crash protection")
     logger.info("")

@@ -8,7 +8,7 @@ A daily momentum strategy with rule-based crash protection for live trading.
 |-----------|-------|
 | Universe | S&P 500 (503 stocks) |
 | Positions | Top 10 by momentum |
-| Rebalance | Daily at 3:55 PM EST |
+| Rebalance | Daily at 9:31 AM EST |
 | Protection | Reduce to 50% exposure during risk |
 | Backtest Return | +2,309% (2017-2024) |
 | Monthly Return | ~3.3% |
@@ -41,7 +41,7 @@ When ANY of these signals trigger, exposure is reduced from 100% to 50%:
 
 ### 3. Daily Rebalance
 
-At 3:55 PM EST each trading day:
+At 9:31 AM EST each trading day (based on prior day's close):
 1. Calculate current momentum rankings
 2. Check risk signals
 3. Sell positions no longer in top 10
@@ -166,7 +166,7 @@ strategy:
   position_size_pct: 0.10      # 10% per position
   reduced_exposure: 0.50       # 50% when risk high
   vix_threshold: 25.0          # VIX trigger level
-  rebalance_time: "15:55:00"   # 3:55 PM EST
+  rebalance_time: "09:31:00"   # 9:31 AM EST
 ```
 
 ### Position Sizing Presets
@@ -181,7 +181,7 @@ strategy:
 
 ### Option 1: Windows Task Scheduler
 
-Create a scheduled task to run at 3:55 PM EST daily:
+Create a scheduled task to run at 9:31 AM EST daily:
 
 ```
 Program: C:\Users\qwqw1\anaconda3\envs\fintech\python.exe
@@ -193,8 +193,8 @@ Arguments: C:\...\scripts\trading\demo_momentum_paper_trading.py --run-once
 Deploy to EC2 with cron:
 
 ```bash
-# crontab entry (3:55 PM EST = 20:55 UTC during EST)
-55 20 * * 1-5 /path/to/python /path/to/demo_momentum_paper_trading.py --run-once
+# crontab entry (9:31 AM EST = 14:31 UTC during EST)
+31 14 * * 1-5 /path/to/python /path/to/demo_momentum_paper_trading.py --run-once
 ```
 
 ### Option 3: Integration with Existing Infrastructure
@@ -208,10 +208,8 @@ from src.trading.adapters.momentum_live_adapter import MomentumLiveAdapter
 broker = AlpacaBroker(mode='paper')
 adapter = MomentumLiveAdapter(broker=broker, top_n=10)
 
-# Pre-load data once at market open
+# Pre-load data and run at 9:31 AM EST
 adapter.preload_historical_data()
-
-# Run at 3:55 PM
 adapter.run_once()
 ```
 
@@ -238,7 +236,7 @@ adapter.run_once()
 
 1. **Daily P&L**: Should average ~0.15% per day
 2. **Exposure Level**: 50-100% depending on risk signals
-3. **Turnover**: ~20% daily (2 trades per day average)
+3. **Turnover**: ~6-10% daily (1-2 trades per day, ~50% of days no trades)
 4. **Max Drawdown**: Alert if exceeds 15%
 
 ### Log Files
@@ -255,7 +253,7 @@ Logs are written to console with color coding:
 | Holding Period | Daily | Overnight |
 | Universe | S&P 500 | Leveraged ETFs |
 | Positions | 10 stocks | 3-5 ETFs |
-| Rebalance | 3:55 PM | Entry 3:50 PM, Exit 9:31 AM |
+| Rebalance | 9:31 AM | Entry 3:50 PM, Exit 9:31 AM |
 | Risk Model | Rule-based | Bayesian + Regime |
 | Expected Return | ~3.3%/month | ~2%/month |
 | Drawdown | Lower | Higher (leveraged) |
