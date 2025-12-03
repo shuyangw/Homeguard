@@ -342,8 +342,15 @@ class AlpacaBroker(BrokerInterface):
     # ==================== Market Data Methods ====================
 
     def get_latest_quote(self, symbol: str) -> Dict:
-        """Get latest bid/ask quote."""
+        """Get latest bid/ask quote with staleness detection.
+
+        IEX feed can have stale quote data for some symbols (e.g., post-corporate action).
+        If quote is more than 1 day old, fallback to latest trade price.
+        """
         try:
+            from datetime import datetime, timedelta
+            from src.utils.timezone import tz
+
             feed = DataFeed.IEX if self.paper else DataFeed.SIP
             request = StockLatestQuoteRequest(
                 symbol_or_symbols=[symbol],
@@ -351,6 +358,31 @@ class AlpacaBroker(BrokerInterface):
             )
             quotes = self.data_client.get_stock_latest_quote(request)
             quote = quotes[symbol]
+
+            # Check for stale data (more than 1 day old)
+            quote_time = quote.timestamp
+            now = tz.now()
+            if quote_time.tzinfo is None:
+                quote_time = quote_time.replace(tzinfo=now.tzinfo)
+
+            is_stale = (now - quote_time) > timedelta(days=1)
+
+            if is_stale:
+                logger.warning(
+                    f"Stale quote for {symbol} (from {quote_time.date()}), using trade price"
+                )
+                # Fallback to trade price
+                trade = self.get_latest_trade(symbol)
+                trade_price = trade['price']
+                return {
+                    'symbol': symbol,
+                    'bid': trade_price,
+                    'ask': trade_price,
+                    'bid_size': 0,
+                    'ask_size': 0,
+                    'timestamp': trade['timestamp'],
+                    'stale_quote_fallback': True,
+                }
 
             return {
                 'symbol': symbol,
