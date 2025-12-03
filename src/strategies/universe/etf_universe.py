@@ -68,34 +68,35 @@ class ETFUniverse:
         'DUST',  # Direxion Daily Gold Miners Bear 3X
     ]
 
-    # Optimal OMR Symbols (Ranked by backtest performance)
-    # Based on walk-forward validation 2015-2025
-    # See docs/OMR_OPTIMAL_SYMBOLS.md for details
+    # Optimal OMR Symbols - Production Bayesian Model Universe
+    # These 18 symbols are what the production model is trained on
+    # Model trained: 2025-11-26, excludes SPY/VIX/USD (non-tradeable)
     OPTIMAL_OMR = [
-        # Tier 1: Proven top performers (Sharpe > 0.4)
-        'SDOW',   # Dow 3x Bear - Sharpe 0.88 (best)
-        'SOXS',   # Semiconductor 3x Bear - Sharpe 0.45
+        # Core Index 3x
+        'TQQQ',   # Nasdaq 3x Bull - Most liquid
+        'SQQQ',   # Nasdaq 3x Bear
+        'UPRO',   # S&P 3x Bull
+        'SPXU',   # S&P 3x Bear
+        'UDOW',   # Dow 3x Bull
 
-        # Tier 2: High-liquidity core (broad market)
-        'SQQQ',   # Nasdaq 3x Bear - Most liquid inverse
-        'SPXU',   # S&P 3x Bear - Broad market
-        'TQQQ',   # Nasdaq 3x Bull - Most liquid bull
-        'UPRO',   # S&P 3x Bull - Broad market
+        # Core Index 2x
+        'QLD',    # Nasdaq 2x Bull
+        'SSO',    # S&P 2x Bull
 
-        # Tier 3: Sector leaders (tech/semis)
-        'TECS',   # Tech 3x Bear - Sharpe 0.04 (proven)
-        'TECL',   # Tech 3x Bull
+        # Sector 3x
+        'TECL',   # Technology 3x Bull
         'SOXL',   # Semiconductor 3x Bull
-
-        # Tier 4: Financials & small cap
-        'FAZ',    # Financial 3x Bear
         'FAS',    # Financial 3x Bull
-        'TZA',    # Small Cap 3x Bear
+        'FAZ',    # Financial 3x Bear
         'TNA',    # Small Cap 3x Bull
+        'DFEN',   # Defense 3x Bull
+        'LABU',   # Biotech 3x Bull
+        'NAIL',   # Homebuilders 3x Bull
+        'WEBL',   # Internet 3x Bull
 
-        # Tier 5: Diversification
-        'TMF',    # Treasury 3x Bull
-        'ERX',    # Energy 3x Bull
+        # Commodity/Volatility
+        'UCO',    # Oil 2x Bull
+        'SVXY',   # VIX Short (-0.5x)
     ]
 
     # OMR Conservative (7 symbols - proven + high liquidity)
