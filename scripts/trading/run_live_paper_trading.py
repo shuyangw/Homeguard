@@ -27,6 +27,22 @@ from typing import Optional, Dict, List
 from dotenv import load_dotenv
 import pytz
 
+# Set process title for easy identification in ps/htop
+try:
+    import setproctitle
+    HAS_SETPROCTITLE = True
+except ImportError:
+    HAS_SETPROCTITLE = False
+
+
+def set_process_name(strategy: str) -> None:
+    """Set process name to identify strategy in ps/htop."""
+    if HAS_SETPROCTITLE:
+        proc_name = f"homeguard-{strategy}"
+        setproctitle.setproctitle(proc_name)
+        # Also set thread name for visibility
+        setproctitle.setthreadtitle(proc_name)
+
 from src.trading.brokers import AlpacaBroker
 from src.trading.adapters import (
     MACrossoverLiveAdapter,
@@ -886,6 +902,9 @@ def main():
     parser.add_argument('--min-return', type=float, default=0.002, help='Min expected return (OMR)')
 
     args = parser.parse_args()
+
+    # Set process name for easy identification in ps/htop
+    set_process_name(args.strategy)
 
     # Load environment variables
     load_dotenv()
