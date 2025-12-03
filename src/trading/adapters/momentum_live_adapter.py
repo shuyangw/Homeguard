@@ -215,17 +215,18 @@ class MomentumLiveAdapter(StrategyAdapter):
         # Store reference to momentum signals
         self._momentum_signals = momentum_signals
 
-        # Initialize portfolio health checker
+        # Initialize state manager for multi-strategy coordination
+        self.state_manager = StrategyStateManager()
+
+        # Initialize portfolio health checker with state manager for multi-strategy support
         self.health_checker = PortfolioHealthChecker(
             broker=broker,
             min_buying_power=5000.0,
             min_portfolio_value=10000.0,
             max_positions=top_n + 5,  # Allow some buffer
-            max_position_age_hours=48
+            max_position_age_hours=48,
+            state_manager=self.state_manager
         )
-
-        # Initialize state manager for multi-strategy coordination
-        self.state_manager = StrategyStateManager()
 
         # Track last risk signals
         self._last_risk_signals: Optional[RiskSignals] = None
@@ -514,10 +515,12 @@ class MomentumLiveAdapter(StrategyAdapter):
                     logger.info(f"[MP] Detected closed positions: {changes['removed']}")
 
                 # Portfolio health check before entry
+                # Use strategy_name='mp' to only count MP positions for max_positions check
                 logger.info("[MP] Running pre-entry portfolio health check...")
                 health_result = self.health_checker.check_before_entry(
                     required_capital=None,
-                    allow_existing_positions=True
+                    allow_existing_positions=True,
+                    strategy_name=STRATEGY_NAME
                 )
 
                 if not health_result.passed:

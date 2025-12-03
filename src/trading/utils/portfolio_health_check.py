@@ -8,10 +8,13 @@ Author: Homeguard Risk Management
 Date: 2025-11-13
 """
 
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, TYPE_CHECKING
 from datetime import datetime, timedelta
 from dataclasses import dataclass
 from src.utils.logger import logger
+
+if TYPE_CHECKING:
+    from src.trading.state.strategy_state_manager import StrategyStateManager
 
 
 @dataclass
@@ -41,7 +44,8 @@ class PortfolioHealthChecker:
         min_buying_power: float = 1000.0,
         min_portfolio_value: float = 5000.0,
         max_positions: int = 10,
-        max_position_age_hours: int = 48
+        max_position_age_hours: int = 48,
+        state_manager: Optional["StrategyStateManager"] = None
     ):
         """
         Initialize health checker.
@@ -52,17 +56,20 @@ class PortfolioHealthChecker:
             min_portfolio_value: Minimum portfolio value
             max_positions: Maximum concurrent positions
             max_position_age_hours: Max hours a position should be held
+            state_manager: Optional strategy state manager for multi-strategy support
         """
         self.broker = broker
         self.min_buying_power = min_buying_power
         self.min_portfolio_value = min_portfolio_value
         self.max_positions = max_positions
         self.max_position_age_hours = max_position_age_hours
+        self.state_manager = state_manager
 
     def check_before_entry(
         self,
         required_capital: Optional[float] = None,
-        allow_existing_positions: bool = False
+        allow_existing_positions: bool = False,
+        strategy_name: Optional[str] = None
     ) -> HealthCheckResult:
         """
         Comprehensive check before entering new positions.
@@ -70,6 +77,8 @@ class PortfolioHealthChecker:
         Args:
             required_capital: Capital required for planned trades
             allow_existing_positions: If False, error if positions exist
+            strategy_name: If provided, only count positions owned by this strategy
+                          for max_positions check (requires state_manager)
 
         Returns:
             HealthCheckResult with validation status
@@ -78,8 +87,9 @@ class PortfolioHealthChecker:
         errors = []
         info = {}
 
+        strategy_label = f"[{strategy_name.upper()}] " if strategy_name else ""
         logger.info("=" * 60)
-        logger.info("PRE-ENTRY PORTFOLIO HEALTH CHECK")
+        logger.info(f"{strategy_label}PRE-ENTRY PORTFOLIO HEALTH CHECK")
         logger.info("=" * 60)
 
         # 1. Check account status
@@ -125,10 +135,23 @@ class PortfolioHealthChecker:
         # 2. Check existing positions
         try:
             positions = self.broker.get_positions()
-            info['position_count'] = len(positions)
+            info['broker_position_count'] = len(positions)
+
+            # For multi-strategy: get strategy-specific position count
+            strategy_position_count = len(positions)  # Default to all positions
+            if strategy_name and self.state_manager:
+                strategy_positions = self.state_manager.get_positions(strategy_name)
+                strategy_position_count = len(strategy_positions)
+                info['strategy_position_count'] = strategy_position_count
+                logger.info(f"\n{strategy_label}Strategy-owned positions: {strategy_position_count}")
+                if strategy_positions:
+                    for sym in strategy_positions.keys():
+                        logger.info(f"  - {sym}")
+
+            info['position_count'] = strategy_position_count
 
             if positions:
-                logger.info(f"\nExisting Positions: {len(positions)}")
+                logger.info(f"\nTotal Broker Positions: {len(positions)}")
 
                 total_position_value = 0.0
 
@@ -167,16 +190,17 @@ class PortfolioHealthChecker:
                 logger.info(f"  Total Position Value: ${total_position_value:,.2f}")
 
                 # Decide if existing positions are a problem
-                if not allow_existing_positions:
+                # Only warn if strategy has its own positions (or no strategy specified)
+                if not allow_existing_positions and strategy_position_count > 0:
                     warnings.append(
-                        f"Existing positions detected ({len(positions)}). "
+                        f"Existing {strategy_label}positions detected ({strategy_position_count}). "
                         f"New entry may violate position limits."
                     )
 
-                # Check position count limit
-                if len(positions) >= self.max_positions:
+                # Check position count limit - use strategy-specific count
+                if strategy_position_count >= self.max_positions:
                     errors.append(
-                        f"Max positions reached ({len(positions)}/{self.max_positions})"
+                        f"Max positions reached ({strategy_position_count}/{self.max_positions})"
                     )
             else:
                 logger.info("\nNo existing positions")
