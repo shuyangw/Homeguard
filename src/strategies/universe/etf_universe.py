@@ -69,8 +69,8 @@ class ETFUniverse:
     ]
 
     # Optimal OMR Symbols - Production Bayesian Model Universe
-    # These 20 symbols are what the production model is trained on
-    # Model trained: 2025-11-26, excludes only SPY (not leveraged)
+    # These 18 tradeable symbols are from the production model (21 total)
+    # Model trained: 2025-11-26, excludes SPY, VIX, USD (non-tradeable)
     OPTIMAL_OMR = [
         # Core Index 3x
         'TQQQ',   # Nasdaq 3x Bull - Most liquid
@@ -97,10 +97,6 @@ class ETFUniverse:
         # Commodity/Volatility
         'UCO',    # Oil 2x Bull
         'SVXY',   # VIX Short (-0.5x)
-
-        # Other (in model)
-        'USD',    # US Dollar ETF
-        'VIX',    # VIX (for model reference)
     ]
 
     # OMR Conservative (7 symbols - proven + high liquidity)
