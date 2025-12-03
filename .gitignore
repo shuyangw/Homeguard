@@ -105,6 +105,7 @@ equities_*/
 *.csv
 !examples/**/*.csv
 !tests/**/*.csv
+!backtest_lists/**/*.csv
 
 # Log files
 logs/
@@ -140,8 +141,8 @@ notes.*
 env.md
 claude.md
 
-# Backtest lists (user-specific symbol lists)
-backtest_lists/
+# Backtest lists - tracked for deployment (required by MP strategy)
+# backtest_lists/  # REMOVED: sp500-2025.csv needed on EC2
 
 # ============================================================================
 # DOCUMENTATION (Discouraged per CLAUDE.md)

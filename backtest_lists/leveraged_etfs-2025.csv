@@ -1,0 +1,17 @@
+Symbol,Name,Leverage
+TQQQ,ProShares UltraPro QQQ,3x Bull
+SQQQ,ProShares UltraPro Short QQQ,3x Bear
+UPRO,ProShares UltraPro S&P500,3x Bull
+SPXU,ProShares UltraPro Short S&P500,3x Bear
+TNA,Direxion Small Cap Bull,3x Bull
+TZA,Direxion Small Cap Bear,3x Bear
+SOXL,Direxion Semiconductor Bull,3x Bull
+SOXS,Direxion Semiconductor Bear,3x Bear
+TECL,Direxion Technology Bull,3x Bull
+TECS,Direxion Technology Bear,3x Bear
+FAS,Direxion Financial Bull,3x Bull
+FAZ,Direxion Financial Bear,3x Bear
+ERX,Direxion Energy Bull,3x Bull
+ERY,Direxion Energy Bear,3x Bear
+TMF,Direxion 20+ Treasury Bull,3x Bull
+TMV,Direxion 20+ Treasury Bear,3x Bear

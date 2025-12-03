@@ -1,0 +1,21 @@
+Symbol,Name,Category
+SPY,SPDR S&P 500,Index
+QQQ,Invesco QQQ,Index
+IWM,iShares Russell 2000,Index
+DIA,SPDR Dow Jones,Index
+VTI,Vanguard Total Stock,Index
+XLF,Financial Select,Sector
+XLK,Technology Select,Sector
+XLE,Energy Select,Sector
+XLV,Health Care Select,Sector
+XLI,Industrial Select,Sector
+XLP,Consumer Staples,Sector
+XLY,Consumer Discretionary,Sector
+XLU,Utilities Select,Sector
+XLB,Materials Select,Sector
+TLT,20+ Year Treasury,Bond
+IEF,7-10 Year Treasury,Bond
+GLD,SPDR Gold,Commodity
+SLV,iShares Silver,Commodity
+EEM,Emerging Markets,International
+EFA,EAFE,International
