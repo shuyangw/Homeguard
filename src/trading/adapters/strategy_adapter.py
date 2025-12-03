@@ -140,7 +140,8 @@ class StrategyAdapter(ABC):
             now_et = get_now_et()
             market_open_today = now_et.replace(hour=9, minute=30, second=0, microsecond=0)
 
-            # Convert to UTC for API calls (Alpaca expects UTC)
+            # Convert to UTC for API calls (Alpaca accepts any timezone but UTC is clearest)
+            # Note: AlpacaBroker returns data in ET, so cached data will be in ET.
             now_utc = now_et.astimezone(pytz.UTC)
             market_open_utc = market_open_today.astimezone(pytz.UTC)
 

@@ -22,6 +22,7 @@ pytz==2025.2
 requests==2.32.4
 scikit-learn==1.7.1
 scipy==1.16.1
+lightgbm>=4.0.0  # LightGBM momentum strategy
 setuptools==78.1.1
 six==1.17.0
 sseclient-py==1.8.0

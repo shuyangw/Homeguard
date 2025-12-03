@@ -18,6 +18,7 @@ from typing import Dict, List, Optional, Tuple
 from datetime import datetime
 import pandas as pd
 import time
+import pytz
 
 from alpaca.trading.client import TradingClient
 from alpaca.trading.requests import MarketOrderRequest, LimitOrderRequest, StopOrderRequest, GetCalendarRequest
@@ -413,7 +414,13 @@ class AlpacaBroker(BrokerInterface):
             )
 
             bars = self.data_client.get_stock_bars(request)
-            return bars.df
+            df = bars.df
+
+            # Convert UTC timestamps to Eastern Time
+            # Contract: All AlpacaBroker data is returned in ET
+            df = self._ensure_et_timezone(df)
+
+            return df
         except Exception as e:
             logger.error(f"Failed to get bars: {e}")
             raise BrokerConnectionError(f"Alpaca API error: {e}")
@@ -504,6 +511,49 @@ class AlpacaBroker(BrokerInterface):
             return False
 
     # ==================== Helper Methods ====================
+
+    def _ensure_et_timezone(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Convert DataFrame index to Eastern Time.
+
+        Alpaca API returns all timestamps in UTC. This method converts the index
+        to US/Eastern so that time-based operations (like between_time) work
+        correctly for market hours.
+
+        Contract: All data returned from AlpacaBroker is in Eastern Time.
+
+        Args:
+            df: DataFrame with UTC timestamp index
+
+        Returns:
+            DataFrame with Eastern Time index
+        """
+        if df.empty:
+            return df
+
+        ET = pytz.timezone('America/New_York')
+
+        if isinstance(df.index, pd.MultiIndex):
+            # MultiIndex case: (symbol, timestamp)
+            # Get the timestamp level (level 1)
+            ts_level = df.index.get_level_values(1)
+            if hasattr(ts_level, 'tz') and ts_level.tz is not None:
+                # Convert to ET
+                new_ts = ts_level.tz_convert(ET)
+                # Rebuild the MultiIndex with converted timestamps
+                df.index = pd.MultiIndex.from_arrays(
+                    [df.index.get_level_values(0), new_ts],
+                    names=df.index.names
+                )
+        else:
+            # Simple DatetimeIndex case
+            if hasattr(df.index, 'tz') and df.index.tz is not None:
+                df.index = df.index.tz_convert(ET)
+            elif hasattr(df.index, 'tz_localize'):
+                # Naive datetime - assume UTC
+                df.index = df.index.tz_localize('UTC').tz_convert(ET)
+
+        return df
 
     def _translate_order(self, alpaca_order) -> Dict:
         """Translate Alpaca order to standardized format."""

@@ -12,6 +12,7 @@ import numpy as np
 from typing import List, Dict, Optional, Tuple
 from datetime import datetime, time
 from src.utils.logger import logger
+from src.utils.timezone import tz
 from src.strategies.advanced.market_regime_detector import MarketRegimeDetector
 from src.strategies.advanced.bayesian_reversion_model import BayesianReversionModel
 
@@ -227,18 +228,21 @@ class OvernightReversionSignals:
             # Calculate intraday return (open to 3:50 PM)
             today_data = data[data.index.date == data.index[-1].date()]
 
-            # Get open price (first bar after 9:30 AM)
-            open_data = today_data.between_time(time(9, 30), time(9, 31))
+            # Contract: AlpacaBroker returns data in Eastern Time.
+            # No conversion needed here - broker layer handles UTC -> ET.
+
+            # Get open price (first bar in 9:30-9:35 AM ET window for resilience)
+            open_data = today_data.between_time(time(9, 30), time(9, 35))
             if open_data.empty:
-                logger.debug(f"  {symbol}: No open data at 9:30 AM")
+                logger.debug(f"  {symbol}: No open data at 9:30 AM ET")
                 return None
 
             open_price = open_data['open'].iloc[0]
 
-            # Get current price (3:50 PM)
-            current_data = today_data.between_time(time(15, 50), time(15, 50))
+            # Get current price (3:50 PM ET, or latest available before 3:51)
+            current_data = today_data.between_time(time(15, 49), time(15, 51))
             if current_data.empty:
-                logger.debug(f"  {symbol}: No data at 3:50 PM")
+                logger.debug(f"  {symbol}: No data at 3:50 PM ET")
                 return None
 
             current_price = current_data['close'].iloc[-1]

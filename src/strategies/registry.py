@@ -42,6 +42,8 @@ _STRATEGY_REGISTRY: Dict[str, Tuple[str, str]] = {
     "OvernightMeanReversionStrategy": ("src.strategies.advanced.overnight_mean_reversion", "OvernightMeanReversionStrategy"),
     "CrossSectionalMomentum": ("src.strategies.advanced.cross_sectional_momentum", "CrossSectionalMomentum"),
     "PairsTrading": ("src.strategies.advanced.pairs_trading", "PairsTrading"),
+    "MomentumProtection": ("src.strategies.advanced.momentum_protection_strategy", "MomentumProtectionStrategy"),
+    "MomentumProtectionStrategy": ("src.strategies.advanced.momentum_protection_strategy", "MomentumProtectionStrategy"),
 }
 
 # Display name -> class name mapping for user-friendly config files
@@ -62,6 +64,12 @@ _DISPLAY_NAME_MAP: Dict[str, str] = {
     "Cross Sectional Momentum": "CrossSectionalMomentum",
     "Pairs Trading": "PairsTrading",
     "Pairs": "PairsTrading",
+    "Momentum Protection": "MomentumProtection",
+    "Momentum with Protection": "MomentumProtection",
+    "Momentum Crash Protection": "MomentumProtection",
+    "Protected Momentum": "MomentumProtection",
+    "MP": "MomentumProtection",
+    "MP Strategy": "MomentumProtection",
 }
 
 # Cache for loaded strategy classes

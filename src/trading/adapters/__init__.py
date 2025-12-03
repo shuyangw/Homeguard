@@ -44,10 +44,12 @@ from src.trading.adapters.ma_live_adapter import (
     TripleMACrossoverLiveAdapter
 )
 from src.trading.adapters.omr_live_adapter import OMRLiveAdapter
+from src.trading.adapters.momentum_live_adapter import MomentumLiveAdapter
 
 __all__ = [
     'StrategyAdapter',
     'MACrossoverLiveAdapter',
     'TripleMACrossoverLiveAdapter',
-    'OMRLiveAdapter'
+    'OMRLiveAdapter',
+    'MomentumLiveAdapter'
 ]

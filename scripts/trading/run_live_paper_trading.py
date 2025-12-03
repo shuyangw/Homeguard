@@ -31,9 +31,11 @@ from src.trading.brokers import AlpacaBroker
 from src.trading.adapters import (
     MACrossoverLiveAdapter,
     TripleMACrossoverLiveAdapter,
-    OMRLiveAdapter
+    OMRLiveAdapter,
+    MomentumLiveAdapter
 )
 from src.trading.config import load_omr_config
+from src.trading.state import StrategyStateManager
 from src.strategies.universe import EquityUniverse, ETFUniverse
 from src.utils.logger import logger, get_trading_logger, TradingLogger
 from src.utils.timezone import tz
@@ -777,6 +779,32 @@ def create_omr_adapter(broker, symbols=None, min_probability=None, min_return=No
     )
 
 
+def create_mp_adapter(broker, position_size=0.065, top_n=10):
+    """
+    Create Momentum Protection adapter.
+
+    Args:
+        broker: Broker interface
+        position_size: Position size per stock (default: 6.5%)
+        top_n: Number of top momentum stocks to hold (default: 10)
+
+    Returns:
+        MomentumLiveAdapter instance
+    """
+    logger.info("Creating MP adapter with crash protection")
+    return MomentumLiveAdapter(
+        broker=broker,
+        symbols=None,  # Uses S&P 500 by default
+        top_n=top_n,
+        position_size=position_size,
+        reduced_exposure=0.5,  # 50% exposure when risk triggers
+        vix_threshold=25.0,
+        vix_spike_threshold=0.20,
+        spy_dd_threshold=-0.05,
+        mom_vol_percentile=0.90
+    )
+
+
 def main():
     """Main entry point."""
     parser = argparse.ArgumentParser(description='Run live paper trading')
@@ -786,8 +814,8 @@ def main():
         '--strategy',
         type=str,
         default='ma',
-        choices=['ma', 'triple-ma', 'omr'],
-        help='Strategy to run (default: ma)'
+        choices=['ma', 'triple-ma', 'omr', 'mp', 'multi'],
+        help='Strategy to run: ma, triple-ma, omr, mp, or multi (runs all enabled strategies)'
     )
 
     # Symbol universe
@@ -951,6 +979,36 @@ def main():
                 broker,
                 omr_config=omr_config  # Use production config
             )
+        elif args.strategy == 'mp':
+            # Momentum Protection strategy
+            adapter = create_mp_adapter(
+                broker,
+                position_size=args.position_size if args.position_size != 0.05 else 0.065,
+                top_n=args.max_positions if args.max_positions != 3 else 10
+            )
+        elif args.strategy == 'multi':
+            # Multi-strategy mode - run all enabled strategies
+            logger.info("Multi-strategy mode - checking enabled strategies...")
+            state_manager = StrategyStateManager()
+            enabled = state_manager.get_enabled_strategies()
+
+            if not enabled:
+                logger.error("No strategies enabled. Use toggle_strategy.sh to enable strategies.")
+                return 1
+
+            logger.info(f"Enabled strategies: {', '.join(enabled)}")
+
+            # For now, create OMR adapter if enabled (primary strategy)
+            # TODO: Implement full multi-adapter runner
+            if 'omr' in enabled:
+                adapter = create_omr_adapter(broker, omr_config=omr_config)
+            elif 'mp' in enabled:
+                adapter = create_mp_adapter(broker)
+            else:
+                logger.error("No supported strategy enabled")
+                return 1
+
+            logger.warning("Note: Full multi-strategy support coming soon. Currently runs primary enabled strategy.")
         else:
             logger.error(f"Unknown strategy: {args.strategy}")
             return 1

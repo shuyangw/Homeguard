@@ -21,8 +21,10 @@ Usage:
 
 from src.strategies.universe.etf_universe import ETFUniverse
 from src.strategies.universe.equity_universe import EquityUniverse
+from src.strategies.universe.momentum_universe import MomentumUniverse
 
 __all__ = [
     'ETFUniverse',
     'EquityUniverse',
+    'MomentumUniverse',
 ]

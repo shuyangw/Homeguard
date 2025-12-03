@@ -128,6 +128,28 @@ Update docs when modifying user-facing functionality.
 - **Timezone handling** - ALWAYS use `from src.utils.timezone import tz` and `tz.now()` instead of `datetime.now()`. EC2 instances run in UTC; the timezone utility ensures consistent Eastern Time handling.
 - Details: [`.claude/live_trading.md`](.claude/live_trading.md)
 
+### Live Trading Tools & Agents
+**Available agents and tools for live trading diagnostics:**
+
+| Tool/Agent | Location | Purpose |
+|------------|----------|---------|
+| **Trade Log Analyzer** | `.claude/agents/trade-log-analyzer.md` | Analyze today's trading logs, identify errors, propose fixes |
+| **Backtest Optimizer** | `.claude/agents/backtest-optimizer.md` | Optimize strategy parameters and run systematic backtests |
+
+**EC2 Management Scripts** (Windows):
+- `scripts\ec2\local_start_instance.bat` - Start EC2 instance
+- `scripts\ec2\local_stop_instance.bat` - Stop EC2 instance
+- `scripts\ec2\check_bot.bat` - Check bot status
+- `scripts\ec2\view_logs.bat` - Stream live logs
+- `scripts\ec2\daily_health_check.bat` - Run 6-point health check
+
+**EC2 Instance Aliases** (when connected via SSH):
+- `bot-status` - Check systemd service status
+- `bot-logs` - Stream live logs (colored)
+- `bot-logs-recent` - View last 100 log lines
+- `bot-update` - Pull code and restart bot
+- `bot-restart` - Restart trading bot service
+
 ### Common Type Issues
 Pylance/VectorBT type annotation patterns.
 - DataFrame.xs() type hints
@@ -139,18 +161,21 @@ Pylance/VectorBT type annotation patterns.
 
 ```
 .claude/
-├── backtesting.md           # Backtesting best practices
-├── code_standards.md        # Python code quality standards
-├── documentation.md         # Documentation requirements
-├── environment.md           # Python environment setup
-├── git_workflow.md          # Git commit and push guidelines
-├── gui_design.md           # GUI design standards
-├── live_trading.md         # Live trading issues and pitfalls
-├── logging.md              # Logging requirements
-├── project_structure.md    # File organization rules
-├── risk_management.md      # Position sizing and risk
-├── testing.md              # Unit testing requirements
-└── type_issues.md          # Common Pylance type fixes
+├── agents/                      # Claude Code agent definitions
+│   ├── backtest-optimizer.md    # Strategy optimization agent
+│   └── trade-log-analyzer.md    # Live trading log analysis agent
+├── backtesting.md               # Backtesting best practices
+├── code_standards.md            # Python code quality standards
+├── documentation.md             # Documentation requirements
+├── environment.md               # Python environment setup
+├── git_workflow.md              # Git commit and push guidelines
+├── gui_design.md                # GUI design standards
+├── live_trading.md              # Live trading issues and pitfalls
+├── logging.md                   # Logging requirements
+├── project_structure.md         # File organization rules
+├── risk_management.md           # Position sizing and risk
+├── testing.md                   # Unit testing requirements
+└── type_issues.md               # Common Pylance type fixes
 ```
 
 ## Defensive Mindset

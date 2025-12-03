@@ -6,15 +6,11 @@ import pytest
 import pandas as pd
 import numpy as np
 from typing import Dict, Tuple, Union, List
-import sys
-from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent.parent.parent / 'src'))
-
-from backtesting.engine.backtest_engine import BacktestEngine
-from backtesting.base.strategy import BaseStrategy, MultiSymbolStrategy
-from backtesting.base.pairs_strategy import PairsStrategy
-from strategies.base_strategies.moving_average import MovingAverageCrossover
+from src.backtesting.engine.backtest_engine import BacktestEngine
+from src.backtesting.base.strategy import BaseStrategy, MultiSymbolStrategy
+from src.backtesting.base.pairs_strategy import PairsStrategy
+from src.strategies.base_strategies.moving_average import MovingAverageCrossover
 
 
 class TestMultiSymbolStrategy(MultiSymbolStrategy):

@@ -17,8 +17,12 @@ from src.strategies.advanced.bayesian_reversion_model import BayesianReversionMo
 from src.strategies.universe import ETFUniverse
 from src.trading.brokers.broker_interface import BrokerInterface, OrderSide, OrderType
 from src.trading.utils.portfolio_health_check import PortfolioHealthChecker
+from src.trading.state import StrategyStateManager
 from src.utils.logger import logger
 from src.utils.timezone import tz
+
+# Strategy identifier for state tracking
+STRATEGY_NAME = 'omr'
 
 
 class OMRLiveAdapter(StrategyAdapter):
@@ -60,12 +64,12 @@ class OMRLiveAdapter(StrategyAdapter):
         # Use default symbols if not specified
         if symbols is None:
             symbols = ETFUniverse.LEVERAGED_3X
-            logger.info(f"Using default OMR universe: {len(symbols)} leveraged 3x ETFs")
+            logger.info(f"[OMR] Using default OMR universe: {len(symbols)} leveraged 3x ETFs")
 
         # Initialize regime detector if not provided
         if regime_detector is None:
             regime_detector = MarketRegimeDetector()
-            logger.info("Created new MarketRegimeDetector (untrained)")
+            logger.info("[OMR] Created new MarketRegimeDetector (untrained)")
 
         # Initialize Bayesian model if not provided
         if bayesian_model is None:
@@ -78,19 +82,19 @@ class OMRLiveAdapter(StrategyAdapter):
                 covered = trading_symbols & model_symbols
                 missing = trading_symbols - model_symbols
 
-                logger.success(f"Loaded pre-trained Bayesian model")
-                logger.info(f"  Model covers {len(covered)}/{len(trading_symbols)} trading symbols")
+                logger.success(f"[OMR] Loaded pre-trained Bayesian model")
+                logger.info(f"[OMR]   Model covers {len(covered)}/{len(trading_symbols)} trading symbols")
 
                 if missing:
-                    logger.warning(f"  Missing from model ({len(missing)}): {sorted(missing)}")
-                    logger.warning("  These symbols will not generate signals until model is retrained")
+                    logger.warning(f"[OMR]   Missing from model ({len(missing)}): {sorted(missing)}")
+                    logger.warning("[OMR]   These symbols will not generate signals until model is retrained")
 
             except FileNotFoundError:
-                logger.warning("No pre-trained Bayesian model found - will train at market open")
-                logger.warning(f"Expected model at: {bayesian_model.model_path}")
+                logger.warning("[OMR] No pre-trained Bayesian model found - will train at market open")
+                logger.warning(f"[OMR] Expected model at: {bayesian_model.model_path}")
             except Exception as e:
-                logger.error(f"Failed to load Bayesian model: {e}")
-                logger.warning("Will train at market open")
+                logger.error(f"[OMR] Failed to load Bayesian model: {e}")
+                logger.warning("[OMR] Will train at market open")
 
         # Create pure OMR strategy with injected symbols
         strategy = OvernightReversionSignals(
@@ -131,12 +135,15 @@ class OMRLiveAdapter(StrategyAdapter):
             max_position_age_hours=48
         )
 
-        logger.info("OMR Strategy Configuration:")
-        logger.info(f"  Min probability: {min_probability:.1%}")
-        logger.info(f"  Min expected return: {min_expected_return:.2%}")
-        logger.info(f"  Signal time: 3:50 PM EST")
-        logger.info(f"  Entry: 3:50 PM | Exit: Next day 9:31 AM")
-        logger.info(f"  Portfolio health checks: ENABLED")
+        # Initialize state manager for multi-strategy coordination
+        self.state_manager = StrategyStateManager()
+
+        logger.info("[OMR] Strategy Configuration:")
+        logger.info(f"[OMR]   Min probability: {min_probability:.1%}")
+        logger.info(f"[OMR]   Min expected return: {min_expected_return:.2%}")
+        logger.info(f"[OMR]   Signal time: 3:50 PM EST")
+        logger.info(f"[OMR]   Entry: 3:50 PM | Exit: Next day 9:31 AM")
+        logger.info(f"[OMR]   Portfolio health checks: ENABLED")
 
     def preload_historical_data(self) -> None:
         """
@@ -169,9 +176,9 @@ class OMRLiveAdapter(StrategyAdapter):
 
                         if df is not None and not df.empty:
                             self._data_cache[market_symbol] = df
-                            logger.info(f"Fetched {market_symbol}: {len(df)} days")
+                            logger.info(f"[OMR] Fetched {market_symbol}: {len(df)} days")
                     except Exception as e:
-                        logger.error(f"Error fetching {market_symbol}: {e}")
+                        logger.error(f"[OMR] Error fetching {market_symbol}: {e}")
 
         # Train Bayesian model if not already trained
         if not self._bayesian_model.trained:
@@ -180,15 +187,15 @@ class OMRLiveAdapter(StrategyAdapter):
     def _train_bayesian_model(self) -> None:
         """Train the Bayesian model using cached historical data."""
         if self._data_cache is None or len(self._data_cache) == 0:
-            logger.error("Cannot train Bayesian model: no historical data available")
+            logger.error("[OMR] Cannot train Bayesian model: no historical data available")
             return
 
         if 'SPY' not in self._data_cache or 'VIX' not in self._data_cache:
-            logger.error("Cannot train Bayesian model: missing SPY or VIX data")
+            logger.error("[OMR] Cannot train Bayesian model: missing SPY or VIX data")
             return
 
         try:
-            logger.info("Training Bayesian model with historical data...")
+            logger.info("[OMR] Training Bayesian model with historical data...")
 
             # Prepare data for training (need daily OHLCV)
             spy_data = self._data_cache['SPY']
@@ -216,10 +223,10 @@ class OMRLiveAdapter(StrategyAdapter):
                 vix_data=vix_normalized
             )
 
-            logger.success(f"Bayesian model trained on {len(historical_data)} symbols")
+            logger.success(f"[OMR] Bayesian model trained on {len(historical_data)} symbols")
 
         except Exception as e:
-            logger.error(f"Failed to train Bayesian model: {e}")
+            logger.error(f"[OMR] Failed to train Bayesian model: {e}")
             import traceback
             traceback.print_exc()
 
@@ -245,14 +252,14 @@ class OMRLiveAdapter(StrategyAdapter):
             )
 
             if intraday_cache_available:
-                logger.info("Using pre-fetched intraday data cache")
+                logger.info("[OMR] Using pre-fetched intraday data cache")
 
                 # Use cached intraday data for symbols
                 for symbol in self.symbols:
                     if symbol in self._intraday_cache:
                         market_data[symbol] = self._intraday_cache[symbol]
                     else:
-                        logger.warning(f"{symbol} not in intraday cache, fetching...")
+                        logger.warning(f"[OMR] {symbol} not in intraday cache, fetching...")
                         # Fall back to live fetch
                         try:
                             df = self.broker.get_historical_bars(
@@ -264,10 +271,10 @@ class OMRLiveAdapter(StrategyAdapter):
                             if df is not None and not df.empty:
                                 market_data[symbol] = df
                         except Exception as e:
-                            logger.error(f"Error fetching {symbol}: {e}")
+                            logger.error(f"[OMR] Error fetching {symbol}: {e}")
 
             else:
-                logger.info("No intraday cache available, fetching data...")
+                logger.info("[OMR] No intraday cache available, fetching data...")
 
                 # For OMR, we need intraday data (1-minute bars)
                 market_open_today = end_date.replace(hour=9, minute=30, second=0, microsecond=0)
@@ -285,16 +292,16 @@ class OMRLiveAdapter(StrategyAdapter):
                         if df is not None and not df.empty:
                             market_data[symbol] = df
                         else:
-                            logger.warning(f"No intraday data returned for {symbol}")
+                            logger.warning(f"[OMR] No intraday data returned for {symbol}")
 
                     except Exception as e:
-                        logger.error(f"Error fetching data for {symbol}: {e}")
+                        logger.error(f"[OMR] Error fetching data for {symbol}: {e}")
                         continue
 
             # Also need historical daily data for regime detection
             # Use base class cache if available
             if self._data_cache is not None:
-                logger.info("Using cached historical data for regime detection")
+                logger.info("[OMR] Using cached historical data for regime detection")
                 for market_symbol in ['SPY', 'VIX']:
                     if market_symbol in self._data_cache:
                         market_data[market_symbol] = self._data_cache[market_symbol]
@@ -305,11 +312,11 @@ class OMRLiveAdapter(StrategyAdapter):
                         try:
                             # VIX is not available from Alpaca - use yfinance directly
                             if market_symbol == 'VIX':
-                                logger.info("Fetching VIX data via yfinance (Alpaca does not provide VIX)")
+                                logger.info("[OMR] Fetching VIX data via yfinance (Alpaca does not provide VIX)")
                                 df = self._fetch_vix_yfinance(start_date, end_date)
                                 if df is not None and not df.empty:
                                     market_data[market_symbol] = df
-                                    logger.info(f"[OK] Fetched {len(df)} days of VIX data via yfinance")
+                                    logger.info(f"[OMR] Fetched {len(df)} days of VIX data via yfinance")
                             else:
                                 # Use Alpaca for other symbols (SPY, etc.)
                                 df = self.broker.get_historical_bars(
@@ -321,12 +328,12 @@ class OMRLiveAdapter(StrategyAdapter):
                                 if df is not None and not df.empty:
                                     market_data[market_symbol] = df
                         except Exception as e:
-                            logger.error(f"Error fetching {market_symbol}: {e}")
+                            logger.error(f"[OMR] Error fetching {market_symbol}: {e}")
                             # VIX errors are already handled in _fetch_vix_yfinance
 
             cache_status = "cached intraday" if intraday_cache_available else "live fetch"
             logger.info(
-                f"Fetched data for {len(market_data)} symbols ({cache_status})"
+                f"[OMR] Fetched data for {len(market_data)} symbols ({cache_status})"
             )
 
             # Normalize column names to lowercase for consistency
@@ -345,7 +352,7 @@ class OMRLiveAdapter(StrategyAdapter):
             return normalized_data
 
         except Exception as e:
-            logger.error(f"Error in fetch_market_data: {e}")
+            logger.error(f"[OMR] Error in fetch_market_data: {e}")
             return {}
 
     def _fetch_vix_yfinance(self, start_date: str, end_date: str) -> Optional[pd.DataFrame]:
@@ -377,7 +384,7 @@ class OMRLiveAdapter(StrategyAdapter):
             )
 
             if vix_data is None or vix_data.empty:
-                logger.error("yfinance returned empty VIX data")
+                logger.error("[OMR] yfinance returned empty VIX data")
                 return None
 
             # Ensure timezone-aware index for consistency with broker data
@@ -389,51 +396,78 @@ class OMRLiveAdapter(StrategyAdapter):
             return vix_data
 
         except Exception as e:
-            logger.error(f"Failed to fetch VIX via yfinance: {e}")
+            logger.error(f"[OMR] Failed to fetch VIX via yfinance: {e}")
             return None
 
     def run_once(self) -> None:
         """
         Run one iteration of the strategy with portfolio health checks.
 
-        Overrides base class to add pre-entry health validation.
+        Overrides base class to add:
+        - Pre-entry health validation
+        - Execution lock for multi-strategy coordination
+        - Position tracking per strategy
         """
-        logger.info("=" * 60)
-        logger.info(f"Running {self.__class__.__name__} at {tz.now()}")
-        logger.info("=" * 60)
+        logger.info("[OMR] " + "=" * 60)
+        logger.info(f"[OMR] Running {self.__class__.__name__} at {tz.now()}")
+        logger.info("[OMR] " + "=" * 60)
 
         try:
-            # CRITICAL: Portfolio health check before entry
-            logger.info("Running pre-entry portfolio health check...")
-            health_result = self.health_checker.check_before_entry(
-                required_capital=None,  # Will be calculated after signals generated
-                allow_existing_positions=True  # OMR can have multiple concurrent positions
-            )
-
-            # Check for critical errors
-            if not health_result.passed:
-                logger.error("Portfolio health check FAILED - BLOCKING ENTRY")
-                logger.error("Critical errors detected:")
-                for error in health_result.errors:
-                    logger.error(f"  - {error}")
-                logger.info("Skipping signal generation and order execution")
+            # Check if strategy is enabled
+            if not self.state_manager.is_enabled(STRATEGY_NAME):
+                logger.warning("[OMR] Strategy is DISABLED - skipping execution")
                 return
 
-            # Log warnings if any
-            if health_result.warnings:
-                logger.warning("Portfolio health check passed with warnings:")
-                for warning in health_result.warnings:
-                    logger.warning(f"  - {warning}")
+            # Check if shutdown requested
+            if self.state_manager.is_shutdown_requested(STRATEGY_NAME):
+                logger.warning("[OMR] Shutdown requested - skipping new entries")
+                return
 
-            # Health check passed - proceed with normal strategy execution
-            logger.success("Portfolio health check PASSED - proceeding with entry")
-            logger.info("")
+            # Acquire execution lock (blocks if another strategy is executing)
+            if not self.state_manager.acquire_execution_lock(STRATEGY_NAME):
+                logger.error("[OMR] Failed to acquire execution lock - another strategy is running")
+                return
 
-            # Call parent's run_once() for normal strategy execution
-            super().run_once()
+            try:
+                # Sync state with broker (detect external position changes)
+                broker_positions = {p['symbol']: int(p['quantity']) for p in self.broker.get_positions()}
+                changes = self.state_manager.sync_with_broker(broker_positions)
+                if changes['removed']:
+                    logger.info(f"[OMR] Detected closed positions: {changes['removed']}")
+
+                # CRITICAL: Portfolio health check before entry
+                logger.info("[OMR] Running pre-entry portfolio health check...")
+                health_result = self.health_checker.check_before_entry(
+                    required_capital=None,
+                    allow_existing_positions=True
+                )
+
+                if not health_result.passed:
+                    logger.error("[OMR] Portfolio health check FAILED - BLOCKING ENTRY")
+                    for error in health_result.errors:
+                        logger.error(f"[OMR]   - {error}")
+                    return
+
+                if health_result.warnings:
+                    logger.warning("[OMR] Portfolio health check passed with warnings:")
+                    for warning in health_result.warnings:
+                        logger.warning(f"[OMR]   - {warning}")
+
+                logger.success("[OMR] Portfolio health check PASSED - proceeding with entry")
+                logger.info("")
+
+                # Call parent's run_once() for normal strategy execution
+                super().run_once()
+
+                # Update last execution timestamp
+                self.state_manager.update_last_execution(STRATEGY_NAME)
+
+            finally:
+                # Always release execution lock
+                self.state_manager.release_execution_lock(STRATEGY_NAME)
 
         except Exception as e:
-            logger.error(f"Error in run_once: {e}")
+            logger.error(f"[OMR] Error in run_once: {e}")
             import traceback
             traceback.print_exc()
 
@@ -462,92 +496,117 @@ class OMRLiveAdapter(StrategyAdapter):
         Close overnight positions at market open (9:31 AM).
 
         Should be called at 9:31 AM to exit positions entered at 3:50 PM.
+        Uses execution lock for multi-strategy coordination.
         """
         try:
             now = tz.now()
             if now.time() < time(9, 30) or now.time() > time(9, 35):
                 logger.warning(
-                    f"close_overnight_positions called at {now.time()}, "
+                    f"[OMR] close_overnight_positions called at {now.time()}, "
                     "expected 9:31 AM"
                 )
 
-            # CRITICAL: Portfolio health check before exit
-            logger.info("Running pre-exit portfolio health check...")
-            health_result = self.health_checker.check_before_exit()
+            # Acquire execution lock for closing
+            if not self.state_manager.acquire_execution_lock(STRATEGY_NAME):
+                logger.error("[OMR] Failed to acquire execution lock for closing positions")
+                # Still attempt to close - safety is more important than coordination
+                logger.warning("[OMR] Proceeding with close despite lock failure (safety priority)")
 
-            # Check for critical errors
-            if not health_result.passed:
-                logger.error("Portfolio health check FAILED - CRITICAL ERRORS DETECTED")
-                logger.error("Critical errors:")
-                for error in health_result.errors:
-                    logger.error(f"  - {error}")
-                logger.warning("Attempting to close positions despite errors (safety measure)")
+            try:
+                # CRITICAL: Portfolio health check before exit
+                logger.info("[OMR] Running pre-exit portfolio health check...")
+                health_result = self.health_checker.check_before_exit()
 
-            # Log warnings if any
-            if health_result.warnings:
-                logger.warning("Portfolio health check warnings:")
-                for warning in health_result.warnings:
-                    logger.warning(f"  - {warning}")
+                if not health_result.passed:
+                    logger.error("[OMR] Portfolio health check FAILED - CRITICAL ERRORS DETECTED")
+                    for error in health_result.errors:
+                        logger.error(f"[OMR]   - {error}")
+                    logger.warning("[OMR] Attempting to close positions despite errors (safety measure)")
 
-            # Get all open positions
-            positions = self.broker.get_positions()
+                if health_result.warnings:
+                    logger.warning("[OMR] Portfolio health check warnings:")
+                    for warning in health_result.warnings:
+                        logger.warning(f"[OMR]   - {warning}")
 
-            if not positions:
-                logger.info("No overnight positions to close")
-                return
+                # Get OMR's tracked positions from state manager
+                omr_positions = self.state_manager.get_positions(STRATEGY_NAME)
 
-            logger.info(f"Closing {len(positions)} overnight positions at market open")
+                # Get all broker positions
+                broker_positions = self.broker.get_positions()
 
-            for position in positions:
-                try:
-                    # Calculate P&L (positions are dicts, not objects)
-                    entry_price = float(position['avg_entry_price'])
-                    current_price = float(position['current_price'])
-                    qty = int(position['quantity'])
+                if not broker_positions:
+                    logger.info("[OMR] No overnight positions to close")
+                    return
 
-                    pnl = (current_price - entry_price) * qty
-                    pnl_pct = (current_price - entry_price) / entry_price * 100
-
-                    logger.info(
-                        f"Closing {position['symbol']}: {qty} shares "
-                        f"@ ${entry_price:.2f} -> ${current_price:.2f} "
-                        f"(P&L: ${pnl:+.2f}, {pnl_pct:+.2f}%)"
-                    )
-
-                    # Place market order to close
-                    side = OrderSide.SELL if qty > 0 else OrderSide.BUY
-                    order = self.execution_engine.execute_order(
-                        symbol=position['symbol'],
-                        quantity=abs(qty),
-                        side=side,
-                        order_type=OrderType.MARKET
-                    )
-
-                    if order:
-                        logger.success(f"Close order placed: {order.get('order_id', 'UNKNOWN')}")
+                # Filter to only close OMR's positions (not MP's)
+                positions_to_close = []
+                for pos in broker_positions:
+                    symbol = pos['symbol']
+                    # Close if it's tracked by OMR OR if it's a leveraged ETF (OMR's universe)
+                    if symbol in omr_positions or ETFUniverse.is_leveraged(symbol):
+                        positions_to_close.append(pos)
                     else:
-                        logger.error(f"Failed to close {position['symbol']}")
+                        # Check if another strategy owns it
+                        owner = self.state_manager.symbol_owned_by_other(STRATEGY_NAME, symbol)
+                        if owner:
+                            logger.info(f"[OMR] Skipping {symbol} - owned by {owner}")
 
-                except Exception as e:
-                    logger.error(f"Error closing {position.get('symbol', 'UNKNOWN')}: {e}")
-                    continue
+                logger.info(f"[OMR] Closing {len(positions_to_close)} overnight positions at market open")
 
-            logger.info("Overnight position closing complete")
+                for position in positions_to_close:
+                    try:
+                        symbol = position['symbol']
+                        entry_price = float(position['avg_entry_price'])
+                        current_price = float(position['current_price'])
+                        qty = int(position['quantity'])
+
+                        pnl = (current_price - entry_price) * qty
+                        pnl_pct = (current_price - entry_price) / entry_price * 100
+
+                        logger.info(
+                            f"[OMR] Closing {symbol}: {qty} shares "
+                            f"@ ${entry_price:.2f} -> ${current_price:.2f} "
+                            f"(P&L: ${pnl:+.2f}, {pnl_pct:+.2f}%)"
+                        )
+
+                        side = OrderSide.SELL if qty > 0 else OrderSide.BUY
+                        order = self.execution_engine.execute_order(
+                            symbol=symbol,
+                            quantity=abs(qty),
+                            side=side,
+                            order_type=OrderType.MARKET
+                        )
+
+                        if order:
+                            logger.success(f"[OMR] Close order placed: {order.get('order_id', 'UNKNOWN')}")
+                            # Remove from state tracking
+                            self.state_manager.remove_position(STRATEGY_NAME, symbol)
+                        else:
+                            logger.error(f"[OMR] Failed to close {symbol}")
+
+                    except Exception as e:
+                        logger.error(f"[OMR] Error closing {position.get('symbol', 'UNKNOWN')}: {e}")
+                        continue
+
+                logger.info("[OMR] Overnight position closing complete")
+
+            finally:
+                self.state_manager.release_execution_lock(STRATEGY_NAME)
 
         except Exception as e:
-            logger.error(f"Error in close_overnight_positions: {e}")
+            logger.error(f"[OMR] Error in close_overnight_positions: {e}")
 
 
 if __name__ == "__main__":
-    logger.info("OMR (Overnight Mean Reversion) Live Trading Adapter")
-    logger.info("=" * 60)
-    logger.info("Generates signals at 3:50 PM EST based on:")
-    logger.info("  - Market regime (bull/bear/choppy)")
-    logger.info("  - Intraday price movements")
-    logger.info("  - Bayesian reversion probabilities")
+    logger.info("[OMR] Overnight Mean Reversion Live Trading Adapter")
+    logger.info("[OMR] " + "=" * 60)
+    logger.info("[OMR] Generates signals at 3:50 PM EST based on:")
+    logger.info("[OMR]   - Market regime (bull/bear/choppy)")
+    logger.info("[OMR]   - Intraday price movements")
+    logger.info("[OMR]   - Bayesian reversion probabilities")
     logger.info("")
-    logger.info("Entry: 3:50 PM EST")
-    logger.info("Exit: Next day 9:31 AM EST")
+    logger.info("[OMR] Entry: 3:50 PM EST")
+    logger.info("[OMR] Exit: Next day 9:31 AM EST")
     logger.info("")
-    logger.info("Default universe: Leveraged 3x ETFs")
-    logger.info("  (TQQQ, SQQQ, UPRO, SPXU, TMF, TMV, etc.)")
+    logger.info("[OMR] Default universe: Leveraged 3x ETFs")
+    logger.info("[OMR]   (TQQQ, SQQQ, UPRO, SPXU, TMF, TMV, etc.)")

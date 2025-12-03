@@ -332,3 +332,84 @@ def set_timezone(timezone: str) -> None:
 def get_timezone() -> str:
     """Get the current timezone name."""
     return tz.timezone_name
+
+
+def ensure_et_index(df: 'pd.DataFrame') -> 'pd.DataFrame':
+    """
+    Ensure DataFrame index is in Eastern Time.
+
+    This is a utility for validating/converting DataFrame timestamps.
+    Primarily used to verify broker data contracts.
+
+    Args:
+        df: DataFrame with DatetimeIndex
+
+    Returns:
+        DataFrame with ET-converted index
+
+    Raises:
+        ValueError: If index is not a DatetimeIndex
+    """
+    import pandas as pd
+
+    if df.empty:
+        return df
+
+    ET = pytz.timezone('America/New_York')
+
+    if isinstance(df.index, pd.MultiIndex):
+        ts_level = df.index.get_level_values(1)
+        if hasattr(ts_level, 'tz') and ts_level.tz is not None:
+            new_ts = ts_level.tz_convert(ET)
+            df.index = pd.MultiIndex.from_arrays(
+                [df.index.get_level_values(0), new_ts],
+                names=df.index.names
+            )
+    elif isinstance(df.index, pd.DatetimeIndex):
+        if df.index.tz is not None:
+            df.index = df.index.tz_convert(ET)
+        else:
+            df.index = df.index.tz_localize('UTC').tz_convert(ET)
+
+    return df
+
+
+def assert_et_timezone(df: 'pd.DataFrame', context: str = "") -> None:
+    """
+    Assert that DataFrame index is in Eastern Time.
+
+    Use this to validate broker data contracts. Raises if timezone is wrong.
+
+    Args:
+        df: DataFrame to validate
+        context: Description for error messages (e.g., "get_bars output")
+
+    Raises:
+        AssertionError: If index is not in Eastern Time
+    """
+    import pandas as pd
+
+    if df.empty:
+        return
+
+    # Get the timestamp index
+    if isinstance(df.index, pd.MultiIndex):
+        ts_index = df.index.get_level_values(1)
+    else:
+        ts_index = df.index
+
+    if not isinstance(ts_index, pd.DatetimeIndex):
+        return  # Can't validate non-datetime indexes
+
+    if ts_index.tz is None:
+        raise AssertionError(
+            f"DataFrame index has no timezone{' (' + context + ')' if context else ''}. "
+            "Expected US/Eastern."
+        )
+
+    tz_name = str(ts_index.tz)
+    if 'Eastern' not in tz_name and 'New_York' not in tz_name:
+        raise AssertionError(
+            f"DataFrame index timezone is {tz_name}{' (' + context + ')' if context else ''}. "
+            "Expected US/Eastern."
+        )

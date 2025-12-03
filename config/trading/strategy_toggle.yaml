@@ -1,0 +1,9 @@
+last_modified: '2025-12-02T00:47:45.668336-05:00'
+modified_by: test
+strategies:
+  mp:
+    enabled: false
+    shutdown_requested: false
+  omr:
+    enabled: true
+    shutdown_requested: false

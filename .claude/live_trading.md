@@ -98,7 +98,46 @@ The model must be retrained whenever:
 2. Removing symbols from the universe
 3. Updating the model architecture
 
-### 4. Market Hours and Schedule
+### 4. Timezone Handling (Broker Data Contract)
+
+**CRITICAL**: AlpacaBroker always returns data in Eastern Time (ET).
+
+Alpaca's API returns all timestamps in UTC. To avoid confusion when filtering by market hours (e.g., `between_time(9:30, 9:35)`), the broker layer converts all returned data to ET before returning.
+
+**Contract**:
+```python
+# AlpacaBroker.get_bars() and get_historical_bars() return ET data
+df = broker.get_historical_bars(symbol, start, end, timeframe='1Min')
+# df.index is now in America/New_York timezone
+# Safe to use: df.between_time(time(9, 30), time(9, 35))
+```
+
+**Why This Matters**:
+```python
+# WITHOUT broker conversion (old behavior):
+# API returns UTC timestamps
+df.index  # 2024-01-15 14:30:00+00:00 (UTC)
+# between_time(9:30) looks for 9:30 UTC = 4:30 AM ET - WRONG!
+
+# WITH broker conversion (current behavior):
+# Broker converts to ET before returning
+df.index  # 2024-01-15 09:30:00-05:00 (ET)
+# between_time(9:30) correctly finds 9:30 AM ET - CORRECT!
+```
+
+**Validation Helper**:
+```python
+from src.utils.timezone import assert_et_timezone
+
+# Verify data is in ET (raises if not)
+assert_et_timezone(df, context="broker data")
+```
+
+**Key Files**:
+- Broker conversion: `src/trading/brokers/alpaca_broker.py:_ensure_et_timezone()`
+- Timezone utility: `src/utils/timezone.py` (`ensure_et_index`, `assert_et_timezone`)
+
+### 5. Market Hours and Schedule
 
 Live trading only executes during market hours:
 - **Entry time**: 3:50 PM ET (configurable)
