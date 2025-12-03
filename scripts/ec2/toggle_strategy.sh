@@ -19,7 +19,15 @@ set -e
 REPO_DIR="${REPO_DIR:-$HOME/Homeguard}"
 TOGGLE_FILE="$REPO_DIR/config/trading/strategy_toggle.yaml"
 STATE_FILE="$REPO_DIR/data/trading/strategy_positions.json"
-PYTHON_CMD="${PYTHON_CMD:-python}"
+
+# Auto-detect Python: prefer venv, then system python
+if [ -f "$REPO_DIR/venv/bin/python" ]; then
+    PYTHON_CMD="${PYTHON_CMD:-$REPO_DIR/venv/bin/python}"
+elif [ -f "$HOME/Homeguard/venv/bin/python" ]; then
+    PYTHON_CMD="${PYTHON_CMD:-$HOME/Homeguard/venv/bin/python}"
+else
+    PYTHON_CMD="${PYTHON_CMD:-python3}"
+fi
 
 # Colors
 RED='\033[0;31m'
