@@ -173,6 +173,6 @@ git add . && git commit -m "Clear description of changes"
 
 ## Related Guidelines
 
-- See [`.claude/code_standards.md`](.claude/code_standards.md) for code quality standards
-- See [`.claude/testing.md`](.claude/testing.md) for testing before commits
-- See [`.claude/documentation.md`](.claude/documentation.md) for doc updates
+- See [`code_standards.md`](code_standards.md) for code quality standards
+- See [`testing.md`](testing.md) for testing before commits
+- See [`documentation.md`](documentation.md) for doc updates

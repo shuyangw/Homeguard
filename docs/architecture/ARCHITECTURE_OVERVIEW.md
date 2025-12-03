@@ -194,15 +194,15 @@ portfolio = engine.run_with_data(strategy, data)
   - Automatic routing from `BacktestEngine` when `PairsStrategy` detected
   - Trade logging with pair-specific attributes
 
-**Optimization** ([src/backtesting/engine/](../../src/backtesting/engine/) | [Detailed Docs](OPTIMIZATION_MODULE.md)):
+**Optimization** ([src/backtesting/engine/](../../src/backtesting/engine/) | [Detailed Docs](../planning/OPTIMIZATION_MODULE.md)):
 
-- **BacktestEngine.optimize()** ([backtest_engine.py](../../src/backtesting/engine/backtest_engine.py:408))
+- **BacktestEngine.optimize()** ([backtest_engine.py](../../src/backtesting/engine/backtest_engine.py))
   - Grid search parameter optimization
   - Tests all parameter combinations via `itertools.product()`
   - Supports Sharpe Ratio, Total Return, Max Drawdown metrics
   - Returns best parameters, value, and portfolio
 
-- **SweepRunner.optimize_across_universe()** ([sweep_runner.py](../../src/backtesting/engine/sweep_runner.py:382))
+- **SweepRunner.optimize_across_universe()** ([sweep_runner.py](../../src/backtesting/engine/sweep_runner.py))
   - Universe-wide parameter optimization
   - Finds parameters optimal across multiple symbols
   - Aggregation metrics: median/mean Sharpe, returns, win rate
@@ -711,7 +711,7 @@ python -m gui
 
 - **Module Reference**: [MODULE_REFERENCE.md](MODULE_REFERENCE.md)
 - **Data Flow**: [DATA_FLOW.md](DATA_FLOW.md)
-- **Optimization Module**: [OPTIMIZATION_MODULE.md](OPTIMIZATION_MODULE.md)
+- **Optimization Module**: [OPTIMIZATION_MODULE.md](../planning/OPTIMIZATION_MODULE.md)
 - **Backtesting Guide**: [../guides/BACKTESTING_GUIDE.md](../guides/BACKTESTING_GUIDE.md)
 - **Testing Guide**: [../testing/TEST_SUITE_QUICK_START.md](../testing/TEST_SUITE_QUICK_START.md)
 

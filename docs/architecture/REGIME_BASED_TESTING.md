@@ -536,9 +536,9 @@ pytest tests/backtesting/chunking/ tests/backtesting/regimes/ -v
 ## References
 
 ### Related Documentation
-- [Optimization Module](OPTIMIZATION_MODULE.md) - GridSearchOptimizer integration
-- [Backtesting Engine](../../docs/guides/backtesting_engine.md) - Core engine
-- [Testing Guidelines](../../docs/testing/README.md) - Testing standards
+- [Optimization Module](../planning/OPTIMIZATION_MODULE.md) - GridSearchOptimizer integration
+- [Backtesting Guide](../guides/BACKTESTING_GUIDE.md) - Core engine
+- [Test Suite Quick Start](../testing/TEST_SUITE_QUICK_START.md) - Testing standards
 
 ### Academic References
 - Walk-Forward Analysis: Bailey et al. (2014) "Probabilistic Sharpe Ratio"
