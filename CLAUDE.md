@@ -135,6 +135,7 @@ Update docs when modifying user-facing functionality.
 |------------|----------|---------|
 | **Trade Log Analyzer** | `.claude/agents/trade-log-analyzer.md` | Analyze today's trading logs, identify errors, propose fixes |
 | **Backtest Optimizer** | `.claude/agents/backtest-optimizer.md` | Optimize strategy parameters and run systematic backtests |
+| **Backtest Driver** | `.claude/agents/backtest-driver.md` | Autonomous backtest execution with yearly/monthly reports |
 
 **EC2 Management Scripts** (Windows):
 - `scripts\ec2\local_start_instance.bat` - Start EC2 instance
@@ -162,6 +163,7 @@ Pylance/VectorBT type annotation patterns.
 ```
 .claude/
 ├── agents/                      # Claude Code agent definitions
+│   ├── backtest-driver.md       # Autonomous backtest execution agent
 │   ├── backtest-optimizer.md    # Strategy optimization agent
 │   └── trade-log-analyzer.md    # Live trading log analysis agent
 ├── backtesting.md               # Backtesting best practices

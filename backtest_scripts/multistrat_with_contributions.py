@@ -2,6 +2,19 @@
 Multi-Strategy (OMR + MP) Backtest with Monthly Contributions.
 
 Tests combined strategy performance with dollar-cost averaging.
+
+MP Strategy Timing: 3:55 PM ET (NO SHIFTS NEEDED)
+- Each day: measure return for YESTERDAY's positions
+- Then: select NEW positions using today's momentum
+- Loop structure naturally handles the timing - no shift() calls
+
+Timeline:
+  Day T (3:55 PM): Select stocks based on momentum[T] → hold overnight
+  Day T+1 (3:55 PM): Measure return (close[T+1]/close[T]-1), select new stocks
+
+This avoids lookahead bias because:
+- Returns are measured for PREVIOUS day's selections
+- New selections use CURRENT data (known at decision time)
 """
 
 import sys
@@ -37,6 +50,8 @@ MP_CONFIG = {
     'top_n': 10,
     'vix_threshold': 25.0,
     'spy_dd_threshold': -0.05,
+    'slippage_per_share': 0.02,  # $0.02 per share slippage
+    'avg_stock_price': 150,      # Assume avg S&P 500 stock price ~$150
 }
 
 INITIAL_CAPITAL = 50000
@@ -55,7 +70,9 @@ def main():
     print()
     print('Strategies:')
     print('  OMR: Bayesian overnight reversion (15% x 3 positions = 45%)')
+    print('       Entry: 3:50 PM, Exit: 9:35 AM next day')
     print('  MP:  1m-1w momentum (6.5% x 10 positions = 65%)')
+    print('       Entry: 3:55 PM, Exit: 3:55 PM next day (close-to-close)')
     print('  Combined exposure: ~110% (slight leverage)')
     print()
 
@@ -106,15 +123,19 @@ def main():
     bayesian_model.load_model()
 
     # Pre-compute MP signals (1m-1w momentum)
+    # MP runs at 3:55 PM - use TODAY's close to select stocks
+    # NO SHIFTS NEEDED - loop structure handles timing naturally
     returns_1m = mp_prices.pct_change(21)
     returns_1w = mp_prices.pct_change(5)
-    mp_momentum = returns_1m - returns_1w
+    mp_momentum = returns_1m - returns_1w  # Today's momentum
 
-    mp_high_vix = mp_vix > MP_CONFIG['vix_threshold']
+    mp_high_vix = mp_vix > MP_CONFIG['vix_threshold']  # Today's VIX
+
     mp_spy_max = mp_spy.expanding().max()
     mp_spy_dd = (mp_spy - mp_spy_max) / mp_spy_max
-    mp_spy_dd_trigger = mp_spy_dd < MP_CONFIG['spy_dd_threshold']
+    mp_spy_dd_trigger = mp_spy_dd < MP_CONFIG['spy_dd_threshold']  # Today's SPY DD
 
+    # NO SHIFT - returns measured naturally in loop (today's return for yesterday's picks)
     mp_daily_returns = mp_prices.pct_change()
 
     # Get common dates
@@ -133,6 +154,17 @@ def main():
 
     portfolio_history = []
     current_month = None
+
+    # Track positions for slippage and returns
+    prev_mp_positions = []  # Yesterday's stock picks
+    prev_mp_exposure = 1.0  # Yesterday's exposure level
+
+    # SLIPPAGE DISABLED FOR THIS RUN
+    mp_slippage_pct = 0
+    omr_slippage_pct = 0
+
+    total_mp_slippage = 0
+    total_omr_slippage = 0
 
     for date in common_dates:
         # Monthly contribution at start of each new month
@@ -203,29 +235,54 @@ def main():
                     if day_trades:
                         day_trades.sort(key=lambda x: x['probability'], reverse=True)
                         selected = day_trades[:OMR_CONFIG['max_positions']]
+                        # Calculate return with slippage (entry + exit = 2x slippage per trade)
                         omr_return = sum(t['overnight_return'] * OMR_CONFIG['position_size'] for t in selected)
+                        # Deduct slippage: 2 trades per position (entry at close, exit at open)
+                        slippage_cost = len(selected) * 2 * omr_slippage_pct * OMR_CONFIG['position_size']
+                        omr_return -= slippage_cost
+                        total_omr_slippage += slippage_cost * combined_portfolio
 
         # === MP Return ===
+        # Step 1: Measure return for YESTERDAY's positions (if any)
         mp_return = 0.0
+        if prev_mp_positions and date in mp_daily_returns.index:
+            for stock in prev_mp_positions:
+                if stock in mp_daily_returns.columns:
+                    stock_ret = mp_daily_returns.loc[date, stock]
+                    if pd.notna(stock_ret):
+                        mp_return += stock_ret * MP_CONFIG['position_size'] * prev_mp_exposure
+
+        # Step 2: Select NEW positions for tomorrow (based on today's momentum)
+        current_mp_positions = []
+        current_exposure = 1.0
+
         if date in mp_momentum.index:
             mom_today = mp_momentum.loc[date].dropna()
 
             if len(mom_today) >= MP_CONFIG['top_n']:
+                # Check risk signals using today's data
                 risk_active = False
                 if date in mp_high_vix.index and mp_high_vix.loc[date]:
                     risk_active = True
                 if date in mp_spy_dd_trigger.index and mp_spy_dd_trigger.loc[date]:
                     risk_active = True
 
-                exposure = 0.5 if risk_active else 1.0
+                current_exposure = 0.5 if risk_active else 1.0
 
                 top_stocks = mom_today.nlargest(MP_CONFIG['top_n']).index.tolist()
-                valid_stocks = [s for s in top_stocks if s in mp_daily_returns.columns and date in mp_daily_returns.index]
+                current_mp_positions = [s for s in top_stocks if s in mp_daily_returns.columns]
 
-                for stock in valid_stocks:
-                    stock_ret = mp_daily_returns.loc[date, stock]
-                    if pd.notna(stock_ret):
-                        mp_return += stock_ret * MP_CONFIG['position_size'] * exposure
+        # Calculate slippage for position changes
+        prev_set = set(prev_mp_positions)
+        curr_set = set(current_mp_positions)
+        num_trades = len(curr_set - prev_set) + len(prev_set - curr_set)
+        mp_slippage_today = num_trades * mp_slippage_pct * MP_CONFIG['position_size'] * current_exposure
+        mp_return -= mp_slippage_today
+        total_mp_slippage += mp_slippage_today * mp_only_portfolio
+
+        # Store for next iteration
+        prev_mp_positions = current_mp_positions
+        prev_mp_exposure = current_exposure
 
         # === SPY Return ===
         spy_ret = 0.0
@@ -288,6 +345,10 @@ def main():
     print()
     print(f"Combined vs MP:        ${combined_gain - mp_gain:>+14,.0f}")
     print(f"Combined vs SPY:       ${combined_gain - spy_gain:>+14,.0f}")
+    print()
+    print(f"Total OMR Slippage:    ${total_omr_slippage:>14,.0f}")
+    print(f"Total MP Slippage:     ${total_mp_slippage:>14,.0f}")
+    print(f"Total Slippage:        ${total_omr_slippage + total_mp_slippage:>14,.0f}")
     print()
 
     # 2024 monthly income
