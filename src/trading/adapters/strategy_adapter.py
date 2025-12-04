@@ -74,7 +74,7 @@ class StrategyAdapter(ABC):
         self._data_cache: Optional[Dict[str, pd.DataFrame]] = None
         self._cache_date: Optional[datetime] = None
 
-        # Intraday data caching for reliability (pre-fetch at 3:45 PM)
+        # Intraday data caching for reliability
         self._intraday_cache: Optional[Dict[str, pd.DataFrame]] = None
         self._intraday_cache_time: Optional[datetime] = None
 
@@ -128,11 +128,10 @@ class StrategyAdapter(ABC):
 
     def prefetch_intraday_data(self) -> None:
         """
-        Pre-fetch today's intraday data for all symbols.
+        Fetch today's intraday data for all symbols.
 
-        This should be called at 3:45 PM to cache today's intraday data,
-        avoiding network issues at the critical 3:50 PM execution time.
-        Provides a 5-minute buffer while keeping data fresh.
+        Called from run_once() at execution time to ensure fresh data.
+        Each strategy calls this right before signal generation.
         """
         try:
             logger.info("Pre-fetching today's intraday data...")

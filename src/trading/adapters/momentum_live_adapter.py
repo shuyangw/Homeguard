@@ -436,15 +436,15 @@ class MomentumLiveAdapter(StrategyAdapter):
 
     def prefetch_intraday_data(self) -> None:
         """
-        Pre-fetch today's data at 3:45 PM for 3:55 PM execution.
+        Refresh historical data cache with today's prices.
 
         This refreshes the cache with today's near-close prices so that
         iloc[-1] returns TODAY's momentum instead of yesterday's.
 
-        Called automatically by LiveTradingRunner at 3:45 PM if this method exists.
+        Called from run_once() at 3:55 PM execution time.
         """
         logger.info("[MP] " + "=" * 60)
-        logger.info("[MP] PRE-FETCHING TODAY'S DATA (3:45 PM)")
+        logger.info("[MP] REFRESHING DATA FOR 3:55 PM EXECUTION")
         logger.info("[MP] " + "=" * 60)
 
         try:
@@ -464,7 +464,7 @@ class MomentumLiveAdapter(StrategyAdapter):
         """
         Fetch current market data for signal generation.
 
-        Uses cached historical data (refreshed at 3:45 PM to include today's prices).
+        Uses cached historical data (refreshed at execution time to include today's prices).
         """
         try:
             market_data = {}

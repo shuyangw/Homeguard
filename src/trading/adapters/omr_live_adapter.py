@@ -236,7 +236,7 @@ class OMRLiveAdapter(StrategyAdapter):
         Fetch intraday market data for OMR strategy.
 
         OMR needs intraday bars to calculate intraday moves.
-        Uses pre-fetched intraday cache if available (3:45 PM pre-fetch).
+        Uses intraday cache refreshed at execution time (3:50 PM).
         """
         try:
             import pandas as pd
@@ -425,8 +425,7 @@ class OMRLiveAdapter(StrategyAdapter):
                 logger.warning("[OMR] Shutdown requested - skipping new entries")
                 return
 
-            # CRITICAL: Refresh intraday data NOW (at 3:50 PM execution time)
-            # The 3:45 PM prefetch only has data up to 3:45 PM, but we need 3:50 PM data
+            # Refresh intraday data at 3:50 PM execution time
             logger.info("[OMR] Refreshing intraday data for 3:50 PM execution...")
             self.prefetch_intraday_data()
 

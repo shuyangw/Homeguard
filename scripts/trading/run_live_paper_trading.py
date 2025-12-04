@@ -382,8 +382,7 @@ class LiveTradingRunner:
             adapter: Strategy adapter to run
             check_interval: Seconds between schedule checks (default: 15)
             log_dir: Directory for log files (default: logs/live_trading)
-            enable_intraday_prefetch: Enable 3:45 PM intraday data pre-fetching (default: True)
-                                     If False, fetches all data at execution time (3:50 PM)
+            enable_intraday_prefetch: Deprecated - strategies now fetch data at execution time
             force_market_open: Bypass market open check for testing (default: False)
         """
         self.adapter = adapter
@@ -628,7 +627,7 @@ class LiveTradingRunner:
         logger.info(f"Strategy: {self.adapter.__class__.__name__}")
         logger.info(f"Check interval: {self.check_interval}s")
         logger.info(f"Log directory: {self.log_dir}")
-        logger.info(f"Intraday pre-fetch: {'ENABLED (3:45 PM)' if self.enable_intraday_prefetch else 'DISABLED (3:50 PM only)'}")
+        logger.info(f"Intraday pre-fetch: Strategies fetch at execution time")
         if self.force_market_open:
             logger.warning(f"FORCE MARKET OPEN: ENABLED (market checks bypassed)")
         logger.info("Press Ctrl+C to stop")
