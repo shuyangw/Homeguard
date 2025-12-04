@@ -405,6 +405,7 @@ class OMRLiveAdapter(StrategyAdapter):
         Run one iteration of the strategy with portfolio health checks.
 
         Overrides base class to add:
+        - Fresh intraday data fetch at execution time (3:50 PM)
         - Pre-entry health validation
         - Execution lock for multi-strategy coordination
         - Position tracking per strategy
@@ -423,6 +424,11 @@ class OMRLiveAdapter(StrategyAdapter):
             if self.state_manager.is_shutdown_requested(STRATEGY_NAME):
                 logger.warning("[OMR] Shutdown requested - skipping new entries")
                 return
+
+            # CRITICAL: Refresh intraday data NOW (at 3:50 PM execution time)
+            # The 3:45 PM prefetch only has data up to 3:45 PM, but we need 3:50 PM data
+            logger.info("[OMR] Refreshing intraday data for 3:50 PM execution...")
+            self.prefetch_intraday_data()
 
             # Acquire execution lock (blocks if another strategy is executing)
             if not self.state_manager.acquire_execution_lock(STRATEGY_NAME):
