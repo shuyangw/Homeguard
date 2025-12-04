@@ -28,7 +28,7 @@ The system supports running **N strategies** concurrently with:
 | Strategy | Position Size | Max Positions | Max Exposure | Execution Time |
 |----------|---------------|---------------|--------------|----------------|
 | OMR      | 15%           | 3             | 45%          | 9:31 AM (exit), 3:50 PM (entry) |
-| MP       | 6.5%          | 10            | 65%          | 9:31 AM (rebalance) |
+| MP       | 6.5%          | 10            | 65%          | 3:55 PM (rebalance) |
 | *Future* | TBD           | TBD           | TBD          | TBD |
 | **Combined** | -         | 13+           | **110%+**    | - |
 
@@ -492,7 +492,7 @@ def execute_strategy(strategy):
 
 Avoid restarting:
 - 9:30-9:35 AM (OMR exit window)
-- 3:45-4:00 PM (both strategies' execution window)
+- 3:45-4:00 PM (OMR entry and MP rebalance window)
 
 ### Status Output
 
@@ -572,23 +572,23 @@ On restart:
 ### Daily Timeline (All Times EST)
 
 ```
- 9:30 AM ─┬─ [OMR] Pre-load historical data (VIX, SPY, leveraged ETFs)
-          └─ [MP]  Pre-load historical data (S&P 500, VIX via yfinance)
+ 9:30 AM ─── [OMR] Pre-load historical data (VIX, SPY, leveraged ETFs)
 
- 9:31 AM ─┬─ [OMR] EXIT: Sell all overnight positions (TQQQ, SOXL, etc.)
-          │        └─ Execution lock held for ~1-2 min
-          │
-          └─ [MP]  REBALANCE: Buy/sell based on prior day's momentum rankings
+ 9:31 AM ─── [OMR] EXIT: Sell all overnight positions (TQQQ, SOXL, etc.)
+                   └─ Execution lock held for ~1-2 min
+
+ 3:43 PM ─── [OMR] Pre-fetch intraday data for entry signals
+
+ 3:50 PM ─── [OMR] ENTRY: Open new overnight positions
+                   ├─ Generate signals (Bayesian + regime filter)
+                   ├─ Buy selected leveraged ETFs (TQQQ, SOXL, UPRO, etc.)
+                   └─ Execution lock held for ~4 min max
+
+ 3:55 PM ─── [MP]  REBALANCE: Buy/sell based on today's momentum rankings
+                   ├─ Pre-load historical data (S&P 500, VIX via yfinance)
                    ├─ Sell stocks that dropped out of top 10
                    ├─ Buy stocks that entered top 10
                    └─ Execution lock held for ~2-4 min (after OMR releases)
-
- 3:43 PM ── [OMR] Pre-fetch intraday data for entry signals
-
- 3:50 PM ── [OMR] ENTRY: Open new overnight positions
-                  ├─ Generate signals (Bayesian + regime filter)
-                  ├─ Buy selected leveraged ETFs (TQQQ, SOXL, UPRO, etc.)
-                  └─ Execution lock held for ~4 min max
 
  4:00 PM ─┬─ [OMR] Generate EOD report
           └─ [MP]  Generate EOD report
@@ -596,13 +596,19 @@ On restart:
 
 ### Execution Lock Sequence
 
-At **9:31 AM**, both strategies run but are serialized by execution lock:
+At **3:50-3:55 PM**, strategies run and are serialized by execution lock:
 
+```
+3:50:00 → [OMR] Acquires lock, starts buying overnight positions
+3:53:30 → [OMR] Releases lock after entry complete
+3:55:00 → [MP]  Acquires lock, starts rebalancing
+3:57:30 → [MP]  Releases lock after rebalancing complete
+```
+
+At **9:31 AM**, only OMR runs:
 ```
 9:31:00 → [OMR] Acquires lock, starts selling overnight positions
 9:31:45 → [OMR] Releases lock after selling complete
-9:31:46 → [MP]  Acquires lock, starts rebalancing
-9:33:30 → [MP]  Releases lock after rebalancing complete
 ```
 
 ### Strategy Execution Details
@@ -610,7 +616,7 @@ At **9:31 AM**, both strategies run but are serialized by execution lock:
 | Strategy | Signal Source | Universe | Trades/Day | Execution Time |
 |----------|--------------|----------|------------|----------------|
 | **OMR** | Bayesian model + VIX regime | 6 leveraged ETFs | 3-5 entry, 3-5 exit | ~1-2 min |
-| **MP** | 12-1 month momentum | 503 S&P 500 stocks | 0-4 (avg 1.3) | ~2-4 min |
+| **MP** | 1m-1w momentum | 503 S&P 500 stocks | 0-4 (avg 1.3) | ~2-4 min |
 
 ### What Each Strategy Trades
 
@@ -620,7 +626,7 @@ At **9:31 AM**, both strategies run but are serialized by execution lock:
 - Holds ~16 hours overnight
 
 **MP (Momentum Protection)**:
-- Rebalances at 9:31 AM based on prior day's close
+- Rebalances at 3:55 PM based on today's close prices
 - Trades: Any of 503 S&P 500 stocks
 - Holds until stock drops out of top 10 (days to weeks)
 

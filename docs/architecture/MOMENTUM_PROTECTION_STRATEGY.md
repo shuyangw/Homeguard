@@ -8,7 +8,7 @@ A daily momentum strategy with rule-based crash protection for live trading.
 |-----------|-------|
 | Universe | S&P 500 (503 stocks) |
 | Positions | Top 10 by momentum |
-| Rebalance | Daily at 9:31 AM EST |
+| Rebalance | Daily at 3:55 PM EST |
 | Protection | Reduce to 50% exposure during risk |
 | Walk-Forward Return | +1,234% (2017-2024) |
 | Annual Return | +38.2% |
@@ -44,7 +44,7 @@ When EITHER of these signals trigger, exposure is reduced from 100% to 50%:
 
 ### 3. Daily Rebalance
 
-At 9:31 AM EST each trading day (based on prior day's close):
+At 3:55 PM EST each trading day (using current day's close prices):
 1. Calculate current momentum rankings
 2. Check risk signals
 3. Sell positions no longer in top 10
@@ -200,7 +200,7 @@ strategy:
   position_size_pct: 0.10      # 10% per position
   reduced_exposure: 0.50       # 50% when risk high
   vix_threshold: 25.0          # VIX trigger level
-  rebalance_time: "09:31:00"   # 9:31 AM EST
+  rebalance_time: "15:55:00"   # 3:55 PM EST
 ```
 
 ### Position Sizing Presets
@@ -215,7 +215,7 @@ strategy:
 
 ### Option 1: Windows Task Scheduler
 
-Create a scheduled task to run at 9:31 AM EST daily:
+Create a scheduled task to run at 3:55 PM EST daily:
 
 ```
 Program: C:\Users\qwqw1\anaconda3\envs\fintech\python.exe
@@ -227,8 +227,8 @@ Arguments: C:\...\scripts\trading\demo_momentum_paper_trading.py --run-once
 Deploy to EC2 with cron:
 
 ```bash
-# crontab entry (9:31 AM EST = 14:31 UTC during EST)
-31 14 * * 1-5 /path/to/python /path/to/demo_momentum_paper_trading.py --run-once
+# crontab entry (3:55 PM EST = 20:55 UTC during EST)
+55 20 * * 1-5 /path/to/python /path/to/demo_momentum_paper_trading.py --run-once
 ```
 
 ### Option 3: Integration with Existing Infrastructure
@@ -242,7 +242,7 @@ from src.trading.adapters.momentum_live_adapter import MomentumLiveAdapter
 broker = AlpacaBroker(mode='paper')
 adapter = MomentumLiveAdapter(broker=broker, top_n=10)
 
-# Pre-load data and run at 9:31 AM EST
+# Pre-load data and run at 3:55 PM EST
 adapter.preload_historical_data()
 adapter.run_once()
 ```
@@ -284,10 +284,10 @@ Logs are written to console with color coding:
 
 | Aspect | Momentum Protection | OMR |
 |--------|---------------------|-----|
-| Holding Period | Daily | Overnight |
+| Holding Period | Daily (close-to-close) | Overnight |
 | Universe | S&P 500 | Leveraged ETFs |
 | Positions | 10 stocks | 3-5 ETFs |
-| Rebalance | 9:31 AM | Entry 3:50 PM, Exit 9:31 AM |
+| Rebalance | 3:55 PM | Entry 3:50 PM, Exit 9:31 AM |
 | Risk Model | Rule-based | Bayesian + Regime |
 | Expected Return | ~3.3%/month | ~2%/month |
 | Drawdown | Lower | Higher (leveraged) |
