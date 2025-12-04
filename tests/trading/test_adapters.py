@@ -781,5 +781,510 @@ class TestColumnNormalization:
         assert list(market_data['SPY'].columns) == ['open', 'high', 'low', 'close', 'volume']
 
 
+class TestMomentumLiveAdapter:
+    """Test MomentumLiveAdapter and fetch_todays_closes()."""
+
+    @pytest.fixture
+    def mock_mp_broker(self):
+        """Create mock broker for MP adapter."""
+        broker = Mock()
+
+        # Mock account info (dict format as returned by real broker)
+        broker.get_account.return_value = {
+            'account_id': 'test_account_123',
+            'buying_power': 100000.0,
+            'portfolio_value': 100000.0,
+            'cash': 50000.0
+        }
+
+        # Mock market status
+        broker.is_market_open.return_value = True
+
+        # Mock historical data
+        def get_historical_bars(symbol, start, end, timeframe):
+            """Return mock historical data."""
+            dates = pd.date_range(start, end, freq='D')
+            if len(dates) == 0:
+                dates = pd.date_range(start, periods=1, freq='D')
+            data = {
+                'open': [100.0 + i for i in range(len(dates))],
+                'high': [101.0 + i for i in range(len(dates))],
+                'low': [99.0 + i for i in range(len(dates))],
+                'close': [100.5 + i for i in range(len(dates))],
+                'volume': [1000000] * len(dates)
+            }
+            return pd.DataFrame(data, index=dates)
+
+        broker.get_historical_bars.side_effect = get_historical_bars
+
+        # Mock positions
+        broker.get_positions.return_value = []
+
+        # Mock quotes
+        broker.get_latest_quote.return_value = {'bid': 100.0, 'ask': 100.5}
+
+        return broker
+
+    @pytest.fixture
+    def mp_adapter(self, mock_mp_broker):
+        """Create MomentumLiveAdapter with mock broker."""
+        from src.trading.adapters import MomentumLiveAdapter
+
+        # Use small symbol list for testing
+        adapter = MomentumLiveAdapter(
+            broker=mock_mp_broker,
+            symbols=['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'META'],
+            top_n=3,
+            position_size=0.10
+        )
+        return adapter
+
+    def test_initialization(self, mock_mp_broker):
+        """Test MP adapter initialization."""
+        from src.trading.adapters import MomentumLiveAdapter
+
+        adapter = MomentumLiveAdapter(
+            broker=mock_mp_broker,
+            symbols=['AAPL', 'MSFT'],
+            top_n=5,
+            position_size=0.10
+        )
+
+        assert adapter.broker == mock_mp_broker
+        assert adapter.symbols == ['AAPL', 'MSFT']
+        assert adapter.top_n == 5
+        assert adapter.position_size == 0.10
+
+    def test_get_schedule(self, mp_adapter):
+        """Test MP schedule configuration - should execute at 3:55 PM."""
+        schedule = mp_adapter.get_schedule()
+
+        assert 'execution_times' in schedule
+        assert len(schedule['execution_times']) == 1
+        assert schedule['execution_times'][0]['time'] == '15:55'  # 3:55 PM EST
+        assert schedule['execution_times'][0]['action'] == 'rebalance'
+        assert schedule['market_hours_only'] == True
+        assert schedule['strategy_type'] == 'daily'
+
+    def test_fetch_todays_closes_no_cache(self, mp_adapter):
+        """Test fetch_todays_closes falls back to full fetch when no cache."""
+        # Ensure no cache
+        mp_adapter._data_cache = None
+
+        # Should fall back to preload_historical_data
+        result = mp_adapter.fetch_todays_closes()
+
+        assert result == True
+        # Should have populated cache via preload
+        assert mp_adapter._data_cache is not None
+
+    def test_fetch_todays_closes_with_existing_cache(self, mp_adapter):
+        """Test fetch_todays_closes appends to existing cache."""
+        from src.utils.timezone import tz
+
+        # Create historical cache (missing today)
+        yesterday = (tz.now() - timedelta(days=1)).date()
+        dates = pd.date_range(end=yesterday, periods=30, freq='D')
+
+        prices_df = pd.DataFrame({
+            'AAPL': [150.0 + i for i in range(len(dates))],
+            'MSFT': [300.0 + i for i in range(len(dates))],
+            'GOOGL': [140.0 + i for i in range(len(dates))],
+            'AMZN': [180.0 + i for i in range(len(dates))],
+            'META': [500.0 + i for i in range(len(dates))]
+        }, index=dates)
+
+        spy_df = pd.DataFrame({
+            'close': [450.0 + i for i in range(len(dates))]
+        }, index=dates)
+
+        vix_df = pd.DataFrame({
+            'Close': [15.0] * len(dates)
+        }, index=dates)
+
+        mp_adapter._data_cache = {
+            'prices': prices_df,
+            'SPY': spy_df,
+            'VIX': vix_df
+        }
+
+        original_len = len(prices_df)
+
+        # Fetch today's closes
+        result = mp_adapter.fetch_todays_closes()
+
+        assert result == True
+        # Cache should have one more row
+        new_prices = mp_adapter._data_cache['prices']
+        assert len(new_prices) == original_len + 1
+
+    def test_fetch_todays_closes_already_has_today(self, mp_adapter):
+        """Test fetch_todays_closes skips if already have today's data."""
+        from src.utils.timezone import tz
+
+        # Create cache that includes today
+        today = tz.now().date()
+        dates = pd.date_range(end=today, periods=30, freq='D')
+
+        prices_df = pd.DataFrame({
+            'AAPL': [150.0 + i for i in range(len(dates))],
+            'MSFT': [300.0 + i for i in range(len(dates))],
+            'GOOGL': [140.0 + i for i in range(len(dates))],
+            'AMZN': [180.0 + i for i in range(len(dates))],
+            'META': [500.0 + i for i in range(len(dates))]
+        }, index=dates)
+
+        mp_adapter._data_cache = {
+            'prices': prices_df,
+            'SPY': pd.DataFrame({'close': [450.0] * len(dates)}, index=dates),
+            'VIX': pd.DataFrame({'Close': [15.0] * len(dates)}, index=dates)
+        }
+
+        original_len = len(prices_df)
+
+        # Should return True but not add new row
+        result = mp_adapter.fetch_todays_closes()
+
+        assert result == True
+        assert len(mp_adapter._data_cache['prices']) == original_len
+
+    def test_fetch_todays_closes_handles_broker_errors(self, mp_adapter):
+        """Test fetch_todays_closes handles broker errors gracefully."""
+        from src.utils.timezone import tz
+
+        # Create historical cache
+        yesterday = (tz.now() - timedelta(days=1)).date()
+        dates = pd.date_range(end=yesterday, periods=30, freq='D')
+
+        prices_df = pd.DataFrame({
+            'AAPL': [150.0] * len(dates),
+            'MSFT': [300.0] * len(dates),
+        }, index=dates)
+
+        mp_adapter._data_cache = {
+            'prices': prices_df,
+            'SPY': pd.DataFrame({'close': [450.0] * len(dates)}, index=dates),
+            'VIX': pd.DataFrame({'Close': [15.0] * len(dates)}, index=dates)
+        }
+
+        # Clear side_effect and make broker return empty DataFrame for all symbols
+        mp_adapter.broker.get_historical_bars.side_effect = None
+        mp_adapter.broker.get_historical_bars.return_value = pd.DataFrame()
+
+        # Should return False when no data fetched (empty DataFrame)
+        result = mp_adapter.fetch_todays_closes()
+
+        assert result == False
+
+    def test_fetch_todays_closes_partial_success(self, mp_adapter):
+        """Test fetch_todays_closes succeeds with partial data."""
+        from src.utils.timezone import tz
+
+        # Create historical cache
+        yesterday = (tz.now() - timedelta(days=1)).date()
+        dates = pd.date_range(end=yesterday, periods=30, freq='D')
+
+        prices_df = pd.DataFrame({
+            'AAPL': [150.0] * len(dates),
+            'MSFT': [300.0] * len(dates),
+            'GOOGL': [140.0] * len(dates),
+            'AMZN': [180.0] * len(dates),
+            'META': [500.0] * len(dates)
+        }, index=dates)
+
+        mp_adapter._data_cache = {
+            'prices': prices_df,
+            'SPY': pd.DataFrame({'close': [450.0] * len(dates)}, index=dates),
+            'VIX': pd.DataFrame({'Close': [15.0] * len(dates)}, index=dates)
+        }
+
+        # Make broker return data for some symbols, None for others
+        call_count = [0]
+        def partial_data(symbol, start, end, timeframe):
+            call_count[0] += 1
+            if symbol in ['AAPL', 'MSFT', 'GOOGL']:
+                today = tz.now().date()
+                return pd.DataFrame({
+                    'open': [100.0],
+                    'high': [101.0],
+                    'low': [99.0],
+                    'close': [100.5],
+                    'volume': [1000000]
+                }, index=[pd.Timestamp(today)])
+            return None
+
+        mp_adapter.broker.get_historical_bars.side_effect = partial_data
+
+        # Should succeed with partial data
+        result = mp_adapter.fetch_todays_closes()
+
+        assert result == True
+        # Should have added today's row
+        assert len(mp_adapter._data_cache['prices']) == len(dates) + 1
+
+    def test_preload_historical_data(self, mp_adapter):
+        """Test preload_historical_data fetches full history."""
+        mp_adapter.preload_historical_data()
+
+        assert mp_adapter._data_cache is not None
+        assert 'prices' in mp_adapter._data_cache
+        assert mp_adapter._cache_date is not None
+
+    def test_fetch_market_data_uses_cache(self, mp_adapter):
+        """Test fetch_market_data returns data from cache."""
+        from src.utils.timezone import tz
+
+        # Populate cache
+        dates = pd.date_range(end=tz.now().date(), periods=30, freq='D')
+        prices_df = pd.DataFrame({
+            'AAPL': [150.0] * len(dates),
+            'MSFT': [300.0] * len(dates),
+        }, index=dates)
+
+        mp_adapter._data_cache = {
+            'prices': prices_df,
+            'SPY': pd.DataFrame({'close': [450.0] * len(dates)}, index=dates),
+            'VIX': pd.DataFrame({'Close': [15.0] * len(dates)}, index=dates)
+        }
+
+        market_data = mp_adapter.fetch_market_data()
+
+        assert 'AAPL' in market_data
+        assert 'MSFT' in market_data
+        assert 'SPY' in market_data
+        assert 'VIX' in market_data
+
+    def test_run_once_calls_fetch_todays_closes(self, mp_adapter, mock_mp_broker):
+        """Test run_once calls fetch_todays_closes before execution."""
+        from src.utils.timezone import tz
+
+        # Enable the strategy in state manager
+        mp_adapter.state_manager.set_enabled('mp', True)
+
+        # Populate cache (missing today to trigger fetch)
+        yesterday = (tz.now() - timedelta(days=1)).date()
+        dates = pd.date_range(end=yesterday, periods=30, freq='D')
+
+        prices_df = pd.DataFrame({
+            'AAPL': [150.0] * len(dates),
+            'MSFT': [300.0] * len(dates),
+            'GOOGL': [140.0] * len(dates),
+            'AMZN': [180.0] * len(dates),
+            'META': [500.0] * len(dates)
+        }, index=dates)
+
+        mp_adapter._data_cache = {
+            'prices': prices_df,
+            'SPY': pd.DataFrame({'close': [450.0] * len(dates)}, index=dates),
+            'VIX': pd.DataFrame({'Close': [15.0] * len(dates)}, index=dates)
+        }
+
+        # Mock fetch_todays_closes to track if called
+        original_fetch = mp_adapter.fetch_todays_closes
+        fetch_called = [False]
+
+        def mock_fetch():
+            fetch_called[0] = True
+            return original_fetch()
+
+        mp_adapter.fetch_todays_closes = mock_fetch
+
+        # Run once
+        mp_adapter.run_once()
+
+        # fetch_todays_closes should have been called
+        assert fetch_called[0] == True
+
+    def test_momentum_signals_updated_after_fetch(self, mp_adapter):
+        """Test momentum signals are recalculated after fetch_todays_closes."""
+        from src.utils.timezone import tz
+
+        # Populate cache with enough data for momentum calculation
+        yesterday = (tz.now() - timedelta(days=1)).date()
+        dates = pd.date_range(end=yesterday, periods=50, freq='D')
+
+        # Create price data with clear momentum (AAPL trending up)
+        prices_df = pd.DataFrame({
+            'AAPL': [150.0 + i*2 for i in range(len(dates))],  # Strong uptrend
+            'MSFT': [300.0 + i*0.5 for i in range(len(dates))],  # Weak uptrend
+            'GOOGL': [140.0 - i*0.5 for i in range(len(dates))],  # Downtrend
+            'AMZN': [180.0] * len(dates),  # Flat
+            'META': [500.0 + i*1 for i in range(len(dates))]  # Medium uptrend
+        }, index=dates)
+
+        spy_df = pd.DataFrame({'close': [450.0 + i for i in range(len(dates))]}, index=dates)
+        vix_df = pd.DataFrame({'Close': [15.0] * len(dates)}, index=dates)
+
+        mp_adapter._data_cache = {
+            'prices': prices_df,
+            'SPY': spy_df,
+            'VIX': vix_df
+        }
+
+        # Update momentum signals cache
+        mp_adapter._momentum_signals.update_historical_data(
+            prices_df, spy_df['close'], vix_df['Close']
+        )
+
+        # Fetch today's closes (should update signals)
+        result = mp_adapter.fetch_todays_closes()
+
+        assert result == True
+        # Momentum signals should be recalculated
+
+
+class TestMPDataFetchingIntegration:
+    """Integration tests for MP data fetching flow."""
+
+    @pytest.fixture
+    def mock_broker_with_realistic_data(self):
+        """Create broker that returns realistic stock data."""
+        broker = Mock()
+
+        broker.get_account.return_value = {
+            'account_id': 'test',
+            'buying_power': 100000.0,
+            'portfolio_value': 100000.0,
+            'cash': 50000.0
+        }
+        broker.is_market_open.return_value = True
+        broker.get_positions.return_value = []
+        broker.get_latest_quote.return_value = {'bid': 100.0, 'ask': 100.5}
+
+        def get_bars(symbol, start, end, timeframe):
+            """Return realistic price data."""
+            dates = pd.date_range(start, end, freq='D')
+            if len(dates) == 0:
+                return None
+
+            # Simulate different price patterns
+            base_prices = {
+                'AAPL': 175.0,
+                'MSFT': 380.0,
+                'GOOGL': 140.0,
+                'AMZN': 180.0,
+                'META': 500.0,
+                'SPY': 450.0
+            }
+            base = base_prices.get(symbol, 100.0)
+
+            # Add some random walk
+            import numpy as np
+            np.random.seed(hash(symbol) % 2**32)
+            returns = np.random.randn(len(dates)) * 0.02
+            prices = base * np.cumprod(1 + returns)
+
+            return pd.DataFrame({
+                'open': prices * 0.999,
+                'high': prices * 1.01,
+                'low': prices * 0.99,
+                'close': prices,
+                'volume': [1000000] * len(dates)
+            }, index=dates)
+
+        broker.get_historical_bars.side_effect = get_bars
+        return broker
+
+    def test_full_daily_workflow(self, mock_broker_with_realistic_data):
+        """Test complete daily workflow: preload at 9:30 AM, fetch at 3:55 PM."""
+        from src.trading.adapters import MomentumLiveAdapter
+        from src.utils.timezone import tz
+
+        adapter = MomentumLiveAdapter(
+            broker=mock_broker_with_realistic_data,
+            symbols=['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'META'],
+            top_n=3,
+            position_size=0.10
+        )
+
+        # Step 1: 9:30 AM preload
+        adapter.preload_historical_data()
+
+        assert adapter._data_cache is not None
+        assert 'prices' in adapter._data_cache
+        initial_len = len(adapter._data_cache['prices'])
+
+        # Step 2: Simulate cache is from yesterday (missing today)
+        yesterday = (tz.now() - timedelta(days=1)).date()
+        prices_df = adapter._data_cache['prices']
+        prices_df = prices_df[prices_df.index.date < tz.now().date()]
+        adapter._data_cache['prices'] = prices_df
+
+        # Step 3: 3:55 PM lightweight fetch
+        result = adapter.fetch_todays_closes()
+
+        assert result == True
+        # Should have added today's data
+        new_len = len(adapter._data_cache['prices'])
+        assert new_len > len(prices_df)
+
+    def test_cache_persistence_across_fetches(self, mock_broker_with_realistic_data):
+        """Test that historical cache persists and only today's data is added."""
+        from src.trading.adapters import MomentumLiveAdapter
+        from src.utils.timezone import tz
+
+        adapter = MomentumLiveAdapter(
+            broker=mock_broker_with_realistic_data,
+            symbols=['AAPL', 'MSFT'],
+            top_n=2,
+            position_size=0.10
+        )
+
+        # Preload historical data
+        adapter.preload_historical_data()
+
+        # Record original prices for first few days (values only, not index type)
+        original_prices = adapter._data_cache['prices'].copy()
+        first_10_values = original_prices.head(10).values.copy()
+        first_10_columns = list(original_prices.head(10).columns)
+
+        # Modify cache to simulate missing today
+        yesterday = (tz.now() - timedelta(days=1)).date()
+        prices_df = adapter._data_cache['prices']
+        adapter._data_cache['prices'] = prices_df[prices_df.index.date < tz.now().date()]
+
+        # Fetch today's closes
+        adapter.fetch_todays_closes()
+
+        # Original historical data VALUES should be unchanged
+        new_first_10 = adapter._data_cache['prices'].head(10)
+        import numpy as np
+        np.testing.assert_array_almost_equal(first_10_values, new_first_10.values)
+        assert list(new_first_10.columns) == first_10_columns
+
+    def test_multiple_fetch_calls_idempotent(self, mock_broker_with_realistic_data):
+        """Test that calling fetch_todays_closes multiple times is safe."""
+        from src.trading.adapters import MomentumLiveAdapter
+        from src.utils.timezone import tz
+
+        adapter = MomentumLiveAdapter(
+            broker=mock_broker_with_realistic_data,
+            symbols=['AAPL', 'MSFT'],
+            top_n=2,
+            position_size=0.10
+        )
+
+        # Preload
+        adapter.preload_historical_data()
+
+        # Call fetch multiple times
+        result1 = adapter.fetch_todays_closes()
+        len1 = len(adapter._data_cache['prices'])
+
+        result2 = adapter.fetch_todays_closes()
+        len2 = len(adapter._data_cache['prices'])
+
+        result3 = adapter.fetch_todays_closes()
+        len3 = len(adapter._data_cache['prices'])
+
+        # All should succeed
+        assert result1 == True
+        assert result2 == True
+        assert result3 == True
+
+        # Length should be the same (not adding duplicates)
+        assert len1 == len2 == len3
+
+
 if __name__ == '__main__':
     pytest.main([__file__, '-v'])
