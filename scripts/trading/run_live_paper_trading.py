@@ -667,10 +667,9 @@ class LiveTradingRunner:
                         self.intraday_prefetched_today = False
                         logger.info("Reset intraday pre-fetch flag for new trading day")
 
-                # NOTE: 3:45 PM prefetch removed - strategies now fetch data directly
-                # in their run_once() methods right before execution:
-                # - OMR fetches at 3:50 PM (in run_once)
-                # - MP fetches at 3:55 PM (in prefetch_intraday_data called from run_once)
+                # NOTE: Strategies fetch fresh data in their run_once() methods:
+                # - OMR: prefetch_intraday_data() at 3:50 PM (full intraday bars)
+                # - MP: fetch_todays_closes() at 3:55 PM (today's closes only, lightweight)
 
                 # Check for periodic flush (for multi-day sessions)
                 if self.session_tracker.trading_logger.should_periodic_flush():

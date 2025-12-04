@@ -434,31 +434,142 @@ class MomentumLiveAdapter(StrategyAdapter):
             traceback.print_exc()
             return None
 
-    def prefetch_intraday_data(self) -> None:
+    def fetch_todays_closes(self) -> bool:
         """
-        Refresh historical data cache with today's prices.
+        Fetch only today's close prices and append to historical cache.
 
-        This refreshes the cache with today's near-close prices so that
-        iloc[-1] returns TODAY's momentum instead of yesterday's.
+        This is a lightweight fetch at 3:55 PM that only gets today's data
+        for the universe symbols, rather than re-fetching all historical data.
 
-        Called from run_once() at 3:55 PM execution time.
+        Returns:
+            True if successful, False otherwise
         """
         logger.info("[MP] " + "=" * 60)
-        logger.info("[MP] REFRESHING DATA FOR 3:55 PM EXECUTION")
+        logger.info("[MP] FETCHING TODAY'S CLOSES (3:55 PM)")
         logger.info("[MP] " + "=" * 60)
 
         try:
-            # Re-fetch all historical data including today
-            # This is the same as preload but ensures we have today's near-close prices
-            self.preload_historical_data()
+            # Check if we have historical data to append to
+            if self._data_cache is None or 'prices' not in self._data_cache:
+                logger.warning("[MP] No historical cache - falling back to full fetch")
+                self.preload_historical_data()
+                return True
 
-            logger.success("[MP] Today's data pre-fetched successfully")
-            logger.info("[MP] iloc[-1] will now return TODAY's momentum at 3:55 PM")
+            prices_df = self._data_cache['prices']
+            today = tz.now().date()
+
+            # Check if we already have today's data
+            if len(prices_df) > 0:
+                last_date = prices_df.index[-1]
+                if hasattr(last_date, 'date'):
+                    last_date = last_date.date()
+                if last_date == today:
+                    logger.info("[MP] Already have today's data in cache")
+                    return True
+
+            logger.info(f"[MP] Fetching today's closes for {len(self.symbols)} symbols...")
+
+            # Fetch today's data only (just 1 day)
+            today_start = tz.now().replace(hour=0, minute=0, second=0, microsecond=0)
+            today_end = tz.now()
+
+            todays_prices = {}
+            failed = 0
+
+            for symbol in self.symbols:
+                try:
+                    df = self.broker.get_historical_bars(
+                        symbol=symbol,
+                        start=today_start,
+                        end=today_end,
+                        timeframe='1D'
+                    )
+                    if df is not None and not df.empty:
+                        df.columns = [c.lower() if isinstance(c, str) else str(c).lower() for c in df.columns]
+                        if 'close' in df.columns:
+                            # Get the last (most recent) close price
+                            todays_prices[symbol] = df['close'].iloc[-1]
+                except Exception:
+                    failed += 1
+                    continue
+
+            if not todays_prices:
+                logger.error("[MP] Failed to fetch any today's prices")
+                return False
+
+            logger.info(f"[MP] Fetched {len(todays_prices)}/{len(self.symbols)} symbols ({failed} failed)")
+
+            # Create today's row and append to historical data
+            today_row = pd.Series(todays_prices, name=pd.Timestamp(today))
+
+            # Append to existing prices DataFrame
+            new_prices_df = pd.concat([prices_df, today_row.to_frame().T])
+
+            # Fetch today's SPY
+            spy_close = None
+            try:
+                spy_df = self.broker.get_historical_bars(
+                    symbol='SPY',
+                    start=today_start,
+                    end=today_end,
+                    timeframe='1D'
+                )
+                if spy_df is not None and not spy_df.empty:
+                    spy_df.columns = [c.lower() if isinstance(c, str) else str(c).lower() for c in spy_df.columns]
+                    spy_close = spy_df['close'].iloc[-1]
+            except Exception as e:
+                logger.warning(f"[MP] Failed to fetch today's SPY: {e}")
+
+            # Fetch today's VIX via yfinance
+            vix_close = None
+            try:
+                import yfinance as yf
+                vix_data = yf.download('^VIX', start=today, end=today + timedelta(days=1), progress=False)
+                if vix_data is not None and not vix_data.empty:
+                    if 'Close' in vix_data.columns:
+                        vix_close = vix_data['Close'].iloc[-1]
+                    elif ('Close', '^VIX') in vix_data.columns:
+                        vix_close = vix_data[('Close', '^VIX')].iloc[-1]
+            except Exception as e:
+                logger.warning(f"[MP] Failed to fetch today's VIX: {e}")
+
+            # Append SPY and VIX to their caches
+            spy_cache = self._data_cache.get('SPY')
+            vix_cache = self._data_cache.get('VIX')
+
+            if spy_close is not None and spy_cache is not None:
+                if hasattr(spy_cache, 'columns'):
+                    spy_cache.columns = [c.lower() if isinstance(c, str) else str(c).lower() for c in spy_cache.columns]
+                    if 'close' in spy_cache.columns:
+                        new_spy_row = pd.DataFrame({'close': [spy_close]}, index=[pd.Timestamp(today)])
+                        spy_cache = pd.concat([spy_cache, new_spy_row])
+                        self._data_cache['SPY'] = spy_cache
+
+            if vix_close is not None and vix_cache is not None:
+                if hasattr(vix_cache, 'columns'):
+                    col_name = 'Close' if 'Close' in vix_cache.columns else 'close'
+                    new_vix_row = pd.DataFrame({col_name: [vix_close]}, index=[pd.Timestamp(today)])
+                    vix_cache = pd.concat([vix_cache, new_vix_row])
+                    self._data_cache['VIX'] = vix_cache
+
+            # Update cache
+            self._data_cache['prices'] = new_prices_df
+
+            # Update momentum signals cache
+            spy_prices = self._data_cache['SPY']['close'] if 'SPY' in self._data_cache and self._data_cache['SPY'] is not None else pd.Series()
+            vix_col = 'Close' if 'VIX' in self._data_cache and self._data_cache['VIX'] is not None and 'Close' in self._data_cache['VIX'].columns else 'close'
+            vix_prices = self._data_cache['VIX'][vix_col] if 'VIX' in self._data_cache and self._data_cache['VIX'] is not None else pd.Series()
+
+            self._momentum_signals.update_historical_data(new_prices_df, spy_prices, vix_prices)
+
+            logger.success(f"[MP] Appended today's data - cache now has {len(new_prices_df)} days")
+            return True
 
         except Exception as e:
-            logger.error(f"[MP] Failed to pre-fetch intraday data: {e}")
+            logger.error(f"[MP] Failed to fetch today's closes: {e}")
             import traceback
             traceback.print_exc()
+            return False
 
     def fetch_market_data(self) -> Dict[str, pd.DataFrame]:
         """
@@ -529,10 +640,10 @@ class MomentumLiveAdapter(StrategyAdapter):
                 logger.warning("[MP] Shutdown requested - skipping new entries")
                 return
 
-            # Refresh historical data NOW (at 3:55 PM execution time)
-            # This ensures iloc[-1] returns TODAY's momentum, not yesterday's
-            logger.info("[MP] Refreshing data for 3:55 PM execution...")
-            self.prefetch_intraday_data()
+            # Fetch today's closes only (lightweight, ~30s vs ~2min for full fetch)
+            # This appends today's prices to the 9:30 AM historical cache
+            logger.info("[MP] Fetching today's closes for 3:55 PM execution...")
+            self.fetch_todays_closes()
 
             # Acquire execution lock (blocks if another strategy is executing)
             if not self.state_manager.acquire_execution_lock(STRATEGY_NAME):
