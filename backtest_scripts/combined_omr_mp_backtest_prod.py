@@ -294,11 +294,14 @@ def run_mp_backtest(
     """
     Run MP backtest using PRODUCTION MomentumProtectionSignals.
 
-    Returns daily returns series.
+    TRUE 3:55 PM execution (matches production):
+    - Use TODAY's momentum (known at 3:55 PM)
+    - Buy at close[T], sell at close[T+1]
+    - Return = close[T+1] / close[T] - 1
 
-    OPTIMIZED: Pre-compute momentum scores once instead of per-day.
+    Returns daily returns series.
     """
-    logger.info("Running MP backtest with production signals (optimized)...")
+    logger.info("Running MP backtest with TRUE 3:55 PM execution...")
 
     symbols = [c for c in prices.columns if c not in ['SPY', '^VIX']]
 
@@ -357,35 +360,37 @@ def run_mp_backtest(
 
     logger.info(f"  Processing {len(prices) - start_idx} trading days...")
 
-    for i in range(start_idx, len(prices)):
+    for i in range(start_idx, len(prices) - 1):  # -1 because we need next day's return
         date = prices.index[i]
+        next_date = prices.index[i + 1]
 
         if date < test_start_ts or date > test_end_ts:
             continue
 
-        # Get pre-computed momentum scores for previous day (avoid lookahead)
-        prev_date = prices.index[i - 1]
-        scores = momentum_all.loc[prev_date].dropna()
+        # TRUE 3:55 PM: Use TODAY's momentum (known at 3:55 PM near close)
+        # This matches production which uses iloc[-1] (latest data)
+        scores = momentum_all.loc[date].dropna()
 
         if len(scores) < MP_CONFIG['top_n']:
             daily_returns_list.append({'date': date, 'return': 0.0})
             continue
 
-        # Check risk signals (use previous day to avoid lookahead)
+        # Check risk signals using TODAY's data (known at 3:55 PM)
         reduce_exposure = (
-            high_vix.get(prev_date, False) or
-            vix_spike.get(prev_date, False) or
-            spy_dd_trigger.get(prev_date, False) or
-            high_mom_vol.get(prev_date, False)
+            high_vix.get(date, False) or
+            vix_spike.get(date, False) or
+            spy_dd_trigger.get(date, False) or
+            high_mom_vol.get(date, False)
         )
 
         exposure = MP_CONFIG['reduced_exposure'] if reduce_exposure else 1.0
 
-        # Select top N
+        # Select top N based on today's momentum
         top_stocks = scores.nlargest(MP_CONFIG['top_n']).index.tolist()
 
-        # Calculate return
-        day_rets = daily_returns.loc[date, top_stocks].dropna()
+        # Return is NEXT day's close-to-close
+        # Buy at close[date], sell at close[next_date]
+        day_rets = daily_returns.loc[next_date, top_stocks].dropna()
 
         if len(day_rets) > 0:
             avg_return = day_rets.mean()

@@ -2,7 +2,7 @@
 Momentum Protection Live Trading Adapter.
 
 Connects momentum strategy with crash protection to live trading infrastructure.
-Rebalances daily at 9:31 AM EST based on momentum rankings and risk signals.
+Rebalances daily at 3:55 PM EST based on momentum rankings and risk signals.
 """
 
 from typing import List, Dict, Optional, Any
@@ -136,11 +136,11 @@ class MomentumLiveAdapter(StrategyAdapter):
     """
     Live trading adapter for Momentum Protection strategy.
 
-    Rebalances at 9:31 AM EST based on:
-    - 12-1 month momentum rankings (from prior day's close)
+    Rebalances at 3:55 PM EST based on:
+    - 1m-1w momentum rankings (using today's near-close prices)
     - Rule-based crash protection signals
 
-    Positions are held until next day's rebalance.
+    Positions are held until next day's 3:55 PM rebalance.
     """
 
     def __init__(
@@ -236,7 +236,7 @@ class MomentumLiveAdapter(StrategyAdapter):
         logger.info(f"[MP]   Position size: {position_size:.0%}")
         logger.info(f"[MP]   Reduced exposure: {reduced_exposure:.0%}")
         logger.info(f"[MP]   VIX threshold: {vix_threshold}")
-        logger.info(f"[MP]   Rebalance time: 9:31 AM EST")
+        logger.info(f"[MP]   Rebalance time: 3:55 PM EST")
         logger.info(f"[MP]   Portfolio health checks: ENABLED")
 
     def _load_sp500_symbols(self) -> List[str]:
@@ -434,11 +434,37 @@ class MomentumLiveAdapter(StrategyAdapter):
             traceback.print_exc()
             return None
 
+    def prefetch_intraday_data(self) -> None:
+        """
+        Pre-fetch today's data at 3:45 PM for 3:55 PM execution.
+
+        This refreshes the cache with today's near-close prices so that
+        iloc[-1] returns TODAY's momentum instead of yesterday's.
+
+        Called automatically by LiveTradingRunner at 3:45 PM if this method exists.
+        """
+        logger.info("[MP] " + "=" * 60)
+        logger.info("[MP] PRE-FETCHING TODAY'S DATA (3:45 PM)")
+        logger.info("[MP] " + "=" * 60)
+
+        try:
+            # Re-fetch all historical data including today
+            # This is the same as preload but ensures we have today's near-close prices
+            self.preload_historical_data()
+
+            logger.success("[MP] Today's data pre-fetched successfully")
+            logger.info("[MP] iloc[-1] will now return TODAY's momentum at 3:55 PM")
+
+        except Exception as e:
+            logger.error(f"[MP] Failed to pre-fetch intraday data: {e}")
+            import traceback
+            traceback.print_exc()
+
     def fetch_market_data(self) -> Dict[str, pd.DataFrame]:
         """
         Fetch current market data for signal generation.
 
-        Uses cached historical data + today's data from broker.
+        Uses cached historical data (refreshed at 3:45 PM to include today's prices).
         """
         try:
             market_data = {}
@@ -699,12 +725,13 @@ class MomentumLiveAdapter(StrategyAdapter):
         """
         Get scheduling configuration.
 
-        Momentum rebalances once daily at 9:31 AM EST.
-        Rankings are based on prior day's close, so we trade at open.
+        Momentum rebalances once daily at 3:55 PM EST.
+        Uses today's momentum (known at 3:55 PM) to select stocks,
+        then holds overnight until next day's 3:55 PM rebalance.
         """
         return {
             'execution_times': [
-                {'time': '09:31', 'action': 'rebalance'}  # 9:31 AM EST - Rebalance at open
+                {'time': '15:55', 'action': 'rebalance'}  # 3:55 PM EST - Rebalance near close
             ],
             'market_hours_only': True,
             'strategy_type': 'daily'  # Indicates daily rebalancing
@@ -754,8 +781,8 @@ class MomentumLiveAdapter(StrategyAdapter):
 if __name__ == "__main__":
     logger.info("[MP] Momentum Protection Live Trading Adapter")
     logger.info("[MP] " + "=" * 60)
-    logger.info("[MP] Rebalances at 9:31 AM EST based on:")
-    logger.info("[MP]   - 12-1 month momentum rankings")
+    logger.info("[MP] Rebalances at 3:55 PM EST based on:")
+    logger.info("[MP]   - 1m-1w momentum rankings")
     logger.info("[MP]   - Rule-based crash protection")
     logger.info("")
     logger.info("[MP] Risk signals that reduce exposure:")
