@@ -668,25 +668,10 @@ class LiveTradingRunner:
                         self.intraday_prefetched_today = False
                         logger.info("Reset intraday pre-fetch flag for new trading day")
 
-                # Check for 3:45 PM to pre-fetch intraday data (once per day)
-                # Only if intraday pre-fetching is enabled
-                # Pre-fetch 5 minutes before execution to have fresh data with network buffer
-                if (self.enable_intraday_prefetch and
-                    not self.intraday_prefetched_today and
-                    now_est.time() >= dt_time(15, 45) and
-                    now_est.time() <= dt_time(15, 48) and
-                    self._is_market_open()):
-
-                    logger.info("")
-                    logger.info("=" * 80)
-                    logger.info("3:45 PM - PRE-FETCHING TODAY'S INTRADAY DATA")
-                    logger.info("=" * 80)
-
-                    if hasattr(self.adapter, 'prefetch_intraday_data'):
-                        self.adapter.prefetch_intraday_data()
-                        self.intraday_prefetched_today = True
-                    else:
-                        logger.warning("Adapter does not support intraday data pre-fetching")
+                # NOTE: 3:45 PM prefetch removed - strategies now fetch data directly
+                # in their run_once() methods right before execution:
+                # - OMR fetches at 3:50 PM (in run_once)
+                # - MP fetches at 3:55 PM (in prefetch_intraday_data called from run_once)
 
                 # Check for periodic flush (for multi-day sessions)
                 if self.session_tracker.trading_logger.should_periodic_flush():

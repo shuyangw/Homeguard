@@ -509,6 +509,7 @@ class MomentumLiveAdapter(StrategyAdapter):
         Run one iteration of the strategy with portfolio health checks.
 
         Includes:
+        - Fresh data fetch at execution time (3:55 PM)
         - Toggle/shutdown checks
         - Execution lock for multi-strategy coordination
         - Position tracking per strategy
@@ -527,6 +528,11 @@ class MomentumLiveAdapter(StrategyAdapter):
             if self.state_manager.is_shutdown_requested(STRATEGY_NAME):
                 logger.warning("[MP] Shutdown requested - skipping new entries")
                 return
+
+            # Refresh historical data NOW (at 3:55 PM execution time)
+            # This ensures iloc[-1] returns TODAY's momentum, not yesterday's
+            logger.info("[MP] Refreshing data for 3:55 PM execution...")
+            self.prefetch_intraday_data()
 
             # Acquire execution lock (blocks if another strategy is executing)
             if not self.state_manager.acquire_execution_lock(STRATEGY_NAME):
