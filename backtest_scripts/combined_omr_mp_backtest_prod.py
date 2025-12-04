@@ -176,18 +176,14 @@ def run_omr_backtest(
     regime_detector = MarketRegimeDetector()
     bayesian_model = BayesianReversionModel(data_frequency='daily')
 
-    # Train on data before test period
-    train_end = pd.Timestamp(test_start) - pd.Timedelta(days=1)
-    train_data = {k: v[v.index <= train_end] for k, v in data.items()}
-
-    logger.info(f"  Training Bayesian model on data up to {train_end.date()}...")
-
-    bayesian_model.train(
-        historical_data=train_data,
-        regime_detector=regime_detector,
-        spy_data=spy_data[spy_data.index <= train_end],
-        vix_data=vix_data[vix_data.index <= train_end]
-    )
+    # Load production model (trained on full historical data)
+    model_path = PROJECT_ROOT / 'models' / 'bayesian_reversion_model.pkl'
+    if model_path.exists():
+        bayesian_model.load_model()  # Uses default model_path
+        logger.info(f"  Loaded production Bayesian model")
+    else:
+        logger.error(f"  Production model not found at {model_path}")
+        return pd.Series(dtype=float)
 
     # Backtest on test period
     test_start_ts = pd.Timestamp(test_start)
@@ -324,10 +320,11 @@ def run_mp_backtest(
     test_end_ts = pd.Timestamp(test_end)
 
     # OPTIMIZATION: Pre-compute momentum scores for ALL days at once
-    logger.info("  Pre-computing 12-1 month momentum scores...")
-    returns_12m = prices.pct_change(252, fill_method=None)
+    # Using 1m-1w momentum (21 - 5 trading days)
+    logger.info("  Pre-computing 1m-1w momentum scores...")
     returns_1m = prices.pct_change(21, fill_method=None)
-    momentum_all = returns_12m - returns_1m  # 12-1 month momentum
+    returns_1w = prices.pct_change(5, fill_method=None)
+    momentum_all = returns_1m - returns_1w  # 1m-1w momentum
 
     # Pre-compute risk signals
     logger.info("  Pre-computing risk signals...")
@@ -351,12 +348,12 @@ def run_mp_backtest(
     daily_returns = prices.pct_change()
     daily_returns_list = []
 
-    # Find start index
+    # Find start index (need 21 days for 1-month momentum + buffer)
     try:
         start_idx = prices.index.get_loc(test_start_ts)
     except KeyError:
         start_idx = prices.index.searchsorted(test_start_ts)
-    start_idx = max(253, start_idx)
+    start_idx = max(30, start_idx)  # 21 days for 1-month + buffer
 
     logger.info(f"  Processing {len(prices) - start_idx} trading days...")
 
@@ -402,6 +399,117 @@ def run_mp_backtest(
     return pd.DataFrame(daily_returns_list).set_index('date')['return']
 
 
+def calculate_monthly_returns(returns: pd.Series) -> pd.DataFrame:
+    """Calculate monthly returns from daily returns."""
+    monthly = (1 + returns).resample('ME').prod() - 1
+    return monthly
+
+
+def print_monthly_report(
+    omr_returns: pd.Series,
+    mp_returns: pd.Series,
+    combined_returns: pd.Series,
+    spy_returns: pd.Series
+):
+    """Print detailed monthly performance report."""
+    logger.info("")
+    logger.info("=" * 90)
+    logger.info("MONTHLY PERFORMANCE REPORT")
+    logger.info("=" * 90)
+    logger.info("")
+
+    # Calculate monthly returns
+    omr_monthly = calculate_monthly_returns(omr_returns)
+    mp_monthly = calculate_monthly_returns(mp_returns)
+    combined_monthly = calculate_monthly_returns(combined_returns)
+    spy_monthly = calculate_monthly_returns(spy_returns)
+
+    # Align all monthly series
+    all_months = omr_monthly.index.union(mp_monthly.index).union(combined_monthly.index).union(spy_monthly.index)
+
+    # Print header
+    logger.info(f"{'Month':<10} {'OMR':>10} {'MP':>10} {'Combined':>10} {'SPY':>10} {'Alpha':>10}")
+    logger.info("-" * 70)
+
+    current_year = None
+
+    for month in sorted(all_months):
+        # Print year separator
+        if current_year != month.year:
+            if current_year is not None:
+                # Print yearly summary
+                year_mask_omr = omr_monthly.index.year == current_year
+                year_mask_mp = mp_monthly.index.year == current_year
+                year_mask_comb = combined_monthly.index.year == current_year
+                year_mask_spy = spy_monthly.index.year == current_year
+
+                if year_mask_comb.any():
+                    yr_omr = (1 + omr_monthly[year_mask_omr]).prod() - 1 if year_mask_omr.any() else 0
+                    yr_mp = (1 + mp_monthly[year_mask_mp]).prod() - 1 if year_mask_mp.any() else 0
+                    yr_comb = (1 + combined_monthly[year_mask_comb]).prod() - 1 if year_mask_comb.any() else 0
+                    yr_spy = (1 + spy_monthly[year_mask_spy]).prod() - 1 if year_mask_spy.any() else 0
+                    yr_alpha = yr_comb - yr_spy
+
+                    logger.info("-" * 70)
+                    logger.info(f"{current_year} TOTAL  {yr_omr:>+10.1%} {yr_mp:>+10.1%} {yr_comb:>+10.1%} {yr_spy:>+10.1%} {yr_alpha:>+10.1%}")
+                    logger.info("")
+
+            current_year = month.year
+            logger.info(f"--- {current_year} ---")
+
+        # Get monthly returns
+        omr_ret = omr_monthly.get(month, 0)
+        mp_ret = mp_monthly.get(month, 0)
+        comb_ret = combined_monthly.get(month, 0)
+        spy_ret = spy_monthly.get(month, 0)
+        alpha = comb_ret - spy_ret
+
+        month_str = month.strftime('%Y-%m')
+        logger.info(f"{month_str:<10} {omr_ret:>+10.2%} {mp_ret:>+10.2%} {comb_ret:>+10.2%} {spy_ret:>+10.2%} {alpha:>+10.2%}")
+
+    # Print final year summary
+    if current_year is not None:
+        year_mask_omr = omr_monthly.index.year == current_year
+        year_mask_mp = mp_monthly.index.year == current_year
+        year_mask_comb = combined_monthly.index.year == current_year
+        year_mask_spy = spy_monthly.index.year == current_year
+
+        if year_mask_comb.any():
+            yr_omr = (1 + omr_monthly[year_mask_omr]).prod() - 1 if year_mask_omr.any() else 0
+            yr_mp = (1 + mp_monthly[year_mask_mp]).prod() - 1 if year_mask_mp.any() else 0
+            yr_comb = (1 + combined_monthly[year_mask_comb]).prod() - 1 if year_mask_comb.any() else 0
+            yr_spy = (1 + spy_monthly[year_mask_spy]).prod() - 1 if year_mask_spy.any() else 0
+            yr_alpha = yr_comb - yr_spy
+
+            logger.info("-" * 70)
+            logger.info(f"{current_year} TOTAL  {yr_omr:>+10.1%} {yr_mp:>+10.1%} {yr_comb:>+10.1%} {yr_spy:>+10.1%} {yr_alpha:>+10.1%}")
+
+    # Print monthly statistics
+    logger.info("")
+    logger.info("=" * 70)
+    logger.info("MONTHLY STATISTICS")
+    logger.info("=" * 70)
+    logger.info("")
+
+    for name, monthly in [('OMR', omr_monthly), ('MP', mp_monthly), ('Combined', combined_monthly), ('SPY', spy_monthly)]:
+        pos_months = (monthly > 0).sum()
+        neg_months = (monthly < 0).sum()
+        total_months = len(monthly)
+        win_rate = pos_months / total_months if total_months > 0 else 0
+        avg_up = monthly[monthly > 0].mean() if pos_months > 0 else 0
+        avg_down = monthly[monthly < 0].mean() if neg_months > 0 else 0
+        best = monthly.max()
+        worst = monthly.min()
+
+        logger.info(f"{name}:")
+        logger.info(f"  Win Rate:    {win_rate:.1%} ({pos_months}/{total_months} months)")
+        logger.info(f"  Avg Up:      {avg_up:+.2%}")
+        logger.info(f"  Avg Down:    {avg_down:+.2%}")
+        logger.info(f"  Best Month:  {best:+.2%}")
+        logger.info(f"  Worst Month: {worst:+.2%}")
+        logger.info("")
+
+
 def calculate_metrics(returns: pd.Series, name: str) -> dict:
     """Calculate performance metrics."""
     if len(returns) == 0:
@@ -431,7 +539,7 @@ def calculate_metrics(returns: pd.Series, name: str) -> dict:
     }
 
 
-def run_backtest(start_year: int = 2018, end_year: int = 2024):
+def run_backtest(start_year: int = 2017, end_year: int = 2024):
     """Run combined backtest with production models."""
 
     start = f"{start_year}-01-01"
@@ -444,7 +552,7 @@ def run_backtest(start_year: int = 2018, end_year: int = 2024):
     logger.info("")
     logger.info("Using PRODUCTION components:")
     logger.info("  OMR: BayesianReversionModel + MarketRegimeDetector")
-    logger.info("  MP:  MomentumProtectionSignals")
+    logger.info("  MP:  MomentumProtectionSignals (1m-1w momentum)")
     logger.info("")
     logger.info("Configuration:")
     logger.info(f"  OMR: {OMR_CONFIG['position_size']:.0%} per position, max {OMR_CONFIG['max_positions']} positions")
@@ -544,6 +652,9 @@ def run_backtest(start_year: int = 2018, end_year: int = 2024):
 
         logger.info(f"{year:<6} {omr_yr:>+10.1%} {mp_yr:>+10.1%} {comb_yr:>+10.1%} {spy_yr:>+10.1%}")
 
+    # Print monthly report
+    print_monthly_report(omr_returns, mp_returns, combined_returns, spy_returns)
+
     logger.info("")
     logger.info("=" * 70)
     logger.info("BACKTEST COMPLETE")
@@ -565,7 +676,7 @@ def run_backtest(start_year: int = 2018, end_year: int = 2024):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Combined OMR + MP Backtest (Production)")
-    parser.add_argument('--start', type=int, default=2018, help='Start year')
+    parser.add_argument('--start', type=int, default=2017, help='Start year')
     parser.add_argument('--end', type=int, default=2024, help='End year')
 
     args = parser.parse_args()
