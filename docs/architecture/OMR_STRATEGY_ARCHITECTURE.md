@@ -14,7 +14,7 @@ The Overnight Mean Reversion (OMR) strategy is a systematic overnight trading st
 **Key Metrics:**
 - **Expected Win Rate**: 51.96% (across all regimes)
 - **Expected Return per Trade**: 0.32%
-- **Holding Period**: ~16 hours (3:50 PM → 9:31 AM next day)
+- **Holding Period**: ~16 hours (3:55 PM → 9:31 AM next day)
 - **Max Positions**: 5 concurrent positions
 - **Position Size**: 20% per position (equal-weighted)
 - **Trading Universe**: 22 leveraged 3x ETFs
@@ -35,7 +35,7 @@ The Overnight Mean Reversion (OMR) strategy is a systematic overnight trading st
 The OMR strategy exploits **overnight mean reversion** - the statistical tendency of leveraged ETFs to partially reverse extreme intraday moves during the overnight period.
 
 **Trading Logic:**
-1. **3:50 PM EST**: Identify leveraged ETFs with extreme intraday moves (up or down)
+1. **3:55 PM EST**: Identify leveraged ETFs with extreme intraday moves (up or down)
 2. **Position Entry**: Enter positions betting on overnight reversion
    - Large DOWN move → BUY (expect bounce)
    - Large UP move → SHORT (expect pullback)
@@ -46,9 +46,9 @@ The OMR strategy exploits **overnight mean reversion** - the statistical tendenc
 ```
 TQQQ Price Movement:
   9:30 AM: $50.00 (open)
-  3:50 PM: $48.50 (down 3% - extreme move)
+  3:55 PM: $48.50 (down 3% - extreme move)
 
-  [OMR ENTRY] Buy TQQQ @ $48.50 at 3:50 PM
+  [OMR ENTRY] Buy TQQQ @ $48.50 at 3:55 PM
 
   Next Day:
   9:30 AM: $49.25 (overnight bounce)
@@ -64,7 +64,7 @@ TQQQ Price Movement:
 Day 1:
   9:30 AM  - Market opens
   [Intraday price action]
-  3:50 PM  - Generate signals, enter positions (10 min before close)
+  3:55 PM  - Generate signals, enter positions (5 min before close)
   4:00 PM  - Market closes
 
   [Overnight period: ~16 hours]
@@ -78,18 +78,18 @@ Day 2:
 
 ### 1.3 Signal Generation
 
-**Time**: Every day at 3:50 PM EST (10 minutes before market close)
+**Time**: Every day at 3:55 PM EST (5 minutes before market close)
 
 **Process:**
 1. **Regime Detection**: Classify market into 5 regimes (SPY + VIX indicators)
-2. **Intraday Move Analysis**: Calculate return from 9:30 AM → 3:50 PM for each ETF
+2. **Intraday Move Analysis**: Calculate return from 9:30 AM → 3:55 PM for each ETF
 3. **Bayesian Probability Lookup**: Query historical patterns for (regime, intraday_move) → overnight_return
 4. **Signal Filtering**: Apply regime-specific filters
    - Minimum win rate: 55%
    - Minimum expected return: 0.2%
    - Minimum sample size: 30 historical occurrences
 5. **Position Sizing**: Equal-weight top 5 signals (20% each)
-6. **Order Execution**: Submit market orders at 3:50 PM
+6. **Order Execution**: Submit market orders at 3:55 PM
 
 **Signal Strength Scoring** (0-1):
 - Win rate probability: 40% weight
@@ -344,7 +344,7 @@ BEAR:            0 positions (trading disabled)
 
 ### 5.2 Entry/Exit Rules
 
-**Entry (3:50 PM)**:
+**Entry (3:55 PM)**:
 - Market orders submitted 10 minutes before close
 - Ensures execution before overnight gap
 - Minimizes slippage vs close price
@@ -408,7 +408,7 @@ BEAR:            0 positions (trading disabled)
 
 **Live Trading Runner**: `scripts/trading/run_live_paper_trading.py`
 - Continuous monitoring (checks every 1 minute)
-- Dual-time execution (3:50 PM entry, 9:31 AM exit)
+- Dual-time execution (3:55 PM entry, 9:31 AM exit)
 - Automatic order submission
 - Real-time position tracking
 - Comprehensive logging
@@ -417,7 +417,7 @@ BEAR:            0 positions (trading disabled)
 - Converts backtest strategy → live execution
 - Fetches real-time SPY data from Alpaca for regime detection
 - Fetches VIX data from yfinance (Alpaca does not provide VIX)
-- Generates signals at 3:50 PM
+- Generates signals at 3:55 PM
 - Closes overnight positions at 9:31 AM
 - Integrates with Alpaca broker interface
 
@@ -459,11 +459,11 @@ Market Open (9:30 AM):
            Log P&L results
            Clear position tracking
 
-Market Hours (9:30 AM - 3:50 PM):
+Market Hours (9:30 AM - 3:55 PM):
   - Runner idle, monitoring clock
   - Polls every 60 seconds
 
-Signal Generation (3:50 PM):
+Signal Generation (3:55 PM):
   - Fetch real-time SPY/VIX data
   - Classify current market regime
   - Calculate intraday moves for all 22 ETFs
@@ -472,7 +472,7 @@ Signal Generation (3:50 PM):
   - Rank signals by strength
   - Select top 5 signals
 
-Entry Execution (3:50 PM - 3:55 PM):
+Entry Execution (3:55 PM - 4:00 PM):
   - Submit market buy orders
   - Track order fills
   - Log entry prices
@@ -495,16 +495,16 @@ After Hours (4:00 PM - 9:30 AM):
 
 **Live Trading Logs** (`logs/live_trading_YYYYMMDD.log`):
 ```
-[15:50:00] EXECUTING STRATEGY (ENTRY): 2025-11-14 15:50:00
-[15:50:01] Current regime: WEAK_BULL (confidence: 0.87)
-[15:50:02] Generated 5 overnight signals
-[15:50:03] Signal 1: TQQQ (P=58%, E[R]=0.45%, Strength=0.82)
-[15:50:04] Signal 2: UPRO (P=56%, E[R]=0.38%, Strength=0.76)
-[15:50:05] Signal 3: SOXL (P=55%, E[R]=0.35%, Strength=0.71)
-[15:50:06] Entering TQQQ: 205 shares @ $48.50 (20% allocation)
-[15:50:07] Entering UPRO: 121 shares @ $82.30 (20% allocation)
-[15:50:08] Entering SOXL: 181 shares @ $55.10 (20% allocation)
-[15:50:09] All entry orders submitted
+[15:55:00] EXECUTING STRATEGY (ENTRY): 2025-11-14 15:55:00
+[15:55:01] Current regime: WEAK_BULL (confidence: 0.87)
+[15:55:02] Generated 5 overnight signals
+[15:55:03] Signal 1: TQQQ (P=58%, E[R]=0.45%, Strength=0.82)
+[15:55:04] Signal 2: UPRO (P=56%, E[R]=0.38%, Strength=0.76)
+[15:55:05] Signal 3: SOXL (P=55%, E[R]=0.35%, Strength=0.71)
+[15:55:06] Entering TQQQ: 205 shares @ $48.50 (20% allocation)
+[15:55:07] Entering UPRO: 121 shares @ $82.30 (20% allocation)
+[15:55:08] Entering SOXL: 181 shares @ $55.10 (20% allocation)
+[15:55:09] All entry orders submitted
 [16:00:00] Market close - Holding 3 overnight positions (60% allocated)
 
 --- OVERNIGHT PERIOD ---
@@ -580,7 +580,7 @@ scripts/run_paper_trading.bat --strategy omr
 
 **Test Single Execution (Entry)**:
 ```bash
-# Wait until 3:50 PM, then run:
+# Wait until 3:55 PM, then run:
 scripts/run_paper_trading.bat --strategy omr --once
 ```
 
@@ -674,7 +674,7 @@ Stop-Out Rate: 4.5%
 - [x] Risk parameters configured
 - [x] BEAR regime filter enabled
 - [x] Position limits enforced
-- [x] Entry time: 3:50 PM EST
+- [x] Entry time: 3:55 PM EST
 - [x] Exit time: 9:31 AM EST
 - [x] Signal generation logic tested
 - [x] Order execution logic tested
@@ -713,7 +713,7 @@ Stop-Out Rate: 4.5%
 ### Phase 1: Paper Trading Validation (1 Week)
 **Objective**: Verify dual-time execution works correctly
 
-- Day 1-2: Monitor 3:50 PM entry execution
+- Day 1-2: Monitor 3:55 PM entry execution
 - Day 3-4: Monitor 9:31 AM exit execution
 - Day 5-7: Verify P&L matches expectations
 - Deliverable: Paper trading results report
@@ -753,7 +753,7 @@ Stop-Out Rate: 4.5%
 ⚠️ **Overnight Gap Risk**: News events can cause large gaps against positions
 ⚠️ **Model Risk**: Bayesian model based on historical patterns (may not predict future)
 ⚠️ **Regime Risk**: Regime detection may misclassify market conditions
-⚠️ **Execution Risk**: Slippage at 3:50 PM or 9:31 AM can erode returns
+⚠️ **Execution Risk**: Slippage at 3:55 PM or 9:31 AM can erode returns
 
 ### 11.2 Mitigations
 
@@ -829,7 +829,7 @@ Stop-Out Rate: 4.5%
 
 ### Week 1 (Paper Trading):
 1. Launch paper trading in continuous mode
-2. Monitor 3:50 PM entry execution
+2. Monitor 3:55 PM entry execution
 3. Monitor 9:31 AM exit execution
 4. Track daily P&L in spreadsheet
 

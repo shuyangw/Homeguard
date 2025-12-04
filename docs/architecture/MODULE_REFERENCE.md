@@ -2331,7 +2331,7 @@ BrokerInterface               ← Composite: Account + MarketHours + MarketData 
 ### `src/trading/strategies/omr_live_strategy.py`
 **Purpose**: Live OMR strategy implementation
 
-**Features**: 3:50 PM entry, next morning exit, Bayesian signals
+**Features**: 3:55 PM entry, next morning exit, Bayesian signals
 
 **Dependencies**: `omr_live_adapter`, `broker_interface`, `logger`
 

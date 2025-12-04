@@ -27,7 +27,7 @@ The system supports running **N strategies** concurrently with:
 
 | Strategy | Position Size | Max Positions | Max Exposure | Execution Time |
 |----------|---------------|---------------|--------------|----------------|
-| OMR      | 15%           | 3             | 45%          | 9:31 AM (exit), 3:50 PM (entry) |
+| OMR      | 15%           | 3             | 45%          | 9:31 AM (exit), 3:55 PM (entry) |
 | MP       | 6.5%          | 10            | 65%          | 3:55 PM (rebalance) |
 | *Future* | TBD           | TBD           | TBD          | TBD |
 | **Combined** | -         | 13+           | **110%+**    | - |
@@ -123,11 +123,11 @@ modified_by: "toggle_strategy.sh"
         "TQQQ": {
           "qty": 50,
           "entry_price": 45.20,
-          "entry_time": "2025-12-02T15:50:00-05:00",
+          "entry_time": "2025-12-02T15:55:00-05:00",
           "order_id": "abc123"
         }
       },
-      "last_execution": "2025-12-02T15:50:30-05:00"
+      "last_execution": "2025-12-02T15:55:30-05:00"
     },
     "mp": {
       "positions": {
@@ -504,7 +504,7 @@ Time: 2025-12-02 15:30:00 EST
 OMR: ENABLED
   Last execution: 2025-12-02 09:31:15
   Positions: TQQQ (50), SOXL (30)
-  Status: Waiting for 15:50 entry window
+  Status: Waiting for 15:55 entry window
 
 MP: ENABLED
   Last execution: 2025-12-02 15:55:30
@@ -577,18 +577,16 @@ On restart:
  9:31 AM ─── [OMR] EXIT: Sell all overnight positions (TQQQ, SOXL, etc.)
                    └─ Execution lock held for ~1-2 min
 
- 3:43 PM ─── [OMR] Pre-fetch intraday data for entry signals
-
- 3:50 PM ─── [OMR] ENTRY: Open new overnight positions
-                   ├─ Generate signals (Bayesian + regime filter)
-                   ├─ Buy selected leveraged ETFs (TQQQ, SOXL, UPRO, etc.)
-                   └─ Execution lock held for ~4 min max
-
- 3:55 PM ─── [MP]  REBALANCE: Buy/sell based on today's momentum rankings
+ 3:55 PM ─┬─ [OMR] ENTRY: Open new overnight positions
+          │        ├─ Generate signals (Bayesian + regime filter)
+          │        ├─ Buy selected leveraged ETFs (TQQQ, SOXL, UPRO, etc.)
+          │        └─ Execution lock held for ~2-3 min
+          │
+          └─ [MP]  REBALANCE: Buy/sell based on today's momentum rankings
                    ├─ Pre-load historical data (S&P 500, VIX via yfinance)
                    ├─ Sell stocks that dropped out of top 10
                    ├─ Buy stocks that entered top 10
-                   └─ Execution lock held for ~2-4 min (after OMR releases)
+                   └─ Execution lock held for ~2-3 min (after OMR releases)
 
  4:00 PM ─┬─ [OMR] Generate EOD report
           └─ [MP]  Generate EOD report
@@ -596,13 +594,13 @@ On restart:
 
 ### Execution Lock Sequence
 
-At **3:50-3:55 PM**, strategies run and are serialized by execution lock:
+At **3:55 PM**, both strategies trigger and are serialized by execution lock:
 
 ```
-3:50:00 → [OMR] Acquires lock, starts buying overnight positions
-3:53:30 → [OMR] Releases lock after entry complete
-3:55:00 → [MP]  Acquires lock, starts rebalancing
-3:57:30 → [MP]  Releases lock after rebalancing complete
+3:55:00 → [OMR] Acquires lock, starts buying overnight positions
+3:57:30 → [OMR] Releases lock after entry complete
+3:57:31 → [MP]  Acquires lock, starts rebalancing
+3:59:30 → [MP]  Releases lock after rebalancing complete
 ```
 
 At **9:31 AM**, only OMR runs:
@@ -621,7 +619,7 @@ At **9:31 AM**, only OMR runs:
 ### What Each Strategy Trades
 
 **OMR (Overnight Mean Reversion)**:
-- Buys at 3:50 PM, sells at 9:31 AM next day
+- Buys at 3:55 PM, sells at 9:31 AM next day
 - Trades: TQQQ, SOXL, UPRO, SPXL, TECL, FNGU
 - Holds ~16 hours overnight
 

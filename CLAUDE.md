@@ -124,7 +124,7 @@ Update docs when modifying user-facing functionality.
 - **Type mismatches** - API data comes as strings; always convert explicitly
 - **VIX data resilience** - Must have fallbacks for VIX fetch failures
 - **Bayesian model coverage** - Model must be trained with ALL trading universe symbols
-- **Market hours** - Trading only at 3:50 PM ET, exits at 9:35 AM ET
+- **Market hours** - Trading only at 3:55 PM ET, exits at 9:31 AM ET
 - **Timezone handling** - ALWAYS use `from src.utils.timezone import tz` and `tz.now()` instead of `datetime.now()`. EC2 instances run in UTC; the timezone utility ensures consistent Eastern Time handling.
 - Details: [`.claude/live_trading.md`](.claude/live_trading.md)
 

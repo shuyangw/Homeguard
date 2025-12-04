@@ -287,7 +287,7 @@ Logs are written to console with color coding:
 | Holding Period | Daily (close-to-close) | Overnight |
 | Universe | S&P 500 | Leveraged ETFs |
 | Positions | 10 stocks | 3-5 ETFs |
-| Rebalance | 3:55 PM | Entry 3:50 PM, Exit 9:31 AM |
+| Rebalance | 3:55 PM | Entry 3:55 PM, Exit 9:31 AM |
 | Risk Model | Rule-based | Bayesian + Regime |
 | Expected Return | ~3.3%/month | ~2%/month |
 | Drawdown | Lower | Higher (leveraged) |
