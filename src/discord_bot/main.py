@@ -55,8 +55,8 @@ USER_RATE_LIMIT_PER_MINUTE = 5
 USER_RATE_LIMIT_PER_HOUR = 20
 GLOBAL_RATE_LIMIT_PER_MINUTE = 15
 
-# Trading service name
-TRADING_SERVICE_NAME = "homeguard-trading"
+# Trading service names (both strategies run as separate services)
+TRADING_SERVICES = ["homeguard-omr", "homeguard-mp"]
 
 
 async def check_trading_process_running() -> tuple[bool, str]:
@@ -64,7 +64,7 @@ async def check_trading_process_running() -> tuple[bool, str]:
     Check if the trading process/service is running.
 
     Supports:
-        - Linux: Checks systemd service status, falls back to pgrep
+        - Linux: Checks systemd service status for both OMR and MP, falls back to pgrep
         - macOS: Uses pgrep to find trading processes
         - Windows: Checks for Python processes (dev environment)
 
@@ -74,25 +74,35 @@ async def check_trading_process_running() -> tuple[bool, str]:
     system = platform.system()
 
     if system == "Linux":
-        # Check systemd service on Linux (EC2)
+        # Check systemd services on Linux (EC2) - check both OMR and MP
         try:
-            result = await asyncio.create_subprocess_exec(
-                "systemctl", "is-active", TRADING_SERVICE_NAME,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
-            )
-            stdout, _ = await result.communicate()
-            status = stdout.decode().strip()
+            service_statuses = {}
+            for service_name in TRADING_SERVICES:
+                result = await asyncio.create_subprocess_exec(
+                    "systemctl", "is-active", service_name,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE
+                )
+                stdout, _ = await result.communicate()
+                status = stdout.decode().strip()
+                service_statuses[service_name] = status
 
-            if status == "active":
-                return True, f"Trading service `{TRADING_SERVICE_NAME}` is running"
+            # Build status message
+            running_services = [s for s, status in service_statuses.items() if status == "active"]
+            stopped_services = [s for s, status in service_statuses.items() if status != "active"]
+
+            if len(running_services) == len(TRADING_SERVICES):
+                return True, f"Both trading services running: `{', '.join(running_services)}`"
+            elif running_services:
+                return True, f"Running: `{', '.join(running_services)}` | Stopped: `{', '.join(stopped_services)}`"
             else:
-                return False, f"Trading service `{TRADING_SERVICE_NAME}` is not running (status: {status})"
+                status_details = ", ".join(f"{s}={service_statuses[s]}" for s in TRADING_SERVICES)
+                return False, f"No trading services running ({status_details})"
         except FileNotFoundError:
             # systemctl not available, try pgrep
             return await _check_trading_process_pgrep()
         except Exception as e:
-            return False, f"Error checking trading service: {e}"
+            return False, f"Error checking trading services: {e}"
 
     elif system == "Darwin":
         # macOS - use pgrep to find trading processes
@@ -668,36 +678,40 @@ async def ask_command(interaction: discord.Interaction, question: str):
     await run_investigation(interaction, question, use_sonnet=True)
 
 
-@app_commands.command(name="status", description="Check if the trading bot is running")
+@app_commands.command(name="status", description="Check if both trading strategies (OMR and MP) are running")
 async def status_command(interaction: discord.Interaction):
-    """Quick health check of the trading bot."""
+    """Quick health check of both trading strategies."""
     await run_investigation(
-        interaction, "Check if the trading bot is running and show any recent errors"
+        interaction,
+        "Check if BOTH trading services are running (homeguard-omr and homeguard-mp) "
+        "and show their status. Also show any recent errors from either service."
     )
 
 
-@app_commands.command(name="signals", description="Show today's trading signals")
+@app_commands.command(name="signals", description="Show today's trading signals from both OMR and MP strategies")
 async def signals_command(interaction: discord.Interaction):
-    """Show today's trading signals."""
+    """Show today's trading signals from both strategies."""
     await run_investigation(
         interaction,
-        "Show trading signals from the CURRENT TRADING DAY ONLY (today's date in ET). "
+        "Show trading signals from BOTH strategies (OMR and MP) for the CURRENT TRADING DAY ONLY (today's date in ET). "
         "Only include signals with timestamps between 9:30 AM ET and 4:00 PM ET today. "
         "Do NOT show signals from previous days or overnight sessions. "
         "Use the session file from today's log directory. "
+        "Clearly label which signals came from OMR (3:50 PM) vs MP (3:55 PM). "
         "Convert all timestamps to Eastern Time (ET) before displaying.",
     )
 
 
-@app_commands.command(name="trades", description="Show today's executed trades")
+@app_commands.command(name="trades", description="Show today's executed trades from both OMR and MP strategies")
 async def trades_command(interaction: discord.Interaction):
-    """Show today's executed trades."""
+    """Show today's executed trades from both strategies."""
     await run_investigation(
         interaction,
-        "Show executed trades from the CURRENT TRADING DAY ONLY (today's date in ET). "
+        "Show executed trades from BOTH strategies (OMR and MP) for the CURRENT TRADING DAY ONLY (today's date in ET). "
         "Only include trades with timestamps between 9:30 AM ET and 4:00 PM ET today. "
         "Do NOT show trades from previous days or overnight sessions. "
         "Use the trades CSV from today's log directory. "
+        "Clearly label which trades came from OMR vs MP strategy. "
         "Convert all timestamps to Eastern Time (ET) before displaying.",
     )
 
@@ -712,15 +726,16 @@ async def logs_command(interaction: discord.Interaction, lines: int = 50):
     )
 
 
-@app_commands.command(name="errors", description="Search for errors in today's logs")
+@app_commands.command(name="errors", description="Search for errors in today's logs from both strategies")
 async def errors_command(interaction: discord.Interaction):
-    """Search for errors in today's logs."""
+    """Search for errors in today's logs from both strategies."""
     await run_investigation(
         interaction,
-        "Search for errors or warnings from the CURRENT TRADING DAY ONLY (today's date in ET). "
+        "Search for errors or warnings from BOTH strategies (OMR and MP) for the CURRENT TRADING DAY ONLY (today's date in ET). "
         "Only include errors with timestamps between 9:30 AM ET and 4:00 PM ET today. "
         "Do NOT show errors from previous days or overnight sessions. "
-        "Use logs from today's log directory only. "
+        "Check both journalctl logs (homeguard-omr and homeguard-mp) and today's log directory. "
+        "Clearly label which errors came from OMR vs MP strategy. "
         "Convert all timestamps to Eastern Time (ET) before displaying.",
     )
 
@@ -741,13 +756,17 @@ async def help_command(interaction: discord.Interaction):
 
     help_text = f"""**Homeguard Trading Monitor - Slash Commands**
 
+**Trading Strategies Monitored:**
+- **OMR** (Overnight Mean Reversion) - Entry 3:50 PM, Exit 9:31 AM next day
+- **MP** (Momentum Portfolio) - Weekly rebalance on Fridays at 3:55 PM
+
 **Investigation Commands:**
-`/ask <question>` - Ask any question about the trading system
-`/status` - Check if trading bot is running
-`/signals` - Show today's trading signals
-`/trades` - Show today's executed trades
+`/ask <question>` - Ask any question about either trading strategy
+`/status` - Check if both OMR and MP services are running
+`/signals` - Show today's trading signals (both strategies)
+`/trades` - Show today's executed trades (both strategies)
 `/logs [lines]` - Show recent log entries (default 50)
-`/errors` - Search for errors in logs
+`/errors` - Search for errors in logs (both strategies)
 
 **Utility Commands:**
 `/bothelp` - Show this help message
