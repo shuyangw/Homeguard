@@ -824,9 +824,10 @@ class MomentumLiveAdapter(StrategyAdapter):
 
                         if order:
                             logger.success(f"[MP] Buy order placed: {symbol}")
-                            # Add to state tracking
+                            # Use add_or_update_position to handle both new positions AND top-ups
+                            # CRITICAL: This prevents state drift when topping up existing positions
                             order_id = order.get('order_id')
-                            self.state_manager.add_position(
+                            self.state_manager.add_or_update_position(
                                 STRATEGY_NAME, symbol, shares_to_buy, current_price, order_id
                             )
 

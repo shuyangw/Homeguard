@@ -210,6 +210,42 @@ Pylance/VectorBT type annotation patterns.
 - Race conditions in parallel code
 - Silent failures that return None instead of raising
 
+### Type Safety (CRITICAL)
+**CHECK FOR TYPE ERRORS WITH EVERY CODE ADDITION AND MODIFICATION!**
+
+Before committing ANY code change, verify:
+1. Return types match what callers expect
+2. Parameter types match what callees expect
+3. Dict access vs attribute access is correct
+4. Test mocks match production types
+
+**Common type error patterns:**
+
+1. **Accessing API/broker return values**:
+   - `broker.get_account()` returns a **dict**, not an object with attributes
+   - Use `account['buying_power']` not `account.buying_power`
+   - Check return type annotations AND actual implementation
+
+2. **Strategy signal interfaces**:
+   - Base `StrategyAdapter` expects `Signal` objects with `.symbol`, `.direction`, `.price`
+   - If underlying strategy returns dicts, create a wrapper class to convert
+   - Example: `OMRSignalWrapper` converts `OvernightReversionSignals` dicts to `Signal` objects
+
+3. **DataFrame column names**:
+   - yfinance returns `'Close'` (capitalized)
+   - Alpaca returns `'close'` (lowercase)
+   - Always normalize: `df.columns = [c.lower() for c in df.columns]`
+
+4. **Test mocks must match production types**:
+   - If production returns a dict, mock should return a dict
+   - If production returns an object with attributes, mock should too
+   - Tests passing ≠ production working if types don't match
+
+5. **State tracking methods**:
+   - `add_position()` OVERWRITES existing positions (use for new only)
+   - `add_or_update_position()` ACCUMULATES qty (use for top-ups)
+   - Always verify which method is appropriate for the use case
+
 ### Error Handling Philosophy
 - Fail fast and loud - don't hide errors
 - Log all exceptions with full context

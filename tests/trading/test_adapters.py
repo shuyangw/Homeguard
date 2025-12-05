@@ -24,11 +24,15 @@ def mock_broker():
     """Create mock broker interface."""
     broker = Mock()
 
-    # Mock account info
-    account = Mock()
-    account.id = "test_account_123"
-    account.buying_power = "100000.00"
-    account.portfolio_value = "100000.00"
+    # Mock account info - returns dict to match AlpacaBroker.get_account()
+    account = {
+        'account_id': "test_account_123",
+        'buying_power': 100000.0,
+        'portfolio_value': 100000.0,
+        'cash': 100000.0,
+        'equity': 100000.0,
+        'currency': 'USD'
+    }
     broker.get_account.return_value = account
 
     # Mock market status
@@ -431,6 +435,76 @@ class TestOMRLiveAdapter:
 
         # Should not place any orders
         adapter.execution_engine.execute_order.assert_not_called()
+
+    def test_execute_signals_tracks_positions(self, mock_broker):
+        """Test that execute_signals adds positions to state manager."""
+        adapter = OMRLiveAdapter(
+            broker=mock_broker,
+            symbols=['TQQQ', 'SQQQ']
+        )
+
+        # Mock the state manager to avoid file I/O issues during tests
+        adapter.state_manager = Mock()
+        adapter.state_manager.is_enabled.return_value = True
+        adapter.state_manager.get_positions.return_value = {}
+
+        # Mock execution engine to return successful order
+        adapter.execution_engine.execute_order = Mock(return_value={'order_id': 'order_123'})
+
+        # Create a test signal
+        signal = Signal(
+            symbol='TQQQ',
+            direction='BUY',
+            price=50.0,
+            confidence=0.8,
+            timestamp=datetime.now(),
+            metadata={}
+        )
+
+        # Execute signals
+        adapter.execute_signals([signal])
+
+        # Should have called execute_order
+        adapter.execution_engine.execute_order.assert_called_once()
+
+        # Should have called add_or_update_position on state manager
+        adapter.state_manager.add_or_update_position.assert_called_once()
+        call_args = adapter.state_manager.add_or_update_position.call_args
+        assert call_args[0][0] == 'omr'  # strategy name
+        assert call_args[0][1] == 'TQQQ'  # symbol
+        assert call_args[0][2] > 0  # qty > 0
+
+    def test_execute_signals_no_tracking_on_failed_order(self, mock_broker):
+        """Test that failed orders are not tracked in state manager."""
+        adapter = OMRLiveAdapter(
+            broker=mock_broker,
+            symbols=['TQQQ']
+        )
+
+        # Mock the state manager to avoid file I/O issues during tests
+        adapter.state_manager = Mock()
+        adapter.state_manager.is_enabled.return_value = True
+
+        # Mock execution engine to return None (failed order)
+        adapter.execution_engine.execute_order = Mock(return_value=None)
+
+        signal = Signal(
+            symbol='TQQQ',
+            direction='BUY',
+            price=50.0,
+            confidence=0.8,
+            timestamp=datetime.now(),
+            metadata={}
+        )
+
+        # Execute signals
+        adapter.execute_signals([signal])
+
+        # Should have called execute_order
+        adapter.execution_engine.execute_order.assert_called_once()
+
+        # Should NOT have called add_or_update_position (order failed)
+        adapter.state_manager.add_or_update_position.assert_not_called()
 
 
 class TestAdapterIntegration:

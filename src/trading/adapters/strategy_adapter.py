@@ -358,7 +358,7 @@ class StrategyAdapter(ABC):
             logger.error("Cannot get account info, skipping execution")
             return
 
-        buying_power = float(account.buying_power)
+        buying_power = float(account['buying_power'])
 
         for signal in signals:
             try:

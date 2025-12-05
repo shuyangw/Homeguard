@@ -11,6 +11,7 @@ import pandas as pd
 import yfinance as yf
 
 from src.trading.adapters.strategy_adapter import StrategyAdapter
+from src.strategies.core import StrategySignals, Signal
 from src.strategies.advanced.overnight_signal_generator import OvernightReversionSignals
 from src.strategies.advanced.market_regime_detector import MarketRegimeDetector
 from src.strategies.advanced.bayesian_reversion_model import BayesianReversionModel
@@ -23,6 +24,70 @@ from src.utils.timezone import tz
 
 # Strategy identifier for state tracking
 STRATEGY_NAME = 'omr'
+
+
+class OMRSignalWrapper(StrategySignals):
+    """
+    Wrapper to make OvernightReversionSignals compatible with StrategyAdapter.
+
+    OvernightReversionSignals returns dicts, but StrategyAdapter expects Signal objects.
+    This wrapper converts the dict-based signals to proper Signal objects.
+    """
+
+    def __init__(self, omr_signals: OvernightReversionSignals):
+        self._omr_signals = omr_signals
+
+    def get_required_lookback(self) -> int:
+        """Return number of periods needed for signal generation."""
+        return 1  # OMR only needs today's intraday data
+
+    def generate_signals(
+        self,
+        market_data: Dict[str, pd.DataFrame],
+        timestamp: Optional[datetime] = None
+    ) -> List[Signal]:
+        """
+        Generate signals compatible with base StrategyAdapter.
+
+        Args:
+            market_data: Dict of symbol -> DataFrame with OHLCV data
+            timestamp: Current timestamp
+
+        Returns:
+            List of Signal objects
+        """
+        now = timestamp or datetime.now()
+
+        # Call the underlying OMR signal generator (returns list of dicts)
+        raw_signals = self._omr_signals.generate_signals(market_data, now)
+
+        # Convert dicts to Signal objects
+        signals = []
+        for raw in raw_signals:
+            # Map 'SHORT' to 'SELL' for Signal compatibility
+            direction = raw['direction']
+            if direction == 'SHORT':
+                direction = 'SELL'
+
+            signals.append(Signal(
+                timestamp=now,
+                symbol=raw['symbol'],
+                direction=direction,
+                confidence=raw.get('signal_strength', raw.get('probability', 0.5)),
+                price=raw.get('current_price', 0.01),  # Use current_price from signal
+                metadata={
+                    'regime': raw.get('regime'),
+                    'intraday_return': raw.get('intraday_return'),
+                    'probability': raw.get('probability'),
+                    'expected_return': raw.get('expected_return'),
+                    'sharpe': raw.get('sharpe'),
+                    'sample_size': raw.get('sample_size'),
+                    'entry_time': raw.get('entry_time'),
+                    'exit_time': raw.get('exit_time')
+                }
+            ))
+
+        return signals
 
 
 class OMRLiveAdapter(StrategyAdapter):
@@ -97,7 +162,7 @@ class OMRLiveAdapter(StrategyAdapter):
                 logger.warning("[OMR] Will train at market open")
 
         # Create pure OMR strategy with injected symbols
-        strategy = OvernightReversionSignals(
+        omr_signals = OvernightReversionSignals(
             regime_detector=regime_detector,
             bayesian_model=bayesian_model,
             symbols=symbols,  # ✅ Inject symbols instead of using hardcoded list
@@ -106,8 +171,12 @@ class OMRLiveAdapter(StrategyAdapter):
             max_positions=max_positions
         )
 
-        # OMR needs intraday data, so need more lookback
-        data_lookback_days = 365
+        # Wrap for compatibility with base adapter (converts dicts to Signal objects)
+        strategy = OMRSignalWrapper(omr_signals)
+
+        # OMR needs 252+ trading days for regime detection (VIX percentile)
+        # 400 calendar days ≈ 274 trading days, safely above 252 requirement
+        data_lookback_days = 400
 
         # Initialize base adapter
         super().__init__(
@@ -399,6 +468,76 @@ class OMRLiveAdapter(StrategyAdapter):
         except Exception as e:
             logger.error(f"[OMR] Failed to fetch VIX via yfinance: {e}")
             return None
+
+    def execute_signals(self, signals: List[Signal]) -> None:
+        """
+        Execute trading signals with position tracking.
+
+        Overrides base class to add state manager position tracking
+        for multi-strategy coordination.
+
+        Args:
+            signals: Filtered signals to execute
+        """
+        if not signals:
+            logger.info("[OMR] No signals to execute")
+            return
+
+        # Get account info for position sizing
+        account = self.broker.get_account()
+        if account is None:
+            logger.error("[OMR] Cannot get account info, skipping execution")
+            return
+
+        buying_power = float(account['buying_power'])
+
+        for signal in signals:
+            try:
+                # Calculate position size
+                position_value = buying_power * self.position_size
+                qty = int(position_value / signal.price)
+
+                if qty <= 0:
+                    logger.warning(
+                        f"[OMR] Calculated qty {qty} for {signal.symbol}, skipping"
+                    )
+                    continue
+
+                # Execute order
+                logger.info(
+                    f"[OMR] Executing {signal.direction} {qty} shares of {signal.symbol} "
+                    f"@ ${signal.price:.2f}"
+                )
+
+                if signal.direction == 'BUY':
+                    side = OrderSide.BUY
+                elif signal.direction == 'SELL':
+                    side = OrderSide.SELL
+                else:
+                    logger.warning(f"[OMR] Unknown direction: {signal.direction}")
+                    continue
+
+                order = self.execution_engine.execute_order(
+                    symbol=signal.symbol,
+                    quantity=qty,
+                    side=side,
+                    order_type=OrderType.MARKET
+                )
+
+                if order:
+                    logger.success(f"[OMR] Order placed: {order.get('order_id', 'UNKNOWN')}")
+                    # Track position in state manager for multi-strategy coordination
+                    # Use add_or_update_position to safely handle any edge cases
+                    order_id = order.get('order_id')
+                    self.state_manager.add_or_update_position(
+                        STRATEGY_NAME, signal.symbol, qty, signal.price, order_id
+                    )
+                else:
+                    logger.error(f"[OMR] Failed to place order for {signal.symbol}")
+
+            except Exception as e:
+                logger.error(f"[OMR] Error executing signal for {signal.symbol}: {e}")
+                continue
 
     def run_once(self) -> None:
         """

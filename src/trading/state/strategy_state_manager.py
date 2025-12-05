@@ -485,6 +485,65 @@ class StrategyStateManager:
             self._save_state()
             logger.info(f"[{strategy.upper()}] Updated {symbol}: {old_qty} -> {new_qty} shares")
 
+    def add_or_update_position(
+        self,
+        strategy: str,
+        symbol: str,
+        qty_delta: int,
+        price: float,
+        order_id: Optional[str] = None
+    ) -> int:
+        """
+        Add to existing position or create new one.
+
+        CRITICAL: Use this for top-ups to avoid state drift!
+        - If position exists: adds qty_delta to existing qty
+        - If position doesn't exist: creates new position with qty_delta
+
+        Args:
+            strategy: Strategy name
+            symbol: Stock symbol
+            qty_delta: Quantity to ADD (not total)
+            price: Current price (for new positions or logging)
+            order_id: Optional order ID
+
+        Returns:
+            New total quantity after update
+        """
+        self._load_state()
+
+        if 'strategies' not in self._state:
+            self._state['strategies'] = {}
+        if strategy not in self._state['strategies']:
+            self._state['strategies'][strategy] = {'positions': {}, 'last_execution': None}
+
+        positions = self._state['strategies'][strategy]['positions']
+
+        if symbol in positions:
+            # Existing position - ADD to qty (don't overwrite!)
+            old_qty = positions[symbol]['qty']
+            new_qty = old_qty + qty_delta
+            positions[symbol]['qty'] = new_qty
+            # Keep original entry_price and entry_time
+            self._save_state()
+            logger.info(
+                f"[{strategy.upper()}] Topped up {symbol}: {old_qty} + {qty_delta} = {new_qty} shares"
+            )
+            return new_qty
+        else:
+            # New position
+            positions[symbol] = {
+                'qty': qty_delta,
+                'entry_price': price,
+                'entry_time': tz.iso_timestamp(),
+                'order_id': order_id
+            }
+            self._save_state()
+            logger.info(
+                f"[{strategy.upper()}] Added position: {symbol} ({qty_delta} shares @ ${price:.2f})"
+            )
+            return qty_delta
+
     def remove_position(self, strategy: str, symbol: str) -> None:
         """Remove a position from a strategy's tracked positions."""
         self._load_state()
@@ -546,16 +605,18 @@ class StrategyStateManager:
         Handles:
         - Positions closed externally (stop-loss, manual)
         - Positions partially closed
+        - Positions increased externally (logs warning but updates to match)
+        - STATE DRIFT DETECTION: When broker qty > state qty unexpectedly
 
         Args:
             broker_positions: Dict of symbol -> quantity from broker
 
         Returns:
-            Dict with 'removed' and 'updated' lists of symbols
+            Dict with 'removed', 'updated', and 'drift_detected' lists of symbols
         """
         self._load_state()
 
-        changes = {'removed': [], 'updated': []}
+        changes = {'removed': [], 'updated': [], 'drift_detected': []}
 
         for strategy, data in self._state.get('strategies', {}).items():
             positions = data.get('positions', {})
@@ -576,7 +637,18 @@ class StrategyStateManager:
                     positions[symbol]['qty'] = broker_qty
                     changes['updated'].append(f"{strategy}:{symbol}")
 
-        if changes['removed'] or changes['updated']:
+                elif broker_qty > state_qty:
+                    # STATE DRIFT DETECTED: Broker has MORE than state expected
+                    # This indicates a bug in position tracking (e.g., top-up not recorded)
+                    logger.error(
+                        f"[{strategy.upper()}] STATE DRIFT DETECTED: {symbol} "
+                        f"state={state_qty} but broker={broker_qty} (+{broker_qty - state_qty} untracked)"
+                    )
+                    # Update state to match broker (self-heal)
+                    positions[symbol]['qty'] = broker_qty
+                    changes['drift_detected'].append(f"{strategy}:{symbol}")
+
+        if changes['removed'] or changes['updated'] or changes['drift_detected']:
             self._save_state()
 
         return changes
