@@ -55,6 +55,7 @@ from src.trading.state import StrategyStateManager
 from src.strategies.universe import EquityUniverse, ETFUniverse
 from src.utils.logger import logger, get_trading_logger, TradingLogger
 from src.utils.timezone import tz
+from src.utils.trading_logger import cleanup_old_logs
 
 
 class TradingSessionTracker:
@@ -891,6 +892,13 @@ def main():
 
     # Load environment variables
     load_dotenv()
+
+    # Clean up old trade logs (keep 30 days)
+    # This runs on startup to manage disk space on EC2
+    try:
+        cleanup_old_logs(log_dir="/home/ec2-user/logs", keep_days=30)
+    except Exception as e:
+        logger.warning(f"Failed to cleanup old logs (non-critical): {e}")
 
     # Check for API credentials
     api_key = os.getenv('ALPACA_API_KEY') or os.getenv('ALPACA_PAPER_KEY_ID')

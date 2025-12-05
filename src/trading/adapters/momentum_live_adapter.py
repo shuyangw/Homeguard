@@ -24,6 +24,7 @@ from src.trading.utils.portfolio_health_check import PortfolioHealthChecker
 from src.trading.state import StrategyStateManager
 from src.utils.logger import logger
 from src.utils.timezone import tz
+from src.utils.trading_logger import get_trade_log_writer
 
 # Strategy identifier for state tracking
 STRATEGY_NAME = 'mp'
@@ -771,6 +772,25 @@ class MomentumLiveAdapter(StrategyAdapter):
 
                             if order:
                                 logger.success(f"[MP] Sell order placed: {symbol}")
+
+                                # Log trade exit to persistent trade log BEFORE removing position
+                                # Get entry info from state manager while it still exists
+                                try:
+                                    position_info = self.state_manager.get_positions(STRATEGY_NAME).get(symbol, {})
+                                    trade_logger = get_trade_log_writer()
+                                    fill_price = order.get('avg_fill_price', pos.get('current_price', 0))
+                                    trade_logger.log_exit(
+                                        strategy=STRATEGY_NAME,
+                                        symbol=symbol,
+                                        qty=abs(qty),
+                                        exit_price=float(fill_price) if fill_price else float(pos.get('current_price', 0)),
+                                        order_id=order.get('order_id'),
+                                        entry_price=position_info.get('entry_price', float(pos.get('avg_entry_price', 0))),
+                                        entry_time=position_info.get('entry_time')
+                                    )
+                                except Exception as log_err:
+                                    logger.error(f"[MP] Trade logging failed (non-blocking): {log_err}")
+
                                 # Remove from state tracking
                                 self.state_manager.remove_position(STRATEGY_NAME, symbol)
                     except Exception as e:
@@ -830,6 +850,25 @@ class MomentumLiveAdapter(StrategyAdapter):
                             self.state_manager.add_or_update_position(
                                 STRATEGY_NAME, symbol, shares_to_buy, current_price, order_id
                             )
+
+                            # Log trade entry to persistent trade log
+                            # Error handling ensures logging failures don't block trading
+                            try:
+                                trade_logger = get_trade_log_writer()
+                                fill_price = order.get('avg_fill_price', current_price)
+                                trade_logger.log_entry(
+                                    strategy=STRATEGY_NAME,
+                                    symbol=symbol,
+                                    qty=shares_to_buy,
+                                    price=float(fill_price) if fill_price else current_price,
+                                    order_id=order_id,
+                                    metadata={
+                                        'rank': signal.metadata.get('rank') if signal.metadata else None,
+                                        'momentum_score': signal.metadata.get('momentum_score') if signal.metadata else None
+                                    }
+                                )
+                            except Exception as log_err:
+                                logger.error(f"[MP] Trade logging failed (non-blocking): {log_err}")
 
                 except Exception as e:
                     logger.error(f"[MP] Error buying {symbol}: {e}")
