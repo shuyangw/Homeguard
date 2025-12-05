@@ -683,8 +683,7 @@ async def status_command(interaction: discord.Interaction):
     """Quick health check of both trading strategies."""
     await run_investigation(
         interaction,
-        "Check if BOTH trading services are running (homeguard-omr and homeguard-mp) "
-        "and show their status. Also show any recent errors from either service."
+        "Check status of homeguard-omr and homeguard-mp services. Show any recent errors."
     )
 
 
@@ -693,12 +692,7 @@ async def signals_command(interaction: discord.Interaction):
     """Show today's trading signals from both strategies."""
     await run_investigation(
         interaction,
-        "Show trading signals from BOTH strategies (OMR and MP) for the CURRENT TRADING DAY ONLY (today's date in ET). "
-        "Only include signals with timestamps between 9:30 AM ET and 4:00 PM ET today. "
-        "Do NOT show signals from previous days or overnight sessions. "
-        "Use the session file from today's log directory. "
-        "Clearly label which signals came from OMR (3:50 PM) vs MP (3:55 PM). "
-        "Convert all timestamps to Eastern Time (ET) before displaying.",
+        "Show today's signals from both OMR and MP. Label by strategy. Times in ET."
     )
 
 
@@ -707,12 +701,7 @@ async def trades_command(interaction: discord.Interaction):
     """Show today's executed trades from both strategies."""
     await run_investigation(
         interaction,
-        "Show executed trades from BOTH strategies (OMR and MP) for the CURRENT TRADING DAY ONLY (today's date in ET). "
-        "Only include trades with timestamps between 9:30 AM ET and 4:00 PM ET today. "
-        "Do NOT show trades from previous days or overnight sessions. "
-        "Use the trades CSV from today's log directory. "
-        "Clearly label which trades came from OMR vs MP strategy. "
-        "Convert all timestamps to Eastern Time (ET) before displaying.",
+        "Show today's trades from both OMR and MP. Label by strategy. Times in ET."
     )
 
 
@@ -731,12 +720,7 @@ async def errors_command(interaction: discord.Interaction):
     """Search for errors in today's logs from both strategies."""
     await run_investigation(
         interaction,
-        "Search for errors or warnings from BOTH strategies (OMR and MP) for the CURRENT TRADING DAY ONLY (today's date in ET). "
-        "Only include errors with timestamps between 9:30 AM ET and 4:00 PM ET today. "
-        "Do NOT show errors from previous days or overnight sessions. "
-        "Check both journalctl logs (homeguard-omr and homeguard-mp) and today's log directory. "
-        "Clearly label which errors came from OMR vs MP strategy. "
-        "Convert all timestamps to Eastern Time (ET) before displaying.",
+        "Find errors/warnings from today's logs for both OMR and MP. Label by strategy."
     )
 
 
