@@ -8,7 +8,6 @@ Runs at 3:50 PM EST to generate overnight signals.
 from typing import List, Dict, Optional
 from datetime import datetime, time, timedelta
 import pandas as pd
-import yfinance as yf
 
 from src.trading.adapters.strategy_adapter import StrategyAdapter
 from src.strategies.core import StrategySignals, Signal
@@ -19,6 +18,7 @@ from src.strategies.universe import ETFUniverse
 from src.trading.brokers.broker_interface import BrokerInterface, OrderSide, OrderType
 from src.trading.utils.portfolio_health_check import PortfolioHealthChecker
 from src.trading.state import StrategyStateManager
+from src.utils.vix_provider import get_vix_provider
 from src.utils.logger import logger
 from src.utils.timezone import tz
 from src.utils.trading_logger import get_trade_log_writer
@@ -236,7 +236,8 @@ class OMRLiveAdapter(StrategyAdapter):
                 if market_symbol not in self._data_cache:
                     try:
                         if market_symbol == 'VIX':
-                            df = self._fetch_vix_yfinance(start_date, end_date)
+                            # Use VIX provider with fallback chain
+                            df = self._fetch_vix_data(lookback_days=self.data_lookback_days)
                         else:
                             df = self.broker.get_historical_bars(
                                 symbol=market_symbol,
@@ -381,13 +382,12 @@ class OMRLiveAdapter(StrategyAdapter):
                 for market_symbol in ['SPY', 'VIX']:
                     if market_symbol not in market_data:
                         try:
-                            # VIX is not available from Alpaca - use yfinance directly
                             if market_symbol == 'VIX':
-                                logger.info("[OMR] Fetching VIX data via yfinance (Alpaca does not provide VIX)")
-                                df = self._fetch_vix_yfinance(start_date, end_date)
+                                # Use VIX provider with fallback chain (yfinance -> FRED -> cache)
+                                logger.info("[OMR] Fetching VIX data with fallback chain...")
+                                df = self._fetch_vix_data(lookback_days=self.data_lookback_days)
                                 if df is not None and not df.empty:
                                     market_data[market_symbol] = df
-                                    logger.info(f"[OMR] Fetched {len(df)} days of VIX data via yfinance")
                             else:
                                 # Use Alpaca for other symbols (SPY, etc.)
                                 df = self.broker.get_historical_bars(
@@ -400,7 +400,6 @@ class OMRLiveAdapter(StrategyAdapter):
                                     market_data[market_symbol] = df
                         except Exception as e:
                             logger.error(f"[OMR] Error fetching {market_symbol}: {e}")
-                            # VIX errors are already handled in _fetch_vix_yfinance
 
             cache_status = "cached intraday" if intraday_cache_available else "live fetch"
             logger.info(
@@ -426,49 +425,47 @@ class OMRLiveAdapter(StrategyAdapter):
             logger.error(f"[OMR] Error in fetch_market_data: {e}")
             return {}
 
-    def _fetch_vix_yfinance(self, start_date: str, end_date: str) -> Optional[pd.DataFrame]:
+    def _fetch_vix_data(self, lookback_days: int = 400) -> Optional[pd.DataFrame]:
         """
-        Fetch VIX data via yfinance.
+        Fetch VIX data with multi-source fallback chain.
 
-        Alpaca doesn't provide VIX data, so we use yfinance as a fallback.
-        The VIX ticker on Yahoo Finance is ^VIX.
+        Uses VIXProvider which tries:
+        1. yfinance (primary) - Yahoo Finance ^VIX
+        2. FRED API (fallback) - Federal Reserve VIXCLS series
+        3. Persisted cache (last resort) - Last known good VIX value
 
         Args:
-            start_date: Start date in YYYY-MM-DD format
-            end_date: End date in YYYY-MM-DD format
+            lookback_days: Number of days of history needed
 
         Returns:
-            DataFrame with VIX data in OHLCV format, or None if fetch fails
+            DataFrame with VIX data ('close' column), or None if all sources fail
         """
         try:
-            # Convert string dates to pandas Timestamps and add buffer
-            start = pd.Timestamp(start_date)
-            end = pd.Timestamp(end_date) + timedelta(days=1)
+            vix_provider = get_vix_provider()
+            vix_data = vix_provider.get_vix_data(lookback_days=lookback_days)
 
-            # Fetch VIX data using Yahoo Finance ticker ^VIX
-            vix_data = yf.download(
-                '^VIX',
-                start=start.strftime('%Y-%m-%d'),
-                end=end.strftime('%Y-%m-%d'),
-                progress=False,
-                auto_adjust=True  # Suppress FutureWarning
-            )
+            if vix_data is not None:
+                source, fetch_time = vix_provider.get_source_info()
+                logger.info(f"[OMR] VIX data from {source}: {len(vix_data)} days")
 
-            if vix_data is None or vix_data.empty:
-                logger.error("[OMR] yfinance returned empty VIX data")
+                # Log warning if using cached data
+                if source == "cache":
+                    logger.warning(f"[OMR] Using cached VIX data (may be stale)")
+
+                return vix_data
+            else:
+                logger.error("[OMR] All VIX data sources failed!")
                 return None
 
-            # Ensure timezone-aware index for consistency with broker data
-            if vix_data.index.tz is None:
-                vix_data.index = vix_data.index.tz_localize('America/New_York')
-            else:
-                vix_data.index = vix_data.index.tz_convert('America/New_York')
-
-            return vix_data
-
         except Exception as e:
-            logger.error(f"[OMR] Failed to fetch VIX via yfinance: {e}")
+            logger.error(f"[OMR] Failed to fetch VIX data: {e}")
             return None
+
+    # Keep old method name as alias for backward compatibility
+    def _fetch_vix_yfinance(self, start_date: str, end_date: str) -> Optional[pd.DataFrame]:
+        """Deprecated: Use _fetch_vix_data() instead. This is kept for compatibility."""
+        logger.warning("[OMR] _fetch_vix_yfinance is deprecated, using _fetch_vix_data with fallback chain")
+        return self._fetch_vix_data(lookback_days=self.data_lookback_days)
 
     def execute_signals(self, signals: List[Signal]) -> None:
         """
