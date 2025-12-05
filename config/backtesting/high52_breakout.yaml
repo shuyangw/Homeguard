@@ -1,0 +1,54 @@
+# 52-Week High Monthly Breakout Strategy Configuration
+# Research: George and Hwang (2004) "The 52-Week High and Momentum Investing"
+
+strategy:
+  name: High52Breakout
+  description: >
+    Select top N stocks closest to their 52-week highs.
+    Monthly rebalancing is CRITICAL (weekly loses money due to churn).
+
+  parameters:
+    top_n: 10                    # Number of stocks to hold
+    max_distance_pct: 0.05       # Max 5% below 52-week high
+    lookback_days: 252           # Trading days for 52-week calculation
+    rebalance_frequency: monthly # First trading day of each month
+
+# Universe configuration
+symbols:
+  source: csv
+  path: backtest_lists/sp500-2025.csv
+  column: Symbol
+
+# Backtest date range
+dates:
+  start: "2017-01-01"
+  end: "2024-12-31"
+
+# Risk parameters
+risk:
+  position_size_pct: 0.10    # 10% per position (equal weight)
+  max_positions: 10          # Same as top_n
+  initial_capital: 100000    # Starting portfolio value
+
+# Benchmark
+benchmark:
+  symbol: SPY
+
+# Walk-forward validation settings
+walk_forward:
+  enabled: true
+  period: yearly             # Annual out-of-sample periods
+  min_periods: 12            # Minimum months per period
+
+# Performance targets (from research)
+targets:
+  min_annual_return: 0.15    # 15% annual return
+  min_sharpe_ratio: 1.0      # Sharpe > 1.0
+  max_drawdown: -0.25        # Max -25% drawdown
+  beat_spy_rate: 0.50        # Beat SPY in >50% of years
+
+# Reporting
+output:
+  format: [console, csv, markdown]
+  directory: docs/reports
+  timestamp_prefix: true

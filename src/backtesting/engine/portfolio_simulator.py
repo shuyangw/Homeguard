@@ -1,16 +1,32 @@
 """
 Custom portfolio simulator to replace vectorbt dependency.
+
+This module provides the Portfolio class for backtesting trading strategies.
+For performance-critical applications, it uses Numba JIT compilation when possible,
+falling back to pure Python for advanced features.
 """
 
 import pandas as pd
 import numpy as np
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 import pytz
 from datetime import time
 
 from src.backtesting.utils.risk_config import RiskConfig
 from src.backtesting.utils.position_sizer import FixedPercentageSizer, FixedDollarSizer, VolatilityBasedSizer, KellyCriterionSizer
 from src.backtesting.utils.risk_manager import RiskManager, Position
+
+# Try to import Numba simulation module
+try:
+    from src.backtesting.engine.numba_sim import (
+        simulate_portfolio_numba,
+        TRADE_ENTRY, TRADE_EXIT, TRADE_SHORT_ENTRY, TRADE_COVER_SHORT,
+        EXIT_SIGNAL, EXIT_STOP_LOSS, EXIT_TIME_STOP, EXIT_PROFIT_TARGET,
+        TRADE_TYPE_NAMES, EXIT_REASON_NAMES
+    )
+    NUMBA_AVAILABLE = True
+except ImportError:
+    NUMBA_AVAILABLE = False
 
 
 class Portfolio:
@@ -30,7 +46,8 @@ class Portfolio:
         market_hours_only: bool = True,
         risk_config: Optional[RiskConfig] = None,
         price_data: Optional[pd.DataFrame] = None,
-        allow_shorts: bool = False
+        allow_shorts: bool = False,
+        use_numba: bool = True
     ):
         """
         Initialize portfolio.
@@ -47,6 +64,7 @@ class Portfolio:
             risk_config: Risk management configuration
             price_data: Full OHLCV data for indicators
             allow_shorts: If True, enable short selling (default: False)
+            use_numba: If True, use Numba JIT compilation for performance (default: True)
         """
         self.price = price
         self.entries = entries.astype(bool)
@@ -59,6 +77,7 @@ class Portfolio:
         self.risk_config = risk_config or RiskConfig.moderate()
         self.price_data = price_data
         self.allow_shorts = allow_shorts
+        self.use_numba = use_numba
         self.borrow_cost = 0.0030  # 30 bps/year for short positions
 
         # Define market hours in EST/EDT
@@ -66,7 +85,7 @@ class Portfolio:
         self.market_close = time(15, 55)  # 3:55 PM EST
         self.eastern_tz = pytz.timezone('US/Eastern')
 
-        self.trades = []
+        self.trades: List[Dict[str, Any]] = []
         self.equity_curve = None
         self._stats = None
 
@@ -76,7 +95,11 @@ class Portfolio:
         # Initialize risk manager if using stop losses or portfolio constraints
         self._init_risk_manager()
 
-        self._simulate()
+        # Choose simulation method based on feature requirements
+        if self._can_use_numba():
+            self._simulate_fast()
+        else:
+            self._simulate()
 
     def _is_market_hours(self, timestamp: pd.Timestamp) -> bool:
         """
@@ -151,6 +174,225 @@ class Portfolio:
             self.risk_manager = RiskManager(self.risk_config)
         else:
             self.risk_manager = None
+
+    def _can_use_numba(self) -> bool:
+        """
+        Check if Numba simulation can be used for current configuration.
+
+        Numba is used when:
+        - use_numba=True (explicitly enabled)
+        - Numba module is available
+        - Position sizing method is 'fixed_percentage'
+        - Stop loss type is not 'atr' (ATR requires price history)
+
+        Returns:
+            True if Numba simulation can be used, False otherwise
+        """
+        if not self.use_numba:
+            return False
+
+        if not NUMBA_AVAILABLE:
+            return False
+
+        # Check position sizing method - only fixed_percentage supported
+        if self.risk_config.position_sizing_method not in ['fixed_percentage', 'fixed_dollar']:
+            return False
+
+        # Check stop loss type - ATR stops require price history
+        if self.risk_config.stop_loss_type == 'atr':
+            return False
+
+        return True
+
+    def _compute_market_hours_mask(self) -> np.ndarray:
+        """
+        Pre-compute market hours for all timestamps (vectorized).
+
+        This is much faster than calling _is_market_hours() per bar,
+        especially for large datasets.
+
+        Returns:
+            Boolean numpy array where True = within market hours
+        """
+        if not self.market_hours_only:
+            return np.ones(len(self.price), dtype=np.bool_)
+
+        index = self.price.index
+
+        # Convert to Eastern timezone
+        if index.tz is None:
+            # Assume already in Eastern time
+            eastern = index
+        else:
+            eastern = index.tz_convert('US/Eastern')
+
+        # Vectorized weekday check (Monday=0, Sunday=6)
+        is_weekday = eastern.weekday < 5
+
+        # Vectorized time check
+        # Note: Using pandas Series for time comparison
+        times = pd.Series(eastern).dt.time
+        is_after_open = times >= self.market_open
+        is_before_close = times <= self.market_close
+        is_market_hours = is_after_open & is_before_close
+
+        return (is_weekday & is_market_hours.values).astype(np.bool_)
+
+    def _convert_numba_trades(
+        self,
+        trade_bars: np.ndarray,
+        trade_types: np.ndarray,
+        trade_prices: np.ndarray,
+        trade_shares: np.ndarray,
+        trade_pnls: np.ndarray,
+        trade_pnl_pcts: np.ndarray,
+        trade_exit_reasons: np.ndarray,
+        trade_costs: np.ndarray,
+        trade_proceeds: np.ndarray
+    ) -> List[Dict[str, Any]]:
+        """
+        Convert Numba trade arrays to list of dicts (matching Python format).
+
+        Args:
+            trade_bars: Bar indices where trades occurred
+            trade_types: Trade type codes (entry, exit, short_entry, cover_short)
+            trade_prices: Execution prices
+            trade_shares: Shares traded
+            trade_pnls: P&L for exits
+            trade_pnl_pcts: P&L percentages for exits
+            trade_exit_reasons: Exit reason codes
+            trade_costs: Entry costs
+            trade_proceeds: Exit proceeds
+
+        Returns:
+            List of trade dictionaries compatible with Python simulation format
+        """
+        trades = []
+        timestamps = self.price.index
+
+        for i in range(len(trade_bars)):
+            bar_idx = trade_bars[i]
+            trade_type = trade_types[i]
+            timestamp = timestamps[bar_idx]
+
+            trade = {
+                'timestamp': timestamp,
+                'type': TRADE_TYPE_NAMES.get(trade_type, 'unknown'),
+                'price': trade_prices[i],
+                'shares': trade_shares[i]
+            }
+
+            # Add type-specific fields
+            if trade_type in [TRADE_ENTRY, TRADE_SHORT_ENTRY]:
+                # Entry trade
+                if trade_costs[i] > 0:
+                    trade['cost'] = trade_costs[i]
+                if trade_type == TRADE_SHORT_ENTRY and trade_proceeds[i] > 0:
+                    trade['proceeds'] = trade_proceeds[i]
+            else:
+                # Exit trade
+                trade['pnl'] = trade_pnls[i]
+                trade['pnl_pct'] = trade_pnl_pcts[i]
+                if trade_proceeds[i] > 0:
+                    trade['proceeds'] = trade_proceeds[i]
+                if trade_costs[i] > 0:
+                    trade['cost'] = trade_costs[i]
+
+                # Add exit reason
+                exit_reason = trade_exit_reasons[i]
+                if exit_reason >= 0:
+                    trade['exit_reason'] = EXIT_REASON_NAMES.get(exit_reason, 'unknown')
+
+            trades.append(trade)
+
+        return trades
+
+    def _simulate_fast(self):
+        """
+        Fast portfolio simulation using Numba JIT compilation.
+
+        This method achieves 10-100x speedup over pure Python by:
+        1. Pre-computing market hours mask (vectorized)
+        2. Running the simulation loop in Numba-compiled code
+        3. Converting results back to Python objects
+
+        Supports:
+        - Long and short positions
+        - Slippage and fees
+        - Fixed percentage position sizing
+        - Percentage stop loss
+        - Time-based stop
+        - Profit target
+        """
+        # Convert inputs to numpy arrays
+        prices = self.price.values.astype(np.float64)
+        entries = self.entries.values.astype(np.bool_)
+        exits = self.exits.values.astype(np.bool_)
+
+        # Pre-compute market hours mask (vectorized - much faster)
+        market_hours = self._compute_market_hours_mask()
+
+        # Extract risk config parameters
+        # Match Python's RiskManager behavior: stop_loss_type determines which mechanism is active
+        stop_loss_type = self.risk_config.stop_loss_type
+
+        # Percentage stop loss: active for 'percentage' type
+        # Also active for 'profit_target' type (which includes both stop loss AND take profit)
+        use_stop_loss = (
+            self.risk_config.use_stop_loss and
+            stop_loss_type in ['percentage', 'profit_target']
+        )
+        stop_loss_pct = self.risk_config.stop_loss_pct
+
+        # Profit target: only active when stop_loss_type is 'profit_target'
+        use_profit_target = (
+            self.risk_config.use_stop_loss and
+            stop_loss_type == 'profit_target' and
+            self.risk_config.take_profit_pct is not None
+        )
+        profit_target_pct = self.risk_config.take_profit_pct or 0.0
+
+        # Time-based stop: only active when stop_loss_type is 'time'
+        use_time_stop = (
+            self.risk_config.use_stop_loss and
+            stop_loss_type == 'time' and
+            self.risk_config.max_holding_bars is not None
+        )
+        max_bars_in_position = self.risk_config.max_holding_bars or 99999999
+
+        # Run Numba simulation
+        result = simulate_portfolio_numba(
+            prices=prices,
+            entries=entries,
+            exits=exits,
+            market_hours=market_hours,
+            init_cash=self.init_cash,
+            fees=self.fees,
+            slippage=self.slippage,
+            position_size_pct=self.risk_config.position_size_pct,
+            use_stop_loss=use_stop_loss,
+            stop_loss_pct=stop_loss_pct,
+            use_profit_target=use_profit_target,
+            profit_target_pct=profit_target_pct,
+            use_time_stop=use_time_stop,
+            max_bars_in_position=max_bars_in_position,
+            allow_shorts=self.allow_shorts
+        )
+
+        # Unpack results
+        (equity, trade_bars, trade_types, trade_prices, trade_shares,
+         trade_pnls, trade_pnl_pcts, trade_exit_reasons,
+         trade_costs, trade_proceeds, trade_count) = result
+
+        # Convert equity to pandas Series
+        self.equity_curve = pd.Series(equity, index=self.price.index)
+
+        # Convert trades to list of dicts
+        self.trades = self._convert_numba_trades(
+            trade_bars, trade_types, trade_prices, trade_shares,
+            trade_pnls, trade_pnl_pcts, trade_exit_reasons,
+            trade_costs, trade_proceeds
+        )
 
     def _simulate(self):
         """
@@ -335,6 +577,8 @@ class Portfolio:
                     entry_timestamp = None
                     entry_bar = 0
                     bars_in_position = 0
+                    # Recalculate portfolio value after closing position
+                    portfolio_value = cash
 
                 # Open long position if we have cash and no position
                 if position == 0 and cash > 0:
@@ -441,6 +685,8 @@ class Portfolio:
                     entry_timestamp = None
                     entry_bar = 0
                     bars_in_position = 0
+                    # Recalculate portfolio value after closing position
+                    portfolio_value = cash
 
                 # Open short position if allow_shorts and we're flat
                 if position == 0 and self.allow_shorts and cash > 0:
@@ -666,6 +912,7 @@ def from_signals(
     risk_config: Optional[RiskConfig] = None,
     price_data: Optional[pd.DataFrame] = None,
     allow_shorts: bool = False,
+    use_numba: bool = True,
     **kwargs
 ) -> Portfolio:
     """
@@ -683,6 +930,7 @@ def from_signals(
         risk_config: Risk management configuration (defaults to RiskConfig.moderate())
         price_data: Historical OHLC data for ATR-based position sizing (optional)
         allow_shorts: If True, enable short selling (default: False)
+        use_numba: If True, use Numba JIT compilation for performance (default: True)
         **kwargs: Additional arguments (for compatibility)
 
     Returns:
@@ -699,5 +947,6 @@ def from_signals(
         market_hours_only=market_hours_only,
         risk_config=risk_config,
         price_data=price_data,
-        allow_shorts=allow_shorts
+        allow_shorts=allow_shorts,
+        use_numba=use_numba
     )

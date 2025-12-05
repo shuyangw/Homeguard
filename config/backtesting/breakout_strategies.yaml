@@ -1,0 +1,53 @@
+# Breakout Strategies Configuration
+# Volume Breakout + ATR Squeeze Breakout
+
+strategies:
+  volume_breakout:
+    description: "4x volume spike with bullish price confirmation"
+    volume_multiplier: 4.0        # Required volume vs 5-day average
+    lookback_days: 5              # Days for average volume
+    min_price_strength: 0.7       # (close-low)/(high-low) minimum
+    top_n: 10                     # Number of positions
+
+  atr_squeeze:
+    description: "Volatility compression followed by expansion breakout"
+    atr_period: 14                # ATR calculation period
+    squeeze_percentile: 20        # Bottom 20% = squeeze
+    squeeze_lookback: 100         # Days for percentile calculation
+    channel_period: 20            # Channel breakout period
+    top_n: 10                     # Number of positions
+
+# Common settings
+common:
+  rebalance_frequency: weekly     # First trading day of week
+  position_size_pct: 0.10         # 10% per position (equal weight)
+  max_positions: 10
+  initial_capital: 100000
+
+# Universe
+symbols:
+  source: csv
+  path: backtest_lists/sp500-2025.csv
+  column: Symbol
+
+# Date range
+dates:
+  start: "2017-01-01"
+  end: "2024-12-31"
+
+# Benchmark
+benchmark:
+  symbol: SPY
+
+# Performance targets
+targets:
+  min_annual_return: 0.12         # 12% minimum
+  min_sharpe_ratio: 0.8           # Sharpe > 0.8
+  max_drawdown: -0.30             # Max -30%
+  beat_spy_rate: 0.50             # Beat SPY 50%+ of years
+
+# Output
+output:
+  format: [console, csv]
+  directory: docs/reports
+  timestamp_prefix: true

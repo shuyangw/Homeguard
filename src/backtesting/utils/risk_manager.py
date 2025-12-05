@@ -48,19 +48,34 @@ class Position:
             self.highest_price = self.entry_price
 
     @property
+    def is_short(self) -> bool:
+        """True if this is a short position (negative shares)."""
+        return self.shares < 0
+
+    @property
     def position_value(self) -> float:
         """Current position value at entry price."""
-        return self.entry_price * self.shares
+        return self.entry_price * abs(self.shares)
 
     def unrealized_pnl(self, current_price: float) -> float:
         """Calculate unrealized P&L."""
-        return (current_price - self.entry_price) * self.shares
+        if self.is_short:
+            # Short: profit when price drops
+            return (self.entry_price - current_price) * abs(self.shares)
+        else:
+            # Long: profit when price rises
+            return (current_price - self.entry_price) * self.shares
 
     def unrealized_pnl_pct(self, current_price: float) -> float:
         """Calculate unrealized P&L percentage."""
         if self.entry_price == 0:
             return 0.0
-        return (current_price - self.entry_price) / self.entry_price
+        if self.is_short:
+            # Short: profit when price drops
+            return (self.entry_price - current_price) / self.entry_price
+        else:
+            # Long: profit when price rises
+            return (current_price - self.entry_price) / self.entry_price
 
 
 class StopLoss(ABC):
@@ -147,7 +162,12 @@ class PercentageStopLoss(StopLoss):
         if position.stop_price is None:
             return False
 
-        return current_price <= position.stop_price
+        if position.is_short:
+            # Short: exit when price rises above stop
+            return current_price >= position.stop_price
+        else:
+            # Long: exit when price drops below stop
+            return current_price <= position.stop_price
 
     def update(
         self,
@@ -156,7 +176,12 @@ class PercentageStopLoss(StopLoss):
         price_data: Optional[pd.DataFrame] = None
     ) -> None:
         """Set stop price based on entry price."""
-        position.stop_price = position.entry_price * (1.0 - self.stop_loss_pct)
+        if position.is_short:
+            # Short: stop is ABOVE entry (exit when price rises)
+            position.stop_price = position.entry_price * (1.0 + self.stop_loss_pct)
+        else:
+            # Long: stop is BELOW entry (exit when price drops)
+            position.stop_price = position.entry_price * (1.0 - self.stop_loss_pct)
 
 
 class ATRStopLoss(StopLoss):
@@ -370,8 +395,12 @@ class ProfitTargetStopLoss(StopLoss):
         if self.stop_price is None or self.target_price is None:
             return False
 
-        # Exit if stop loss or take profit hit
-        return current_price <= self.stop_price or current_price >= self.target_price
+        if position.is_short:
+            # Short: stop is above entry, target is below entry
+            return current_price >= self.stop_price or current_price <= self.target_price
+        else:
+            # Long: stop is below entry, target is above entry
+            return current_price <= self.stop_price or current_price >= self.target_price
 
     def update(
         self,
@@ -380,8 +409,14 @@ class ProfitTargetStopLoss(StopLoss):
         price_data: Optional[pd.DataFrame] = None
     ) -> None:
         """Set stop and target prices."""
-        self.stop_price = position.entry_price * (1.0 - self.stop_loss_pct)
-        self.target_price = position.entry_price * (1.0 + self.take_profit_pct)
+        if position.is_short:
+            # Short: stop ABOVE entry (exit on rise), target BELOW entry (profit on drop)
+            self.stop_price = position.entry_price * (1.0 + self.stop_loss_pct)
+            self.target_price = position.entry_price * (1.0 - self.take_profit_pct)
+        else:
+            # Long: stop BELOW entry (exit on drop), target ABOVE entry (profit on rise)
+            self.stop_price = position.entry_price * (1.0 - self.stop_loss_pct)
+            self.target_price = position.entry_price * (1.0 + self.take_profit_pct)
 
         position.stop_price = self.stop_price
 

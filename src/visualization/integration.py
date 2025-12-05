@@ -3,7 +3,6 @@ Integration helpers for connecting visualization with backtesting engine.
 """
 
 import pandas as pd
-import vectorbt as vbt
 from typing import List, Optional, Any
 from pathlib import Path
 

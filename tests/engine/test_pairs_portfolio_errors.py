@@ -383,8 +383,7 @@ class TestPairsPortfolioCapitalManagement:
             short_exits=pd.Series(False, index=dates),
             init_cash=10000,
             fees=0.001,
-            slippage=0.001,
-            position_pct=0.5
+            slippage=0.001
         )
 
         assert portfolio is not None
@@ -460,7 +459,8 @@ class TestPairPositionEdgeCases:
             capital_allocated=0.0
         )
 
-        assert position.get_current_value(100.0, 100.0) == 0.0
+        value1, value2 = position.get_current_value(100.0, 100.0)
+        assert value1 == 0.0 and value2 == 0.0
         assert position.get_unrealized_pnl(100.0, 100.0) == 0.0
 
     def test_extreme_price_movement(self):
@@ -502,8 +502,8 @@ class TestPairPositionEdgeCases:
         )
 
         # Should handle without crashing
-        value = position.get_current_value(100.0, 100.0)
-        assert value >= 0
+        value1, value2 = position.get_current_value(100.0, 100.0)
+        assert value1 >= 0 and value2 >= 0
 
 
 if __name__ == '__main__':
