@@ -58,6 +58,9 @@ GLOBAL_RATE_LIMIT_PER_MINUTE = 15
 # Trading service names (both strategies run as separate services)
 TRADING_SERVICES = ["homeguard-omr", "homeguard-mp"]
 
+# Required role for bot access
+REQUIRED_ROLE_ID = 1446546349163286570  # "Bot Admin" role
+
 
 async def check_trading_process_running() -> tuple[bool, str]:
     """
@@ -507,14 +510,29 @@ def get_bot() -> TradingMonitorBot:
     return _bot
 
 
+def has_required_role(member: discord.Member) -> bool:
+    """Check if member has the required Bot Admin role."""
+    if member is None:
+        return False
+    return any(role.id == REQUIRED_ROLE_ID for role in member.roles)
+
+
 async def check_permissions(interaction: discord.Interaction) -> tuple[bool, str | None]:
     """
-    Check if interaction is allowed based on channel and user restrictions.
+    Check if interaction is allowed based on role, channel, and user restrictions.
 
     Returns:
         (allowed: bool, error_message: str | None)
     """
     bot = get_bot()
+
+    # Check required role FIRST (before any API calls)
+    member = interaction.user if isinstance(interaction.user, discord.Member) else None
+    if not has_required_role(member):
+        logger.warning(
+            f"Blocked request from user without Bot Admin role: {interaction.user} ({interaction.user.id})"
+        )
+        return False, "You need the **Bot Admin** role to use this bot."
 
     # Check channel restrictions
     if not is_channel_allowed(interaction.channel_id, bot.config.allowed_channel_ids):
