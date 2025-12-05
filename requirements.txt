@@ -45,6 +45,7 @@ vectorbt==0.28.1
 
 # Market data and trading
 yfinance==0.2.66
+pandas-datareader==0.10.0  # FRED API fallback for VIX data
 
 # Visualization
 rich==14.2.0
