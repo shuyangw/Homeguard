@@ -354,7 +354,8 @@ class OMRLiveAdapter(StrategyAdapter):
                 # Use data provider with fallback chain (Alpaca -> yfinance)
                 logger.info(f"[OMR] Fetching intraday data via {self._data_provider.name} provider...")
                 market_data = self._data_provider.get_historical_bars_batch(
-                    self.symbols, market_open_today, end_date, timeframe='1Min'
+                    self.symbols, market_open_today, end_date, timeframe='1Min',
+                    force_refresh=True
                 )
 
             else:
