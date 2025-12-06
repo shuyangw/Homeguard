@@ -5,11 +5,14 @@ Connects OMR strategy to live trading infrastructure.
 Runs at 3:50 PM EST to generate overnight signals.
 """
 
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, TYPE_CHECKING
 from datetime import datetime, time, timedelta
 import pandas as pd
 
 from src.trading.adapters.strategy_adapter import StrategyAdapter
+
+if TYPE_CHECKING:
+    from src.data.providers.base import DataProviderInterface
 from src.strategies.core import StrategySignals, Signal
 from src.strategies.advanced.overnight_signal_generator import OvernightReversionSignals
 from src.strategies.advanced.market_regime_detector import MarketRegimeDetector
@@ -112,7 +115,8 @@ class OMRLiveAdapter(StrategyAdapter):
         max_positions: int = 5,
         position_size: float = 0.1,
         regime_detector: Optional[MarketRegimeDetector] = None,
-        bayesian_model: Optional[BayesianReversionModel] = None
+        bayesian_model: Optional[BayesianReversionModel] = None,
+        data_provider: Optional["DataProviderInterface"] = None
     ):
         """
         Initialize OMR live adapter.
@@ -126,6 +130,7 @@ class OMRLiveAdapter(StrategyAdapter):
             position_size: Position size as fraction (default: 0.1)
             regime_detector: Trained regime detector (optional)
             bayesian_model: Trained Bayesian model (optional)
+            data_provider: Data provider with fallback chain (optional, uses broker if not provided)
         """
         # Use default symbols if not specified
         if symbols is None:
@@ -195,6 +200,11 @@ class OMRLiveAdapter(StrategyAdapter):
         # Store references for training
         self._bayesian_model = bayesian_model
         self._regime_detector = regime_detector
+
+        # Store data provider for fetching with fallback
+        self._data_provider = data_provider
+        if data_provider is not None:
+            logger.info(f"[OMR] Using data provider: {data_provider.name}")
 
         # Initialize state manager for multi-strategy coordination
         self.state_manager = StrategyStateManager()
@@ -307,7 +317,7 @@ class OMRLiveAdapter(StrategyAdapter):
         Fetch intraday market data for OMR strategy.
 
         OMR needs intraday bars to calculate intraday moves.
-        Uses intraday cache refreshed at execution time (3:50 PM).
+        Uses data provider with fallback if available, otherwise broker directly.
         """
         try:
             import pandas as pd
@@ -323,6 +333,9 @@ class OMRLiveAdapter(StrategyAdapter):
                 len(self._intraday_cache) > 0
             )
 
+            # For OMR, we need intraday data (1-minute bars)
+            market_open_today = end_date.replace(hour=9, minute=30, second=0, microsecond=0)
+
             if intraday_cache_available:
                 logger.info("[OMR] Using pre-fetched intraday data cache")
 
@@ -332,28 +345,24 @@ class OMRLiveAdapter(StrategyAdapter):
                         market_data[symbol] = self._intraday_cache[symbol]
                     else:
                         logger.warning(f"[OMR] {symbol} not in intraday cache, fetching...")
-                        # Fall back to live fetch
-                        try:
-                            df = self.broker.get_historical_bars(
-                                symbol=symbol,
-                                start=end_date.replace(hour=9, minute=30, second=0),
-                                end=end_date,
-                                timeframe='1Min'
-                            )
-                            if df is not None and not df.empty:
-                                market_data[symbol] = df
-                        except Exception as e:
-                            logger.error(f"[OMR] Error fetching {symbol}: {e}")
+                        # Fall back to provider or broker
+                        df = self._fetch_intraday_symbol(symbol, market_open_today, end_date)
+                        if df is not None and not df.empty:
+                            market_data[symbol] = df
+
+            elif self._data_provider is not None:
+                # Use data provider with fallback chain (Alpaca -> yfinance)
+                logger.info(f"[OMR] Fetching intraday data via {self._data_provider.name} provider...")
+                market_data = self._data_provider.get_historical_bars_batch(
+                    self.symbols, market_open_today, end_date, timeframe='1Min'
+                )
 
             else:
-                logger.info("[OMR] No intraday cache available, fetching data...")
-
-                # For OMR, we need intraday data (1-minute bars)
-                market_open_today = end_date.replace(hour=9, minute=30, second=0, microsecond=0)
+                # Fall back to broker-only fetch (original behavior)
+                logger.info("[OMR] No data provider, fetching from broker...")
 
                 for symbol in self.symbols:
                     try:
-                        # Fetch intraday data from market open to now
                         df = self.broker.get_historical_bars(
                             symbol=symbol,
                             start=market_open_today,
@@ -466,6 +475,42 @@ class OMRLiveAdapter(StrategyAdapter):
         """Deprecated: Use _fetch_vix_data() instead. This is kept for compatibility."""
         logger.warning("[OMR] _fetch_vix_yfinance is deprecated, using _fetch_vix_data with fallback chain")
         return self._fetch_vix_data(lookback_days=self.data_lookback_days)
+
+    def _fetch_intraday_symbol(
+        self,
+        symbol: str,
+        start: datetime,
+        end: datetime
+    ) -> Optional[pd.DataFrame]:
+        """
+        Fetch intraday data for a single symbol using provider or broker.
+
+        Args:
+            symbol: Stock symbol
+            start: Start datetime
+            end: End datetime
+
+        Returns:
+            DataFrame with intraday bars, or None on failure
+        """
+        try:
+            if self._data_provider is not None:
+                df = self._data_provider.get_historical_bars(symbol, start, end, '1Min')
+                if df is not None and not df.empty:
+                    return df
+
+            # Fall back to broker
+            df = self.broker.get_historical_bars(
+                symbol=symbol,
+                start=start,
+                end=end,
+                timeframe='1Min'
+            )
+            return df
+
+        except Exception as e:
+            logger.error(f"[OMR] Error fetching intraday data for {symbol}: {e}")
+            return None
 
     def execute_signals(self, signals: List[Signal]) -> None:
         """

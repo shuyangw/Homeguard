@@ -5,13 +5,16 @@ Connects momentum strategy with crash protection to live trading infrastructure.
 Rebalances daily at 3:55 PM EST based on momentum rankings and risk signals.
 """
 
-from typing import List, Dict, Optional, Any
+from typing import List, Dict, Optional, Any, TYPE_CHECKING
 from datetime import datetime, time, timedelta
 import pandas as pd
 import numpy as np
-import yfinance as yf
 
 from src.trading.adapters.strategy_adapter import StrategyAdapter
+from src.utils.vix_provider import get_vix_provider
+
+if TYPE_CHECKING:
+    from src.data.providers.base import DataProviderInterface
 from src.strategies.advanced.momentum_protection_strategy import (
     MomentumProtectionSignals,
     MomentumSignal,
@@ -155,7 +158,8 @@ class MomentumLiveAdapter(StrategyAdapter):
         vix_spike_threshold: float = 0.20,
         spy_dd_threshold: float = -0.05,
         mom_vol_percentile: float = 0.90,
-        slippage_per_share: float = 0.01
+        slippage_per_share: float = 0.01,
+        data_provider: Optional["DataProviderInterface"] = None
     ):
         """
         Initialize Momentum live adapter.
@@ -171,6 +175,7 @@ class MomentumLiveAdapter(StrategyAdapter):
             spy_dd_threshold: SPY drawdown threshold (negative)
             mom_vol_percentile: Momentum volatility percentile threshold
             slippage_per_share: Expected slippage in dollars
+            data_provider: Optional data provider with fallback (uses broker if not provided)
         """
         # Use default S&P 500 symbols if not specified
         if symbols is None:
@@ -201,7 +206,8 @@ class MomentumLiveAdapter(StrategyAdapter):
             symbols=symbols,
             position_size=position_size,
             max_positions=top_n,
-            data_lookback_days=data_lookback_days
+            data_lookback_days=data_lookback_days,
+            data_provider=data_provider
         )
 
         # Store configuration
@@ -331,9 +337,9 @@ class MomentumLiveAdapter(StrategyAdapter):
                 timeframe='1D'
             )
 
-            # Fetch VIX via yfinance (Alpaca doesn't provide VIX)
-            logger.info("[MP] Fetching VIX via yfinance (not available on Alpaca)")
-            vix_data = self._fetch_vix_yfinance(start_date, end_date)
+            # Fetch VIX via VIXProvider with fallback chain (yfinance -> FRED -> cache)
+            logger.info("[MP] Fetching VIX via VIXProvider (not available on Alpaca)")
+            vix_data = self._fetch_vix_data(lookback_days=self.data_lookback_days)
 
             # Extract close prices
             if spy_data is not None and not spy_data.empty:
@@ -376,64 +382,49 @@ class MomentumLiveAdapter(StrategyAdapter):
             import traceback
             traceback.print_exc()
 
-    def _fetch_vix_yfinance(self, start_date, end_date) -> Optional[pd.DataFrame]:
+    def _fetch_vix_data(self, lookback_days: int = 400) -> Optional[pd.DataFrame]:
         """
-        Fetch VIX data via yfinance (Alpaca doesn't provide VIX).
+        Fetch VIX data via VIXProvider with multi-source fallback.
+
+        Uses VIXProvider which tries:
+        1. yfinance (primary) - Yahoo Finance ^VIX
+        2. FRED API (fallback) - Federal Reserve VIXCLS series
+        3. Persisted cache (last resort) - Last known good VIX value
 
         Args:
-            start_date: Start date (datetime or string)
-            end_date: End date (datetime or string)
+            lookback_days: Number of days of history needed
 
         Returns:
-            DataFrame with VIX data, or None if fetch fails
+            DataFrame with VIX data, or None if all sources fail
         """
         try:
-            # Convert dates to string format for yfinance
-            if hasattr(start_date, 'strftime'):
-                start_str = start_date.strftime('%Y-%m-%d')
+            vix_provider = get_vix_provider()
+            vix_data = vix_provider.get_vix_data(lookback_days=lookback_days)
+
+            if vix_data is not None:
+                source, fetch_time = vix_provider.get_source_info()
+                logger.info(f"[MP] VIX data from {source}: {len(vix_data)} days")
+
+                # Log warning if using cached data
+                if source == "cache":
+                    logger.warning("[MP] Using cached VIX data (may be stale)")
+
+                # VIXProvider returns 'close' column, convert to DataFrame with 'Close' for compatibility
+                result = pd.DataFrame({'Close': vix_data['close']})
+                return result
             else:
-                start_str = str(start_date)[:10]
-
-            if hasattr(end_date, 'strftime'):
-                # Add 1 day to end_date to include today's data
-                end_dt = end_date + timedelta(days=1)
-                end_str = end_dt.strftime('%Y-%m-%d')
-            else:
-                end_str = str(end_date)[:10]
-
-            vix_data = yf.download(
-                '^VIX',
-                start=start_str,
-                end=end_str,
-                progress=False,
-                auto_adjust=True
-            )
-
-            if vix_data is None or vix_data.empty:
-                logger.error("[MP] yfinance returned empty VIX data")
+                logger.error("[MP] All VIX data sources failed!")
                 return None
 
-            logger.info(f"[MP] Fetched {len(vix_data)} days of VIX data via yfinance")
-
-            # Handle MultiIndex columns from yfinance (e.g., ('Close', '^VIX'))
-            if isinstance(vix_data.columns, pd.MultiIndex):
-                # Flatten MultiIndex by taking first level
-                vix_data.columns = vix_data.columns.get_level_values(0)
-                logger.info("[MP] Flattened MultiIndex columns from yfinance")
-
-            # Ensure timezone-aware index
-            if vix_data.index.tz is None:
-                vix_data.index = vix_data.index.tz_localize('America/New_York')
-            else:
-                vix_data.index = vix_data.index.tz_convert('America/New_York')
-
-            return vix_data
-
         except Exception as e:
-            logger.error(f"[MP] Failed to fetch VIX via yfinance: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.error(f"[MP] Failed to fetch VIX data: {e}")
             return None
+
+    # Keep old method name as alias for backward compatibility
+    def _fetch_vix_yfinance(self, start_date, end_date) -> Optional[pd.DataFrame]:
+        """Deprecated: Use _fetch_vix_data() instead. This is kept for compatibility."""
+        logger.warning("[MP] _fetch_vix_yfinance is deprecated, using _fetch_vix_data with fallback chain")
+        return self._fetch_vix_data(lookback_days=self.data_lookback_days)
 
     def fetch_todays_closes(self) -> bool:
         """
@@ -521,16 +512,14 @@ class MomentumLiveAdapter(StrategyAdapter):
             except Exception as e:
                 logger.warning(f"[MP] Failed to fetch today's SPY: {e}")
 
-            # Fetch today's VIX via yfinance
+            # Fetch today's VIX via VIXProvider
             vix_close = None
             try:
-                import yfinance as yf
-                vix_data = yf.download('^VIX', start=today, end=today + timedelta(days=1), progress=False)
-                if vix_data is not None and not vix_data.empty:
-                    if 'Close' in vix_data.columns:
-                        vix_close = vix_data['Close'].iloc[-1]
-                    elif ('Close', '^VIX') in vix_data.columns:
-                        vix_close = vix_data[('Close', '^VIX')].iloc[-1]
+                vix_provider = get_vix_provider()
+                current_vix = vix_provider.get_current_vix()
+                if current_vix is not None:
+                    vix_close = current_vix
+                    logger.info(f"[MP] Today's VIX: {vix_close:.2f}")
             except Exception as e:
                 logger.warning(f"[MP] Failed to fetch today's VIX: {e}")
 
