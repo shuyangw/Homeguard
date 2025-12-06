@@ -233,10 +233,13 @@ docs/*
 !docs/architecture/
 !docs/architecture/**
 
-# Hide everything else:
+# Hide everything else (new files only - previously tracked files remain):
 # - docs/api/ (can be generated from code)
 # - docs/guides/ (user guides, wiki material)
 # - docs/testing/ (test documentation)
 # - docs/progress/ (historical tracking)
 # - docs/quantstats/ (integration-specific)
+# - docs/reports/ (backtest reports, generated output)
+# - docs/archive/ (archived legacy documentation - local only)
+# - docs/planning/ (implementation plans)
 # - docs/*.md (misc root-level docs)
