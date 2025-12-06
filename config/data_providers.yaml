@@ -1,0 +1,24 @@
+# Market Data Provider Configuration
+#
+# Providers are tried in order; first success is used.
+# Cache provides fallback if all providers fail.
+
+data_providers:
+  # Provider priority order
+  providers:
+    - alpaca      # Primary: Alpaca API (IEX feed for paper, SIP for live)
+    - yfinance    # Fallback: Yahoo Finance (complete coverage)
+
+  # Persistent cache settings
+  cache:
+    enabled: true
+    max_age_hours: 24
+    storage_dir: null  # Default: {storage}/cache/market_data
+
+  # Per-provider settings
+  alpaca:
+    feed: auto  # 'iex' for paper, 'sip' for live (auto-detect)
+
+  yfinance:
+    rate_limit_per_second: 2
+    retry_on_failure: true

@@ -1360,5 +1360,111 @@ class TestMPDataFetchingIntegration:
         assert len1 == len2 == len3
 
 
+class TestDataProviderIntegration:
+    """Tests for DataProvider integration with adapters."""
+
+    @pytest.fixture
+    def mock_data_provider(self):
+        """Create mock data provider."""
+        provider = Mock()
+        provider.name = "mock_composite"
+
+        def get_bars_batch(symbols, start, end, timeframe):
+            """Return mock data for batch fetch."""
+            result = {}
+            dates = pd.date_range(start, end, freq='D' if timeframe == '1D' else 'min')
+            for symbol in symbols:
+                result[symbol] = pd.DataFrame({
+                    'open': [100.0] * len(dates),
+                    'high': [101.0] * len(dates),
+                    'low': [99.0] * len(dates),
+                    'close': [100.5] * len(dates),
+                    'volume': [1000000] * len(dates)
+                }, index=dates)
+            return result
+
+        provider.get_historical_bars_batch.side_effect = get_bars_batch
+        return provider
+
+    def test_omr_adapter_accepts_data_provider(self, mock_broker, mock_data_provider):
+        """Test OMRLiveAdapter accepts optional data_provider parameter."""
+        adapter = OMRLiveAdapter(
+            broker=mock_broker,
+            symbols=['TQQQ'],
+            data_provider=mock_data_provider
+        )
+
+        assert adapter._data_provider is not None
+        assert adapter._data_provider.name == "mock_composite"
+
+    def test_omr_adapter_works_without_data_provider(self, mock_broker):
+        """Test OMRLiveAdapter works with data_provider=None (backward compatible)."""
+        adapter = OMRLiveAdapter(
+            broker=mock_broker,
+            symbols=['TQQQ'],
+            data_provider=None
+        )
+
+        assert adapter._data_provider is None
+
+    def test_omr_adapter_uses_provider_for_intraday(self, mock_broker, mock_data_provider):
+        """Test OMRLiveAdapter uses data_provider for intraday data fetch."""
+        adapter = OMRLiveAdapter(
+            broker=mock_broker,
+            symbols=['TQQQ', 'SQQQ'],
+            data_provider=mock_data_provider
+        )
+
+        # Call prefetch (should use provider)
+        adapter.prefetch_intraday_data()
+
+        # Verify provider was called
+        assert mock_data_provider.get_historical_bars_batch.called
+
+    def test_strategy_adapter_passes_provider_to_base(self, mock_broker, mock_data_provider):
+        """Test that data_provider is properly stored in base StrategyAdapter."""
+        adapter = OMRLiveAdapter(
+            broker=mock_broker,
+            symbols=['TQQQ'],
+            data_provider=mock_data_provider
+        )
+
+        # Check it's accessible via inherited attribute
+        assert hasattr(adapter, '_data_provider')
+        assert adapter._data_provider == mock_data_provider
+
+
+class TestCompositeProviderFallback:
+    """Tests for CompositeDataProvider fallback behavior."""
+
+    def test_composite_provider_creation(self, mock_broker):
+        """Test CompositeDataProvider can be created with broker."""
+        from src.data.providers import create_data_provider
+
+        provider = create_data_provider(broker=mock_broker)
+
+        # Should be a composite (Alpaca + yfinance)
+        assert provider is not None
+        assert 'composite' in provider.name.lower() or 'alpaca' in provider.name.lower()
+
+    def test_composite_provider_without_broker(self):
+        """Test CompositeDataProvider falls back to yfinance without broker."""
+        from src.data.providers import create_data_provider
+
+        provider = create_data_provider(broker=None)
+
+        # Should be yfinance only
+        assert provider is not None
+        assert provider.name == "yfinance"
+
+    def test_provider_factory_from_config(self, mock_broker):
+        """Test create_data_provider respects configuration."""
+        from src.data.providers import create_data_provider
+
+        # Create with default config (Alpaca -> yfinance)
+        provider = create_data_provider(broker=mock_broker)
+        assert provider is not None
+
+
 if __name__ == '__main__':
     pytest.main([__file__, '-v'])

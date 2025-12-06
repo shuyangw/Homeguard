@@ -9,7 +9,7 @@ strategy:
   description: "Overnight Mean Reversion Strategy"
 
   # Timing (EST/EDT timezone)
-  entry_time: "15:55:00"  # 3:55 PM EST (same as MP rebalance)
+  entry_time: "15:50:00"  # 3:50 PM EST (5 min before MP rebalance)
   exit_time: "09:31:00"   # 9:31 AM EST next day
   entry_window_seconds: 30  # ±30 seconds buffer
   exit_window_seconds: 30   # ±30 seconds buffer

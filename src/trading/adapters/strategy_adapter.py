@@ -6,13 +6,16 @@ Handles data fetching, signal generation, and order execution.
 """
 
 from abc import ABC, abstractmethod
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, TYPE_CHECKING
 from datetime import datetime, timedelta
 import pandas as pd
 import pytz
 
 from src.strategies.core import StrategySignals, Signal
 from src.trading.brokers.broker_interface import BrokerInterface, OrderSide, OrderType
+
+if TYPE_CHECKING:
+    from src.data.providers.base import DataProviderInterface
 from src.trading.core.execution_engine import ExecutionEngine
 from src.trading.core.position_manager import PositionManager
 from src.utils.logger import logger
@@ -38,7 +41,8 @@ class StrategyAdapter(ABC):
         symbols: List[str],
         position_size: float = 0.1,
         max_positions: int = 5,
-        data_lookback_days: int = 365
+        data_lookback_days: int = 365,
+        data_provider: Optional["DataProviderInterface"] = None
     ):
         """
         Initialize strategy adapter.
@@ -50,6 +54,7 @@ class StrategyAdapter(ABC):
             position_size: Position size as fraction of capital (default: 0.1 = 10%)
             max_positions: Maximum concurrent positions (default: 5)
             data_lookback_days: Days of historical data to fetch (default: 365)
+            data_provider: Data provider with fallback chain (optional, uses broker if not provided)
         """
         self.strategy = strategy
         self.broker = broker
@@ -70,6 +75,9 @@ class StrategyAdapter(ABC):
         }
         self.position_manager = PositionManager(position_config)
 
+        # Data provider for market data with fallback
+        self._data_provider = data_provider
+
         # Data caching for performance optimization
         self._data_cache: Optional[Dict[str, pd.DataFrame]] = None
         self._cache_date: Optional[datetime] = None
@@ -83,6 +91,8 @@ class StrategyAdapter(ABC):
         logger.info(f"  Symbols: {len(symbols)}")
         logger.info(f"  Position size: {position_size:.1%}")
         logger.info(f"  Max positions: {max_positions}")
+        if data_provider is not None:
+            logger.info(f"  Data provider: {data_provider.name}")
 
     def preload_historical_data(self) -> None:
         """
@@ -126,12 +136,17 @@ class StrategyAdapter(ABC):
             logger.error(f"Error in preload_historical_data: {e}")
             self._data_cache = None
 
-    def prefetch_intraday_data(self) -> None:
+    def prefetch_intraday_data(self, force_refresh: bool = True) -> None:
         """
         Fetch today's intraday data for all symbols.
 
         Called from run_once() at execution time to ensure fresh data.
-        Each strategy calls this right before signal generation.
+        Uses data provider with fallback if available, otherwise broker directly.
+
+        Args:
+            force_refresh: If True (default), bypass cache to get fresh data.
+                          Should be True at execution time (3:55 PM) to ensure
+                          up-to-date prices for trading decisions.
         """
         try:
             logger.info("Pre-fetching today's intraday data...")
@@ -145,27 +160,39 @@ class StrategyAdapter(ABC):
             market_open_utc = market_open_today.astimezone(pytz.UTC)
 
             logger.info(f"Fetching intraday data from {market_open_today.strftime('%H:%M')} ET to {now_et.strftime('%H:%M')} ET")
+            if force_refresh:
+                logger.info("Force refresh enabled - bypassing cache for fresh data")
 
             self._intraday_cache = {}
 
-            for symbol in self.symbols:
-                try:
-                    # Fetch intraday bars from market open to now (using UTC for API)
-                    df = self.broker.get_historical_bars(
-                        symbol=symbol,
-                        start=market_open_utc,
-                        end=now_utc,
-                        timeframe='1Min'  # 1-minute bars for intraday
-                    )
+            # Use data provider if available (with fallback chain)
+            if self._data_provider is not None:
+                logger.info(f"Using data provider: {self._data_provider.name}")
+                # Pass force_refresh to bypass cache at execution time
+                self._intraday_cache = self._data_provider.get_historical_bars_batch(
+                    self.symbols, market_open_today, now_et, timeframe='1Min',
+                    force_refresh=force_refresh
+                )
+            else:
+                # Fall back to broker-only fetch
+                for symbol in self.symbols:
+                    try:
+                        # Fetch intraday bars from market open to now (using UTC for API)
+                        df = self.broker.get_historical_bars(
+                            symbol=symbol,
+                            start=market_open_utc,
+                            end=now_utc,
+                            timeframe='1Min'  # 1-minute bars for intraday
+                        )
 
-                    if df is not None and not df.empty:
-                        self._intraday_cache[symbol] = df
-                    else:
-                        logger.warning(f"No intraday data returned for {symbol}")
+                        if df is not None and not df.empty:
+                            self._intraday_cache[symbol] = df
+                        else:
+                            logger.warning(f"No intraday data returned for {symbol}")
 
-                except Exception as e:
-                    logger.error(f"Error pre-fetching intraday data for {symbol}: {e}")
-                    continue
+                    except Exception as e:
+                        logger.error(f"Error pre-fetching intraday data for {symbol}: {e}")
+                        continue
 
             self._intraday_cache_time = now_et
             logger.success(

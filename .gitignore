@@ -100,6 +100,8 @@ dmypy.json
 # ============================================================================
 # Data directories (market data storage)
 data/
+!src/data/
+!tests/data/
 equities_*/
 *.parquet
 *.csv

@@ -51,6 +51,7 @@ from src.trading.adapters import (
     MomentumLiveAdapter
 )
 from src.trading.config import load_omr_config
+from src.data.providers import create_data_provider
 from src.trading.state import StrategyStateManager
 from src.strategies.universe import EquityUniverse, ETFUniverse
 from src.utils.logger import logger, get_trading_logger, TradingLogger
@@ -754,17 +755,26 @@ def create_triple_ma_adapter(broker, symbols, fast=20, medium=50, slow=200, posi
     )
 
 
-def create_omr_adapter(broker, symbols=None, min_probability=None, min_return=None, position_size=None, max_positions=None, omr_config=None):
+def create_omr_adapter(broker, symbols=None, min_probability=None, min_return=None, position_size=None, max_positions=None, omr_config=None, data_provider=None):
     """
     Create Overnight Mean Reversion adapter.
 
     IMPORTANT: For production, pass omr_config from load_omr_config().
     Individual parameters are only for testing/overrides.
+
+    Args:
+        broker: Broker interface
+        data_provider: Optional data provider with fallback chain (Alpaca -> yfinance)
+        omr_config: Production config from load_omr_config()
+        ... other params for testing overrides
     """
     # If config provided, use it (RECOMMENDED)
     if omr_config is not None:
         logger.info("Creating OMR adapter from production config")
         adapter_params = omr_config.to_adapter_params()
+        if data_provider is not None:
+            adapter_params['data_provider'] = data_provider
+            logger.info(f"  Using data provider: {data_provider.name}")
         return OMRLiveAdapter(broker=broker, **adapter_params)
 
     # Fallback to individual parameters (for testing)
@@ -775,11 +785,12 @@ def create_omr_adapter(broker, symbols=None, min_probability=None, min_return=No
         min_probability=min_probability if min_probability is not None else 0.60,
         min_expected_return=min_return if min_return is not None else 0.002,
         max_positions=max_positions if max_positions is not None else 3,
-        position_size=position_size if position_size is not None else 0.05
+        position_size=position_size if position_size is not None else 0.05,
+        data_provider=data_provider
     )
 
 
-def create_mp_adapter(broker, position_size=0.065, top_n=10):
+def create_mp_adapter(broker, position_size=0.065, top_n=10, data_provider=None):
     """
     Create Momentum Protection adapter.
 
@@ -787,11 +798,14 @@ def create_mp_adapter(broker, position_size=0.065, top_n=10):
         broker: Broker interface
         position_size: Position size per stock (default: 6.5%)
         top_n: Number of top momentum stocks to hold (default: 10)
+        data_provider: Optional data provider with fallback chain (Alpaca -> yfinance)
 
     Returns:
         MomentumLiveAdapter instance
     """
     logger.info("Creating MP adapter with crash protection")
+    if data_provider is not None:
+        logger.info(f"  Using data provider: {data_provider.name}")
     return MomentumLiveAdapter(
         broker=broker,
         symbols=None,  # Uses S&P 500 by default
@@ -801,7 +815,8 @@ def create_mp_adapter(broker, position_size=0.065, top_n=10):
         vix_threshold=25.0,
         vix_spike_threshold=0.20,
         spy_dd_threshold=-0.05,
-        mom_vol_percentile=0.90
+        mom_vol_percentile=0.90,
+        data_provider=data_provider
     )
 
 
@@ -962,6 +977,13 @@ def main():
         market_open = broker.is_market_open()
         logger.info(f"  Market: {'OPEN' if market_open else 'CLOSED'}")
 
+        # Create data provider with Alpaca -> yfinance fallback
+        # This ensures complete intraday data coverage for leveraged ETFs
+        logger.info("")
+        logger.info("Creating data provider (Alpaca -> yfinance fallback)...")
+        data_provider = create_data_provider(broker=broker)
+        logger.success(f"Data provider ready: {data_provider.name}")
+
         # Create strategy adapter
         logger.info("")
         logger.info(f"Creating {args.strategy} adapter...")
@@ -987,14 +1009,16 @@ def main():
             # For OMR, use production config (already loaded above)
             adapter = create_omr_adapter(
                 broker,
-                omr_config=omr_config  # Use production config
+                omr_config=omr_config,  # Use production config
+                data_provider=data_provider  # Alpaca -> yfinance fallback
             )
         elif args.strategy == 'mp':
             # Momentum Protection strategy
             adapter = create_mp_adapter(
                 broker,
                 position_size=args.position_size if args.position_size != 0.05 else 0.065,
-                top_n=args.max_positions if args.max_positions != 3 else 10
+                top_n=args.max_positions if args.max_positions != 3 else 10,
+                data_provider=data_provider  # Alpaca -> yfinance fallback
             )
         elif args.strategy == 'multi':
             # Multi-strategy mode - run all enabled strategies
@@ -1011,9 +1035,9 @@ def main():
             # For now, create OMR adapter if enabled (primary strategy)
             # TODO: Implement full multi-adapter runner
             if 'omr' in enabled:
-                adapter = create_omr_adapter(broker, omr_config=omr_config)
+                adapter = create_omr_adapter(broker, omr_config=omr_config, data_provider=data_provider)
             elif 'mp' in enabled:
-                adapter = create_mp_adapter(broker)
+                adapter = create_mp_adapter(broker, data_provider=data_provider)
             else:
                 logger.error("No supported strategy enabled")
                 return 1
