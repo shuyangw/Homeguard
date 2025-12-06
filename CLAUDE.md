@@ -21,8 +21,11 @@ This document provides an overview of coding standards and guidelines for the Ho
 - Linux/EC2: `/home/ec2-user/stock_data`
 
 #### Directory Structure (Hive Partitioned)
+Data is stored in timeframe-specific directories:
 ```
-{local_storage_dir}/equities_1min/symbol={SYMBOL}/year={YYYY}/month={MM}/data.parquet
+{local_storage_dir}/equities_1min/symbol={SYMBOL}/year={YYYY}/month={MM}/data.parquet   # Minute
+{local_storage_dir}/equities_1hour/symbol={SYMBOL}/year={YYYY}/month={MM}/data.parquet  # Hourly
+{local_storage_dir}/equities_1day/symbol={SYMBOL}/year={YYYY}/month={MM}/data.parquet   # Daily
 ```
 Example: `F:\Stock_Data\equities_1min\symbol=AAPL\year=2024\month=1\data.parquet`
 
@@ -51,12 +54,44 @@ Example: `F:\Stock_Data\equities_1min\symbol=AAPL\year=2024\month=1\data.parquet
 - `backtest_lists/russell1000-2025.csv` - Russell 1000 symbols
 - `backtest_lists/russell1000_non_sp500-2025.csv` - Russell 1000 minus S&P 500
 - `backtest_lists/russell2000-2025.csv` - Russell 2000 symbols
+- `backtest_lists/russell2000_non_r1000_sp500-2025.csv` - Russell 2000 minus R1000 minus S&P 500
 
-#### Download Scripts
-- Location: `scripts/download_*.py`
-- Must use `get_local_storage_dir()` for output path
-- Must follow canonical schema above
-- Details: [`.claude/data_handling.md`](.claude/data_handling.md)
+#### Download Framework
+**Preferred method:** Use the generic download script for all data downloads:
+```bash
+# Download from CSV (recommended)
+python scripts/download_symbols.py --csv backtest_lists/sp500-2025.csv --skip-existing
+
+# Download specific symbols
+python scripts/download_symbols.py --symbols AAPL,MSFT,GOOGL
+
+# Download hourly/daily data
+python scripts/download_symbols.py --csv etfs.csv --timeframe hour
+python scripts/download_symbols.py --csv etfs.csv --timeframe day
+
+# Custom date range
+python scripts/download_symbols.py --symbols SPY --start 2020-01-01 --end 2024-12-31
+```
+
+**Features guaranteed:**
+- Canonical 8-column schema enforcement
+- 6 parallel download threads
+- 3 retries per symbol with exponential backoff
+- 3 end-of-run retry rounds for all failures
+- `--skip-existing` to avoid re-downloading
+- Hive partitioned parquet output
+
+**Programmatic usage:**
+```python
+from src.data import AlpacaDownloader, Timeframe
+
+downloader = AlpacaDownloader(start_date='2020-01-01')
+result = downloader.download_symbols(['AAPL', 'MSFT'], timeframe=Timeframe.MINUTE, skip_existing=True)
+```
+
+#### Other Data Scripts
+- `scripts/download_russell_lists.py` - Download Russell index constituent lists from web sources
+- `backtest_scripts/download_leveraged_etfs.py` - Download daily leveraged ETF data via yfinance
 
 ### Project Organization
 Maintain clean project structure with proper separation of concerns.
