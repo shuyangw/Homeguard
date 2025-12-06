@@ -2,8 +2,12 @@
 
 Quick reference for monitoring your Homeguard trading bot on EC2.
 
-**Instance IP**: `100.30.95.146`
-**SSH Key**: `~/.ssh/homeguard-trading.pem`
+> **Note**: Replace placeholders with your actual values from `.env` file or `terraform output`.
+> Use the pre-configured scripts in `scripts/ec2/` which automatically read from `.env`.
+
+**Instance IP**: `<YOUR_EC2_IP>` (see `EC2_IP` in `.env`)
+**Instance ID**: `<YOUR_INSTANCE_ID>` (see `EC2_INSTANCE_ID` in `.env`)
+**SSH Key**: `~/.ssh/homeguard-trading.pem` (see `EC2_SSH_KEY_PATH` in `.env`)
 
 ---
 
@@ -19,7 +23,7 @@ scripts\ec2\check_bot.bat      # Windows
 
 **Manual SSH**:
 ```bash
-ssh -i ~/.ssh/homeguard-trading.pem ec2-user@100.30.95.146 "sudo systemctl status homeguard-trading --no-pager"
+ssh -i ~/.ssh/homeguard-trading.pem ec2-user@<YOUR_EC2_IP> "sudo systemctl status homeguard-trading --no-pager"
 ```
 
 **What to look for**:
@@ -39,7 +43,7 @@ scripts\ec2\view_logs.bat      # Windows
 
 **Manual SSH**:
 ```bash
-ssh -i ~/.ssh/homeguard-trading.pem ec2-user@100.30.95.146 "sudo journalctl -u homeguard-trading -f"
+ssh -i ~/.ssh/homeguard-trading.pem ec2-user@<YOUR_EC2_IP> "sudo journalctl -u homeguard-trading -f"
 ```
 
 **Press Ctrl+C to stop**
@@ -56,7 +60,7 @@ ssh -i ~/.ssh/homeguard-trading.pem ec2-user@100.30.95.146 "sudo journalctl -u h
 ### 3. Check Recent Activity (Last 10 Lines) 📝
 
 ```bash
-ssh -i ~/.ssh/homeguard-trading.pem ec2-user@100.30.95.146 "sudo journalctl -u homeguard-trading -n 10 --no-pager"
+ssh -i ~/.ssh/homeguard-trading.pem ec2-user@<YOUR_EC2_IP> "sudo journalctl -u homeguard-trading -n 10 --no-pager"
 ```
 
 ---
@@ -64,7 +68,7 @@ ssh -i ~/.ssh/homeguard-trading.pem ec2-user@100.30.95.146 "sudo journalctl -u h
 ### 4. Check for Errors ⚠️
 
 ```bash
-ssh -i ~/.ssh/homeguard-trading.pem ec2-user@100.30.95.146 "sudo journalctl -u homeguard-trading -p err -n 20 --no-pager"
+ssh -i ~/.ssh/homeguard-trading.pem ec2-user@<YOUR_EC2_IP> "sudo journalctl -u homeguard-trading -p err -n 20 --no-pager"
 ```
 
 **What to look for**:
@@ -78,7 +82,7 @@ ssh -i ~/.ssh/homeguard-trading.pem ec2-user@100.30.95.146 "sudo journalctl -u h
 ### 5. Check Resource Usage 💻
 
 ```bash
-ssh -i ~/.ssh/homeguard-trading.pem ec2-user@100.30.95.146 "sudo systemctl status homeguard-trading --no-pager | grep -E 'Memory|CPU'"
+ssh -i ~/.ssh/homeguard-trading.pem ec2-user@<YOUR_EC2_IP> "sudo systemctl status homeguard-trading --no-pager | grep -E 'Memory|CPU'"
 ```
 
 **What to look for**:
@@ -92,7 +96,7 @@ ssh -i ~/.ssh/homeguard-trading.pem ec2-user@100.30.95.146 "sudo systemctl statu
 ### 6. Check Instance State 🖥️
 
 ```bash
-aws ec2 describe-instances --instance-ids i-02500fe2392631ff2 --query 'Reservations[0].Instances[0].State.Name' --output text
+aws ec2 describe-instances --instance-ids <YOUR_INSTANCE_ID> --query 'Reservations[0].Instances[0].State.Name' --output text
 ```
 
 **Expected**:
@@ -108,13 +112,13 @@ aws ec2 describe-instances --instance-ids i-02500fe2392631ff2 --query 'Reservati
 
 ```bash
 # 1. Check instance is running
-aws ec2 describe-instances --instance-ids i-02500fe2392631ff2 --query 'Reservations[0].Instances[0].State.Name'
+aws ec2 describe-instances --instance-ids <YOUR_INSTANCE_ID> --query 'Reservations[0].Instances[0].State.Name'
 
 # 2. Check bot service status
 scripts/ec2/check_bot.sh
 
 # 3. Verify no recent errors
-ssh -i ~/.ssh/homeguard-trading.pem ec2-user@100.30.95.146 "sudo journalctl -u homeguard-trading -p err --since '1 hour ago' --no-pager"
+ssh -i ~/.ssh/homeguard-trading.pem ec2-user@<YOUR_EC2_IP> "sudo journalctl -u homeguard-trading -p err --since '1 hour ago' --no-pager"
 ```
 
 **Expected**: Instance running, bot active, no errors
@@ -139,7 +143,7 @@ scripts/ec2/view_logs.sh
 
 ```bash
 # Check if logs were flushed
-ssh -i ~/.ssh/homeguard-trading.pem ec2-user@100.30.95.146 "ls -lh ~/logs/live_trading/paper/ | tail -5"
+ssh -i ~/.ssh/homeguard-trading.pem ec2-user@<YOUR_EC2_IP> "ls -lh ~/logs/live_trading/paper/ | tail -5"
 ```
 
 **Expected**: Today's log file updated with recent timestamp
@@ -150,7 +154,7 @@ ssh -i ~/.ssh/homeguard-trading.pem ec2-user@100.30.95.146 "ls -lh ~/logs/live_t
 
 ```bash
 # Verify instance was stopped
-aws ec2 describe-instances --instance-ids i-02500fe2392631ff2 --query 'Reservations[0].Instances[0].State.Name'
+aws ec2 describe-instances --instance-ids <YOUR_INSTANCE_ID> --query 'Reservations[0].Instances[0].State.Name'
 ```
 
 **Expected**: `stopped` or `stopping`
@@ -178,7 +182,7 @@ scripts/ec2/restart_bot.sh
 
 ```bash
 # Force restart
-ssh -i ~/.ssh/homeguard-trading.pem ec2-user@100.30.95.146 "sudo systemctl restart homeguard-trading"
+ssh -i ~/.ssh/homeguard-trading.pem ec2-user@<YOUR_EC2_IP> "sudo systemctl restart homeguard-trading"
 
 # Verify it restarted
 scripts/ec2/check_bot.sh
@@ -190,7 +194,7 @@ scripts/ec2/check_bot.sh
 
 ```bash
 # SSH to instance
-ssh -i ~/.ssh/homeguard-trading.pem ec2-user@100.30.95.146
+ssh -i ~/.ssh/homeguard-trading.pem ec2-user@<YOUR_EC2_IP>
 
 # Check .env file exists and has correct format
 cat ~/Homeguard/.env
@@ -213,7 +217,7 @@ exit
 
 ```bash
 # Check memory usage
-ssh -i ~/.ssh/homeguard-trading.pem ec2-user@100.30.95.146 "free -h"
+ssh -i ~/.ssh/homeguard-trading.pem ec2-user@<YOUR_EC2_IP> "free -h"
 
 # If memory is full, restart bot
 scripts/ec2/restart_bot.sh
@@ -228,7 +232,7 @@ scripts/ec2/restart_bot.sh
 aws logs tail /aws/lambda/homeguard-start-instance --since 1h
 
 # Manually start instance
-aws ec2 start-instances --instance-ids i-02500fe2392631ff2
+aws ec2 start-instances --instance-ids <YOUR_INSTANCE_ID>
 
 # Wait 2 minutes, then verify bot started
 scripts/ec2/check_bot.sh
@@ -243,7 +247,7 @@ scripts/ec2/check_bot.sh
 aws logs tail /aws/lambda/homeguard-stop-instance --since 1h
 
 # Manually stop instance
-aws ec2 stop-instances --instance-ids i-02500fe2392631ff2
+aws ec2 stop-instances --instance-ids <YOUR_INSTANCE_ID>
 ```
 
 ---
@@ -253,7 +257,7 @@ aws ec2 stop-instances --instance-ids i-02500fe2392631ff2
 ### View Today's Trading Logs
 
 ```bash
-ssh -i ~/.ssh/homeguard-trading.pem ec2-user@100.30.95.146 "tail -100 ~/logs/live_trading/paper/trading_\$(date +%Y%m%d).log"
+ssh -i ~/.ssh/homeguard-trading.pem ec2-user@<YOUR_EC2_IP> "tail -100 ~/logs/live_trading/paper/trading_\$(date +%Y%m%d).log"
 ```
 
 ---
@@ -261,7 +265,7 @@ ssh -i ~/.ssh/homeguard-trading.pem ec2-user@100.30.95.146 "tail -100 ~/logs/liv
 ### Download All Logs
 
 ```bash
-scp -i ~/.ssh/homeguard-trading.pem -r ec2-user@100.30.95.146:~/logs/live_trading/paper/ ./downloaded_logs/
+scp -i ~/.ssh/homeguard-trading.pem -r ec2-user@<YOUR_EC2_IP>:~/logs/live_trading/paper/ ./downloaded_logs/
 ```
 
 ---
@@ -269,7 +273,7 @@ scp -i ~/.ssh/homeguard-trading.pem -r ec2-user@100.30.95.146:~/logs/live_tradin
 ### Check if Bot is Trading
 
 ```bash
-ssh -i ~/.ssh/homeguard-trading.pem ec2-user@100.30.95.146 "sudo journalctl -u homeguard-trading --since today | grep -E 'SIGNAL|ORDER|TRADE'"
+ssh -i ~/.ssh/homeguard-trading.pem ec2-user@<YOUR_EC2_IP> "sudo journalctl -u homeguard-trading --since today | grep -E 'SIGNAL|ORDER|TRADE'"
 ```
 
 ---
@@ -277,7 +281,7 @@ ssh -i ~/.ssh/homeguard-trading.pem ec2-user@100.30.95.146 "sudo journalctl -u h
 ### View System Performance
 
 ```bash
-ssh -i ~/.ssh/homeguard-trading.pem ec2-user@100.30.95.146 "top -b -n 1 | head -20"
+ssh -i ~/.ssh/homeguard-trading.pem ec2-user@<YOUR_EC2_IP> "top -b -n 1 | head -20"
 ```
 
 ---
@@ -285,7 +289,7 @@ ssh -i ~/.ssh/homeguard-trading.pem ec2-user@100.30.95.146 "top -b -n 1 | head -
 ### Check Disk Space
 
 ```bash
-ssh -i ~/.ssh/homeguard-trading.pem ec2-user@100.30.95.146 "df -h"
+ssh -i ~/.ssh/homeguard-trading.pem ec2-user@<YOUR_EC2_IP> "df -h"
 ```
 
 **Expected**: `/` has > 2GB free
@@ -296,7 +300,7 @@ ssh -i ~/.ssh/homeguard-trading.pem ec2-user@100.30.95.146 "df -h"
 
 ```bash
 # SSH to instance
-ssh -i ~/.ssh/homeguard-trading.pem ec2-user@100.30.95.146
+ssh -i ~/.ssh/homeguard-trading.pem ec2-user@<YOUR_EC2_IP>
 
 # Watch live with colors
 sudo journalctl -u homeguard-trading -f --output=cat
@@ -353,7 +357,7 @@ aws events describe-rule --name homeguard-stop-instance --query 'State'
 
 ```bash
 # On EC2 instance
-ssh -i ~/.ssh/homeguard-trading.pem ec2-user@100.30.95.146 "cd ~/Homeguard && git log -1 --oneline"
+ssh -i ~/.ssh/homeguard-trading.pem ec2-user@<YOUR_EC2_IP> "cd ~/Homeguard && git log -1 --oneline"
 
 # Compare with local
 git log -1 --oneline
@@ -367,7 +371,7 @@ git log -1 --oneline
 
 ```bash
 # SSH to instance
-ssh -i ~/.ssh/homeguard-trading.pem ec2-user@100.30.95.146
+ssh -i ~/.ssh/homeguard-trading.pem ec2-user@<YOUR_EC2_IP>
 
 # Pull latest code
 cd ~/Homeguard
@@ -391,16 +395,16 @@ exit
 
 | Task | Command |
 |------|---------|
-| **SSH to instance** | `ssh -i ~/.ssh/homeguard-trading.pem ec2-user@100.30.95.146` |
+| **SSH to instance** | `ssh -i ~/.ssh/homeguard-trading.pem ec2-user@<YOUR_EC2_IP>` |
 | **Check bot status** | `scripts/ec2/check_bot.sh` |
 | **View live logs** | `scripts/ec2/view_logs.sh` |
 | **Restart bot** | `scripts/ec2/restart_bot.sh` |
 | **Stop bot** | `sudo systemctl stop homeguard-trading` |
 | **Start bot** | `sudo systemctl start homeguard-trading` |
 | **Check errors** | `sudo journalctl -u homeguard-trading -p err -n 20` |
-| **Check instance state** | `aws ec2 describe-instances --instance-ids i-02500fe2392631ff2 --query 'Reservations[0].Instances[0].State.Name'` |
-| **Start instance** | `aws ec2 start-instances --instance-ids i-02500fe2392631ff2` |
-| **Stop instance** | `aws ec2 stop-instances --instance-ids i-02500fe2392631ff2` |
+| **Check instance state** | `aws ec2 describe-instances --instance-ids <YOUR_INSTANCE_ID> --query 'Reservations[0].Instances[0].State.Name'` |
+| **Start instance** | `aws ec2 start-instances --instance-ids <YOUR_INSTANCE_ID>` |
+| **Stop instance** | `aws ec2 stop-instances --instance-ids <YOUR_INSTANCE_ID>` |
 
 ---
 
@@ -446,23 +450,23 @@ echo "Date: $(date)"
 echo ""
 
 echo "1. Instance State:"
-aws ec2 describe-instances --instance-ids i-02500fe2392631ff2 --query 'Reservations[0].Instances[0].State.Name'
+aws ec2 describe-instances --instance-ids <YOUR_INSTANCE_ID> --query 'Reservations[0].Instances[0].State.Name'
 echo ""
 
 echo "2. Bot Service Status:"
-ssh -i ~/.ssh/homeguard-trading.pem ec2-user@100.30.95.146 "sudo systemctl is-active homeguard-trading"
+ssh -i ~/.ssh/homeguard-trading.pem ec2-user@<YOUR_EC2_IP> "sudo systemctl is-active homeguard-trading"
 echo ""
 
 echo "3. Recent Errors (last hour):"
-ssh -i ~/.ssh/homeguard-trading.pem ec2-user@100.30.95.146 "sudo journalctl -u homeguard-trading -p err --since '1 hour ago' --no-pager | wc -l"
+ssh -i ~/.ssh/homeguard-trading.pem ec2-user@<YOUR_EC2_IP> "sudo journalctl -u homeguard-trading -p err --since '1 hour ago' --no-pager | wc -l"
 echo ""
 
 echo "4. Memory Usage:"
-ssh -i ~/.ssh/homeguard-trading.pem ec2-user@100.30.95.146 "sudo systemctl status homeguard-trading --no-pager | grep Memory"
+ssh -i ~/.ssh/homeguard-trading.pem ec2-user@<YOUR_EC2_IP> "sudo systemctl status homeguard-trading --no-pager | grep Memory"
 echo ""
 
 echo "5. Last Activity:"
-ssh -i ~/.ssh/homeguard-trading.pem ec2-user@100.30.95.146 "sudo journalctl -u homeguard-trading -n 1 --no-pager"
+ssh -i ~/.ssh/homeguard-trading.pem ec2-user@<YOUR_EC2_IP> "sudo journalctl -u homeguard-trading -n 1 --no-pager"
 echo ""
 
 echo "=== Health Check Complete ==="
@@ -480,12 +484,12 @@ chmod +x daily_health_check.sh
 
 - **AWS Console**: https://console.aws.amazon.com/ec2
 - **CloudWatch Logs**: https://console.aws.amazon.com/cloudwatch
-- **Instance ID**: `i-02500fe2392631ff2`
+- **Instance ID**: `<YOUR_INSTANCE_ID>` (see `.env`)
 - **Region**: `us-east-1` (N. Virginia)
 - **Alpaca Dashboard**: https://app.alpaca.markets/paper/dashboard/overview
 
 ---
 
-**Last Updated**: November 15, 2025
-**Instance IP**: 100.30.95.146
+**Last Updated**: 2025-12-06
+**Instance IP**: `<YOUR_EC2_IP>` (see `.env`)
 **Bot Version**: OMR Live Adapter (continuous mode)

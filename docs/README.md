@@ -106,6 +106,7 @@ This documentation is organized by topic for easy navigation. Select the categor
 - [**Terraform README**](../terraform/README.md) - Infrastructure as code configuration and management
 - [**SSH Scripts Documentation**](../scripts/ec2/SSH_SCRIPTS_README.md) - Quick-access management scripts (10 scripts)
 - [**Health Check Cheatsheet**](HEALTH_CHECK_CHEATSHEET.md) - Comprehensive monitoring guide
+- [**Troubleshooting Guide**](guides/TROUBLESHOOTING.md) - Common issues and solutions
 
 ### Live Trading Guides
 - [**Live Paper Trading Guide**](guides/LIVE_PAPER_TRADING.md) - Complete paper trading setup and usage
@@ -138,26 +139,38 @@ This documentation is organized by topic for easy navigation. Select the categor
 
 Location: [`progress/`](progress/)
 
-**Files** (chronological):
-- Template: `progress/TEMPLATE.md`
-- 2024-10-31: Strategy implementation reports
-- 2024-11-01: Cleanup, bugfixes (file links, JSON serialization)
-- 2024-11-02: Risk management integration, symbol auto-download
-- 2025-11-02: Multi-symbol portfolio status
-- 2025-11-03: Benchmark comparison, parallel charts, portfolio GUI improvements
-- Metrics fixes: Performance optimizations (486s → 0.22s)
-- Portfolio mode fixes
+**Current files**: 2025 progress reports, roadmaps, and validation summaries.
+
+**Archived**: Older files (2024) moved to [`archive/progress-2024/`](archive/progress-2024/)
 
 **When to read**: When researching past issues or understanding feature evolution
 
 ---
 
-## 🔧 Internal Documentation
+## 📋 Planning Documents
 
-**Planning and cleanup docs (for maintainers).**
+**Implementation plans and roadmaps.**
 
-- [**Doc Cleanup Plan**](DOC_CLEANUP_PLAN.md) - Documentation reorganization plan
-- *(Other internal docs)*
+Location: [`planning/`](planning/)
+
+- Strategy implementation plans (Kelly Criterion, LightGBM, etc.)
+- Backtest standardization plans
+- Integration designs
+
+**When to read**: When understanding planned features or implementation approaches
+
+---
+
+## 📦 Archived Documentation
+
+**Historical documentation preserved for reference.**
+
+Location: [`archive/`](archive/)
+
+- [`progress-2024/`](archive/progress-2024/) - Development progress from Oct-Nov 2024
+- [`legacy-reports/`](archive/legacy-reports/) - Older backtest reports (Nov 2025)
+
+**When to read**: When researching historical context or past implementations
 
 ---
 
@@ -222,7 +235,11 @@ When adding new documentation:
 
 **Found a bug?** → Run [Test Suite](testing/TEST_SUITE_QUICK_START.md) to validate
 
-**Want to contribute?** → Read coding standards in [CLAUDE.md](../CLAUDE.md)
+**Want to contribute?** → Read [CONTRIBUTING.md](../CONTRIBUTING.md) and coding standards in [CLAUDE.md](../CLAUDE.md)
+
+**Troubleshoot an issue** → [Troubleshooting Guide](guides/TROUBLESHOOTING.md)
+
+**View changelog** → [CHANGELOG.md](../CHANGELOG.md)
 
 ---
 
@@ -235,14 +252,23 @@ When adding new documentation:
 | API Reference | 4 | ✅ Complete | 100% |
 | Testing | 5 | ✅ Complete | 100% |
 | QuantStats | 3 | ✅ Complete | 100% |
-| Deployment & Infrastructure | 8 | ✅ Complete | 100% (NEW) |
-| Progress | 14+ | ✅ Complete | 100% (historical) |
+| Deployment & Infrastructure | 9 | ✅ Complete | 100% |
+| Planning | 8 | ✅ Complete | 100% |
+| Progress | 10+ | ✅ Complete | 100% (current year) |
+| Archive | 50+ | ✅ Complete | 100% (historical) |
 
 **Overall Status**: 🟢 **Excellent** (31+ comprehensive docs, fully organized)
 
 ---
 
 ## Recent Updates
+
+**2025-12-06** (Documentation Cleanup):
+- ✅ Sanitized hardcoded IPs/instance IDs from docs (use `.env` placeholders)
+- ✅ Consolidated `docs/plans/` and `docs/todos/` into `docs/planning/`
+- ✅ Archived legacy reports and 2024 progress files
+- ✅ Added CONTRIBUTING.md, CHANGELOG.md, TROUBLESHOOTING.md
+- ✅ Updated navigation hub with new structure
 
 **2025-11-15** (AWS Deployment & Infrastructure):
 - ✅ **Complete AWS EC2 production deployment**
@@ -292,6 +318,6 @@ When adding new documentation:
 
 ---
 
-**Last Updated**: 2025-11-15
+**Last Updated**: 2025-12-06
 **Maintained By**: Keep this index updated when adding/removing documentation
 **Review Frequency**: Monthly or after major changes
