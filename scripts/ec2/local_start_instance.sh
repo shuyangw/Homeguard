@@ -15,9 +15,8 @@
 
 set -e
 
-# Configuration
-INSTANCE_ID="i-02500fe2392631ff2"
-REGION="us-east-1"
+# Load EC2 configuration from .env
+source "$(dirname "${BASH_SOURCE[0]}")/load_env.sh" || exit 1
 
 # Colors for output
 RED='\033[0;31m'
@@ -30,8 +29,8 @@ echo "=========================================="
 echo "Start Homeguard Trading Bot EC2 Instance"
 echo "=========================================="
 echo ""
-echo -e "${BLUE}Instance ID: $INSTANCE_ID${NC}"
-echo -e "${BLUE}Region: $REGION${NC}"
+echo -e "${BLUE}Instance ID: $EC2_INSTANCE_ID${NC}"
+echo -e "${BLUE}Region: $EC2_REGION${NC}"
 echo ""
 
 # Check if AWS CLI is installed
@@ -47,8 +46,8 @@ fi
 echo "Checking instance state..."
 set +e  # Temporarily disable exit on error to capture AWS errors
 INSTANCE_STATE=$(aws ec2 describe-instances \
-    --instance-ids "$INSTANCE_ID" \
-    --region "$REGION" \
+    --instance-ids "$EC2_INSTANCE_ID" \
+    --region "$EC2_REGION" \
     --query 'Reservations[0].Instances[0].State.Name' \
     --output text 2>&1)
 AWS_EXIT_CODE=$?
@@ -63,7 +62,7 @@ if [ $AWS_EXIT_CODE -ne 0 ]; then
     echo "Please check:"
     echo "  - AWS CLI is configured (run: aws configure)"
     echo "  - Your AWS credentials have EC2 permissions"
-    echo "  - Instance ID is correct: $INSTANCE_ID"
+    echo "  - Instance ID is correct: $EC2_INSTANCE_ID"
     exit 1
 fi
 
@@ -74,8 +73,8 @@ echo ""
 if [ "$INSTANCE_STATE" == "stopped" ]; then
     echo "Starting instance..."
     aws ec2 start-instances \
-        --instance-ids "$INSTANCE_ID" \
-        --region "$REGION" \
+        --instance-ids "$EC2_INSTANCE_ID" \
+        --region "$EC2_REGION" \
         --output text > /dev/null
 
     echo -e "${GREEN}✅ Instance start command sent${NC}"
@@ -84,16 +83,16 @@ if [ "$INSTANCE_STATE" == "stopped" ]; then
 
     # Wait for instance to be running
     aws ec2 wait instance-running \
-        --instance-ids "$INSTANCE_ID" \
-        --region "$REGION"
+        --instance-ids "$EC2_INSTANCE_ID" \
+        --region "$EC2_REGION"
 
     echo -e "${GREEN}✅ Instance is now running!${NC}"
     echo ""
 
     # Get public IP
     PUBLIC_IP=$(aws ec2 describe-instances \
-        --instance-ids "$INSTANCE_ID" \
-        --region "$REGION" \
+        --instance-ids "$EC2_INSTANCE_ID" \
+        --region "$EC2_REGION" \
         --query 'Reservations[0].Instances[0].PublicIpAddress' \
         --output text)
 
@@ -103,7 +102,7 @@ if [ "$INSTANCE_STATE" == "stopped" ]; then
     echo "Note: Wait ~30 seconds for the trading bot to start"
     echo ""
     echo "To connect:"
-    echo -e "  ${BLUE}ssh -i ~/.ssh/homeguard-trading.pem ec2-user@$PUBLIC_IP${NC}"
+    echo -e "  ${BLUE}ssh -i $EC2_SSH_KEY_PATH $EC2_USER@$PUBLIC_IP${NC}"
     echo ""
     echo "To check bot status:"
     echo -e "  ${BLUE}./scripts/ec2/local_check_bot.sh${NC}"
@@ -114,8 +113,8 @@ elif [ "$INSTANCE_STATE" == "running" ]; then
 
     # Get public IP
     PUBLIC_IP=$(aws ec2 describe-instances \
-        --instance-ids "$INSTANCE_ID" \
-        --region "$REGION" \
+        --instance-ids "$EC2_INSTANCE_ID" \
+        --region "$EC2_REGION" \
         --query 'Reservations[0].Instances[0].PublicIpAddress' \
         --output text)
 
@@ -123,7 +122,7 @@ elif [ "$INSTANCE_STATE" == "running" ]; then
     echo "  Public IP: $PUBLIC_IP"
     echo ""
     echo "To connect:"
-    echo -e "  ${BLUE}ssh -i ~/.ssh/homeguard-trading.pem ec2-user@$PUBLIC_IP${NC}"
+    echo -e "  ${BLUE}ssh -i $EC2_SSH_KEY_PATH $EC2_USER@$PUBLIC_IP${NC}"
 
 elif [ "$INSTANCE_STATE" == "pending" ]; then
     echo -e "${YELLOW}⏳ Instance is starting...${NC}"
@@ -131,8 +130,8 @@ elif [ "$INSTANCE_STATE" == "pending" ]; then
     echo "Waiting for instance to be running..."
 
     aws ec2 wait instance-running \
-        --instance-ids "$INSTANCE_ID" \
-        --region "$REGION"
+        --instance-ids "$EC2_INSTANCE_ID" \
+        --region "$EC2_REGION"
 
     echo -e "${GREEN}✅ Instance is now running!${NC}"
 

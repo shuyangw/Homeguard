@@ -289,8 +289,8 @@ scripts/ec2/daily_health_check.sh    # Linux/Mac
 - **[Preflight Checklist](terraform/PREFLIGHT_CHECKLIST.md)** - Pre-deployment requirements
 
 **Current Deployment:**
-- **Instance IP**: 100.30.95.146
-- **Instance ID**: i-02500fe2392631ff2
+- **Instance IP**: See `.env` file (`EC2_IP` variable)
+- **Instance ID**: See `.env` file (`EC2_INSTANCE_ID` variable)
 - **Region**: us-east-1 (N. Virginia)
 - **Schedule**: Monday-Friday, 9:00 AM - 4:30 PM ET
 - **Service**: homeguard-trading.service (systemd)

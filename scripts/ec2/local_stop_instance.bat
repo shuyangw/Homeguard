@@ -14,16 +14,16 @@ REM
 
 setlocal enabledelayedexpansion
 
-REM Configuration
-set INSTANCE_ID=i-02500fe2392631ff2
-set REGION=us-east-1
+REM Load EC2 configuration from .env
+call "%~dp0load_env.bat"
+if errorlevel 1 exit /b 1
 
 echo ==========================================
 echo Stop Homeguard Trading Bot EC2 Instance
 echo ==========================================
 echo.
-echo Instance ID: %INSTANCE_ID%
-echo Region: %REGION%
+echo Instance ID: %EC2_INSTANCE_ID%
+echo Region: %EC2_REGION%
 echo.
 
 REM Check if AWS CLI is installed
@@ -38,15 +38,15 @@ if %ERRORLEVEL% neq 0 (
 
 REM Check current instance state
 echo Checking instance state...
-for /f "tokens=*" %%a in ('aws ec2 describe-instances --instance-ids %INSTANCE_ID% --region %REGION% --query "Reservations[0].Instances[0].State.Name" --output text 2^>nul') do set INSTANCE_STATE=%%a
+for /f "tokens=*" %%a in ('aws ec2 describe-instances --instance-ids %EC2_INSTANCE_ID% --region %EC2_REGION% --query "Reservations[0].Instances[0].State.Name" --output text 2^>nul') do set INSTANCE_STATE=%%a
 
 if "%INSTANCE_STATE%"=="" (
     echo [ERROR] Failed to get instance state
     echo.
     echo Please check:
     echo   1. AWS CLI is configured: aws configure
-    echo   2. You have permissions to access instance %INSTANCE_ID%
-    echo   3. Instance exists in region %REGION%
+    echo   2. You have permissions to access instance %EC2_INSTANCE_ID%
+    echo   3. Instance exists in region %EC2_REGION%
     exit /b 1
 )
 
@@ -67,7 +67,7 @@ if "%INSTANCE_STATE%"=="stopping" (
     echo Waiting for instance to be stopped...
     echo.
 
-    aws ec2 wait instance-stopped --instance-ids %INSTANCE_ID% --region %REGION%
+    aws ec2 wait instance-stopped --instance-ids %EC2_INSTANCE_ID% --region %EC2_REGION%
 
     if %ERRORLEVEL% neq 0 (
         echo [ERROR] Timeout waiting for instance to stop
@@ -97,7 +97,7 @@ if /i not "!CONFIRM!"=="y" (
 echo.
 echo Stopping instance...
 
-aws ec2 stop-instances --instance-ids %INSTANCE_ID% --region %REGION% >nul
+aws ec2 stop-instances --instance-ids %EC2_INSTANCE_ID% --region %EC2_REGION% >nul
 
 if %ERRORLEVEL% neq 0 (
     echo [ERROR] Failed to stop instance
@@ -108,7 +108,7 @@ echo [SUCCESS] Instance stop command sent
 echo.
 echo Waiting for instance to stop (this may take 1-2 minutes)...
 
-aws ec2 wait instance-stopped --instance-ids %INSTANCE_ID% --region %REGION%
+aws ec2 wait instance-stopped --instance-ids %EC2_INSTANCE_ID% --region %EC2_REGION%
 
 if %ERRORLEVEL% neq 0 (
     echo [ERROR] Timeout waiting for instance to stop

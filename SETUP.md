@@ -109,8 +109,8 @@ Deploy trading bot to AWS EC2 with automated scheduling and monitoring.
 - **[Health Check Cheatsheet](docs/HEALTH_CHECK_CHEATSHEET.md)** - Monitoring and troubleshooting guide
 
 **Current Deployment Info**:
-- Instance IP: 100.30.95.146
-- Instance ID: i-02500fe2392631ff2
+- Instance IP: See `.env` file (`EC2_IP` variable)
+- Instance ID: See `.env` file (`EC2_INSTANCE_ID` variable)
 - Region: us-east-1 (N. Virginia)
 - Service: homeguard-trading.service (systemd)
 

@@ -3,8 +3,28 @@
 Quick scripts to manage your Homeguard Trading Bot on AWS EC2.
 
 **Location**: `scripts/ec2/`
-**Instance IP**: 100.30.95.146
+**Instance IP**: See `.env` file (`EC2_IP` variable)
 **Key File**: `~/.ssh/homeguard-trading.pem`
+
+## First-Time Setup
+
+Before using these scripts, configure your EC2 connection:
+
+1. Copy the example `.env` file (if you haven't already):
+   ```bash
+   cp .env.example .env
+   ```
+
+2. Edit `.env` and add your EC2 instance details:
+   ```ini
+   EC2_IP="<YOUR_EC2_IP>"
+   EC2_INSTANCE_ID="<YOUR_INSTANCE_ID>"
+   EC2_REGION="us-east-1"
+   EC2_SSH_KEY_PATH="~/.ssh/homeguard-trading.pem"
+   EC2_USER="ec2-user"
+   ```
+
+3. Get your EC2 IP and Instance ID from AWS Console or `terraform output`
 
 ---
 
@@ -178,26 +198,26 @@ If you prefer to run commands manually:
 
 ### SSH to Instance
 ```bash
-# Windows
-ssh -i %USERPROFILE%\.ssh\homeguard-trading.pem ec2-user@100.30.95.146
+# Windows (using your configured EC2_IP from .env)
+ssh -i %USERPROFILE%\.ssh\homeguard-trading.pem ec2-user@<YOUR_EC2_IP>
 
 # Linux/Mac
-ssh -i ~/.ssh/homeguard-trading.pem ec2-user@100.30.95.146
+ssh -i ~/.ssh/homeguard-trading.pem ec2-user@<YOUR_EC2_IP>
 ```
 
 ### Check Status
 ```bash
-ssh -i ~/.ssh/homeguard-trading.pem ec2-user@100.30.95.146 "sudo systemctl status homeguard-trading"
+ssh -i ~/.ssh/homeguard-trading.pem ec2-user@<YOUR_EC2_IP> "sudo systemctl status homeguard-trading"
 ```
 
 ### View Logs
 ```bash
-ssh -i ~/.ssh/homeguard-trading.pem ec2-user@100.30.95.146 "sudo journalctl -u homeguard-trading -f"
+ssh -i ~/.ssh/homeguard-trading.pem ec2-user@<YOUR_EC2_IP> "sudo journalctl -u homeguard-trading -f"
 ```
 
 ### Restart Bot
 ```bash
-ssh -i ~/.ssh/homeguard-trading.pem ec2-user@100.30.95.146 "sudo systemctl restart homeguard-trading"
+ssh -i ~/.ssh/homeguard-trading.pem ec2-user@<YOUR_EC2_IP> "sudo systemctl restart homeguard-trading"
 ```
 
 ---
@@ -207,8 +227,8 @@ ssh -i ~/.ssh/homeguard-trading.pem ec2-user@100.30.95.146 "sudo systemctl resta
 Once SSH'd into the instance:
 
 ```bash
-# Check instance state
-aws ec2 describe-instances --instance-ids i-02500fe2392631ff2 --query 'Reservations[0].Instances[0].State.Name'
+# Check instance state (use your EC2_INSTANCE_ID from .env)
+aws ec2 describe-instances --instance-ids <YOUR_INSTANCE_ID> --query 'Reservations[0].Instances[0].State.Name'
 
 # View saved trading logs
 ls -lh ~/logs/live_trading/paper/
@@ -265,7 +285,7 @@ sudo journalctl -u homeguard-trading -f | grep "TRADE"
 - Instance may be stopped (scheduled stop at 4:30 PM ET)
 - Check instance state in AWS Console or:
   ```bash
-  aws ec2 describe-instances --instance-ids i-02500fe2392631ff2
+  aws ec2 describe-instances --instance-ids <YOUR_INSTANCE_ID>
   ```
 
 ### Bot is not running
@@ -308,7 +328,7 @@ sudo journalctl -u homeguard-trading -f | grep "TRADE"
 ---
 
 **Instance Details**:
-- **IP**: 100.30.95.146
-- **Instance ID**: i-02500fe2392631ff2
+- **IP**: See `.env` file (`EC2_IP` variable)
+- **Instance ID**: See `.env` file (`EC2_INSTANCE_ID` variable)
 - **Region**: us-east-1
 - **Schedule**: Runs Monday-Friday 9:00 AM - 4:30 PM ET

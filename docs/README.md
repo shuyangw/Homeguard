@@ -123,8 +123,8 @@ This documentation is organized by topic for easy navigation. Select the categor
 - ✅ ~$7/month cost (46% savings vs 24/7 operation)
 
 **Current Deployment**:
-- **Instance IP**: 100.30.95.146
-- **Instance ID**: i-02500fe2392631ff2
+- **Instance IP**: See `.env` file (`EC2_IP` variable)
+- **Instance ID**: See `.env` file (`EC2_INSTANCE_ID` variable)
 - **Region**: us-east-1 (N. Virginia)
 - **Service**: homeguard-trading.service (systemd)
 

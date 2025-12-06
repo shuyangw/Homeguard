@@ -10,6 +10,54 @@ This document provides an overview of coding standards and guidelines for the Ho
 - Activate: `conda activate fintech`
 - Details: [`.claude/environment.md`](.claude/environment.md)
 
+### Data Handling
+**CRITICAL**: All market data must follow the canonical schema and storage conventions.
+
+#### Storage Location
+- Use `from src.settings import get_local_storage_dir` to get the path
+- **NEVER** hardcode data paths - always use the settings module
+- Windows: `F:\Stock_Data`
+- macOS: `/Users/shuyangw/Library/CloudStorage/Dropbox/cs/stonk/data`
+- Linux/EC2: `/home/ec2-user/stock_data`
+
+#### Directory Structure (Hive Partitioned)
+```
+{local_storage_dir}/equities_1min/symbol={SYMBOL}/year={YYYY}/month={MM}/data.parquet
+```
+Example: `F:\Stock_Data\equities_1min\symbol=AAPL\year=2024\month=1\data.parquet`
+
+#### Canonical Parquet Schema (MUST FOLLOW)
+**CRITICAL**: All downloaded OHLCV data MUST match the existing S&P 500 schema exactly:
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `timestamp` | `datetime64[us, UTC]` | Bar timestamp (microsecond precision, UTC) |
+| `open` | `float64` | Opening price |
+| `high` | `float64` | High price |
+| `low` | `float64` | Low price |
+| `close` | `float64` | Closing price |
+| `volume` | `float64` | Volume traded |
+| `trade_count` | `float64` | Number of trades |
+| `vwap` | `float64` | Volume-weighted average price |
+
+**Schema Rules:**
+- Column names MUST be **lowercase** (`open`, not `Open`)
+- Include ALL columns from Alpaca API (`trade_count`, `vwap`)
+- Do NOT rename or drop columns
+- Do NOT change dtypes (keep `volume` as `float64`, not `int64`)
+
+#### Symbol Lists
+- `backtest_lists/sp500-2025.csv` - S&P 500 symbols
+- `backtest_lists/russell1000-2025.csv` - Russell 1000 symbols
+- `backtest_lists/russell1000_non_sp500-2025.csv` - Russell 1000 minus S&P 500
+- `backtest_lists/russell2000-2025.csv` - Russell 2000 symbols
+
+#### Download Scripts
+- Location: `scripts/download_*.py`
+- Must use `get_local_storage_dir()` for output path
+- Must follow canonical schema above
+- Details: [`.claude/data_handling.md`](.claude/data_handling.md)
+
 ### Project Organization
 Maintain clean project structure with proper separation of concerns.
 - No script files in root directory
@@ -62,6 +110,11 @@ Write clean, maintainable code following project conventions.
 - Details: [`.claude/risk_management.md`](.claude/risk_management.md)
 
 ### Testing Requirements
+**CRITICAL: Test-First Development (TDD)**
+- **When adding NEW functionality**: Write tests FIRST, then implement
+- Tests define expected behavior before coding
+- Run tests (they should fail), implement code, run tests (they should pass)
+
 **ALWAYS** run unit tests when modifying:
 - Backtesting engine code
 - Strategy implementations
@@ -109,6 +162,41 @@ Update docs when modifying user-facing functionality.
 - Document cost changes, instance type modifications, or scheduling updates
 - Infrastructure docs must reflect actual deployed resources
 - Details: [`.claude/documentation.md`](.claude/documentation.md)
+
+### Sensitive Data Protection
+**CRITICAL**: Never hardcode sensitive information in committed files.
+
+#### What to Protect
+- **API Keys** - Alpaca, Discord, Anthropic, etc.
+- **IP Addresses** - EC2 public IPs, server addresses
+- **Instance IDs** - AWS EC2 identifiers (e.g., `i-0123456789abcdef0`)
+- **SSH Key Paths** - Personal paths to `.pem` files
+- **Account IDs** - AWS account numbers, user identifiers
+
+#### Protection Patterns
+
+| Data Type | Storage Location | Template File |
+|-----------|------------------|---------------|
+| API Keys | `.env` | `.env.example` |
+| App Settings | `settings.ini` | `settings.ini.example` |
+| EC2 Config | `.env` (EC2_IP, EC2_INSTANCE_ID, etc.) | `.env.example` |
+
+#### When Adding New Sensitive Configuration
+1. **Create `.example` template file first** - Contains placeholders like `<YOUR_VALUE>`
+2. **Add actual config file to `.gitignore`** - Verify it's never committed
+3. **Update documentation with setup instructions** - Show users how to configure
+4. **Use `<YOUR_VALUE>` placeholders in docs** - Never show real values
+
+#### Current Protected Files
+- `.env` - API keys and EC2 configuration (git-ignored)
+- `settings.ini` - Personal paths and settings (git-ignored)
+- `scripts/ec2/ec2_config.sh` - Not used; EC2 config is in `.env`
+- `scripts/ec2/ec2_config.bat` - Not used; EC2 config is in `.env`
+
+#### Helper Scripts for Shell/Batch
+- Shell scripts use `source scripts/ec2/load_env.sh` to parse `.env`
+- Batch scripts use `call scripts\ec2\load_env.bat` to parse `.env`
+- Both helpers validate required variables and provide helpful error messages
 
 ### Git Workflow
 **CRITICAL**: Never push to remote without explicit user permission.
@@ -279,6 +367,8 @@ Before committing ANY code change, verify:
 14. ✅ **Use config-driven backtesting system** - don't write ad-hoc backtest scripts
 15. ✅ **Verify before claiming success** - run tests, don't assume code works
 16. ✅ **Check existing backtest tools first** - see "Existing Backtest Tools" table before creating new ones
+17. ✅ **Follow canonical data schema** - all downloaded data must match S&P 500 schema (see Data Handling section)
+18. ✅ **Never hardcode sensitive data** - Use `.env` for secrets, use placeholders in docs (see Sensitive Data Protection)
 
 ## When to Consult Detailed Guides
 
@@ -294,6 +384,7 @@ Before committing ANY code change, verify:
 - **Creating documentation** → Read [`.claude/documentation.md`](.claude/documentation.md)
 - **Committing or pushing code** → Read [`.claude/git_workflow.md`](.claude/git_workflow.md)
 - **Modifying AWS infrastructure** → Update `docs/INFRASTRUCTURE_OVERVIEW.md` and `terraform/README.md`
+- **Downloading market data** → Follow canonical schema in Data Handling section above
 
 ---
 

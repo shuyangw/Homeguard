@@ -14,16 +14,16 @@ REM
 
 setlocal enabledelayedexpansion
 
-REM Configuration
-set INSTANCE_ID=i-02500fe2392631ff2
-set REGION=us-east-1
+REM Load EC2 configuration from .env
+call "%~dp0load_env.bat"
+if errorlevel 1 exit /b 1
 
 echo ==========================================
 echo Start Homeguard Trading Bot EC2 Instance
 echo ==========================================
 echo.
-echo Instance ID: %INSTANCE_ID%
-echo Region: %REGION%
+echo Instance ID: %EC2_INSTANCE_ID%
+echo Region: %EC2_REGION%
 echo.
 
 REM Check if AWS CLI is installed
@@ -38,14 +38,14 @@ if %ERRORLEVEL% neq 0 (
 
 REM Check current instance state
 echo Checking instance state...
-for /f "tokens=*" %%a in ('aws ec2 describe-instances --instance-ids %INSTANCE_ID% --region %REGION% --query "Reservations[0].Instances[0].State.Name" --output text 2^>nul') do set INSTANCE_STATE=%%a
+for /f "tokens=*" %%a in ('aws ec2 describe-instances --instance-ids %EC2_INSTANCE_ID% --region %EC2_REGION% --query "Reservations[0].Instances[0].State.Name" --output text 2^>nul') do set INSTANCE_STATE=%%a
 
 if "%INSTANCE_STATE%"=="" (
     echo [ERROR] Failed to get instance state
     echo Please check:
     echo   1. AWS CLI is configured: aws configure
-    echo   2. You have permissions to access instance %INSTANCE_ID%
-    echo   3. Instance exists in region %REGION%
+    echo   2. You have permissions to access instance %EC2_INSTANCE_ID%
+    echo   3. Instance exists in region %EC2_REGION%
     exit /b 1
 )
 
@@ -58,13 +58,13 @@ if "%INSTANCE_STATE%"=="running" (
     echo.
 
     REM Get public IP
-    for /f "tokens=*" %%a in ('aws ec2 describe-instances --instance-ids %INSTANCE_ID% --region %REGION% --query "Reservations[0].Instances[0].PublicIpAddress" --output text 2^>nul') do set PUBLIC_IP=%%a
+    for /f "tokens=*" %%a in ('aws ec2 describe-instances --instance-ids %EC2_INSTANCE_ID% --region %EC2_REGION% --query "Reservations[0].Instances[0].PublicIpAddress" --output text 2^>nul') do set PUBLIC_IP=%%a
 
     if not "!PUBLIC_IP!"=="None" (
         echo Public IP: !PUBLIC_IP!
         echo.
         echo To connect:
-        echo   ssh -i ~/.ssh/homeguard-trading.pem ec2-user@!PUBLIC_IP!
+        echo   ssh -i ~/.ssh/homeguard-trading.pem %EC2_USER%@!PUBLIC_IP!
         echo   or run: scripts\ec2\connect.bat
     )
 
@@ -78,7 +78,7 @@ if "%INSTANCE_STATE%"=="pending" (
     echo [INFO] Starting instance...
 
     REM Start the instance
-    aws ec2 start-instances --instance-ids %INSTANCE_ID% --region %REGION% >nul
+    aws ec2 start-instances --instance-ids %EC2_INSTANCE_ID% --region %EC2_REGION% >nul
 
     if %ERRORLEVEL% neq 0 (
         echo [ERROR] Failed to start instance
@@ -98,7 +98,7 @@ echo.
 echo This may take 30-60 seconds...
 echo.
 
-aws ec2 wait instance-running --instance-ids %INSTANCE_ID% --region %REGION%
+aws ec2 wait instance-running --instance-ids %EC2_INSTANCE_ID% --region %EC2_REGION%
 
 if %ERRORLEVEL% neq 0 (
     echo [ERROR] Timeout waiting for instance to start
@@ -109,7 +109,7 @@ echo [SUCCESS] Instance is now running!
 echo.
 
 REM Get public IP
-for /f "tokens=*" %%a in ('aws ec2 describe-instances --instance-ids %INSTANCE_ID% --region %REGION% --query "Reservations[0].Instances[0].PublicIpAddress" --output text') do set PUBLIC_IP=%%a
+for /f "tokens=*" %%a in ('aws ec2 describe-instances --instance-ids %EC2_INSTANCE_ID% --region %EC2_REGION% --query "Reservations[0].Instances[0].PublicIpAddress" --output text') do set PUBLIC_IP=%%a
 
 echo Public IP: %PUBLIC_IP%
 echo.
@@ -124,7 +124,7 @@ echo Instance Started Successfully!
 echo ==========================================
 echo.
 echo To connect to the instance:
-echo   ssh -i ~/.ssh/homeguard-trading.pem ec2-user@%PUBLIC_IP%
+echo   ssh -i ~/.ssh/homeguard-trading.pem %EC2_USER%@%PUBLIC_IP%
 echo   or run: scripts\ec2\connect.bat
 echo.
 echo To check bot status:

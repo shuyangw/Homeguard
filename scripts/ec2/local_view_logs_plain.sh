@@ -10,6 +10,9 @@
 #   ./scripts/ec2/local_view_logs_plain.sh
 #
 
+# Load EC2 configuration from .env
+source "$(dirname "${BASH_SOURCE[0]}")/load_env.sh" || exit 1
+
 echo "========================================"
 echo "Viewing Live Trading Bot Logs (Plain)"
 echo "Press Ctrl+C to stop"
@@ -17,4 +20,4 @@ echo "========================================"
 echo ""
 
 # Strip ANSI color codes using sed on remote server
-ssh -i ~/.ssh/homeguard-trading.pem ec2-user@100.30.95.146 "sudo journalctl -u homeguard-trading -f --output=cat | sed 's/\x1b\[[0-9;]*m//g'"
+ssh -i "$EC2_SSH_KEY_PATH" "$EC2_USER@$EC2_IP" "sudo journalctl -u homeguard-trading -f --output=cat | sed 's/\x1b\[[0-9;]*m//g'"

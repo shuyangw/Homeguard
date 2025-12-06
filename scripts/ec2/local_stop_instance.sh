@@ -15,9 +15,8 @@
 
 set -e
 
-# Configuration
-INSTANCE_ID="i-02500fe2392631ff2"
-REGION="us-east-1"
+# Load EC2 configuration from .env
+source "$(dirname "${BASH_SOURCE[0]}")/load_env.sh" || exit 1
 
 # Colors for output
 RED='\033[0;31m'
@@ -30,8 +29,8 @@ echo "=========================================="
 echo "Stop Homeguard Trading Bot EC2 Instance"
 echo "=========================================="
 echo ""
-echo -e "${BLUE}Instance ID: $INSTANCE_ID${NC}"
-echo -e "${BLUE}Region: $REGION${NC}"
+echo -e "${BLUE}Instance ID: $EC2_INSTANCE_ID${NC}"
+echo -e "${BLUE}Region: $EC2_REGION${NC}"
 echo ""
 
 # Check if AWS CLI is installed
@@ -47,8 +46,8 @@ fi
 echo "Checking instance state..."
 set +e  # Temporarily disable exit on error to capture AWS errors
 INSTANCE_STATE=$(aws ec2 describe-instances \
-    --instance-ids "$INSTANCE_ID" \
-    --region "$REGION" \
+    --instance-ids "$EC2_INSTANCE_ID" \
+    --region "$EC2_REGION" \
     --query 'Reservations[0].Instances[0].State.Name' \
     --output text 2>&1)
 AWS_EXIT_CODE=$?
@@ -63,7 +62,7 @@ if [ $AWS_EXIT_CODE -ne 0 ]; then
     echo "Please check:"
     echo "  - AWS CLI is configured (run: aws configure)"
     echo "  - Your AWS credentials have EC2 permissions"
-    echo "  - Instance ID is correct: $INSTANCE_ID"
+    echo "  - Instance ID is correct: $EC2_INSTANCE_ID"
     exit 1
 fi
 
@@ -81,8 +80,8 @@ if [ "$INSTANCE_STATE" == "running" ]; then
     if [[ $REPLY =~ ^[Yy]$ ]]; then
         echo "Stopping instance..."
         aws ec2 stop-instances \
-            --instance-ids "$INSTANCE_ID" \
-            --region "$REGION" \
+            --instance-ids "$EC2_INSTANCE_ID" \
+            --region "$EC2_REGION" \
             --output text > /dev/null
 
         echo -e "${GREEN}✅ Instance stop command sent${NC}"
@@ -91,8 +90,8 @@ if [ "$INSTANCE_STATE" == "running" ]; then
 
         # Wait for instance to be stopped
         aws ec2 wait instance-stopped \
-            --instance-ids "$INSTANCE_ID" \
-            --region "$REGION"
+            --instance-ids "$EC2_INSTANCE_ID" \
+            --region "$EC2_REGION"
 
         echo -e "${GREEN}✅ Instance is now stopped${NC}"
         echo ""
@@ -114,8 +113,8 @@ elif [ "$INSTANCE_STATE" == "stopping" ]; then
     echo "Waiting for instance to be stopped..."
 
     aws ec2 wait instance-stopped \
-        --instance-ids "$INSTANCE_ID" \
-        --region "$REGION"
+        --instance-ids "$EC2_INSTANCE_ID" \
+        --region "$EC2_REGION"
 
     echo -e "${GREEN}✅ Instance is now stopped${NC}"
 
