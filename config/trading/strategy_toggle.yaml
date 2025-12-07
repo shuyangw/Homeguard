@@ -7,3 +7,6 @@ strategies:
   omr:
     enabled: true
     shutdown_requested: false
+  ramp:
+    enabled: false
+    shutdown_requested: false
