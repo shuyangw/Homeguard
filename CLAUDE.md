@@ -247,9 +247,24 @@ Update docs when modifying user-facing functionality.
 - **Type mismatches** - API data comes as strings; always convert explicitly
 - **VIX data resilience** - Must have fallbacks for VIX fetch failures
 - **Bayesian model coverage** - Model must be trained with ALL trading universe symbols
-- **Market hours** - Trading only at 3:55 PM ET, exits at 9:31 AM ET
+- **Market hours** - OMR: entry 3:50 PM, exit 9:31 AM ET. RAMP: rebalance 3:55 PM ET.
 - **Timezone handling** - ALWAYS use `from src.utils.timezone import tz` and `tz.now()` instead of `datetime.now()`. EC2 instances run in UTC; the timezone utility ensures consistent Eastern Time handling.
 - Details: [`.claude/live_trading.md`](.claude/live_trading.md)
+
+### Production Strategies (EC2)
+**Current production strategies running on EC2:**
+
+| Strategy | Service | Schedule | Description |
+|----------|---------|----------|-------------|
+| **OMR** | `homeguard-omr` | Entry 3:50 PM, Exit 9:31 AM | Overnight mean reversion on leveraged ETFs |
+| **RAMP** | `homeguard-ramp` | Rebalance 3:55 PM | Regime-aware momentum protection on S&P 500 |
+
+**RAMP Strategy Details** (Deployed 2025-12-08):
+- Universe: S&P 500 stocks
+- Position sizing: Dynamic 1/N (100% allocation / top_n positions)
+- Regime detection: 5 market regimes (STRONG_BULL, WEAK_BULL, SIDEWAYS, UNPREDICTABLE, BEAR)
+- Walk-forward validated: 1.859 Sharpe ratio out-of-sample (2022-2024)
+- Full docs: [`docs/strategies/RAMP_STRATEGY.md`](docs/strategies/RAMP_STRATEGY.md)
 
 ### Live Trading Tools & Agents
 **Available agents and tools for live trading diagnostics:**

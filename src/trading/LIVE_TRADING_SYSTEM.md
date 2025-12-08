@@ -24,7 +24,7 @@
 
 ### Use Cases
 - Run paper trading for overnight mean reversion (OMR) strategy
-- Execute momentum persistence (MP) strategy alongside OMR
+- Execute regime-aware momentum protection (RAMP) strategy alongside OMR
 - Test new strategies with isolated position tracking
 - Monitor execution metrics and portfolio health
 
@@ -58,7 +58,8 @@ src/trading/
 │   ├── __init__.py
 │   ├── strategy_adapter.py        # Base adapter for strategies
 │   ├── omr_live_adapter.py        # OMR strategy adapter
-│   ├── momentum_live_adapter.py   # Momentum strategy adapter
+│   ├── ramp_live_adapter.py       # RAMP strategy adapter (production)
+│   ├── momentum_live_adapter.py   # Momentum strategy adapter (deprecated)
 │   └── ma_live_adapter.py         # Moving average adapter
 ├── strategies/
 │   ├── __init__.py
@@ -318,11 +319,14 @@ strategies:
   omr:
     enabled: true
     shutdown_requested: false
-  mp:
-    enabled: false
+  ramp:
+    enabled: true
     shutdown_requested: false
-last_modified: '2025-12-08T10:00:00-05:00'
-modified_by: auto
+  mp:
+    enabled: false  # Deprecated, replaced by RAMP
+    shutdown_requested: false
+last_modified: '2025-12-08T18:20:00-05:00'
+modified_by: manual
 ```
 
 ### Environment Variables
@@ -364,29 +368,36 @@ modified_by: auto
 
 ### Systemd Services (EC2)
 
-The live trading system runs as two separate systemd services:
+The live trading system runs as separate systemd services:
 
-- `homeguard-omr.service` - Overnight Mean Reversion
-- `homeguard-mp.service` - Momentum Persistence
-- `homeguard-trading.target` - Target to manage both
+| Service | Strategy | Status |
+|---------|----------|--------|
+| `homeguard-omr.service` | Overnight Mean Reversion | Active |
+| `homeguard-ramp.service` | Regime-Aware Momentum Protection | Active |
+| `homeguard-mp.service` | Momentum Protection | Deprecated |
+| `homeguard-trading.target` | Target to manage all | Active |
 
 **Commands**:
 ```bash
-# Start both strategies
+# Start all strategies
 sudo systemctl start homeguard-trading.target
 
 # Check status
-sudo systemctl status homeguard-omr homeguard-mp
+sudo systemctl status homeguard-omr homeguard-ramp
 
 # View logs
-journalctl -u homeguard-omr -u homeguard-mp -f
+journalctl -u homeguard-omr -u homeguard-ramp -f
+
+# View RAMP-specific logs
+journalctl -u homeguard-ramp --since "1 hour ago" | grep -E "Regime:|Position"
 ```
 
 ### Process Names
 
 Each strategy runs with a distinct process name for monitoring:
 - `homeguard-omr` - OMR strategy process
-- `homeguard-mp` - MP strategy process
+- `homeguard-ramp` - RAMP strategy process
+- `homeguard-mp` - MP strategy process (deprecated)
 
 ---
 
@@ -415,6 +426,7 @@ pytest tests/trading/test_execution_engine.py -v
 
 ## Changelog
 
+- **2025-12-08**: Added RAMP service documentation, deprecated MP
 - **2025-12-08**: Initial documentation created
 - **2025-12-06**: Multi-strategy systemd services added
 - **2025-11-XX**: StrategyStateManager for multi-strategy support

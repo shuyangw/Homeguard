@@ -42,7 +42,8 @@ src/strategies/
 ├── advanced/                        # Production-ready strategies
 │   ├── __init__.py
 │   ├── overnight_mean_reversion.py  # OMR: Entry 3:50 PM, exit 9:31 AM
-│   ├── momentum_protection_strategy.py # MP: 1m-1w momentum with crash protection
+│   ├── momentum_protection_strategy.py # MP: 1m-1w momentum with crash protection (deprecated)
+│   ├── ramp_strategy.py             # RAMP: Regime-aware momentum protection (production)
 │   ├── bayesian_reversion_model.py  # Bayesian probability model for OMR
 │   ├── market_regime_detector.py    # Market regime detection (5 regimes)
 │   └── overnight_signal_generator.py # Signal generation for OMR
@@ -181,11 +182,13 @@ signal = Signal.from_dict(data)
 | `MeanReversion` | `MeanReversion` | Bollinger band reversion |
 | `MomentumStrategy` | `MomentumStrategy` | Basic momentum |
 | `OvernightMeanReversion` | `OvernightMeanReversionStrategy` | OMR (production) |
-| `MomentumProtection` | `MomentumProtectionStrategy` | MP (production) |
+| `MomentumProtection` | `MomentumProtectionStrategy` | MP (deprecated, replaced by RAMP) |
+| `RAMP` | `RAMPSignals` | Regime-aware momentum protection (production) |
 
 **Display Name Aliases**:
 - "OMR" → `OvernightMeanReversion`
-- "MP" → `MomentumProtection`
+- "MP" → `MomentumProtection` (deprecated)
+- "RAMP" → `RAMPSignals`
 - "Moving Average Crossover" → `MovingAverageCrossover`
 
 **Usage**:
@@ -227,25 +230,58 @@ strategy = OvernightMeanReversionStrategy()
 strategy.train_models(historical_data)  # Dict[symbol, DataFrame]
 ```
 
-### MomentumProtectionStrategy (`advanced/momentum_protection_strategy.py`)
+### MomentumProtectionStrategy (`advanced/momentum_protection_strategy.py`) - DEPRECATED
 
-**Purpose**: Production strategy for momentum with crash protection.
+**Status**: Deprecated as of 2025-12-08. Replaced by RAMP (Regime-Aware Momentum Protection).
 
-**Key Features**:
-- Universe: S&P 500 stocks
-- Selection: Top N by 1m-1w momentum (21-5 day returns)
-- Rebalance: Daily at 3:55 PM EST
-- Protection: 50% exposure when VIX > 25 or SPY drawdown > 5%
+**Purpose**: Basic momentum with crash protection (no regime awareness).
 
 **Parameters**:
 - `top_n`: Number of top momentum stocks (default: 10)
 - `reduced_exposure`: Exposure during protection (default: 0.5)
-- `vix_threshold`: VIX level for protection (default: 25.0)
-- `spy_dd_threshold`: SPY drawdown threshold (default: -0.05)
+
+---
+
+### RAMPSignals (`advanced/ramp_strategy.py`) - PRODUCTION
+
+**Purpose**: Production strategy for regime-aware momentum protection.
+
+**Key Features**:
+- Universe: S&P 500 stocks
+- Regime Detection: 5 market regimes (STRONG_BULL, WEAK_BULL, SIDEWAYS, UNPREDICTABLE, BEAR)
+- Selection: Top N by regime-specific momentum formula
+- Rebalance: Daily at 3:55 PM EST
+- Protection: 50% exposure when VIX > 25 or SPY drawdown > 5%
+
+**Momentum Formula**:
+```
+momentum = (long_weight * return_long_period) - (penalty_weight * return_short_period)
+```
+
+**Regime-Specific Parameters** (Walk-Forward Validated):
+| Regime | Long Period | Short Period | Long Weight | Penalty Weight | Top N |
+|--------|-------------|--------------|-------------|----------------|-------|
+| STRONG_BULL | 21 | 5 | 0.3 | 5.0 | 20 |
+| WEAK_BULL | 21 | 5 | 0.3 | 5.0 | 10 |
+| SIDEWAYS | 21 | 5 | 0.5 | 2.0 | 5 |
+| UNPREDICTABLE | 42 | 21 | 0.5 | 4.0 | 10 |
+| BEAR | 21 | 5 | 0.3 | 3.0 | 10 |
+
+**Position Sizing**:
+- Dynamic 1/N: Each position = `max_capital_allocation / top_n`
+- Example: 100% allocation with top_n=10 → 10% per position
+- Total allocation always equals `max_capital_allocation` when fully invested
+
+**Performance (Walk-Forward Validation 2022-2024)**:
+- Sharpe Ratio: 1.859 (vs 1.271 for static MP)
+- +46% improvement out-of-sample
 
 **Decision History**:
-- 2025-12-03: Changed from 3m-1m to 1m-1w based on walk-forward validation
-- Simplified risk profile for better returns AND drawdown protection
+- 2025-12-08: Deployed to production, replaced MP
+- 2025-12-07: Walk-forward validation confirmed regime detection adds value
+- 2025-12-06: Optimized regime-specific parameters via grid search
+
+See [RAMP Strategy Documentation](../../docs/strategies/RAMP_STRATEGY.md) for full details.
 
 ---
 
@@ -301,7 +337,8 @@ from src.strategies.registry import (
 
 ```python
 from src.strategies.advanced.overnight_mean_reversion import OvernightMeanReversionStrategy
-from src.strategies.advanced.momentum_protection_strategy import MomentumProtectionStrategy
+from src.strategies.advanced.ramp_strategy import RAMPSignals  # Regime-aware momentum (active)
+from src.strategies.advanced.momentum_protection_strategy import MomentumProtectionStrategy  # Deprecated
 ```
 
 ---
@@ -341,10 +378,11 @@ None required. Strategies use data passed to them.
 
 ### Production Strategies (EC2 deployed)
 
-| Strategy | Location | Schedule |
-|----------|----------|----------|
-| OMR | `advanced/overnight_mean_reversion.py` | Entry 3:50 PM, Exit 9:31 AM |
-| MP | `advanced/momentum_protection_strategy.py` | Rebalance 3:55 PM daily |
+| Strategy | Location | Schedule | Status |
+|----------|----------|----------|--------|
+| OMR | `advanced/overnight_mean_reversion.py` | Entry 3:50 PM, Exit 9:31 AM | Active |
+| RAMP | `advanced/ramp_strategy.py` | Rebalance 3:55 PM daily | Active |
+| MP | `advanced/momentum_protection_strategy.py` | Rebalance 3:55 PM daily | Deprecated |
 
 ### Research Strategies (backtesting only)
 
@@ -440,6 +478,7 @@ pytest tests/strategies/test_registry.py -v
 
 ## Changelog
 
+- **2025-12-08**: Added RAMP strategy documentation, deprecated MP
 - **2025-12-08**: Initial documentation created
 - **2025-12-06**: Reorganized into production vs research
 - **2025-12-03**: MP strategy changed to 1m-1w momentum
