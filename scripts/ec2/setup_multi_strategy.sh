@@ -66,10 +66,19 @@ systemctl daemon-reload
 # Enable target
 systemctl enable homeguard-trading.target
 
-# Enable OMR by default (since it was running before)
+# Enable both strategy services
 echo -e "${YELLOW}Enabling OMR service...${NC}"
 systemctl enable homeguard-omr.service
 systemctl start homeguard-omr.service
+
+echo -e "${YELLOW}Enabling MP service...${NC}"
+systemctl enable homeguard-mp.service
+systemctl start homeguard-mp.service
+
+# Double-check old service is disabled (prevent conflicts on reboot)
+echo -e "${YELLOW}Ensuring old service stays disabled...${NC}"
+systemctl disable homeguard-trading.service 2>/dev/null || true
+systemctl mask homeguard-trading.service 2>/dev/null || true
 
 echo ""
 echo -e "${GREEN}========================================${NC}"
@@ -77,8 +86,9 @@ echo -e "${GREEN}  Setup Complete!${NC}"
 echo -e "${GREEN}========================================${NC}"
 echo ""
 echo -e "Services installed:"
-echo -e "  ${GREEN}homeguard-omr.service${NC}  - Overnight Mean Reversion"
-echo -e "  ${YELLOW}homeguard-mp.service${NC}   - Momentum Protection (disabled)"
+echo -e "  ${GREEN}homeguard-omr.service${NC}  - Overnight Mean Reversion (enabled)"
+echo -e "  ${GREEN}homeguard-mp.service${NC}   - Momentum Protection (enabled)"
+echo -e "  ${RED}homeguard-trading.service${NC} - Old combined service (masked)"
 echo ""
 echo -e "Commands:"
 echo -e "  ${BLUE}sudo systemctl start homeguard-omr${NC}   - Start OMR"

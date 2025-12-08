@@ -13,4 +13,5 @@ echo ========================================
 echo.
 
 REM Strip ANSI color codes using sed on remote server
-ssh -i "%EC2_SSH_KEY_PATH%" %EC2_USER%@%EC2_IP% "sudo journalctl -u homeguard-trading -f --output=cat | sed 's/\x1b\[[0-9;]*m//g'"
+REM View both OMR and MP strategy logs interleaved
+ssh -i "%EC2_SSH_KEY_PATH%" %EC2_USER%@%EC2_IP% "sudo journalctl -u homeguard-omr -u homeguard-mp -f --output=cat | sed 's/\x1b\[[0-9;]*m//g'"

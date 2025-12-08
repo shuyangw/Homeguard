@@ -8,8 +8,6 @@ REM
 REM Usage: call "%~dp0load_env.bat"
 REM ============================================================================
 
-setlocal enabledelayedexpansion
-
 REM Find project root (two levels up from scripts/ec2/)
 set "SCRIPT_DIR=%~dp0"
 set "PROJECT_ROOT=%SCRIPT_DIR%..\.."
@@ -30,22 +28,24 @@ if not exist "%PROJECT_ROOT%\.env" (
     exit /b 1
 )
 
+REM Clear any existing EC2 variables to ensure fresh load
+set "EC2_IP="
+set "EC2_INSTANCE_ID="
+set "EC2_REGION="
+set "EC2_USER="
+set "EC2_SSH_KEY_PATH="
+
 REM Parse .env file and set variables
 REM This handles KEY="value" and KEY=value formats
 for /f "usebackq tokens=1,* delims==" %%a in ("%PROJECT_ROOT%\.env") do (
-    REM Skip empty lines and comments
-    set "line=%%a"
-    if defined line (
-        REM Check if line starts with #
-        set "first_char=!line:~0,1!"
-        if not "!first_char!"=="#" (
-            REM Remove quotes from value if present
-            set "value=%%b"
-            if defined value (
-                REM Remove leading/trailing quotes
-                set "value=!value:"=!"
-                REM Set the environment variable (endlocal will export it)
-                set "%%a=!value!"
+    REM Skip comments (lines starting with #)
+    echo %%a | findstr /b "#" >nul || (
+        REM Only process EC2_ variables
+        echo %%a | findstr /b "EC2_" >nul && (
+            REM Remove quotes from value
+            set "tmpval=%%b"
+            if defined tmpval (
+                call :setvar %%a
             )
         )
     )
@@ -78,13 +78,20 @@ if not defined EC2_USER set "EC2_USER=ec2-user"
 if not defined EC2_SSH_KEY_PATH set "EC2_SSH_KEY_PATH=%USERPROFILE%\.ssh\homeguard-trading.pem"
 
 REM Expand ~ to %USERPROFILE% for SSH key path
-set "EC2_SSH_KEY_PATH=!EC2_SSH_KEY_PATH:~=%USERPROFILE%!"
-
-REM Export variables by ending local scope with preservation
-endlocal & (
-    set "EC2_IP=%EC2_IP%"
-    set "EC2_INSTANCE_ID=%EC2_INSTANCE_ID%"
-    set "EC2_REGION=%EC2_REGION%"
-    set "EC2_USER=%EC2_USER%"
-    set "EC2_SSH_KEY_PATH=%EC2_SSH_KEY_PATH%"
+if "%EC2_SSH_KEY_PATH:~0,1%"=="~" (
+    set "EC2_SSH_KEY_PATH=%USERPROFILE%%EC2_SSH_KEY_PATH:~1%"
 )
+
+REM Clean up temp variables
+set "SCRIPT_DIR="
+set "PROJECT_ROOT="
+set "tmpval="
+
+exit /b 0
+
+:setvar
+REM Helper to set variable, removing quotes from value
+set "varname=%1"
+set "varval=%tmpval:"=%"
+set "%varname%=%varval%"
+exit /b

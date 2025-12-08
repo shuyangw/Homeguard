@@ -13,4 +13,5 @@ echo ========================================
 echo.
 
 REM Use --output=cat to strip systemd formatting and colors for Windows CMD compatibility
-ssh -i "%EC2_SSH_KEY_PATH%" %EC2_USER%@%EC2_IP% "sudo journalctl -u homeguard-trading -f --output=cat"
+REM View both OMR and MP strategy logs interleaved
+ssh -i "%EC2_SSH_KEY_PATH%" %EC2_USER%@%EC2_IP% "sudo journalctl -u homeguard-omr -u homeguard-mp -f --output=cat"

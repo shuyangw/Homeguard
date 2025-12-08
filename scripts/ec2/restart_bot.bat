@@ -11,6 +11,6 @@ echo Restarting Homeguard Trading Bot
 echo ========================================
 echo.
 
-ssh -i "%EC2_SSH_KEY_PATH%" %EC2_USER%@%EC2_IP% "sudo systemctl restart homeguard-trading && echo 'Bot restarted successfully' && sleep 3 && sudo systemctl status homeguard-trading --no-pager"
+ssh -i "%EC2_SSH_KEY_PATH%" %EC2_USER%@%EC2_IP% "sudo systemctl restart homeguard-omr homeguard-mp && echo 'Both strategies restarted successfully' && sleep 3 && echo '--- OMR ---' && sudo systemctl status homeguard-omr --no-pager | head -10 && echo '' && echo '--- MP ---' && sudo systemctl status homeguard-mp --no-pager | head -10"
 
 pause
