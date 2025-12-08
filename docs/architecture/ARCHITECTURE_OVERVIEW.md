@@ -1,7 +1,7 @@
 # Homeguard Backtesting Framework - Architecture Overview
 
-**Version**: 1.3
-**Last Updated**: 2025-11-27
+**Version**: 1.4
+**Last Updated**: 2025-12-08
 **Status**: Current
 
 ---
@@ -126,19 +126,26 @@ Homeguard is a professional-grade backtesting framework for algorithmic trading 
 
 **Strategy Categories**:
 
-1. **Base Strategies** ([src/strategies/base_strategies/](../../src/strategies/base_strategies/))
+1. **Production Strategies** ([src/strategies/advanced/](../../src/strategies/advanced/))
+   - `OvernightMeanReversion` (OMR): Overnight gap trading with Bayesian model
+   - `MomentumProtectionStrategy` (MP): Cross-sectional momentum with VIX protection
+   - `RAMPStrategy`: Regime-Aware Momentum Protection (in development)
+   - Supporting modules: `bayesian_reversion_model.py`, `market_regime_detector.py`
+
+2. **Research Strategies** ([src/strategies/research/](../../src/strategies/research/))
    - `MovingAverageCrossover`: Fast MA > Slow MA
    - `TripleMovingAverage`: Three-level MA crossover
    - `MomentumStrategy`: Trend-following momentum
    - `BreakoutStrategy`: Price breakout trading
    - `MeanReversion`: Bollinger Band reversion
    - `RSIMeanReversion`: RSI oversold/overbought
-
-2. **Advanced Strategies** ([src/strategies/advanced/](../../src/strategies/advanced/))
    - `VolatilityTargetedMomentum`: Vol-scaled momentum
-   - `OvernightMeanReversion`: Overnight gap trading
    - `CrossSectionalMomentum`: Multi-asset momentum ranking
    - `PairsTrading`: Statistical arbitrage (cointegration-based)
+
+3. **Base Strategies** ([src/strategies/base_strategies/](../../src/strategies/base_strategies/))
+   - **Deprecated**: Re-exports from `research/` for backward compatibility
+   - New code should import from `src.strategies.research.*`
 
 **Strategy Flow**:
 ```python
@@ -701,9 +708,18 @@ python -m gui
 - ✅ **Live trading integration** - Paper trading deployed to AWS EC2 with automated scheduling (November 2025)
   - EC2 instance with Python 3.11 (t4g.small ARM64)
   - Lambda-powered auto-start/stop (9 AM - 4:30 PM ET Mon-Fri)
-  - Systemd service with auto-restart capabilities
-  - SSH management scripts and automated health monitoring
+  - **Multi-strategy architecture** (December 2025):
+    - `homeguard-omr.service`: Overnight Mean Reversion strategy
+    - `homeguard-mp.service`: Momentum Protection strategy
+    - `homeguard-trading.target`: Systemd target to manage both services together
+    - Each strategy runs in its own process with distinct name (visible in ps/htop)
+  - SSH management scripts (Windows .bat and Unix .sh) with `.env`-based configuration
   - See [Infrastructure Overview](../INFRASTRUCTURE_OVERVIEW.md) for details
+
+- ✅ **Strategy reorganization** - Separated production vs research strategies (December 2025)
+  - Production strategies in `src/strategies/advanced/`: OMR, MP, RAMP
+  - Research strategies moved to `src/strategies/research/`
+  - Backward compatibility via re-exports in `base_strategies/`
 
 ---
 
@@ -717,6 +733,6 @@ python -m gui
 
 ---
 
-**Last Updated**: 2025-11-25
+**Last Updated**: 2025-12-08
 **Maintainers**: Update this doc when adding/removing/moving major modules
 **Review Frequency**: After any architectural changes
