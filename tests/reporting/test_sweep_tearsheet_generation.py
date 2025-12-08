@@ -11,7 +11,7 @@ import pandas as pd
 
 from src.backtesting.optimization.sweep_runner import SweepRunner
 from src.backtesting.engine.backtest_engine import BacktestEngine
-from src.strategies.base_strategies.moving_average import MovingAverageCrossover
+from src.strategies.research.moving_average import MovingAverageCrossover
 
 
 def test_sweep_generates_tearsheets():

@@ -10,7 +10,7 @@ import numpy as np
 from datetime import datetime, timedelta
 
 from src.backtesting.engine.backtest_engine import BacktestEngine
-from src.strategies.base_strategies.moving_average import MovingAverageCrossover
+from src.strategies.research.moving_average import MovingAverageCrossover
 
 
 class TestBackwardCompatibility:

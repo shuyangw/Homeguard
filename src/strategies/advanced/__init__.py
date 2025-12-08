@@ -1,16 +1,17 @@
 """
-Advanced trading strategy implementations.
+Advanced Production Trading Strategies.
 
-Note: Backtest strategy imports commented out to avoid import chain issues.
-Live trading components (MarketRegimeDetector, BayesianReversionModel, etc.) can be imported directly.
+This module contains production-deployed strategies:
+- OMR (Overnight Mean Reversion): overnight_mean_reversion.py
+- MP (Momentum Protection): momentum_protection_strategy.py
+- RAMP (Regime-Aware Momentum Protection): ramp_strategy.py
+
+Supporting modules:
+- bayesian_reversion_model.py: ML model for OMR probability estimation
+- overnight_signal_generator.py: Signal generation for OMR
+- market_regime_detector.py: Regime classification for RAMP
+
+Research strategies have been moved to src/strategies/research/.
 """
 
-# Commented out to avoid import chain issues with live trading modules
-# from src.strategies.advanced.volatility_targeted_momentum import VolatilityTargetedMomentum
-# from src.strategies.advanced.overnight_mean_reversion import OvernightMeanReversion
-# from src.strategies.advanced.cross_sectional_momentum import CrossSectionalMomentum
-# from src.strategies.advanced.pairs_trading import PairsTrading
-
-__all__ = [
-    # Import backtest strategies directly when needed
-]
+__all__ = []

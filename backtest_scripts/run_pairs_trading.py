@@ -12,7 +12,7 @@ Usage:
 """
 
 from src.backtesting.engine.backtest_engine import BacktestEngine
-from src.strategies.advanced.pairs_trading import PairsTrading
+from src.strategies.research.pairs_trading import PairsTrading
 from src.backtesting.optimization.grid_search import GridSearchOptimizer
 
 

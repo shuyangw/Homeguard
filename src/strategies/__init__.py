@@ -1,20 +1,23 @@
 """
-Trading strategy implementations for backtesting.
+Trading strategy implementations.
 
-Note: Backtest strategy imports are commented out to avoid import chain issues.
-Import them directly if needed:
-  from src.strategies.base_strategies.moving_average import MovingAverageCrossover
+Production Strategies (deployed to EC2):
+- OMR: src.strategies.advanced.overnight_mean_reversion
+- MP: src.strategies.advanced.momentum_protection_strategy
+- RAMP: src.strategies.advanced.ramp_strategy
+
+Research Strategies (backtesting/experimentation only):
+- src.strategies.research.moving_average
+- src.strategies.research.mean_reversion
+- src.strategies.research.momentum
+- src.strategies.research.pairs_trading
+- src.strategies.research.cross_sectional_momentum
+- src.strategies.research.volatility_targeted_momentum
+- src.strategies.research.breakout_strategies
+- src.strategies.research.high52_breakout_strategy
+
+Note: Imports are commented out to avoid import chain issues.
+Import strategies directly when needed.
 """
 
-# Commented out to avoid import chain issues with live trading modules
-# from src.strategies.base_strategies.moving_average import MovingAverageCrossover, TripleMovingAverage
-# from src.strategies.base_strategies.mean_reversion import MeanReversion, RSIMeanReversion
-# from src.strategies.base_strategies.momentum import MomentumStrategy, BreakoutStrategy
-# from src.strategies.advanced.volatility_targeted_momentum import VolatilityTargetedMomentum
-# from src.strategies.advanced.overnight_mean_reversion import OvernightMeanReversion
-# from src.strategies.advanced.cross_sectional_momentum import CrossSectionalMomentum
-# from src.strategies.advanced.pairs_trading import PairsTrading
-
-__all__ = [
-    # Backtest strategies can be imported directly when needed
-]
+__all__ = []

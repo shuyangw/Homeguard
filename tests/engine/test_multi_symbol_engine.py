@@ -10,7 +10,7 @@ from typing import Dict, Tuple, Union, List
 from src.backtesting.engine.backtest_engine import BacktestEngine
 from src.backtesting.base.strategy import BaseStrategy, MultiSymbolStrategy
 from src.backtesting.base.pairs_strategy import PairsStrategy
-from src.strategies.base_strategies.moving_average import MovingAverageCrossover
+from src.strategies.research.moving_average import MovingAverageCrossover
 
 
 class TestMultiSymbolStrategy(MultiSymbolStrategy):
