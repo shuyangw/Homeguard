@@ -48,7 +48,8 @@ from src.trading.adapters import (
     MACrossoverLiveAdapter,
     TripleMACrossoverLiveAdapter,
     OMRLiveAdapter,
-    MomentumLiveAdapter
+    MomentumLiveAdapter,
+    RAMPLiveAdapter
 )
 from src.trading.config import load_omr_config
 from src.data.providers import create_data_provider
@@ -820,6 +821,27 @@ def create_mp_adapter(broker, position_size=0.065, top_n=10, data_provider=None)
     )
 
 
+def create_ramp_adapter(broker, data_provider=None):
+    """
+    Create Regime-Aware Momentum Protection adapter.
+
+    Args:
+        broker: Broker interface
+        data_provider: Optional data provider with fallback chain (Alpaca -> yfinance)
+
+    Returns:
+        RAMPLiveAdapter instance
+    """
+    logger.info("Creating RAMP adapter with regime detection")
+    if data_provider is not None:
+        logger.info(f"  Using data provider: {data_provider.name}")
+    return RAMPLiveAdapter(
+        broker=broker,
+        symbols=None,  # Uses S&P 500 by default
+        data_provider=data_provider
+    )
+
+
 def main():
     """Main entry point."""
     parser = argparse.ArgumentParser(description='Run live paper trading')
@@ -829,8 +851,8 @@ def main():
         '--strategy',
         type=str,
         default='ma',
-        choices=['ma', 'triple-ma', 'omr', 'mp', 'multi'],
-        help='Strategy to run: ma, triple-ma, omr, mp, or multi (runs all enabled strategies)'
+        choices=['ma', 'triple-ma', 'omr', 'mp', 'ramp', 'multi'],
+        help='Strategy to run: ma, triple-ma, omr, mp, ramp, or multi (runs all enabled strategies)'
     )
 
     # Symbol universe
@@ -1020,6 +1042,12 @@ def main():
                 top_n=args.max_positions if args.max_positions != 3 else 10,
                 data_provider=data_provider  # Alpaca -> yfinance fallback
             )
+        elif args.strategy == 'ramp':
+            # Regime-Aware Momentum Protection strategy
+            adapter = create_ramp_adapter(
+                broker,
+                data_provider=data_provider  # Alpaca -> yfinance fallback
+            )
         elif args.strategy == 'multi':
             # Multi-strategy mode - run all enabled strategies
             logger.info("Multi-strategy mode - checking enabled strategies...")
@@ -1038,6 +1066,8 @@ def main():
                 adapter = create_omr_adapter(broker, omr_config=omr_config, data_provider=data_provider)
             elif 'mp' in enabled:
                 adapter = create_mp_adapter(broker, data_provider=data_provider)
+            elif 'ramp' in enabled:
+                adapter = create_ramp_adapter(broker, data_provider=data_provider)
             else:
                 logger.error("No supported strategy enabled")
                 return 1

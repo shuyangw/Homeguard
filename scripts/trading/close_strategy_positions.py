@@ -115,9 +115,9 @@ def close_strategy_positions(
                 # Submit sell order
                 from src.trading.brokers.broker_interface import OrderSide, OrderType
 
-                order = broker.submit_order(
+                order = broker.place_stock_order(
                     symbol=symbol,
-                    qty=qty_to_close,
+                    quantity=qty_to_close,
                     side=OrderSide.SELL,
                     order_type=OrderType.MARKET
                 )

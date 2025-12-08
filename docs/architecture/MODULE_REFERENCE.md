@@ -1,8 +1,27 @@
 # Homeguard Module Reference
 
-**Version**: 1.1
-**Last Updated**: 2025-11-11
+**Version**: 1.4
+**Last Updated**: 2025-12-08
 **Purpose**: Comprehensive module-by-module reference for the Homeguard codebase
+
+---
+
+## Module Architecture Documentation
+
+Each major module in `src/` now has comprehensive architecture documentation at its root. For in-depth details on any module, see its architecture doc:
+
+| Module | Doc File | Description |
+|--------|----------|-------------|
+| `src/backtesting/` | [BACKTESTING_ENGINE.md](../../src/backtesting/BACKTESTING_ENGINE.md) | Backtest engine, optimization, regimes, walk-forward |
+| `src/trading/` | [LIVE_TRADING_SYSTEM.md](../../src/trading/LIVE_TRADING_SYSTEM.md) | Brokers, adapters, execution, state management |
+| `src/strategies/` | [STRATEGY_FRAMEWORK.md](../../src/strategies/STRATEGY_FRAMEWORK.md) | Strategy implementations, registry, signals |
+| `src/data/` | [DATA_PROVIDERS.md](../../src/data/DATA_PROVIDERS.md) | Data providers, fallback chains, caching |
+| `src/settings/` | [CONFIGURATION_SYSTEM.md](../../src/settings/CONFIGURATION_SYSTEM.md) | Config schema, YAML loading, validation |
+| `src/utils/` | [UTILITY_MODULES.md](../../src/utils/UTILITY_MODULES.md) | Logger, timezone, VIX provider |
+| `src/discord_bot/` | [DISCORD_BOT_ARCHITECTURE.md](../../src/discord_bot/DISCORD_BOT_ARCHITECTURE.md) | Discord monitoring bot |
+| `src/data_engine/` | [README.md](../../src/data_engine/README.md) | Data ingestion system |
+| `src/gui/` | [README.md](../../src/gui/README.md) | Desktop GUI application |
+| `src/visualization/` | [README.md](../../src/visualization/README.md) | Charts and reporting |
 
 ---
 
@@ -2589,9 +2608,24 @@ BrokerInterface               ← Composite: Account + MarketHours + MarketData 
 
 ---
 
-**Last Updated**: 2025-11-25
-**Total Modules**: 100+ modules across 9 major components (including infrastructure)
-**Lines of Code**: ~47,000 LOC
+**Last Updated**: 2025-12-08
+**Total Modules**: 100+ modules across 10 major components (including infrastructure)
+**Lines of Code**: ~50,000 LOC
+
+**Recent Additions** (2025-12-08):
+- Module Architecture Documentation (10 new architecture docs)
+  - Every `src/` module now has comprehensive architecture documentation at its root
+  - Descriptive doc names: `BACKTESTING_ENGINE.md`, `LIVE_TRADING_SYSTEM.md`, etc.
+  - Documentation template at `docs/templates/MODULE_DOC_TEMPLATE.md`
+  - CLAUDE.md updated with module documentation enforcement rules
+  - MODULE_REFERENCE.md updated with links to all module docs
+
+**Recent Additions** (2025-12-06):
+- Multi-Strategy Architecture
+  - Separated OMR and MP into distinct systemd services
+  - `homeguard-omr.service` and `homeguard-mp.service`
+  - `homeguard-trading.target` for unified management
+  - Strategy reorganization: production vs research separation
 
 **Recent Additions** (2025-11-25):
 - Broker Interface Refactoring - ISP-Compliant Design (15 files)
