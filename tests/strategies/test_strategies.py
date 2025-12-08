@@ -10,9 +10,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / 'src'))
 
-from strategies.base_strategies.moving_average import MovingAverageCrossover, TripleMovingAverage
-from strategies.base_strategies.mean_reversion import MeanReversion, RSIMeanReversion
-from strategies.base_strategies.momentum import MomentumStrategy, BreakoutStrategy
+from src.strategies.research.moving_average import MovingAverageCrossover, TripleMovingAverage
+from src.strategies.research.mean_reversion import MeanReversion, RSIMeanReversion
+from src.strategies.research.momentum import MomentumStrategy, BreakoutStrategy
 
 
 class TestMovingAverageCrossover:

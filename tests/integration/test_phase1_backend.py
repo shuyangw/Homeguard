@@ -14,7 +14,7 @@ sys.path.insert(0, str(project_root / 'src'))
 
 from backtesting.engine.backtest_engine import BacktestEngine
 from backtesting.optimization.sweep_runner import SweepRunner
-from strategies.base_strategies.moving_average import MovingAverageCrossover
+from src.strategies.research.moving_average import MovingAverageCrossover
 from gui.workers.gui_controller import GUIBacktestController
 
 

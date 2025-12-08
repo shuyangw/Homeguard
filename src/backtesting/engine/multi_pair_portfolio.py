@@ -17,7 +17,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from src.utils import logger
-from src.strategies.advanced.pairs_trading import PairsTrading
+from src.strategies.research.pairs_trading import PairsTrading
 from src.backtesting.engine.backtest_engine import BacktestEngine
 from src.backtesting.utils.risk_config import RiskConfig
 from src.backtesting.engine.metrics import PerformanceMetrics

@@ -12,7 +12,7 @@ from pathlib import Path
 
 from backtesting.engine.backtest_engine import BacktestEngine
 from backtesting.optimization import RandomSearchOptimizer
-from strategies.base_strategies.moving_average import MovingAverageCrossover
+from src.strategies.research.moving_average import MovingAverageCrossover
 
 
 class TestRandomSearchOptimizer:

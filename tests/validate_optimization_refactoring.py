@@ -109,7 +109,7 @@ def test_backward_compatibility():
     print("\nTesting backward compatibility...")
 
     from backtesting.engine.backtest_engine import BacktestEngine
-    from strategies.base_strategies.moving_average import MovingAverageCrossover
+    from src.strategies.research.moving_average import MovingAverageCrossover
     import pandas as pd
     import numpy as np
 

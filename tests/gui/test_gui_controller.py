@@ -12,7 +12,7 @@ from datetime import datetime
 from backtesting.engine.backtest_engine import BacktestEngine
 from backtesting.optimization.sweep_runner import SweepRunner
 from backtesting.engine.portfolio_simulator import Portfolio
-from strategies.base_strategies.moving_average import MovingAverageCrossover
+from src.strategies.research.moving_average import MovingAverageCrossover
 from gui.workers.gui_controller import GUIBacktestController
 import pandas as pd
 

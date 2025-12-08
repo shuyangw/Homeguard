@@ -197,7 +197,7 @@ class TestValidationWithCleanStrategy:
         """
         Clean strategy (from real codebase) should pass timing test.
         """
-        from strategies.base_strategies.moving_average import MovingAverageCrossover
+        from src.strategies.research.moving_average import MovingAverageCrossover
 
         strategy = MovingAverageCrossover(fast_window=10, slow_window=20)
 

@@ -13,7 +13,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
 
 import time
 from gui.workers.gui_controller import GUIBacktestController
-from strategies.base_strategies.moving_average import MovingAverageCrossover
+from src.strategies.research.moving_average import MovingAverageCrossover
 from utils import logger
 
 

@@ -17,7 +17,7 @@ from backtesting.chunking.walk_forward import (
     WalkForwardValidator
 )
 from backtesting.engine.backtest_engine import BacktestEngine
-from strategies.base_strategies.moving_average import MovingAverageCrossover
+from src.strategies.research.moving_average import MovingAverageCrossover
 
 
 @pytest.fixture

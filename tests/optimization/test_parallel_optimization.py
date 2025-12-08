@@ -15,7 +15,7 @@ from datetime import datetime, timedelta
 
 from backtesting.engine.backtest_engine import BacktestEngine
 from backtesting.optimization import GridSearchOptimizer
-from strategies.base_strategies.moving_average import MovingAverageCrossover
+from src.strategies.research.moving_average import MovingAverageCrossover
 
 
 class TestParallelOptimization:

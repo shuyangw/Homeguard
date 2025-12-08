@@ -11,8 +11,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / 'src'))
 
 from backtesting.engine.backtest_engine import BacktestEngine
-from strategies.base_strategies.moving_average import MovingAverageCrossover
-from strategies.base_strategies.mean_reversion import MeanReversion
+from src.strategies.research.moving_average import MovingAverageCrossover
+from src.strategies.research.mean_reversion import MeanReversion
 
 
 class TestBacktestEngineInitialization:

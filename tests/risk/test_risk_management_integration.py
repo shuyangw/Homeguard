@@ -12,7 +12,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent / 'src'))
 
 from backtesting.engine.backtest_engine import BacktestEngine
 from backtesting.utils.risk_config import RiskConfig
-from strategies.base_strategies.moving_average import MovingAverageCrossover
+from src.strategies.research.moving_average import MovingAverageCrossover
 
 
 @pytest.fixture

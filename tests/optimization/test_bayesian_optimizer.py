@@ -9,7 +9,7 @@ import pandas as pd
 from datetime import datetime
 
 from backtesting.engine.backtest_engine import BacktestEngine
-from strategies.base_strategies.moving_average import MovingAverageCrossover
+from src.strategies.research.moving_average import MovingAverageCrossover
 
 # Conditional import based on availability
 try:

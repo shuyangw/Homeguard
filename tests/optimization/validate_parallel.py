@@ -17,7 +17,7 @@ sys.path.insert(0, str(project_root / 'src'))
 import time
 from backtesting.engine.backtest_engine import BacktestEngine
 from backtesting.optimization import GridSearchOptimizer
-from strategies.base_strategies.moving_average import MovingAverageCrossover
+from src.strategies.research.moving_average import MovingAverageCrossover
 from utils import logger
 
 
