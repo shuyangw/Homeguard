@@ -163,6 +163,7 @@ class RAMPLiveAdapter(StrategyAdapter):
         self,
         broker: BrokerInterface,
         symbols: Optional[List[str]] = None,
+        max_capital_allocation: float = 1.0,
         reduced_exposure: float = 0.5,
         vix_threshold: float = 25.0,
         spy_dd_threshold: float = -0.05,
@@ -175,6 +176,10 @@ class RAMPLiveAdapter(StrategyAdapter):
         Args:
             broker: Broker interface
             symbols: List of symbols to trade (default: S&P 500)
+            max_capital_allocation: Maximum fraction of portfolio to allocate (default: 1.0 = 100%)
+                                   Each position gets (max_capital_allocation / top_n) of portfolio.
+                                   Example: 1.0 with top_n=10 -> 10% per position
+                                   Example: 1.0 with top_n=20 -> 5% per position
             reduced_exposure: Exposure when risk signals trigger (0-1)
             vix_threshold: VIX level that triggers protection
             spy_dd_threshold: SPY drawdown threshold (negative)
@@ -208,13 +213,14 @@ class RAMPLiveAdapter(StrategyAdapter):
             strategy=strategy,
             broker=broker,
             symbols=symbols,
-            position_size=0.10,  # Base position size, adjusted by regime
+            position_size=0.10,  # Base position size (overridden by dynamic 1/N sizing)
             max_positions=20,  # Maximum across all regimes (STRONG_BULL uses 20)
             data_lookback_days=data_lookback_days,
             data_provider=data_provider
         )
 
         # Store configuration
+        self.max_capital_allocation = max_capital_allocation
         self.reduced_exposure = reduced_exposure
         self.vix_threshold = vix_threshold
         self.spy_dd_threshold = spy_dd_threshold
@@ -241,6 +247,8 @@ class RAMPLiveAdapter(StrategyAdapter):
 
         logger.info("[RAMP] Regime-Aware Momentum Protection Configuration:")
         logger.info(f"[RAMP]   Universe: {len(symbols)} S&P 500 stocks")
+        logger.info(f"[RAMP]   Max capital allocation: {max_capital_allocation:.0%}")
+        logger.info(f"[RAMP]   Position sizing: Dynamic 1/N (allocation / top_n)")
         logger.info(f"[RAMP]   Reduced exposure: {reduced_exposure:.0%}")
         logger.info(f"[RAMP]   VIX threshold: {vix_threshold}")
         logger.info(f"[RAMP]   Rebalance time: 3:55 PM EST")
@@ -795,10 +803,17 @@ class RAMPLiveAdapter(StrategyAdapter):
                         logger.error(f"[RAMP] Error selling {symbol}: {e}")
 
             # Execute buys
+            # Dynamic 1/N position sizing: each position gets (max_capital_allocation / top_n)
+            # Example: 100% allocation with top_n=10 -> 10% per position
+            # Example: 100% allocation with top_n=20 -> 5% per position
+            position_pct = self.max_capital_allocation / current_top_n
+            logger.info(f"[RAMP] Position sizing: {position_pct:.1%} per position ({self.max_capital_allocation:.0%} / {current_top_n})")
+
             for signal in buy_signals:
                 symbol = signal.symbol
-                weight = signal.metadata.get('weight', signal.confidence) if signal.metadata else signal.confidence
-                target_value = portfolio_value * self.position_size * weight * current_top_n
+                # Target value is simply portfolio * (allocation / top_n)
+                # This ensures total allocation = max_capital_allocation when all positions filled
+                target_value = portfolio_value * position_pct
 
                 # Skip if already at target
                 current_value = current_positions.get(symbol, 0)
