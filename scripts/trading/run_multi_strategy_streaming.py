@@ -342,12 +342,8 @@ def main():
         logger.info("Creating OMR adapter...")
         omr_adapter = OMRLiveAdapter(
             broker=broker,
-            symbols=omr_symbols,
-            min_probability=omr_config.min_probability,
-            min_expected_return=omr_config.min_expected_return,
-            max_positions=omr_config.max_positions,
-            position_size=omr_config.position_size,
-            data_provider=data_provider  # Shared streaming provider
+            data_provider=data_provider,  # Shared streaming provider
+            **omr_config.to_adapter_params()  # Use config's adapter params
         )
         logger.success("OMR adapter created")
 
