@@ -550,7 +550,51 @@ WebSocket Disconnects
 └─────────────────────┘
 ```
 
-### Fallback Polling
+### Smart Fallback for Incomplete Buffer
+
+**Problem**: If the bot restarts mid-day (e.g., at 2 PM), the streaming buffer only contains bars from restart time forward. OMR needs 390 bars from 9:30 AM to calculate intraday moves correctly.
+
+**Solution**: The hub automatically detects insufficient data and falls back to REST API:
+
+```python
+def get_bars(self, symbol: str, n: Optional[int] = None) -> pd.DataFrame:
+    """Get bars with smart fallback."""
+    bars = self._bar_buffer.get_bars(symbol, n)
+
+    # Check buffer completeness (90% threshold)
+    if n is not None and bars and len(bars) < int(n * 0.9):
+        logger.warning(
+            f"Buffer has {len(bars)}/{n} bars ({len(bars)/n*100:.1f}%). "
+            f"Falling back to REST API from market open."
+        )
+        return self._fallback_from_market_open(symbol)
+
+    return convert_to_dataframe(bars)
+```
+
+**Behavior**:
+- **Buffer ≥90% complete** (e.g., 351/390 bars): Use streaming buffer (fast)
+- **Buffer <90% complete** (e.g., 100/390 bars): Fetch from 9:30 AM via REST API (slower, but complete)
+- **Buffer empty**: Fetch from 9:30 AM via REST API
+
+**OMR Data Quality Validation**:
+
+The OMR adapter also validates data quality after fetching:
+
+```python
+bars_df = provider.get_bars(symbol, n=390)
+bars_count = len(bars_df)
+
+if bars_count / 390 < 0.9:
+    logger.warning(
+        f"{symbol} has {bars_count}/390 bars. "
+        f"Streaming buffer may be incomplete (recent restart?)."
+    )
+```
+
+This ensures visibility into data quality issues without blocking execution.
+
+### Traditional Fallback Polling
 
 If WebSocket fails completely:
 - Strategies continue to work via polling

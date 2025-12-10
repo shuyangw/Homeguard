@@ -211,6 +211,9 @@ class MarketDataHub:
         """
         Get recent bars for a symbol.
 
+        Tries buffer first. If buffer has insufficient data (e.g., bot restarted mid-day),
+        falls back to REST API to fetch complete data from market open.
+
         Args:
             symbol: Ticker symbol
             n: Number of bars (None = all available)
@@ -219,9 +222,28 @@ class MarketDataHub:
             DataFrame with OHLCV data
         """
         bars = self._bar_buffer.get_bars(symbol, n)
+
+        # Check if buffer has sufficient data
+        if n is not None and bars:
+            # If requesting N bars, buffer should have at least 90% to be considered "sufficient"
+            required_bars = int(n * 0.9)
+            has_sufficient = len(bars) >= required_bars
+
+            if not has_sufficient and self._fallback is not None:
+                logger.warning(
+                    f"Buffer for {symbol} has {len(bars)}/{n} bars requested ({len(bars)/n*100:.1f}%). "
+                    f"Falling back to REST API for complete data from market open."
+                )
+                return self._fallback_from_market_open(symbol)
+
+        # Buffer is empty - use fallback
         if not bars:
+            if self._fallback is not None:
+                logger.info(f"Buffer empty for {symbol}, falling back to REST API")
+                return self._fallback_from_market_open(symbol)
             return pd.DataFrame()
 
+        # Convert bars to DataFrame
         data = {
             "timestamp": [b.timestamp for b in bars],
             "open": [b.open for b in bars],
@@ -235,6 +257,44 @@ class MarketDataHub:
         df = pd.DataFrame(data)
         df.set_index("timestamp", inplace=True)
         return df
+
+    def _fallback_from_market_open(self, symbol: str) -> pd.DataFrame:
+        """
+        Fetch bars from market open (9:30 AM ET) to now via REST API.
+
+        This is used when buffer has insufficient data (e.g., bot restarted mid-day).
+
+        Args:
+            symbol: Ticker symbol
+
+        Returns:
+            DataFrame with OHLCV data from market open to now
+        """
+        from src.utils.timezone import tz
+        from alpaca.data.timeframe import TimeFrame
+
+        # Get current time in ET
+        now = tz.now()
+
+        # Calculate market open time (9:30 AM ET today)
+        market_open = now.replace(hour=9, minute=30, second=0, microsecond=0)
+
+        # If current time is before market open, fetch from yesterday's open
+        if now < market_open:
+            from datetime import timedelta
+            market_open = market_open - timedelta(days=1)
+
+        logger.info(
+            f"Fetching {symbol} bars from market open ({market_open.strftime('%H:%M')}) "
+            f"to now ({now.strftime('%H:%M')}) via REST API"
+        )
+
+        return self._fallback.get_bars(
+            symbol=symbol,
+            start=market_open,
+            end=now,
+            timeframe=TimeFrame.Minute
+        )
 
     def get_vwap(self, symbol: str) -> Optional[float]:
         """Get current VWAP for a symbol."""

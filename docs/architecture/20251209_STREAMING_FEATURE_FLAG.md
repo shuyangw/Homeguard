@@ -263,6 +263,28 @@ Expected output:
 
 ## Fallback Behavior
 
+### Smart Fallback for Mid-Day Restarts (NEW)
+
+**Problem**: If bot restarts at 2 PM, buffer only has bars from 2:01 PM forward. OMR needs 390 bars from 9:30 AM to calculate intraday moves.
+
+**Solution**: Hub automatically detects insufficient data (<90% of requested bars) and fetches complete data from 9:30 AM via REST API.
+
+**Logs**:
+```
+[WARNING] Buffer for TQQQ has 100/390 bars (25.6%). Falling back to REST API for complete data from market open.
+[INFO] Fetching TQQQ bars from market open (09:30) to now (14:30) via REST API
+[WARNING] [OMR] TQQQ has 100/390 bars (25.6%). Streaming buffer may be incomplete (recent restart?).
+```
+
+**Impact**:
+- First execution after restart is slower (~5-10s instead of <1s)
+- Subsequent executions use fully populated buffer (fast)
+- Strategy gets correct data regardless of restart time
+
+**Threshold**: Buffer considered "sufficient" if ≥90% complete (e.g., 351/390 bars)
+
+---
+
 ### WebSocket Disconnects
 
 **Automatic**: Streaming provider falls back to REST API polling

@@ -369,6 +369,24 @@ class OMRLiveAdapter(StrategyAdapter):
                         bars_df = self._data_provider.get_bars(symbol, n=390)
 
                         if bars_df is not None and not bars_df.empty:
+                            # Validate data quality
+                            bars_count = len(bars_df)
+                            expected_bars = 390
+                            data_quality = bars_count / expected_bars if expected_bars > 0 else 0
+
+                            # Log data quality for monitoring
+                            if data_quality < 0.9:
+                                logger.warning(
+                                    f"[OMR] {symbol} has {bars_count}/{expected_bars} bars ({data_quality:.1%}). "
+                                    f"Streaming buffer may be incomplete (recent restart?)."
+                                )
+                            elif data_quality < 1.0:
+                                logger.info(
+                                    f"[OMR] {symbol} has {bars_count}/{expected_bars} bars ({data_quality:.1%})"
+                                )
+                            else:
+                                logger.debug(f"[OMR] {symbol} has {bars_count} bars (complete)")
+
                             market_data[symbol] = bars_df
                         else:
                             logger.warning(f"[OMR] No bars in buffer for {symbol}")
