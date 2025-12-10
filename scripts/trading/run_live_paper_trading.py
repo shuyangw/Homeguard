@@ -999,12 +999,67 @@ def main():
         market_open = broker.is_market_open()
         logger.info(f"  Market: {'OPEN' if market_open else 'CLOSED'}")
 
-        # Create data provider with Alpaca -> yfinance fallback
-        # This ensures complete intraday data coverage for leveraged ETFs
+        # Check if streaming is enabled via environment variable
+        use_streaming = os.getenv('USE_STREAMING', 'false').lower() in ('true', '1', 'yes')
+        streaming_feed = os.getenv('STREAMING_FEED', 'iex')
+
         logger.info("")
-        logger.info("Creating data provider (Alpaca -> yfinance fallback)...")
-        data_provider = create_data_provider(broker=broker)
-        logger.success(f"Data provider ready: {data_provider.name}")
+        if use_streaming:
+            # Create LiveDataProvider (streaming via WebSocket)
+            logger.info("=" * 80)
+            logger.info("STREAMING DATA ENABLED")
+            logger.info("=" * 80)
+            logger.info(f"Creating LiveDataProvider with {streaming_feed.upper()} feed...")
+
+            from src.streaming import LiveDataProvider
+
+            # Collect all symbols from enabled strategies
+            all_symbols = []
+
+            if args.strategy == 'omr' or args.strategy == 'multi':
+                omr_symbols = omr_config.symbols if omr_config else ETFUniverse.LEVERAGED_3X
+                all_symbols.extend(omr_symbols)
+                logger.info(f"  OMR symbols: {len(omr_symbols)}")
+
+            if args.strategy == 'ramp' or args.strategy == 'multi':
+                import pandas as pd
+                ramp_symbols = pd.read_csv('backtest_lists/sp500-2025.csv')['Symbol'].tolist()
+                all_symbols.extend(ramp_symbols)
+                logger.info(f"  RAMP symbols: {len(ramp_symbols)}")
+
+            if args.strategy in ['ma', 'triple-ma', 'mp']:
+                all_symbols.extend(symbols)
+                logger.info(f"  Strategy symbols: {len(symbols)}")
+
+            # Always include SPY (needed for regime detection)
+            all_symbols.append('SPY')
+
+            # Deduplicate symbols
+            all_symbols = list(set(all_symbols))
+
+            logger.info(f"Total unique symbols: {len(all_symbols)}")
+            logger.info("Starting WebSocket connection...")
+
+            # Create streaming provider
+            data_provider = LiveDataProvider(
+                api_key=api_key,
+                secret_key=secret_key,
+                feed=streaming_feed
+            )
+
+            # Start WebSocket and subscribe to all symbols
+            data_provider.start(all_symbols)
+
+            logger.success(f"Streaming enabled: {len(all_symbols)} symbols")
+            logger.info(f"Feed: {streaming_feed.upper()}")
+            logger.info("=" * 80)
+            logger.info("")
+        else:
+            # Create data provider with Alpaca -> yfinance fallback (polling)
+            logger.info("Creating data provider (Alpaca -> yfinance fallback)...")
+            logger.info("Note: Streaming is disabled. Set USE_STREAMING=true in .env to enable.")
+            data_provider = create_data_provider(broker=broker)
+            logger.success(f"Data provider ready: {data_provider.name}")
 
         # Create strategy adapter
         logger.info("")

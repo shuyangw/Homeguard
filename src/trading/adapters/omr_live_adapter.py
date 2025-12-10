@@ -5,7 +5,7 @@ Connects OMR strategy to live trading infrastructure.
 Runs at 3:50 PM EST to generate overnight signals.
 """
 
-from typing import List, Dict, Optional, TYPE_CHECKING
+from typing import List, Dict, Optional, TYPE_CHECKING, Union
 from datetime import datetime, time, timedelta
 import pandas as pd
 
@@ -13,6 +13,7 @@ from src.trading.adapters.strategy_adapter import StrategyAdapter
 
 if TYPE_CHECKING:
     from src.data.providers.base import DataProviderInterface
+    from src.streaming.live_data_provider import LiveDataProvider
 from src.strategies.core import StrategySignals, Signal
 from src.strategies.advanced.overnight_signal_generator import OvernightReversionSignals
 from src.strategies.advanced.market_regime_detector import MarketRegimeDetector
@@ -116,7 +117,7 @@ class OMRLiveAdapter(StrategyAdapter):
         position_size: float = 0.1,
         regime_detector: Optional[MarketRegimeDetector] = None,
         bayesian_model: Optional[BayesianReversionModel] = None,
-        data_provider: Optional["DataProviderInterface"] = None
+        data_provider: Optional[Union["DataProviderInterface", "LiveDataProvider"]] = None
     ):
         """
         Initialize OMR live adapter.
@@ -130,7 +131,9 @@ class OMRLiveAdapter(StrategyAdapter):
             position_size: Position size as fraction (default: 0.1)
             regime_detector: Trained regime detector (optional)
             bayesian_model: Trained Bayesian model (optional)
-            data_provider: Data provider with fallback chain (optional, uses broker if not provided)
+            data_provider: Data provider - supports both DataProviderInterface (polling)
+                          and LiveDataProvider (streaming). If LiveDataProvider, uses
+                          real-time WebSocket data. If not provided, falls back to broker.
         """
         # Use default symbols if not specified
         if symbols is None:
@@ -317,7 +320,12 @@ class OMRLiveAdapter(StrategyAdapter):
         Fetch intraday market data for OMR strategy.
 
         OMR needs intraday bars to calculate intraday moves.
-        Uses data provider with fallback if available, otherwise broker directly.
+
+        Data source priority:
+        1. Pre-fetched intraday cache (if available)
+        2. LiveDataProvider streaming (instant from buffer)
+        3. DataProviderInterface polling (with fallback chain)
+        4. Broker direct (original behavior)
         """
         try:
             import pandas as pd
@@ -350,8 +358,28 @@ class OMRLiveAdapter(StrategyAdapter):
                         if df is not None and not df.empty:
                             market_data[symbol] = df
 
-            elif self._data_provider is not None:
-                # Use data provider with fallback chain (Alpaca -> yfinance)
+            elif self._data_provider is not None and hasattr(self._data_provider, 'get_bars'):
+                # LiveDataProvider (streaming) - instant access from buffer
+                logger.info(f"[OMR] Fetching intraday data from LiveDataProvider (streaming)...")
+
+                for symbol in self.symbols:
+                    try:
+                        # Get today's bars from buffer (no API call)
+                        # Buffer contains last 500 bars, we need ~390 for a full trading day
+                        bars_df = self._data_provider.get_bars(symbol, n=390)
+
+                        if bars_df is not None and not bars_df.empty:
+                            market_data[symbol] = bars_df
+                        else:
+                            logger.warning(f"[OMR] No bars in buffer for {symbol}")
+                    except Exception as e:
+                        logger.error(f"[OMR] Error getting bars from provider for {symbol}: {e}")
+                        continue
+
+                logger.info(f"[OMR] Retrieved {len(market_data)} symbols from streaming buffer")
+
+            elif self._data_provider is not None and hasattr(self._data_provider, 'get_historical_bars_batch'):
+                # DataProviderInterface (polling with fallback)
                 logger.info(f"[OMR] Fetching intraday data via {self._data_provider.name} provider...")
                 market_data = self._data_provider.get_historical_bars_batch(
                     self.symbols, market_open_today, end_date, timeframe='1Min',

@@ -6,7 +6,7 @@ Adapts parameters based on whether market is in bull, bear, or sideways state.
 Rebalances daily at 3:55 PM EST based on regime-adjusted momentum rankings.
 """
 
-from typing import List, Dict, Optional, Any, TYPE_CHECKING
+from typing import List, Dict, Optional, Any, TYPE_CHECKING, Union
 from datetime import datetime, time, timedelta
 import pandas as pd
 import numpy as np
@@ -16,6 +16,7 @@ from src.utils.vix_provider import get_vix_provider
 
 if TYPE_CHECKING:
     from src.data.providers.base import DataProviderInterface
+    from src.streaming.live_data_provider import LiveDataProvider
 from src.strategies.advanced.ramp_strategy import (
     RAMPSignals,
     RAMPSignal,
@@ -168,7 +169,7 @@ class RAMPLiveAdapter(StrategyAdapter):
         vix_threshold: float = 25.0,
         spy_dd_threshold: float = -0.05,
         slippage_per_share: float = 0.01,
-        data_provider: Optional["DataProviderInterface"] = None
+        data_provider: Optional[Union["DataProviderInterface", "LiveDataProvider"]] = None
     ):
         """
         Initialize RAMP live adapter.
@@ -184,7 +185,9 @@ class RAMPLiveAdapter(StrategyAdapter):
             vix_threshold: VIX level that triggers protection
             spy_dd_threshold: SPY drawdown threshold (negative)
             slippage_per_share: Expected slippage in dollars
-            data_provider: Optional data provider with fallback (uses broker if not provided)
+            data_provider: Data provider - supports both DataProviderInterface (polling)
+                          and LiveDataProvider (streaming). If LiveDataProvider, uses
+                          real-time WebSocket data. If not provided, falls back to broker.
         """
         # Use default S&P 500 symbols if not specified
         if symbols is None:
@@ -440,6 +443,10 @@ class RAMPLiveAdapter(StrategyAdapter):
         This is a lightweight fetch at 3:55 PM that only gets today's data
         for the universe symbols, rather than re-fetching all historical data.
 
+        Data source priority:
+        1. LiveDataProvider streaming (instant from buffer)
+        2. Broker API polling (fallback)
+
         Returns:
             True if successful, False otherwise
         """
@@ -468,35 +475,61 @@ class RAMPLiveAdapter(StrategyAdapter):
 
             logger.info(f"[RAMP] Fetching today's closes for {len(self.symbols)} symbols...")
 
-            # Fetch today's data only (just 1 day)
-            today_start = tz.now().replace(hour=0, minute=0, second=0, microsecond=0)
-            today_end = tz.now()
-
             todays_prices = {}
             failed = 0
 
-            for symbol in self.symbols:
-                try:
-                    df = self.broker.get_historical_bars(
-                        symbol=symbol,
-                        start=today_start,
-                        end=today_end,
-                        timeframe='1D'
-                    )
-                    if df is not None and not df.empty:
-                        df.columns = [c.lower() if isinstance(c, str) else str(c).lower() for c in df.columns]
-                        if 'close' in df.columns:
-                            # Get the last (most recent) close price
-                            todays_prices[symbol] = df['close'].iloc[-1]
-                except Exception:
-                    failed += 1
-                    continue
+            # Check if we have LiveDataProvider (streaming)
+            if self._data_provider is not None and hasattr(self._data_provider, 'get_bars'):
+                logger.info("[RAMP] Using LiveDataProvider streaming buffer for today's closes...")
+
+                for symbol in self.symbols:
+                    try:
+                        # Get latest bar from buffer (no API call)
+                        latest_bar = self._data_provider.get_bars(symbol, n=1)
+
+                        if latest_bar is not None and not latest_bar.empty:
+                            # Ensure columns are lowercase
+                            latest_bar.columns = [c.lower() if isinstance(c, str) else str(c).lower() for c in latest_bar.columns]
+                            if 'close' in latest_bar.columns:
+                                todays_prices[symbol] = latest_bar['close'].iloc[-1]
+                        else:
+                            failed += 1
+                    except Exception as e:
+                        logger.error(f"[RAMP] Error getting bar from provider for {symbol}: {e}")
+                        failed += 1
+                        continue
+
+                logger.info(f"[RAMP] Retrieved {len(todays_prices)}/{len(self.symbols)} symbols from streaming buffer ({failed} failed)")
+
+            else:
+                # Fall back to broker API polling (original behavior)
+                logger.info("[RAMP] No LiveDataProvider, fetching from broker API...")
+
+                today_start = tz.now().replace(hour=0, minute=0, second=0, microsecond=0)
+                today_end = tz.now()
+
+                for symbol in self.symbols:
+                    try:
+                        df = self.broker.get_historical_bars(
+                            symbol=symbol,
+                            start=today_start,
+                            end=today_end,
+                            timeframe='1D'
+                        )
+                        if df is not None and not df.empty:
+                            df.columns = [c.lower() if isinstance(c, str) else str(c).lower() for c in df.columns]
+                            if 'close' in df.columns:
+                                # Get the last (most recent) close price
+                                todays_prices[symbol] = df['close'].iloc[-1]
+                    except Exception:
+                        failed += 1
+                        continue
+
+                logger.info(f"[RAMP] Fetched {len(todays_prices)}/{len(self.symbols)} symbols from broker API ({failed} failed)")
 
             if not todays_prices:
                 logger.error("[RAMP] Failed to fetch any today's prices")
                 return False
-
-            logger.info(f"[RAMP] Fetched {len(todays_prices)}/{len(self.symbols)} symbols ({failed} failed)")
 
             # Create today's row and append to historical data
             today_row = pd.Series(todays_prices, name=pd.Timestamp(today))

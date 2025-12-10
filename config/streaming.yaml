@@ -1,0 +1,39 @@
+# Streaming Data Platform Configuration
+# Reference: docs/architecture/20251209_STREAMING_DATA_PLATFORM.md
+
+streaming:
+  # Data feed selection
+  # 'iex' - Free, ~2-10% of trades (best for development/paper trading)
+  # 'sip' - Paid, 100% of trades (required for production)
+  feed: iex
+
+  # WebSocket connection settings
+  websocket:
+    # Number of reconnection attempts before falling back to polling
+    reconnect_attempts: 5
+    # Delay between reconnection attempts (seconds)
+    reconnect_delay_seconds: 5
+    # Heartbeat interval to detect stale connections (seconds)
+    heartbeat_interval_seconds: 30
+
+  # In-memory buffer settings
+  buffer:
+    # Maximum bars to keep per symbol (~8 hours of 1-minute bars)
+    max_bars_per_symbol: 500
+    # Maximum quotes to keep per symbol (only latest is typically needed)
+    max_quotes_per_symbol: 100
+
+  # Fallback polling when WebSocket fails
+  fallback:
+    # Enable polling fallback
+    enabled: true
+    # Polling interval when in fallback mode (seconds)
+    poll_interval_seconds: 60
+
+  # Logging settings
+  logging:
+    # Log level for streaming module
+    log_level: INFO
+    # Log individual bar/quote events (very verbose)
+    log_bar_events: false
+    log_quote_events: false
