@@ -112,6 +112,9 @@ class LiveDataProvider:
         )
         self._feed = feed
 
+        # Provider name for compatibility with DataProviderInterface
+        self.name = f"streaming-{feed}"
+
         logger.info(f"LiveDataProvider initialized with {feed.upper()} feed")
 
     # === Lifecycle ===
