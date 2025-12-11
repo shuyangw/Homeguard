@@ -39,16 +39,18 @@ class FallbackPoller:
         price = poller.get_latest_trade("TQQQ")
     """
 
-    def __init__(self, api_key: str, secret_key: str):
+    def __init__(self, api_key: str, secret_key: str, feed: str = "iex"):
         """
         Initialize fallback poller.
 
         Args:
             api_key: Alpaca API key
             secret_key: Alpaca secret key
+            feed: Data feed - 'iex' (free) or 'sip' (paid)
         """
         self._client = StockHistoricalDataClient(api_key, secret_key)
-        logger.info("FallbackPoller initialized")
+        self._feed = feed.lower()
+        logger.info(f"FallbackPoller initialized with {feed.upper()} feed")
 
     def get_latest_quote(self, symbol: str) -> Optional[Quote]:
         """
@@ -141,17 +143,25 @@ class FallbackPoller:
         Returns:
             DataFrame with OHLCV data, or empty DataFrame if request fails
         """
+        from alpaca.data.enums import DataFeed
+
         try:
+            # Map feed string to DataFeed enum
+            feed_map = {"iex": DataFeed.IEX, "sip": DataFeed.SIP}
+            feed_enum = feed_map.get(self._feed, DataFeed.IEX)
+
             request = StockBarsRequest(
                 symbol_or_symbols=symbol,
                 start=start,
                 end=end,
                 timeframe=timeframe,
+                feed=feed_enum,  # Use configured feed (IEX or SIP)
             )
             response = self._client.get_stock_bars(request)
+            logger.info(f"[Fallback] Fetched {len(response.df) if not response.df.empty else 0} bars for {symbol} via {self._feed.upper()}")
             return response.df
         except Exception as e:
-            logger.warning(f"Failed to fetch bars for {symbol}: {e}")
+            logger.warning(f"[Fallback] Failed to fetch bars for {symbol} via {self._feed.upper()}: {e}")
             return pd.DataFrame()
 
     def get_multiple_latest_quotes(self, symbols: list) -> dict:

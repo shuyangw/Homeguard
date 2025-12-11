@@ -71,7 +71,7 @@ class MarketDataHub:
         self._bar_buffer = BarBuffer(max_bars_per_symbol)
         self._quote_buffer = QuoteBuffer()
         self._trade_buffer = TradeBuffer()
-        self._fallback = FallbackPoller(api_key, secret_key) if fallback_enabled else None
+        self._fallback = FallbackPoller(api_key, secret_key, feed=feed) if fallback_enabled else None
 
         # Subscription tracking
         self._bar_handlers: Dict[str, Dict[str, Callable]] = {}  # symbol -> {sub_id -> handler}

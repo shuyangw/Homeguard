@@ -43,10 +43,22 @@ class BarBuffer:
         Args:
             bar: Bar to add
         """
+        from src.utils.logger import get_logger
+        logger = get_logger(__name__)
+
         with self._lock:
             if bar.symbol not in self._buffers:
                 self._buffers[bar.symbol] = deque(maxlen=self._max_bars)
+                logger.info(f"[Buffer] Created buffer for {bar.symbol}")
             self._buffers[bar.symbol].append(bar)
+
+            # Log every 10th bar to avoid spam, or first 3 bars for new symbol
+            bar_count = len(self._buffers[bar.symbol])
+            if bar_count <= 3 or bar_count % 10 == 0:
+                logger.info(
+                    f"[Buffer] {bar.symbol}: {bar_count} bars stored "
+                    f"(latest: {bar.timestamp.strftime('%H:%M:%S')} @ ${bar.close:.2f})"
+                )
 
     def get_latest(self, symbol: str) -> Optional[Bar]:
         """

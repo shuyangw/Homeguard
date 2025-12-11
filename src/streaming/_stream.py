@@ -85,13 +85,19 @@ class StreamManager:
     def _run_client(self) -> None:
         """Run the blocking WebSocket client."""
         try:
-            logger.info("WebSocket event loop starting")
+            logger.info(f"[WebSocket] Starting connection with {self._feed.upper()} feed")
+            logger.info(f"[WebSocket] Subscribed bar symbols: {len(self._bar_symbols)}")
+            logger.info(f"[WebSocket] Subscribed quote symbols: {len(self._quote_symbols)}")
+            logger.info(f"[WebSocket] Subscribed trade symbols: {len(self._trade_symbols)}")
             self._client.run()  # BLOCKING
+            logger.warning("[WebSocket] Event loop ended normally (unexpected)")
         except Exception as e:
-            logger.error(f"WebSocket error: {e}")
+            logger.error(f"[WebSocket] Connection error: {e}")
+            import traceback
+            traceback.print_exc()
         finally:
             self._running = False
-            logger.info("WebSocket event loop ended")
+            logger.info("[WebSocket] Connection closed")
 
     def stop(self) -> None:
         """Stop WebSocket connection."""
@@ -117,12 +123,15 @@ class StreamManager:
             handler: Async callback - async def handler(bar: Bar) -> None
         """
         async def wrapper(alpaca_bar):
-            bar = Bar.from_alpaca(alpaca_bar)
-            await handler(bar)
+            try:
+                bar = Bar.from_alpaca(alpaca_bar)
+                await handler(bar)
+            except Exception as e:
+                logger.error(f"[WebSocket] Error handling bar for {alpaca_bar.symbol}: {e}")
 
         self._client.subscribe_bars(wrapper, *symbols)
         self._bar_symbols.update(symbols)
-        logger.debug(f"Subscribed to bars: {symbols}")
+        logger.info(f"[WebSocket] Subscribed to bars for {len(symbols)} symbols (sample: {symbols[:5]})")
 
     def subscribe_quotes(self, symbols: list, handler: Callable) -> None:
         """
