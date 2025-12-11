@@ -27,23 +27,26 @@ logger = get_logger(__name__)
 # Registry mapping strategy name -> (module_path, class_name)
 # Using lazy loading to avoid import chain issues
 _STRATEGY_REGISTRY: Dict[str, Tuple[str, str]] = {
-    # Base strategies
-    "MovingAverageCrossover": ("src.strategies.base_strategies.moving_average", "MovingAverageCrossover"),
-    "TripleMovingAverage": ("src.strategies.base_strategies.moving_average", "TripleMovingAverage"),
-    "MeanReversion": ("src.strategies.base_strategies.mean_reversion", "MeanReversion"),
-    "RSIMeanReversion": ("src.strategies.base_strategies.mean_reversion", "RSIMeanReversion"),
-    "MeanReversionLongShort": ("src.strategies.base_strategies.mean_reversion_long_short", "MeanReversionLongShort"),
-    "MomentumStrategy": ("src.strategies.base_strategies.momentum", "MomentumStrategy"),
-    "BreakoutStrategy": ("src.strategies.base_strategies.momentum", "BreakoutStrategy"),
+    # Base strategies (moved to research)
+    "MovingAverageCrossover": ("src.strategies.research.moving_average", "MovingAverageCrossover"),
+    "TripleMovingAverage": ("src.strategies.research.moving_average", "TripleMovingAverage"),
+    "MeanReversion": ("src.strategies.research.mean_reversion", "MeanReversion"),
+    "RSIMeanReversion": ("src.strategies.research.mean_reversion", "RSIMeanReversion"),
+    "MeanReversionLongShort": ("src.strategies.research.mean_reversion_long_short", "MeanReversionLongShort"),
+    "MomentumStrategy": ("src.strategies.research.momentum", "MomentumStrategy"),
+    "BreakoutStrategy": ("src.strategies.research.momentum", "BreakoutStrategy"),
 
-    # Advanced strategies
-    "VolatilityTargetedMomentum": ("src.strategies.advanced.volatility_targeted_momentum", "VolatilityTargetedMomentum"),
+    # Research strategies
+    "VolatilityTargetedMomentum": ("src.strategies.research.volatility_targeted_momentum", "VolatilityTargetedMomentum"),
+    "CrossSectionalMomentum": ("src.strategies.research.cross_sectional_momentum", "CrossSectionalMomentum"),
+    "PairsTrading": ("src.strategies.research.pairs_trading", "PairsTrading"),
+
+    # Advanced/Production strategies
     "OvernightMeanReversion": ("src.strategies.advanced.overnight_mean_reversion", "OvernightMeanReversionStrategy"),
     "OvernightMeanReversionStrategy": ("src.strategies.advanced.overnight_mean_reversion", "OvernightMeanReversionStrategy"),
-    "CrossSectionalMomentum": ("src.strategies.advanced.cross_sectional_momentum", "CrossSectionalMomentum"),
-    "PairsTrading": ("src.strategies.advanced.pairs_trading", "PairsTrading"),
     "MomentumProtection": ("src.strategies.advanced.momentum_protection_strategy", "MomentumProtectionStrategy"),
     "MomentumProtectionStrategy": ("src.strategies.advanced.momentum_protection_strategy", "MomentumProtectionStrategy"),
+    "ORBStrategy": ("src.strategies.advanced.orb_strategy", "ORBStrategy"),
 }
 
 # Display name -> class name mapping for user-friendly config files
@@ -70,6 +73,8 @@ _DISPLAY_NAME_MAP: Dict[str, str] = {
     "Protected Momentum": "MomentumProtection",
     "MP": "MomentumProtection",
     "MP Strategy": "MomentumProtection",
+    "ORB": "ORBStrategy",
+    "Opening Range Breakout": "ORBStrategy",
 }
 
 # Cache for loaded strategy classes

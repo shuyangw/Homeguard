@@ -1,0 +1,53 @@
+# Opening Range Breakout - Walk-Forward Validation
+# Usage: python -m src.backtest_runner --config config/backtesting/orb_walk_forward.yaml
+#
+# Walk-forward analysis:
+# - Train on 12 months, test on 6 months
+# - Re-optimize every 6 months
+# - Prevents overfitting by testing on unseen data
+
+mode: walk_forward
+
+strategy:
+  name: ORBStrategy
+  # Parameters will be optimized in each training window
+  parameters: {}
+
+symbols:
+  list: [TQQQ, SOXL, UPRO, TNA, TECL]
+
+dates:
+  start: "2019-01-01"
+  end: "2024-12-31"
+
+backtest:
+  initial_capital: 100000
+  fees: 0.001
+  slippage: 0.0005
+  benchmark: SPY
+  market_hours_only: true
+  allow_shorts: true
+
+optimization:
+  metric: sharpe_ratio
+  param_grid:
+    opening_range_minutes: [10, 15, 30]
+    rvol_threshold: [1.0, 1.5, 2.0]
+    target_multiplier: [0.5, 1.0, 1.5]
+  n_jobs: 4
+
+walk_forward:
+  train_months: 12
+  test_months: 6
+  step_months: 6
+  export_results: true
+
+risk:
+  enabled: true
+  position_sizing_method: fixed_percent
+  position_size_pct: 0.10
+  max_positions: 5
+
+output:
+  save_reports: true
+  verbosity: 1

@@ -1,0 +1,46 @@
+# Opening Range Breakout - Single Backtest
+# Usage: python -m src.backtest_runner --config config/backtesting/orb_single.yaml
+
+mode: single
+
+strategy:
+  name: ORBStrategy
+  parameters:
+    opening_range_minutes: 15
+    rvol_threshold: 1.5
+    rvol_lookback: 20
+    fast_ema: 9
+    slow_ema: 21
+    target_multiplier: 1.0
+    long_only: false
+    use_regime: true
+    use_gap_filter: false
+
+symbols:
+  # 3x Leveraged ETFs - optimal for ORB due to high liquidity and volatility
+  list: [TQQQ, SOXL, UPRO, TNA, TECL]
+
+dates:
+  start: "2022-01-01"
+  end: "2024-12-31"
+
+backtest:
+  initial_capital: 100000
+  fees: 0.001
+  slippage: 0.0005
+  benchmark: SPY
+  market_hours_only: true
+  allow_shorts: true
+
+risk:
+  enabled: true
+  position_sizing_method: fixed_percent
+  position_size_pct: 0.10
+  max_positions: 5
+
+output:
+  save_trades: true
+  save_reports: true
+  quantstats: true
+  visualize: false
+  verbosity: 1
