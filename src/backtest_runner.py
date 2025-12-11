@@ -22,9 +22,9 @@ from src.backtesting.engine.metrics import PerformanceMetrics
 from src.backtesting.engine.data_loader import DataLoader
 from src.backtesting.optimization.sweep_runner import SweepRunner
 from src.backtesting.utils.universe import UniverseManager
-from src.strategies.base_strategies.moving_average import MovingAverageCrossover, TripleMovingAverage
-from src.strategies.base_strategies.mean_reversion import MeanReversion, RSIMeanReversion
-from src.strategies.base_strategies.momentum import MomentumStrategy, BreakoutStrategy
+from src.strategies.research.moving_average import MovingAverageCrossover, TripleMovingAverage
+from src.strategies.research.mean_reversion import MeanReversion, RSIMeanReversion
+from src.strategies.research.momentum import MomentumStrategy, BreakoutStrategy
 from src.visualization.config import VisualizationConfig
 from src.visualization.integration import BacktestVisualizer
 from src.settings import get_log_output_dir, get_backtest_results_dir
@@ -41,13 +41,13 @@ STRATEGY_REGISTRY = {
 }
 
 try:
-    from strategies.advanced.volatility_targeted_momentum import VolatilityTargetedMomentum
-    from strategies.advanced.overnight_mean_reversion import OvernightMeanReversion
-    from strategies.advanced.cross_sectional_momentum import CrossSectionalMomentum
-    from strategies.advanced.pairs_trading import PairsTrading
+    from src.strategies.research.volatility_targeted_momentum import VolatilityTargetedMomentum
+    from src.strategies.advanced.overnight_mean_reversion import OvernightMeanReversionStrategy
+    from src.strategies.research.cross_sectional_momentum import CrossSectionalMomentum
+    from src.strategies.research.pairs_trading import PairsTrading
 
     STRATEGY_REGISTRY['VolatilityTargetedMomentum'] = VolatilityTargetedMomentum
-    STRATEGY_REGISTRY['OvernightMeanReversion'] = OvernightMeanReversion
+    STRATEGY_REGISTRY['OvernightMeanReversion'] = OvernightMeanReversionStrategy
     STRATEGY_REGISTRY['CrossSectionalMomentum'] = CrossSectionalMomentum
     STRATEGY_REGISTRY['PairsTrading'] = PairsTrading
 except ImportError:

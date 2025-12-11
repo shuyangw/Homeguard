@@ -242,6 +242,10 @@ docs/*
 !docs/strategies/
 !docs/strategies/**
 
+# KEEP: Troubleshooting documentation (production issue analysis)
+!docs/troubleshooting/
+!docs/troubleshooting/**
+
 # Hide everything else (new files only - previously tracked files remain):
 # - docs/api/ (can be generated from code)
 # - docs/guides/ (user guides, wiki material)

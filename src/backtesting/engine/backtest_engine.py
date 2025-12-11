@@ -7,7 +7,7 @@ import numpy as np
 from typing import Union, Dict, Any, Optional, List, TYPE_CHECKING
 from pathlib import Path
 
-from src.backtesting.base.strategy import BaseStrategy, MultiSymbolStrategy
+from src.backtesting.base.strategy import BaseStrategy, MultiSymbolStrategy, LongShortStrategy
 from src.backtesting.base.pairs_strategy import PairsStrategy
 from src.backtesting.engine.data_loader import DataLoader
 from src.backtesting.engine.portfolio_simulator import Portfolio, from_signals
@@ -306,28 +306,62 @@ class BacktestEngine:
     ) -> Portfolio:
         """
         Run backtest for a single symbol.
+
+        Handles both standard strategies (2 return values) and
+        LongShortStrategy (4 return values).
         """
         symbol_data: pd.DataFrame = data.xs(symbol, level='symbol')  # type: ignore[assignment]
-
-        entries, exits = strategy.generate_signals(symbol_data)
         price = symbol_data[price_type]
 
-        entries = entries.fillna(False).astype(bool)
-        exits = exits.fillna(False).astype(bool)
+        # Check if strategy is a LongShortStrategy (returns 4 signals)
+        if isinstance(strategy, LongShortStrategy):
+            long_entries, long_exits, short_entries, short_exits = strategy.generate_signals(symbol_data)
 
-        portfolio = from_signals(
-            close=price,
-            entries=entries,
-            exits=exits,
-            init_cash=self.initial_capital,
-            fees=self.fees,
-            slippage=self.slippage,
-            freq=self.freq,
-            market_hours_only=self.market_hours_only,
-            risk_config=self.risk_config,
-            price_data=symbol_data,  # Pass OHLC data for ATR-based position sizing
-            allow_shorts=self.allow_shorts
-        )
+            long_entries = long_entries.fillna(False).astype(bool)
+            long_exits = long_exits.fillna(False).astype(bool)
+            short_entries = short_entries.fillna(False).astype(bool)
+            short_exits = short_exits.fillna(False).astype(bool)
+
+            # Combine long and short signals for the current Portfolio implementation
+            # Long entries and short exits are "buy" signals
+            # Short entries and long exits are "sell/exit" signals
+            # Note: Current portfolio simulator handles position flipping
+            combined_entries = long_entries | short_exits  # Enter long or cover short
+            combined_exits = long_exits | short_entries    # Exit long or enter short
+
+            portfolio = from_signals(
+                close=price,
+                entries=combined_entries,
+                exits=combined_exits,
+                init_cash=self.initial_capital,
+                fees=self.fees,
+                slippage=self.slippage,
+                freq=self.freq,
+                market_hours_only=self.market_hours_only,
+                risk_config=self.risk_config,
+                price_data=symbol_data,
+                allow_shorts=self.allow_shorts
+            )
+        else:
+            # Standard strategy (long-only, returns 2 signals)
+            entries, exits = strategy.generate_signals(symbol_data)
+
+            entries = entries.fillna(False).astype(bool)
+            exits = exits.fillna(False).astype(bool)
+
+            portfolio = from_signals(
+                close=price,
+                entries=entries,
+                exits=exits,
+                init_cash=self.initial_capital,
+                fees=self.fees,
+                slippage=self.slippage,
+                freq=self.freq,
+                market_hours_only=self.market_hours_only,
+                risk_config=self.risk_config,
+                price_data=symbol_data,
+                allow_shorts=self.allow_shorts
+            )
 
         return portfolio
 
