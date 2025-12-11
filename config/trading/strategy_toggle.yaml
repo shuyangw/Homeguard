@@ -1,8 +1,8 @@
-last_modified: '2025-12-08T18:20:00.000000-05:00'
-modified_by: manual
+last_modified: '2025-12-08T18:21:41.688980-05:00'
+modified_by: api
 strategies:
   mp:
-    enabled: false
+    enabled: true
     shutdown_requested: false
   omr:
     enabled: true

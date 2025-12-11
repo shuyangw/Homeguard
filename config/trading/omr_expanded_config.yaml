@@ -1,0 +1,136 @@
+# ============================================================================
+# OMR Expanded Universe Trading Configuration
+# ============================================================================
+# Extended universe with 62 leveraged ETFs for backtesting
+# Combines original 19 symbols + 43 new sector/index ETFs
+
+strategy:
+  name: "OMR"
+  version: "2.0.0"
+  description: "Overnight Mean Reversion Strategy - Expanded Universe"
+
+  # Timing (EST/EDT timezone)
+  entry_time: "15:50:00"  # 3:50 PM EST
+  exit_time: "09:31:00"   # 9:31 AM EST next day
+  entry_window_seconds: 30
+  exit_window_seconds: 30
+
+  # Position sizing
+  position_size_pct: 0.15       # 15% per position
+  max_concurrent_positions: 3   # Max 3 simultaneous positions
+  max_total_exposure_pct: 0.45  # 45% max total exposure
+
+  # Risk management
+  stop_loss_pct: -0.02      # -2% stop-loss
+  vix_threshold: 35         # Skip trading if VIX > 35
+
+  # Signal quality filters
+  min_win_rate: 0.58        # 58% minimum win rate
+  min_expected_return: 0.002  # 0.2% minimum expected return
+  min_sample_size: 15       # 15 historical samples required
+
+  # Regime filtering
+  skip_regimes:
+    - "BEAR"
+
+  # Expanded symbol universe (62 leveraged ETFs)
+  symbols:
+    # === Original 19 symbols ===
+    - FAZ     # Financials Bear 3x
+    - USD     # Ultra Semiconductors 2x
+    - UDOW    # Dow 30 Bull 3x
+    - SOXL    # Semiconductors Bull 3x
+    - TECL    # Tech Bull 3x
+    - UPRO    # S&P 500 Bull 3x
+    - SVXY    # Short VIX Short-Term Futures
+    - TQQQ    # Nasdaq 100 Bull 3x
+    - SSO     # S&P 500 Bull 2x
+    - DFEN    # Defense Bull 3x
+    - WEBL    # Dow Internet Bull 3x
+    - UCO     # Oil & Gas Bull 2x
+    - FAS     # Financials Bull 3x
+    - TNA     # Small Cap Bull 3x
+    - LABU    # Biotech Bull 3x
+    - SPXU    # S&P 500 Bear 3x
+    - QLD     # Nasdaq 100 Bull 2x
+    - SQQQ    # Nasdaq 100 Bear 3x
+    - NAIL    # Homebuilders Bull 3x
+    # === NEW: Broad Market Index (11) ===
+    - DDM     # Ultra Dow30 2x
+    - HIBL    # S&P 500 High Beta Bull 3x
+    - MIDU    # Mid Cap Bull 3x
+    - MVV     # Ultra MidCap400 2x
+    - SAA     # Ultra SmallCap600 2x
+    - SPUU    # S&P 500 Bull 2x
+    - SPXL    # S&P 500 Bull 3x
+    - UMDD    # UltraPro MidCap 400 3x
+    - URSP    # Ultra S&P 500 Equal Weight 2x
+    - URTY    # UltraPro Russell2000 3x
+    - UWM     # Ultra Russell2000 2x
+    # === NEW: Nasdaq/Tech Index (5) ===
+    - FNGG    # NYSE FANG+ Bull 2x
+    - FNGU    # FANG+ Index 3x
+    - QQQU    # Magnificent 7 Bull 2x
+    - QQUP    # Ultra QQQ Mega 2x
+    - QQXL    # Ultra QQQ Top 30 2x
+    # === NEW: Sector ETFs (27) ===
+    - BIB     # Ultra Nasdaq Biotechnology 2x
+    - DIG     # Ultra Energy 2x
+    - DPST    # Regional Banks Bull 3x
+    - DRN     # Real Estate Bull 3x
+    - ERX     # Energy Bull 2x
+    - GUSH    # S&P Oil & Gas Bull 2x
+    - LTL     # Ultra Communication Services 2x
+    - NRGU    # U.S. Big Oil Index 3x
+    - OILU    # Oil & Gas Exp. & Prod. 3x
+    - PILL    # Pharmaceutical & Medical Bull 3x
+    - RETL    # Retail Bull 3x
+    - ROM     # Ultra Technology 2x
+    - RXL     # Ultra Health Care 2x
+    - SKYU    # Ultra Nasdaq Cloud Computing 2x
+    - TBXU    # Top 5 Biotech Bull 2x
+    - TPOR    # Transportation Bull 3x
+    - UBOT    # Robotics, AI & Automation Bull 2x
+    - UCC     # Ultra Consumer Discretionary 2x
+    - UCYB    # Ultra Nasdaq Cybersecurity 2x
+    - UGE     # Ultra Consumer Staples 2x
+    - UPW     # Ultra Utilities 2x
+    - URE     # Ultra Real Estate 2x
+    - UTSL    # Utilities Bull 3x
+    - UXI     # Ultra Industrials 2x
+    - UYG     # Ultra Financials 2x
+    - UYM     # Ultra Materials 2x
+    - WANT    # Consumer Discretionary Bull 3x
+
+  # Historical data for model training
+  training_period_years: 2
+  retrain_frequency: "daily"
+
+  # Execution
+  order_type: "market"
+  limit_order_offset_pct: 0.001
+
+# Position manager configuration
+position_manager:
+  max_position_size_pct: 0.15
+  max_concurrent_positions: 3
+  max_total_exposure_pct: 0.45
+  stop_loss_pct: -0.02
+  save_state: true
+  state_file: "data/trading/position_state.json"
+
+# Risk limits
+risk:
+  max_daily_loss_pct: 0.05
+  max_weekly_loss_pct: 0.10
+  max_drawdown_pct: 0.15
+  max_orders_per_day: 50
+  max_order_value: 50000
+  min_order_value: 100
+  stop_loss_check_interval: 5
+  vix_threshold: 35
+  min_buying_power: 10000
+  min_account_value: 50000
+  require_market_data: true
+  require_order_confirmation: true
+  enable_paper_trading_only: true
