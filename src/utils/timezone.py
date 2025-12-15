@@ -146,10 +146,6 @@ class TimezoneManager:
         """
         return self._timezone.localize(naive_dt)
 
-    # =========================================================================
-    # Formatting Methods - Standard formats for logging
-    # =========================================================================
-
     def timestamp(self, fmt: str = '%Y-%m-%d %H:%M:%S') -> str:
         """
         Get formatted timestamp string.
@@ -220,10 +216,6 @@ class TimezoneManager:
         """
         return dt.strftime(fmt)
 
-    # =========================================================================
-    # Comparison Helpers
-    # =========================================================================
-
     def is_same_day(self, dt1: datetime, dt2: datetime = None) -> bool:
         """
         Check if two datetimes are on the same day in configured timezone.
@@ -255,9 +247,6 @@ class TimezoneManager:
         """
         Get seconds elapsed since a datetime.
 
-        Args:
-            dt: Datetime to measure from
-
         Returns:
             Seconds elapsed (float)
         """
@@ -269,9 +258,6 @@ class TimezoneManager:
     def hours_since(self, dt: datetime) -> float:
         """
         Get hours elapsed since a datetime.
-
-        Args:
-            dt: Datetime to measure from
 
         Returns:
             Hours elapsed (float)
@@ -340,9 +326,6 @@ def ensure_et_index(df: 'pd.DataFrame') -> 'pd.DataFrame':
 
     This is a utility for validating/converting DataFrame timestamps.
     Primarily used to verify broker data contracts.
-
-    Args:
-        df: DataFrame with DatetimeIndex
 
     Returns:
         DataFrame with ET-converted index

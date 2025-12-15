@@ -19,7 +19,8 @@ from typing import Dict, Any, Optional, List
 
 from src.backtesting.engine.backtest_engine import BacktestEngine
 from src.backtesting.engine.metrics import PerformanceMetrics
-from src.backtesting.engine.data_loader import DataLoader
+from src.backtesting.engine.streaming_data_loader import StreamingDataLoader as DataLoader
+from src.backtesting.engine.trade_logger import TradeLogger
 from src.backtesting.optimization.sweep_runner import SweepRunner
 from src.backtesting.utils.universe import UniverseManager
 from src.strategies.research.moving_average import MovingAverageCrossover, TripleMovingAverage
@@ -428,9 +429,23 @@ def _resolve_symbols(config: 'BacktestConfig') -> List[str]:
         if not file_path.exists():
             raise FileNotFoundError(f"Symbols file not found: {file_path}")
 
-        with open(file_path, 'r') as f:
-            symbols = [line.strip() for line in f if line.strip() and not line.startswith('#')]
-        return symbols
+        # Check if it's a CSV file
+        if file_path.suffix.lower() == '.csv':
+            import csv
+            symbols = []
+            with open(file_path, 'r') as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    # Try common column names for symbol
+                    symbol = row.get('Symbol') or row.get('symbol') or row.get('SYMBOL') or row.get('Ticker') or row.get('ticker')
+                    if symbol:
+                        symbols.append(symbol.strip())
+            return symbols
+        else:
+            # Plain text file with one symbol per line
+            with open(file_path, 'r') as f:
+                symbols = [line.strip() for line in f if line.strip() and not line.startswith('#')]
+            return symbols
 
     raise ValueError("No symbols source specified in config")
 
@@ -515,18 +530,46 @@ def run_single_from_config(config: 'BacktestConfig') -> None:
     Args:
         config: Validated BacktestConfig object
     """
+    from src.backtesting.utils.risk_config import RiskConfig
+
     symbols = _resolve_symbols(config)
     start_date, end_date = _resolve_dates(config)
     strategy = _get_strategy_instance(config)
+
+    # Create RiskConfig from YAML config
+    risk_config = None
+    if config.risk and config.risk.enabled:
+        # Map schema enum to RiskConfig literal
+        sizing_method_map = {
+            'fixed_percent': 'fixed_percentage',
+            'kelly': 'kelly_criterion',
+            'volatility_target': 'volatility_based',
+            'equal_weight': 'risk_parity',
+            'custom': 'fixed_percentage',
+        }
+        sizing_method = config.risk.position_sizing_method.value if hasattr(config.risk.position_sizing_method, 'value') else str(config.risk.position_sizing_method)
+        mapped_method = sizing_method_map.get(sizing_method, 'fixed_percentage')
+
+        risk_config = RiskConfig(
+            position_size_pct=config.risk.position_size_pct,
+            position_sizing_method=mapped_method,
+            use_stop_loss=config.risk.stop_loss_pct is not None,
+            stop_loss_pct=config.risk.stop_loss_pct if config.risk.stop_loss_pct else 0.02,
+            max_positions=config.risk.max_positions,
+        )
 
     engine = BacktestEngine(
         initial_capital=config.backtest.initial_capital,
         fees=config.backtest.fees,
         slippage=config.backtest.slippage,
         allow_shorts=config.backtest.allow_shorts,
+        risk_config=risk_config,
     )
 
     output_dir = _create_output_dir(config)
+
+    # Get portfolio mode from config (default to 'single')
+    portfolio_mode = getattr(config.backtest, 'portfolio_mode', 'single')
 
     if config.output.quantstats and output_dir:
         portfolio = engine.run_and_report(
@@ -534,14 +577,16 @@ def run_single_from_config(config: 'BacktestConfig') -> None:
             symbols=symbols,
             start_date=start_date,
             end_date=end_date,
-            output_dir=output_dir
+            output_dir=output_dir,
+            portfolio_mode=portfolio_mode
         )
     else:
         portfolio = engine.run(
             strategy=strategy,
             symbols=symbols,
             start_date=start_date,
-            end_date=end_date
+            end_date=end_date,
+            portfolio_mode=portfolio_mode
         )
 
     if config.output.visualize and output_dir:
@@ -570,6 +615,62 @@ def run_single_from_config(config: 'BacktestConfig') -> None:
             price_data=price_data,
             output_dir=output_dir
         )
+
+    # Export trades if save_trades is enabled
+    if config.output.save_trades and output_dir:
+        trades_dir = output_dir / "trades"
+        trades_dir.mkdir(exist_ok=True)
+
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        trades_csv = trades_dir / f"{timestamp}_all_trades.csv"
+
+        try:
+            TradeLogger.export_trades_csv(portfolio, trades_csv)
+            logger.success(f"Trade log exported: {trades_csv}")
+
+            # Also print trades summary to console
+            trades_df = portfolio.trades
+            if len(trades_df) > 0:
+                logger.blank()
+                logger.header("TRADE LOG")
+                logger.blank()
+
+                # Display all trades
+                for _, trade in trades_df.iterrows():
+                    symbol = trade.get('symbol', 'N/A')
+                    entry_time = trade.get('entry_timestamp', 'N/A')
+                    exit_time = trade.get('exit_timestamp', 'N/A')
+                    direction = trade.get('direction', 'N/A')
+                    entry_price = trade.get('entry_price', 0)
+                    exit_price = trade.get('exit_price', 0)
+                    shares = trade.get('shares', 0)
+                    pnl = trade.get('pnl', 0)
+                    pnl_pct = trade.get('pnl_pct', 0) * 100
+                    exit_reason = trade.get('exit_reason', '')
+
+                    # Format entry time for display
+                    if hasattr(entry_time, 'strftime'):
+                        entry_str = entry_time.strftime('%Y-%m-%d %H:%M')
+                    else:
+                        entry_str = str(entry_time)[:16]
+
+                    if hasattr(exit_time, 'strftime'):
+                        exit_str = exit_time.strftime('%Y-%m-%d %H:%M')
+                    else:
+                        exit_str = str(exit_time)[:16]
+
+                    pnl_indicator = "[+]" if pnl > 0 else "[-]"
+                    logger.info(
+                        f"{pnl_indicator} {symbol:5} | {direction:5} | "
+                        f"Entry: {entry_str} @ ${entry_price:.2f} | "
+                        f"Exit: {exit_str} @ ${exit_price:.2f} | "
+                        f"Shares: {shares:,.0f} | PnL: ${pnl:,.2f} ({pnl_pct:+.2f}%) | {exit_reason}"
+                    )
+
+                logger.blank()
+                logger.metric(f"Total Trades: {len(trades_df)}")
+        except Exception as e:
+            logger.warning(f"Could not export trades: {e}")
 
     logger.success(f"Backtest complete: {config.strategy.name}")
     if output_dir:
