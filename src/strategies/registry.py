@@ -47,6 +47,8 @@ _STRATEGY_REGISTRY: Dict[str, Tuple[str, str]] = {
     "MomentumProtection": ("src.strategies.advanced.momentum_protection_strategy", "MomentumProtectionStrategy"),
     "MomentumProtectionStrategy": ("src.strategies.advanced.momentum_protection_strategy", "MomentumProtectionStrategy"),
     "ORBStrategy": ("src.strategies.advanced.orb_strategy", "ORBStrategy"),
+    "ICTStrategy": ("src.strategies.advanced.ict_strategy", "ICTStrategy"),
+    "ORBHighVolatilityStrategy": ("src.strategies.advanced.orb_hv_strategy", "ORBHighVolatilityStrategy"),
 }
 
 # Display name -> class name mapping for user-friendly config files
@@ -75,6 +77,17 @@ _DISPLAY_NAME_MAP: Dict[str, str] = {
     "MP Strategy": "MomentumProtection",
     "ORB": "ORBStrategy",
     "Opening Range Breakout": "ORBStrategy",
+    "ORB HV": "ORBHighVolatilityStrategy",
+    "ORB High Volatility": "ORBHighVolatilityStrategy",
+    "Opening Range Breakout HV": "ORBHighVolatilityStrategy",
+    "Stocks in Play": "ORBHighVolatilityStrategy",
+    "SIP Strategy": "ORBHighVolatilityStrategy",
+    "ICT Strategy": "ICTStrategy",
+    "ICT": "ICTStrategy",
+    "Smart Money Concepts": "ICTStrategy",
+    "SMC": "ICTStrategy",
+    "SMC Strategy": "ICTStrategy",
+    "Liquidity Strategy": "ICTStrategy",
 }
 
 # Cache for loaded strategy classes
