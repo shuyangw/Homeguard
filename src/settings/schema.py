@@ -75,6 +75,7 @@ class BacktestSettings(BaseModel):
     benchmark: str = Field(default="SPY", description="Benchmark symbol for comparison")
     market_hours_only: bool = Field(default=True, description="Filter to market hours only")
     allow_shorts: bool = Field(default=False, description="Allow short selling")
+    portfolio_mode: str = Field(default="single", description="Portfolio mode: 'single' or 'multi'")
 
 
 class RiskSettings(BaseModel):

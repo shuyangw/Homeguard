@@ -9,7 +9,7 @@ This example demonstrates:
 """
 
 from backtesting.engine.backtest_engine import BacktestEngine
-from backtesting.engine.data_loader import DataLoader
+from backtesting.engine.streaming_data_loader import StreamingDataLoader as DataLoader
 from strategies.base_strategies.moving_average import MovingAverageCrossover
 
 
