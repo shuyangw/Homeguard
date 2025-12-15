@@ -44,7 +44,7 @@ class MultiSymbolMetrics:
 
         # Calculate capital utilization over time
         # PERFORMANCE FIX: Create O(1) lookup dict instead of O(n) .index() calls
-        # For 98K timestamps, this changes O(n²) = 9.6B operations to O(n) = 98K operations
+        # For 98K timestamps, this changes O(n^2) = 9.6B operations to O(n) = 98K operations
         timestamp_to_idx = {ts: idx for idx, ts in enumerate(portfolio.equity_timestamps)}
 
         capital_utilization = []

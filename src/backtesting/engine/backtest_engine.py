@@ -9,9 +9,11 @@ from pathlib import Path
 
 from src.backtesting.base.strategy import BaseStrategy, MultiSymbolStrategy, LongShortStrategy
 from src.backtesting.base.pairs_strategy import PairsStrategy
-from src.backtesting.engine.data_loader import DataLoader
+from src.backtesting.engine.streaming_data_loader import StreamingDataLoader
 from src.backtesting.engine.portfolio_simulator import Portfolio, from_signals
+from src.backtesting.engine.rolling_results import RollingWindowResults
 from src.backtesting.utils.risk_config import RiskConfig
+from src.backtesting.utils.market_calendar import MarketCalendar
 from src.visualization.reports.quantstats_reporter import QuantStatsReporter
 from src.utils import logger
 
@@ -19,7 +21,7 @@ if TYPE_CHECKING:
     from src.backtesting.engine.multi_asset_portfolio import MultiAssetPortfolio
 
 # Type alias for portfolio return types
-PortfolioType = Union[Portfolio, 'MultiAssetPortfolio']
+PortfolioType = Union[Portfolio, 'MultiAssetPortfolio', RollingWindowResults]
 
 
 class BacktestEngine:
@@ -72,7 +74,7 @@ class BacktestEngine:
         self.risk_config = risk_config or RiskConfig.moderate()
         self.enable_regime_analysis = enable_regime_analysis
         self.allow_shorts = allow_shorts
-        self.data_loader = DataLoader()
+        self.data_loader = StreamingDataLoader()
         self.reporter = QuantStatsReporter(benchmark=benchmark)
 
         # Cache for regime analysis
@@ -81,6 +83,51 @@ class BacktestEngine:
         self._last_start_date = None
         self._last_end_date = None
 
+    def _load_data_as_pandas(
+        self,
+        symbols: List[str],
+        start_date: str,
+        end_date: str
+    ) -> pd.DataFrame:
+        """
+        Load data using streaming loader and convert to pandas MultiIndex DataFrame.
+
+        Uses the StreamingDataLoader for efficient I/O, then converts to pandas
+        format expected by strategies and portfolio simulator.
+
+        Args:
+            symbols: List of symbols to load
+            start_date: Start date (YYYY-MM-DD)
+            end_date: End date (YYYY-MM-DD)
+
+        Returns:
+            pandas DataFrame with MultiIndex (symbol, timestamp) and OHLCV columns
+        """
+        dfs = []
+
+        for symbol, pl_df in self.data_loader.iter_symbols(symbols, start_date, end_date):
+            # Convert Polars to pandas
+            pdf = pl_df.to_pandas()
+
+            # Set timestamp as index
+            pdf = pdf.set_index('timestamp')
+
+            # Add symbol column for MultiIndex
+            pdf['symbol'] = symbol
+
+            dfs.append(pdf)
+
+        if not dfs:
+            raise ValueError(f"No data found for symbols {symbols} between {start_date} and {end_date}")
+
+        # Concatenate and create MultiIndex
+        combined = pd.concat(dfs)
+        combined = combined.reset_index().set_index(['symbol', 'timestamp']).sort_index()
+
+        logger.success(f"Loaded {len(combined)} bars for {len(symbols)} symbol(s) from {start_date} to {end_date}")
+
+        return combined
+
     def run(
         self,
         strategy: BaseStrategy,
@@ -88,7 +135,10 @@ class BacktestEngine:
         start_date: str,
         end_date: str,
         price_type: str = 'close',
-        portfolio_mode: str = 'single'
+        portfolio_mode: str = 'single',
+        mode: str = 'batch',
+        window_days: int = 60,
+        step_days: Optional[int] = None
     ) -> PortfolioType:
         """
         Run backtest for a strategy.
@@ -102,9 +152,14 @@ class BacktestEngine:
             portfolio_mode: 'single' or 'multi'
                 - 'single': Test each symbol independently (default, backward compatible)
                 - 'multi': Hold multiple symbols in one portfolio simultaneously
+            mode: Execution mode ('batch' or 'rolling')
+                - 'batch': Load all data upfront, single simulation pass (default)
+                - 'rolling': Rolling window simulation, more realistic for live trading
+            window_days: Number of TRADING days per window (for rolling mode, default: 60)
+            step_days: Number of TRADING days to step forward (default: window_days)
 
         Returns:
-            Portfolio object with backtest results
+            Portfolio object (batch mode) or RollingWindowResults (rolling mode)
         """
         if isinstance(symbols, str):
             symbols = [symbols]
@@ -135,14 +190,31 @@ class BacktestEngine:
             if self.risk_config.use_stop_loss:
                 logger.metric(f"Stop loss: {self.risk_config.stop_loss_pct*100:.1f}% ({self.risk_config.stop_loss_type})")
 
+        # Log execution mode
+        if mode == 'rolling':
+            logger.info(f"Mode: ROLLING (window={window_days} trading days, step={step_days or window_days})")
+        else:
+            logger.info(f"Mode: BATCH")
+
         logger.separator()
         logger.blank()
 
-        data = self.data_loader.load_symbols(symbols, start_date, end_date)
+        # Route to rolling window mode if requested
+        if mode == 'rolling':
+            return self._run_rolling(
+                strategy=strategy,
+                symbols=symbols,
+                start_date=start_date,
+                end_date=end_date,
+                window_days=window_days,
+                step_days=step_days or window_days,
+                price_type=price_type
+            )
 
-        # Cache for regime analysis
+        # BATCH MODE (default) - existing logic below
+
+        # Cache for regime analysis (batch mode only)
         if self.enable_regime_analysis:
-            self._last_market_data = data
             self._last_symbols = symbols
             self._last_start_date = start_date
             self._last_end_date = end_date
@@ -174,24 +246,24 @@ class BacktestEngine:
                         f"got {symbols}"
                     )
 
-            portfolio = self._run_multi_symbol_strategy(strategy, data, symbols, price_type)
+            portfolio = self._run_multi_symbol_strategy(strategy, symbols, start_date, end_date, price_type)
 
         elif portfolio_mode == 'single':
             # SINGLE-SYMBOL MODE (backward compatible)
             if len(symbols) == 1:
-                portfolio = self._run_single_symbol(strategy, data, symbols[0], price_type)
+                portfolio = self._run_single_symbol(strategy, symbols[0], start_date, end_date, price_type)
             else:
                 # Sweep mode: run each symbol separately
-                portfolio = self._run_multiple_symbols(strategy, data, symbols, price_type)
+                portfolio = self._run_multiple_symbols(strategy, symbols, start_date, end_date, price_type)
 
         elif portfolio_mode == 'multi':
             # MULTI-SYMBOL PORTFOLIO MODE (new)
             if len(symbols) == 1:
                 # Single symbol in multi mode = same as single mode
-                portfolio = self._run_single_symbol(strategy, data, symbols[0], price_type)
+                portfolio = self._run_single_symbol(strategy, symbols[0], start_date, end_date, price_type)
             else:
                 # True multi-asset portfolio
-                portfolio = self._run_multi_asset_portfolio(strategy, data, symbols, price_type)
+                portfolio = self._run_multi_asset_portfolio(strategy, symbols, start_date, end_date, price_type)
 
         else:
             raise ValueError(f"Invalid portfolio_mode: {portfolio_mode}. Must be 'single' or 'multi'.")
@@ -212,7 +284,8 @@ class BacktestEngine:
         end_date: str,
         output_dir: Path,
         price_type: str = 'close',
-        include_pdf: bool = False
+        include_pdf: bool = False,
+        portfolio_mode: str = 'single'
     ) -> Portfolio:
         """
         Run backtest and generate QuantStats report.
@@ -250,7 +323,8 @@ class BacktestEngine:
             symbols=symbols,
             start_date=start_date,
             end_date=end_date,
-            price_type=price_type
+            price_type=price_type,
+            portfolio_mode=portfolio_mode
         )
 
         # Generate report title
@@ -300,17 +374,23 @@ class BacktestEngine:
     def _run_single_symbol(
         self,
         strategy: BaseStrategy,
-        data: pd.DataFrame,
         symbol: str,
+        start_date: str,
+        end_date: str,
         price_type: str
     ) -> Portfolio:
         """
         Run backtest for a single symbol.
-
-        Handles both standard strategies (2 return values) and
-        LongShortStrategy (4 return values).
         """
-        symbol_data: pd.DataFrame = data.xs(symbol, level='symbol')  # type: ignore[assignment]
+        # Load data specifically for this symbol (streaming-friendly)
+        pl_df = self.data_loader.load_symbol(symbol, start_date, end_date)
+        if pl_df.is_empty():
+             raise ValueError(f"No data found for {symbol}")
+        
+        symbol_data = pl_df.to_pandas().set_index('timestamp')
+        # Compatibility with existing logic expecting 'symbol' context in some places? 
+        # Actually strategy.generate_signals usually takes the DF directly.
+        
         price = symbol_data[price_type]
 
         # Check if strategy is a LongShortStrategy (returns 4 signals)
@@ -368,8 +448,9 @@ class BacktestEngine:
     def _run_multiple_symbols(
         self,
         strategy: BaseStrategy,
-        data: pd.DataFrame,
         symbols: List[str],
+        start_date: str,
+        end_date: str,
         price_type: str
     ) -> Portfolio:
         """
@@ -378,62 +459,92 @@ class BacktestEngine:
         Note: This is the old behavior - each symbol tested independently.
         For true portfolio mode, use _run_multi_asset_portfolio.
         """
+        """
+        Run backtest for multiple symbols in sweep mode. 
+        Currently simplified to first symbol only to maintain API compatibility while using streaming loader.
+        """
         logger.warning(f"Multi-symbol backtesting simplified to first symbol only.")
-        return self._run_single_symbol(strategy, data, symbols[0], price_type)
+        return self._run_single_symbol(strategy, symbols[0], start_date, end_date, price_type)
 
     def _run_multi_asset_portfolio(
         self,
         strategy: BaseStrategy,
-        data: pd.DataFrame,
         symbols: List[str],
+        start_date: str,
+        end_date: str,
         price_type: str
     ) -> Portfolio:
         """
         Run backtest for multiple symbols in portfolio mode (hold all simultaneously).
-
-        This is the new multi-asset portfolio implementation.
         """
         from src.backtesting.engine.multi_asset_portfolio import MultiAssetPortfolio
 
         logger.info(f"Running multi-asset portfolio with {len(symbols)} symbols")
 
-        # Generate signals for each symbol
+        # Use synchronized loading from StreamingDataLoader for efficiency
+        # This returns Dict[str, pl.DataFrame]
+        try:
+             pl_dfs = self.data_loader.load_symbols_synchronized(symbols, start_date, end_date)
+        except Exception as e:
+             logger.error(f"Failed to load synchronized data: {e}")
+             raise
+
+        # Convert to Pandas for internal processing
+        # We need a unified price DataFrame and individual symbol DataFrames
+        prices_dict = {}
         all_entries = {}
         all_exits = {}
+        
+        # We need to construct the 'price_data' DF used by MultiAssetPortfolio
+        # It expects a multi-index (timestamp, symbol) usually, or we pass dict?
+        # MultiAssetPortfolio signature: price_data: pd.DataFrame (multi-index usually)
+        
+        # Let's reconstruct the needed data structures
+        
+        for symbol, pl_df in pl_dfs.items():
+            pdf = pl_df.to_pandas().set_index('timestamp')
+            prices_dict[symbol] = pdf[price_type]
 
-        for symbol in symbols:
+            # Generate signals - handle both standard (2 signals) and LongShort (4 signals) strategies
             try:
-                symbol_data: pd.DataFrame = data.xs(symbol, level='symbol')  # type: ignore[assignment]
-                entries, exits = strategy.generate_signals(symbol_data)
-
-                # Ensure boolean type
-                entries = entries.fillna(False).astype(bool)
-                exits = exits.fillna(False).astype(bool)
-
+                if isinstance(strategy, LongShortStrategy):
+                    long_entries, long_exits, short_entries, short_exits = strategy.generate_signals(pdf)
+                    # Combine: entry = long entry or short cover, exit = long exit or short entry
+                    entries = (long_entries | short_exits).fillna(False).astype(bool)
+                    exits = (long_exits | short_entries).fillna(False).astype(bool)
+                else:
+                    entries, exits = strategy.generate_signals(pdf)
+                    entries = entries.fillna(False).astype(bool)
+                    exits = exits.fillna(False).astype(bool)
                 all_entries[symbol] = entries
                 all_exits[symbol] = exits
-
             except Exception as e:
-                logger.warning(f"Could not generate signals for {symbol}: {e}")
-                continue
-
-        # Create DataFrames with symbols as columns
+                logger.warning(f"Error generating signals for {symbol}: {e}")
+                
+        prices_df = pd.DataFrame(prices_dict)
         entries_df = pd.DataFrame(all_entries)
         exits_df = pd.DataFrame(all_exits)
+        
+        # Reconstruct multi-index 'data' for the portfolio if needed
+        # Or simply pass what we have if MultiAssetPortfolio supports it.
+        # Looking at original code: price_data=data (which was multi-index).
+        
+        # Let's rebuild the multi-index DF lazily or just skip if not strictly used or build it:
+        dfs_list = []
+        for sym, pl_df in pl_dfs.items():
+            p = pl_df.to_pandas().set_index('timestamp')
+            p['symbol'] = sym
+            dfs_list.append(p)
+        
+        if dfs_list:
+             data = pd.concat(dfs_list).reset_index().set_index(['symbol', 'timestamp']).sort_index()
+        else:
+             data = pd.DataFrame()
 
-        # Extract prices for all symbols
-        prices_dict = {}
-        for symbol in symbols:
-            try:
-                symbol_data: pd.DataFrame = data.xs(symbol, level='symbol')  # type: ignore[assignment]
-                prices_dict[symbol] = symbol_data[price_type]
-            except Exception as e:
-                logger.warning(f"Could not extract prices for {symbol}: {e}")
-                continue
-
-        prices_df = pd.DataFrame(prices_dict)
 
         # Create multi-asset portfolio
+        # Pass max_positions from risk_config for concentrated portfolios
+        max_pos = self.risk_config.max_positions if self.risk_config else 10
         portfolio = MultiAssetPortfolio(
             symbols=symbols,
             prices=prices_df,
@@ -445,6 +556,7 @@ class BacktestEngine:
             freq=self.freq,
             market_hours_only=self.market_hours_only,
             risk_config=self.risk_config,
+            max_positions=max_pos,
             price_data=data
         )
 
@@ -518,8 +630,9 @@ class BacktestEngine:
     def _run_multi_symbol_strategy(
         self,
         strategy: MultiSymbolStrategy,
-        data: pd.DataFrame,
         symbols: List[str],
+        start_date: str,
+        end_date: str,
         price_type: str
     ) -> Portfolio:
         """
@@ -540,8 +653,20 @@ class BacktestEngine:
         logger.info(f"Running multi-symbol strategy: {strategy.__class__.__name__}")
         logger.info(f"Symbols: {', '.join(symbols)}")
 
-        # Synchronize data across symbols
-        data_dict = self._synchronize_symbol_data(data, symbols)
+        # Synchronize data using streaming loader
+        pl_dfs = self.data_loader.load_symbols_synchronized(symbols, start_date, end_date)
+        
+        # Convert to pandas and build dict
+        data_dict = {}
+        dfs_list = []
+        
+        for sym, pl_df in pl_dfs.items():
+             pdf = pl_df.to_pandas().set_index('timestamp')
+             data_dict[sym] = pdf
+             
+             # For PairsPortfolio 'price_data1/2' args
+             # And for consistency
+             
 
         # Generate multi-symbol signals
         signals_dict = strategy.generate_multi_signals(data_dict)
@@ -880,3 +1005,252 @@ class BacktestEngine:
         except Exception as e:
             logger.warning(f"Could not perform regime analysis: {e}")
             return None
+
+    def _generate_windows(
+        self,
+        start_date: str,
+        end_date: str,
+        window_days: int,
+        step_days: int
+    ) -> List[tuple]:
+        """
+        Generate rolling window date ranges based on TRADING DAYS.
+
+        Uses MarketCalendar to ensure windows respect actual trading days,
+        not calendar days. This is critical for accurate backtesting.
+
+        Args:
+            start_date: Start date (YYYY-MM-DD)
+            end_date: End date (YYYY-MM-DD)
+            window_days: Number of TRADING days per window (e.g., 60 = ~3 months)
+            step_days: Number of TRADING days to step forward
+
+        Returns:
+            List of (window_start, window_end) tuples as YYYY-MM-DD strings
+        """
+        calendar = MarketCalendar()
+
+        # Get all trading days in range
+        trading_days = calendar.get_trading_days(start_date, end_date)
+
+        if len(trading_days) < window_days:
+            logger.warning(
+                f"Only {len(trading_days)} trading days available, "
+                f"but window_days={window_days}. Returning single window."
+            )
+            if len(trading_days) > 0:
+                return [(
+                    trading_days[0].strftime('%Y-%m-%d'),
+                    trading_days[-1].strftime('%Y-%m-%d')
+                )]
+            return []
+
+        windows = []
+        i = 0
+        while i + window_days <= len(trading_days):
+            window_start = trading_days[i].strftime('%Y-%m-%d')
+            window_end = trading_days[i + window_days - 1].strftime('%Y-%m-%d')
+            windows.append((window_start, window_end))
+            i += step_days
+
+        logger.info(f"Generated {len(windows)} rolling windows of {window_days} trading days each")
+
+        return windows
+
+    def _run_rolling(
+        self,
+        strategy: BaseStrategy,
+        symbols: List[str],
+        start_date: str,
+        end_date: str,
+        window_days: int,
+        step_days: int,
+        price_type: str
+    ) -> RollingWindowResults:
+        """
+        Execute backtest with rolling windows.
+
+        Memory efficient: Only holds current window in memory (~1-2 GB per window).
+        LRU cache in StreamingDataLoader accelerates overlapping window loads.
+
+        Args:
+            strategy: Strategy instance to backtest
+            symbols: List of symbols to trade
+            start_date: Overall start date (YYYY-MM-DD)
+            end_date: Overall end date (YYYY-MM-DD)
+            window_days: Number of trading days per window
+            step_days: Number of trading days to step forward
+            price_type: Price column to use for signals
+
+        Returns:
+            RollingWindowResults with stitched equity curve and per-window stats
+        """
+        # 1. Generate window schedule (trading days)
+        windows = self._generate_windows(start_date, end_date, window_days, step_days)
+
+        if not windows:
+            raise ValueError(f"No valid windows generated for {start_date} to {end_date}")
+
+        results = RollingWindowResults()
+
+        logger.info(f"Running {len(windows)} rolling windows...")
+
+        for window_idx, (window_start, window_end) in enumerate(windows):
+            logger.info(f"Window {window_idx + 1}/{len(windows)}: {window_start} to {window_end}")
+
+            # 2. Load ONLY this window's data (LRU cache helps with overlap)
+            window_data = {}
+            for symbol, pl_df in self.data_loader.iter_symbols(
+                symbols, window_start, window_end
+            ):
+                if not pl_df.is_empty():
+                    window_data[symbol] = pl_df.to_pandas().set_index('timestamp')
+
+            if not window_data:
+                logger.warning(f"No data for window {window_idx + 1}, skipping")
+                continue
+
+            # 3. Generate signals for this window
+            signals = {}
+            for symbol, data in window_data.items():
+                try:
+                    if isinstance(strategy, LongShortStrategy):
+                        signal_tuple = strategy.generate_signals(data)
+                    else:
+                        entries, exits = strategy.generate_signals(data)
+                        signal_tuple = (entries, exits)
+                    signals[symbol] = signal_tuple
+                except Exception as e:
+                    logger.warning(f"Signal generation failed for {symbol}: {e}")
+
+            if not signals:
+                logger.warning(f"No signals generated for window {window_idx + 1}, skipping")
+                continue
+
+            # 4. Simulate portfolio for this window
+            try:
+                window_portfolio = self._simulate_window(
+                    window_data=window_data,
+                    signals=signals,
+                    price_type=price_type
+                )
+                results.add_window(window_start, window_end, window_portfolio)
+            except Exception as e:
+                logger.error(f"Window {window_idx + 1} simulation failed: {e}")
+
+            # Window data garbage collected here (~1-2 GB freed)
+
+        # 5. Stitch results
+        if results.windows:
+            results.stitch_equity_curves()
+            results.compute_combined_stats()
+
+            logger.success(f"Rolling backtest complete: {len(results.windows)} windows")
+            if results.combined_stats:
+                sharpe = results.combined_stats.get('sharpe', 0)
+                total_ret = results.combined_stats.get('total_return', 0)
+                logger.metric(f"Combined Sharpe: {sharpe:.2f}")
+                logger.metric(f"Combined Return: {total_ret:.1%}")
+        else:
+            logger.warning("No windows completed successfully")
+
+        return results
+
+    def _simulate_window(
+        self,
+        window_data: Dict[str, pd.DataFrame],
+        signals: Dict[str, tuple],
+        price_type: str
+    ) -> Portfolio:
+        """
+        Simulate a single window's portfolio.
+
+        Args:
+            window_data: Dict mapping symbol -> DataFrame with OHLCV
+            signals: Dict mapping symbol -> (entries, exits) or 4-tuple for long-short
+            price_type: Price column to use
+
+        Returns:
+            Portfolio object for this window
+        """
+        # For single symbol, use simple path
+        if len(window_data) == 1:
+            symbol = list(window_data.keys())[0]
+            data = window_data[symbol]
+            signal_tuple = signals[symbol]
+
+            if len(signal_tuple) == 4:
+                entries, exits, short_entries, short_exits = signal_tuple
+            else:
+                entries, exits = signal_tuple
+                short_entries = pd.Series(False, index=entries.index)
+                short_exits = pd.Series(False, index=entries.index)
+
+            entries = entries.fillna(False).astype(bool)
+            exits = exits.fillna(False).astype(bool)
+            short_entries = short_entries.fillna(False).astype(bool)
+            short_exits = short_exits.fillna(False).astype(bool)
+
+            return from_signals(
+                close=data[price_type],
+                entries=entries,
+                exits=exits,
+                short_entries=short_entries,
+                short_exits=short_exits,
+                init_cash=self.initial_capital,
+                fees=self.fees,
+                slippage=self.slippage,
+                freq=self.freq,
+                market_hours_only=self.market_hours_only,
+                risk_config=self.risk_config,
+                price_data=data,
+                allow_shorts=self.allow_shorts
+            )
+
+        # Multi-symbol: use MultiAssetPortfolio
+        from src.backtesting.engine.multi_asset_portfolio import MultiAssetPortfolio
+
+        symbols = list(window_data.keys())
+        prices_dict = {}
+        all_entries = {}
+        all_exits = {}
+
+        for symbol, data in window_data.items():
+            prices_dict[symbol] = data[price_type]
+
+            if symbol in signals:
+                signal_tuple = signals[symbol]
+                if len(signal_tuple) >= 2:
+                    entries, exits = signal_tuple[0], signal_tuple[1]
+                    all_entries[symbol] = entries.fillna(False).astype(bool)
+                    all_exits[symbol] = exits.fillna(False).astype(bool)
+
+        prices_df = pd.DataFrame(prices_dict)
+        entries_df = pd.DataFrame(all_entries)
+        exits_df = pd.DataFrame(all_exits)
+
+        # Build multi-index data
+        dfs_list = []
+        for symbol, data in window_data.items():
+            df_copy = data.copy()
+            df_copy['symbol'] = symbol
+            dfs_list.append(df_copy)
+
+        combined = pd.concat(dfs_list)
+        combined = combined.reset_index().set_index(['symbol', 'timestamp']).sort_index()
+
+        portfolio = MultiAssetPortfolio(
+            symbols=symbols,
+            prices=prices_df,
+            entries=entries_df,
+            exits=exits_df,
+            init_cash=self.initial_capital,
+            fees=self.fees,
+            slippage=self.slippage,
+            freq=self.freq,
+            market_hours_only=self.market_hours_only,
+            risk_config=self.risk_config,
+            price_data=combined
+        )
+
+        return portfolio

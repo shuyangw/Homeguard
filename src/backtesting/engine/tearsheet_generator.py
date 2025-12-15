@@ -260,7 +260,7 @@ class TearsheetGenerator:
             html = '<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">'
 
             # Best days
-            html += '<div><h4 style="color: var(--text-primary); margin-bottom: 10px;">📈 Best Days</h4>'
+            html += '<div><h4 style="color: var(--text-primary); margin-bottom: 10px;">Best Days</h4>'
             html += '<table style="width: 100%; border-collapse: collapse; font-size: 0.9em;">'
             html += '<tr><th style="border: 1px solid var(--border-color); padding: 8px;">Date</th><th style="border: 1px solid var(--border-color); padding: 8px;">Return</th></tr>'
             for date, ret in best_days.items():
@@ -269,7 +269,7 @@ class TearsheetGenerator:
             html += '</table></div>'
 
             # Worst days
-            html += '<div><h4 style="color: var(--text-primary); margin-bottom: 10px;">📉 Worst Days</h4>'
+            html += '<div><h4 style="color: var(--text-primary); margin-bottom: 10px;">Worst Days</h4>'
             html += '<table style="width: 100%; border-collapse: collapse; font-size: 0.9em;">'
             html += '<tr><th style="border: 1px solid var(--border-color); padding: 8px;">Date</th><th style="border: 1px solid var(--border-color); padding: 8px;">Return</th></tr>'
             for date, ret in worst_days.items():

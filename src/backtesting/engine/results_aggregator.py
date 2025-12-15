@@ -281,7 +281,7 @@ class ResultsAggregator:
 
         # Overall Performance Section
         logger.blank()
-        logger.header("📊 OVERALL PERFORMANCE")
+        logger.header("OVERALL PERFORMANCE")
         logger.metric(f"  Total Symbols Tested: {summary.get('Total Symbols', 0)}")
 
         profitable = summary.get('Profitable Symbols', 0)
@@ -289,15 +289,15 @@ class ResultsAggregator:
         win_rate = summary.get('Win Rate (Symbols)', 0)
 
         if profitable > unprofitable:
-            logger.profit(f"  ✓ Profitable: {profitable} ({win_rate:.1f}%)")
-            logger.loss(f"  ✗ Unprofitable: {unprofitable}")
+            logger.profit(f"  [+] Profitable: {profitable} ({win_rate:.1f}%)")
+            logger.loss(f"  [-] Unprofitable: {unprofitable}")
         else:
-            logger.loss(f"  ✓ Profitable: {profitable} ({win_rate:.1f}%)")
-            logger.loss(f"  ✗ Unprofitable: {unprofitable}")
+            logger.loss(f"  [+] Profitable: {profitable} ({win_rate:.1f}%)")
+            logger.loss(f"  [-] Unprofitable: {unprofitable}")
 
         # Consistency Score
         consistency = summary.get('Consistency Score', 0)
-        stars = '⭐' * int(consistency)
+        stars = '*' * int(consistency)
         if consistency >= 7:
             logger.success(f"  Consistency: {consistency:.1f}/10 {stars} (Excellent)")
         elif consistency >= 5:
@@ -307,7 +307,7 @@ class ResultsAggregator:
 
         # Returns Distribution Section
         logger.blank()
-        logger.header("💰 RETURNS DISTRIBUTION")
+        logger.header("RETURNS DISTRIBUTION")
 
         median_return = summary.get('Total Return [%] - Median', 0)
         mean_return = summary.get('Total Return [%] - Mean', 0)
@@ -338,7 +338,7 @@ class ResultsAggregator:
 
         # Risk Metrics Section
         logger.blank()
-        logger.header("⚠️  RISK METRICS")
+        logger.header("RISK METRICS")
 
         median_dd = summary.get('Max Drawdown [%] - Median', 0)
         mean_dd = summary.get('Max Drawdown [%] - Mean', 0)
@@ -368,7 +368,7 @@ class ResultsAggregator:
 
         # Sharpe Ratio Section
         logger.blank()
-        logger.header("📈 SHARPE RATIO ANALYSIS")
+        logger.header("SHARPE RATIO ANALYSIS")
 
         median_sharpe = summary.get('Sharpe Ratio - Median', 0)
         mean_sharpe = summary.get('Sharpe Ratio - Mean', 0)
@@ -391,7 +391,7 @@ class ResultsAggregator:
 
         # Top Recommendations Section
         logger.blank()
-        logger.header("🏆 TOP RECOMMENDATIONS")
+        logger.header("TOP RECOMMENDATIONS")
 
         if 'Best Overall Symbol' in summary:
             best = summary['Best Overall Symbol']
@@ -413,34 +413,34 @@ class ResultsAggregator:
 
         # Strategy Assessment Section
         logger.blank()
-        logger.header("✅ STRATEGY ASSESSMENT")
+        logger.header("STRATEGY ASSESSMENT")
 
         high_quality = summary.get('High Quality Count', 0)
         risk_reward = summary.get('Risk-Reward Ratio', 0)
 
         # Consistency assessment
         if consistency >= 7:
-            logger.success(f"  ✓ Consistency: Excellent ({consistency:.1f}/10)")
+            logger.success(f"  [+] Consistency: Excellent ({consistency:.1f}/10)")
         elif consistency >= 5:
-            logger.info(f"  ✓ Consistency: Good ({consistency:.1f}/10)")
+            logger.info(f"  [+] Consistency: Good ({consistency:.1f}/10)")
         else:
-            logger.warning(f"  ⚠ Consistency: Needs Improvement ({consistency:.1f}/10)")
+            logger.warning(f"  [!] Consistency: Needs Improvement ({consistency:.1f}/10)")
 
         # Win rate assessment
         if win_rate >= 70:
-            logger.success(f"  ✓ Win Rate: Excellent ({win_rate:.1f}% profitable)")
+            logger.success(f"  [+] Win Rate: Excellent ({win_rate:.1f}% profitable)")
         elif win_rate >= 50:
-            logger.info(f"  ✓ Win Rate: Good ({win_rate:.1f}% profitable)")
+            logger.info(f"  [+] Win Rate: Good ({win_rate:.1f}% profitable)")
         else:
-            logger.warning(f"  ⚠ Win Rate: Low ({win_rate:.1f}% profitable)")
+            logger.warning(f"  [!] Win Rate: Low ({win_rate:.1f}% profitable)")
 
         # Risk assessment
         if median_dd > -10:
-            logger.success(f"  ✓ Risk: Low (median DD {median_dd:.2f}%)")
+            logger.success(f"  [+] Risk: Low (median DD {median_dd:.2f}%)")
         elif median_dd > -20:
-            logger.warning(f"  ⚠ Risk: Moderate (median DD {median_dd:.2f}%)")
+            logger.warning(f"  [!] Risk: Moderate (median DD {median_dd:.2f}%)")
         else:
-            logger.error(f"  ✗ Risk: High (median DD {median_dd:.2f}%)")
+            logger.error(f"  [-] Risk: High (median DD {median_dd:.2f}%)")
 
         # Quality count
         logger.metric(f"  High Quality Trades: {high_quality} ({high_quality/total*100:.1f}%)")
@@ -448,11 +448,11 @@ class ResultsAggregator:
 
         # Risk-reward ratio
         if risk_reward >= 2.0:
-            logger.success(f"  ✓ Risk-Reward Ratio: {risk_reward:.2f} (Excellent)")
+            logger.success(f"  [+] Risk-Reward Ratio: {risk_reward:.2f} (Excellent)")
         elif risk_reward >= 1.0:
-            logger.info(f"  ✓ Risk-Reward Ratio: {risk_reward:.2f} (Good)")
+            logger.info(f"  [+] Risk-Reward Ratio: {risk_reward:.2f} (Good)")
         else:
-            logger.warning(f"  ⚠ Risk-Reward Ratio: {risk_reward:.2f} (Poor)")
+            logger.warning(f"  [!] Risk-Reward Ratio: {risk_reward:.2f} (Poor)")
 
         # Trading Activity
         total_trades = summary.get('Total Trades (All Symbols)', 0)
