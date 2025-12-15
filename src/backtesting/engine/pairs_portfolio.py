@@ -9,9 +9,8 @@ import pandas as pd
 import numpy as np
 from dataclasses import dataclass
 from typing import Optional, Dict, Any, Tuple
-import pytz
-from datetime import time
 
+from src.backtesting.engine.base_portfolio import BasePortfolio
 from src.backtesting.utils.risk_config import RiskConfig
 from src.backtesting.utils.pairs_position_sizer import PairsPositionSizer, DollarNeutralSizer
 from src.utils import logger
@@ -139,9 +138,13 @@ class PairPosition:
         return pnl1 + pnl2
 
 
-class PairsPortfolio:
+class PairsPortfolio(BasePortfolio):
     """
     Portfolio simulator for pairs trading strategies.
+
+    Inherits common functionality from BasePortfolio:
+    - Market hours checking (_is_market_hours)
+    - Period annualization (_get_periods_per_year)
 
     This simulator handles:
     - Synchronized entry/exit of both legs
@@ -192,6 +195,17 @@ class PairsPortfolio:
             price_data1: Full OHLCV data for symbol1
             price_data2: Full OHLCV data for symbol2
         """
+        # Initialize base class (handles init_cash, fees, slippage, freq, market_hours_only,
+        # market hours constants, and equity_curve/_stats)
+        super().__init__(
+            init_cash=init_cash,
+            fees=fees,
+            slippage=slippage,
+            freq=freq,
+            market_hours_only=market_hours_only
+        )
+
+        # PairsPortfolio-specific attributes
         self.symbol1, self.symbol2 = symbols
         self.prices1 = prices1
         self.prices2 = prices2
@@ -199,53 +213,19 @@ class PairsPortfolio:
         self.exits = exits.astype(bool)
         self.short_entries = short_entries.astype(bool)
         self.short_exits = short_exits.astype(bool)
-        self.init_cash = init_cash
-        self.fees = fees
-        self.slippage = slippage
         self.hedge_ratio = hedge_ratio if hedge_ratio is not None else pd.Series(1.0, index=prices1.index)
-        self.freq = freq
-        self.market_hours_only = market_hours_only
         self.risk_config = risk_config or RiskConfig.moderate()
         self.price_data1 = price_data1
         self.price_data2 = price_data2
 
-        # Define market hours in EST/EDT
-        self.market_open = time(9, 35)  # 9:35 AM EST
-        self.market_close = time(15, 55)  # 3:55 PM EST
-        self.eastern_tz = pytz.timezone('US/Eastern')
-
         # Portfolio state
         self.trades = []
-        self.equity_curve = None
-        self._stats = None
         self.current_position: Optional[PairPosition] = None
 
         # Run simulation
         self._simulate()
 
-    def _is_market_hours(self, timestamp: pd.Timestamp) -> bool:
-        """
-        Check if timestamp is within market trading hours.
-
-        Args:
-            timestamp: Timestamp to check
-
-        Returns:
-            True if within market hours (9:35 AM - 3:55 PM EST)
-        """
-        if not self.market_hours_only:
-            return True
-
-        if timestamp.tz is None:
-            eastern_time = timestamp
-        else:
-            eastern_time = timestamp.tz_convert(self.eastern_tz)
-
-        if eastern_time.weekday() >= 5:  # Weekend
-            return False
-
-        current_time = eastern_time.time()
-        return self.market_open <= current_time <= self.market_close
+    # NOTE: _is_market_hours is inherited from BasePortfolio
 
     def _calculate_position_size(
         self,
@@ -604,13 +584,8 @@ class PairsPortfolio:
         # Basic metrics
         total_return = ((self.equity_curve.iloc[-1] / self.init_cash) - 1) * 100
 
-        # Annualization factor
-        if self.freq == '1min':
-            periods_per_year = 252 * 390  # 252 trading days * 390 minutes
-        elif self.freq == '1D':
-            periods_per_year = 252
-        else:
-            periods_per_year = 252
+        # Use inherited annualization factor
+        periods_per_year = self._get_periods_per_year()
 
         annual_return = (1 + total_return / 100) ** (periods_per_year / len(self.equity_curve)) - 1
         annual_return *= 100

@@ -9,9 +9,8 @@ falling back to pure Python for advanced features.
 import pandas as pd
 import numpy as np
 from typing import Optional, Dict, Any, List
-import pytz
-from datetime import time
 
+from src.backtesting.engine.base_portfolio import BasePortfolio
 from src.backtesting.utils.risk_config import RiskConfig
 from src.backtesting.utils.position_sizer import FixedPercentageSizer, FixedDollarSizer, VolatilityBasedSizer, KellyCriterionSizer
 from src.backtesting.utils.risk_manager import RiskManager, Position
@@ -29,9 +28,13 @@ except ImportError:
     NUMBA_AVAILABLE = False
 
 
-class Portfolio:
+class Portfolio(BasePortfolio):
     """
     Portfolio object that tracks trades and performance metrics.
+
+    Inherits common functionality from BasePortfolio:
+    - Market hours checking (_is_market_hours)
+    - Period annualization (_get_periods_per_year)
     """
 
     def __init__(
@@ -66,28 +69,27 @@ class Portfolio:
             allow_shorts: If True, enable short selling (default: False)
             use_numba: If True, use Numba JIT compilation for performance (default: True)
         """
+        # Initialize base class (handles init_cash, fees, slippage, freq, market_hours_only,
+        # market hours constants, and equity_curve/_stats)
+        super().__init__(
+            init_cash=init_cash,
+            fees=fees,
+            slippage=slippage,
+            freq=freq,
+            market_hours_only=market_hours_only
+        )
+
+        # Portfolio-specific attributes
         self.price = price
         self.entries = entries.astype(bool)
         self.exits = exits.astype(bool)
-        self.init_cash = init_cash
-        self.fees = fees
-        self.slippage = slippage
-        self.freq = freq
-        self.market_hours_only = market_hours_only
         self.risk_config = risk_config or RiskConfig.moderate()
         self.price_data = price_data
         self.allow_shorts = allow_shorts
         self.use_numba = use_numba
         self.borrow_cost = 0.0030  # 30 bps/year for short positions
 
-        # Define market hours in EST/EDT
-        self.market_open = time(9, 35)  # 9:35 AM EST
-        self.market_close = time(15, 55)  # 3:55 PM EST
-        self.eastern_tz = pytz.timezone('US/Eastern')
-
         self.trades: List[Dict[str, Any]] = []
-        self.equity_curve = None
-        self._stats = None
 
         # Initialize position sizer based on risk config
         self._init_position_sizer()
@@ -101,34 +103,7 @@ class Portfolio:
         else:
             self._simulate()
 
-    def _is_market_hours(self, timestamp: pd.Timestamp) -> bool:
-        """
-        Check if the given timestamp is within market trading hours.
-
-        Args:
-            timestamp: Timestamp to check
-
-        Returns:
-            True if within market hours (9:35 AM - 3:55 PM EST), False otherwise
-        """
-        if not self.market_hours_only:
-            return True
-
-        # Convert timestamp to Eastern time if it has timezone info
-        if timestamp.tz is None:
-            # Assume the timestamp is already in Eastern time if no timezone
-            eastern_time = timestamp
-        else:
-            # Convert to Eastern timezone
-            eastern_time = timestamp.tz_convert(self.eastern_tz)
-
-        # Check if it's a weekday (Monday=0, Sunday=6)
-        if eastern_time.weekday() >= 5:  # Saturday or Sunday
-            return False
-
-        # Check if within trading hours
-        current_time = eastern_time.time()
-        return self.market_open <= current_time <= self.market_close
+    # NOTE: _is_market_hours is inherited from BasePortfolio
 
     def _init_position_sizer(self):
         """Initialize position sizer based on risk config."""
@@ -848,18 +823,7 @@ class Portfolio:
 
         return self._stats
 
-    def _get_periods_per_year(self) -> int:
-        """
-        Get number of periods per year based on frequency.
-        """
-        freq_map = {
-            '1min': 252 * 6.5 * 60,
-            '1h': 252 * 6.5,
-            '1d': 252,
-            'D': 252,
-            'daily': 252
-        }
-        return freq_map.get(self.freq, 252)
+    # NOTE: _get_periods_per_year is inherited from BasePortfolio
 
     def returns(self, freq: Optional[str] = None) -> pd.Series:
         """

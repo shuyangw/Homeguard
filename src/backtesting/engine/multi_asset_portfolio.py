@@ -6,9 +6,8 @@ import pandas as pd
 import numpy as np
 from typing import Dict, List, Optional, Any, Tuple
 from dataclasses import dataclass
-import pytz
-from datetime import time
 
+from src.backtesting.engine.base_portfolio import BasePortfolio
 from src.backtesting.utils.risk_config import RiskConfig
 from src.backtesting.utils.position_sizer import FixedPercentageSizer
 from src.backtesting.utils.portfolio_construction import (
@@ -60,9 +59,13 @@ class Position:
         return (self.pnl / self.cost_basis) * 100
 
 
-class MultiAssetPortfolio:
+class MultiAssetPortfolio(BasePortfolio):
     """
     Portfolio that can hold multiple asset positions simultaneously.
+
+    Inherits common functionality from BasePortfolio:
+    - Market hours checking (_is_market_hours)
+    - Period annualization (_get_periods_per_year)
 
     Features:
     - Track multiple open positions (dict keyed by symbol)
@@ -108,22 +111,23 @@ class MultiAssetPortfolio:
             rebalancing_frequency: 'never', 'monthly', 'quarterly', 'on_signal'
             price_data: Full OHLCV data for all symbols
         """
+        # Initialize base class (handles init_cash, fees, slippage, freq, market_hours_only,
+        # market hours constants)
+        super().__init__(
+            init_cash=init_cash,
+            fees=fees,
+            slippage=slippage,
+            freq=freq,
+            market_hours_only=market_hours_only
+        )
+
+        # MultiAssetPortfolio-specific attributes
         self.symbols = symbols
-        self.init_cash = init_cash
-        self.fees = fees
-        self.slippage = slippage
-        self.freq = freq
-        self.market_hours_only = market_hours_only
         self.risk_config = risk_config or RiskConfig.moderate()
         self.position_sizing_method = position_sizing_method
         self.max_positions = max_positions
         self.rebalancing_frequency = rebalancing_frequency
         self.price_data = price_data
-
-        # Market hours
-        self.market_open = time(9, 35)
-        self.market_close = time(15, 55)
-        self.eastern_tz = pytz.timezone('US/Eastern')
 
         # Align data across all symbols
         self.prices, self.entries, self.exits, self.unified_index = self._align_data(
@@ -226,21 +230,7 @@ class MultiAssetPortfolio:
             threshold_pct=threshold_pct
         )
 
-    def _is_market_hours(self, timestamp: pd.Timestamp) -> bool:
-        """Check if timestamp is within market hours."""
-        if not self.market_hours_only:
-            return True
-
-        if timestamp.tz is None:
-            eastern_time = timestamp
-        else:
-            eastern_time = timestamp.tz_convert(self.eastern_tz)
-
-        if eastern_time.weekday() >= 5:
-            return False
-
-        current_time = eastern_time.time()
-        return self.market_open <= current_time <= self.market_close
+    # NOTE: _is_market_hours is inherited from BasePortfolio
 
     def _calculate_portfolio_value(self, timestamp: pd.Timestamp) -> float:
         """Calculate total portfolio value (cash + positions)."""
@@ -663,16 +653,7 @@ class MultiAssetPortfolio:
 
         return pd.Series(stats_dict)
 
-    def _get_periods_per_year(self) -> int:
-        """Get number of periods per year based on frequency."""
-        freq_map = {
-            '1min': 252 * 6.5 * 60,
-            '1h': 252 * 6.5,
-            '1d': 252,
-            'D': 252,
-            'daily': 252
-        }
-        return freq_map.get(self.freq, 252)
+    # NOTE: _get_periods_per_year is inherited from BasePortfolio
 
     @property
     def equity_curve_series(self) -> pd.Series:
