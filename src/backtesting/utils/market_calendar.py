@@ -68,10 +68,6 @@ class MarketCalendar:
         """
         Get all trading days in a date range.
 
-        Args:
-            start_date: Start date (inclusive)
-            end_date: End date (inclusive)
-
         Returns:
             DatetimeIndex of valid trading days
 
@@ -91,9 +87,6 @@ class MarketCalendar:
         Assumes DataFrame has either:
         - A DatetimeIndex
         - A MultiIndex with 'timestamp' or datetime level
-
-        Args:
-            df: DataFrame with datetime index or MultiIndex
 
         Returns:
             Filtered DataFrame containing only trading day data
@@ -116,7 +109,6 @@ class MarketCalendar:
             if datetime_level is None:
                 raise ValueError("No datetime level found in MultiIndex")
 
-            # Get datetime values from that level
             datetime_values = df.index.get_level_values(datetime_level)
         else:
             # Single index case
@@ -146,9 +138,6 @@ class MarketCalendar:
     def get_holiday_list(self, year: int) -> List[pd.Timestamp]:
         """
         Get list of market holidays for a specific year.
-
-        Args:
-            year: Calendar year
 
         Returns:
             List of holiday dates as Timestamps
@@ -183,9 +172,6 @@ def is_trading_day(date: Union[str, datetime, pd.Timestamp]) -> bool:
     """
     Quick check if a date is a NYSE trading day.
 
-    Args:
-        date: Date to check
-
     Returns:
         True if NYSE is open, False otherwise
 
@@ -200,9 +186,6 @@ def is_trading_day(date: Union[str, datetime, pd.Timestamp]) -> bool:
 def filter_trading_days(df: pd.DataFrame) -> pd.DataFrame:
     """
     Filter DataFrame to only NYSE trading days.
-
-    Args:
-        df: DataFrame with datetime index
 
     Returns:
         Filtered DataFrame

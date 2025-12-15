@@ -95,8 +95,8 @@ class RiskParitySizer(PortfolioSizer):
     High-volatility stocks get smaller positions to equalize risk contribution.
 
     Example:
-    - Stock A: 1% daily vol → weight = 1/0.01 = 100
-    - Stock B: 2% daily vol → weight = 1/0.02 = 50
+    - Stock A: 1% daily vol -> weight = 1/0.01 = 100
+    - Stock B: 2% daily vol -> weight = 1/0.02 = 50
     - Stock A gets 2x the allocation of Stock B
     """
 
@@ -285,9 +285,9 @@ class RankedSizer(PortfolioSizer):
     Stronger signals get more capital.
 
     Example:
-    - Signal A strength: 0.8 → 40% allocation
-    - Signal B strength: 0.6 → 30% allocation
-    - Signal C strength: 0.6 → 30% allocation
+    - Signal A strength: 0.8 -> 40% allocation
+    - Signal B strength: 0.6 -> 30% allocation
+    - Signal C strength: 0.6 -> 30% allocation
     """
 
     def __init__(

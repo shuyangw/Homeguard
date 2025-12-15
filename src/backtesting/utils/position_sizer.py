@@ -164,8 +164,8 @@ class VolatilityBasedSizer:
                      Default: 14
 
     Formula:
-        Risk per Trade ($) = Portfolio Value × Risk %
-        Stop Distance ($) = ATR × ATR Multiplier
+        Risk per Trade ($) = Portfolio Value x Risk %
+        Stop Distance ($) = ATR x ATR Multiplier
         Shares = Risk per Trade / Stop Distance
     """
 
@@ -263,7 +263,7 @@ class VolatilityBasedSizer:
         # Risk per trade in dollars
         risk_dollars = portfolio_value * self.risk_pct
 
-        # Stop distance = ATR × multiplier
+        # Stop distance = ATR x multiplier
         stop_distance = atr * self.atr_multiplier
 
         # Shares = risk / stop distance
@@ -304,8 +304,8 @@ class KellyCriterionSizer:
                        Default: 0.5 (Half Kelly)
 
     Formula:
-        Kelly % = (Win Rate × Avg Win - Loss Rate × Avg Loss) / Avg Win
-        Position Size = Kelly % × Kelly Fraction × Portfolio Value
+        Kelly % = (Win Rate x Avg Win - Loss Rate x Avg Loss) / Avg Win
+        Position Size = Kelly % x Kelly Fraction x Portfolio Value
 
     Warning:
         NEVER use Full Kelly (kelly_fraction=1.0) in real trading.
@@ -348,7 +348,7 @@ class KellyCriterionSizer:
         if self.avg_win == 0:
             return 0.0
 
-        # Kelly % = (p × W - q × L) / W
+        # Kelly % = (p x W - q x L) / W
         # Where: p = win rate, q = loss rate, W = avg win, L = avg loss
         kelly = (
             (self.win_rate * self.avg_win) - (self.loss_rate * self.avg_loss)
@@ -380,7 +380,7 @@ class KellyCriterionSizer:
         if portfolio_value <= 0 or price <= 0:
             return 0
 
-        # Position value = Kelly % × portfolio
+        # Position value = Kelly % x portfolio
         position_value = portfolio_value * self.kelly_pct
 
         # Convert to shares
@@ -421,15 +421,15 @@ class RiskParitySizer:
 
     Args:
         lookback: Number of periods for volatility calculation
-                 Default: 60 (60 days ≈ 3 months)
+                 Default: 60 (60 days, approx 3 months)
         min_weight: Minimum weight per position (prevents tiny positions)
                    Default: 0.05 (5%)
         max_weight: Maximum weight per position (prevents concentration)
                    Default: 0.50 (50%)
 
     Formula:
-        Weight[i] = (1 / Volatility[i]) / Σ(1 / Volatility[j])
-        Position Size[i] = Portfolio Value × Weight[i]
+        Weight[i] = (1 / Volatility[i]) / Sum(1 / Volatility[j])
+        Position Size[i] = Portfolio Value x Weight[i]
 
     Best for:
         Multi-asset portfolios with different volatility profiles

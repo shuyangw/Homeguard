@@ -21,6 +21,27 @@ from .risk_manager import (
     ProfitTargetStopLoss,
     Position
 )
+from .metrics_polars import (
+    calculate_returns,
+    calculate_total_return,
+    calculate_sharpe_ratio,
+    calculate_max_drawdown,
+    calculate_sortino_ratio,
+    calculate_calmar_ratio,
+    calculate_win_rate,
+    calculate_profit_factor,
+    calculate_all_metrics
+)
+from .performance import (
+    PerformanceMonitor,
+    TimingResult,
+    MemorySnapshot,
+    benchmark,
+    compare_implementations,
+    get_memory_usage_mb,
+    estimate_dataframe_memory,
+    memory_tracked
+)
 
 __all__ = [
     'Indicators',
@@ -37,5 +58,24 @@ __all__ = [
     'ATRStopLoss',
     'TimeStopLoss',
     'ProfitTargetStopLoss',
-    'Position'
+    'Position',
+    # Polars-native metrics
+    'calculate_returns',
+    'calculate_total_return',
+    'calculate_sharpe_ratio',
+    'calculate_max_drawdown',
+    'calculate_sortino_ratio',
+    'calculate_calmar_ratio',
+    'calculate_win_rate',
+    'calculate_profit_factor',
+    'calculate_all_metrics',
+    # Performance utilities
+    'PerformanceMonitor',
+    'TimingResult',
+    'MemorySnapshot',
+    'benchmark',
+    'compare_implementations',
+    'get_memory_usage_mb',
+    'estimate_dataframe_memory',
+    'memory_tracked'
 ]
