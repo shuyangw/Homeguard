@@ -1,5 +1,9 @@
 """
-Sweep runner for executing backtests across multiple symbols.
+Sweep runner for executing backtests across multiple symbols and parameters.
+
+Includes:
+- SweepRunner: Symbol-based sweep runner using BacktestEngine
+- run_generic_parameter_sweep: Generic parameter sweep for any backtest function
 """
 
 import pandas as pd
@@ -7,12 +11,14 @@ from typing import Dict, List, Optional, Any, Callable
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
+from itertools import product
 
 from src.backtesting.base.strategy import BaseStrategy
 from src.backtesting.engine.backtest_engine import BacktestEngine
 from src.backtesting.engine.portfolio_simulator import Portfolio
 from src.backtesting.engine.results_aggregator import ResultsAggregator
 from src.backtesting.engine.trade_logger import TradeLogger
+from src.backtesting.optimization.data_loader import get_default_workers
 from src.utils import logger
 
 
@@ -171,9 +177,9 @@ class SweepRunner:
                     sharpe = stats.get('Sharpe Ratio', 0) if stats is not None else 0
 
                     if return_pct >= 0:
-                        logger.profit(f"  → Return: {return_pct:.2f}%, Sharpe: {sharpe:.2f}")
+                        logger.profit(f"  -> Return: {return_pct:.2f}%, Sharpe: {sharpe:.2f}")
                     else:
-                        logger.loss(f"  → Return: {return_pct:.2f}%, Sharpe: {sharpe:.2f}")
+                        logger.loss(f"  -> Return: {return_pct:.2f}%, Sharpe: {sharpe:.2f}")
 
             except Exception as e:
                 # Callback: error
@@ -182,7 +188,7 @@ class SweepRunner:
 
                 # Only log to console if not using GUI callbacks
                 if not self.on_symbol_error:
-                    logger.error(f"  → Error testing {symbol}: {e}")
+                    logger.error(f"  -> Error testing {symbol}: {e}")
 
                 results[symbol] = None
 
@@ -460,7 +466,7 @@ class SweepRunner:
                 else:
                     raise ValueError(f"Unknown metric: {metric}")
 
-                logger.metric(f"  → {metric}: {score:.4f}")
+                logger.metric(f"  -> {metric}: {score:.4f}")
 
                 all_results.append({
                     'params': params_dict,
@@ -471,7 +477,7 @@ class SweepRunner:
                 if score > best_score:
                     best_score = score
                     best_params = params_dict
-                    logger.success(f"  → New best! {metric}: {best_score:.4f}")
+                    logger.success(f"  -> New best! {metric}: {best_score:.4f}")
 
             except Exception as e:
                 logger.error(f"Error with params {params_dict}: {e}")
@@ -516,3 +522,141 @@ class SweepRunner:
         """
         self._cancelled = True
         logger.warning("Cancellation requested - sweep will stop after current symbols complete")
+
+
+def run_generic_parameter_sweep(
+    backtest_fn: Callable[..., Dict[str, float]],
+    param_space: Dict[str, List[Any]],
+    shared_data: Optional[Dict[str, Any]] = None,
+    n_workers: Optional[int] = None,
+    metric: str = 'sharpe',
+    minimize: bool = False,
+    progress_interval: int = 10
+) -> Dict[str, Any]:
+    """Run parameter sweep on ANY existing backtest function.
+
+    This is a generic function that works with any callable that returns
+    a metrics dictionary. It uses ThreadPoolExecutor to run trials in parallel,
+    sharing data across threads (no memory duplication).
+
+    Args:
+        backtest_fn: Any callable that accepts **kwargs and returns a dict of metrics.
+                     Example: {'sharpe': 1.5, 'cagr': 0.20, 'max_dd': -0.15}
+        param_space: Parameter names and their possible values to sweep.
+                     Example: {'stop_loss': [0.05, 0.10], 'top_n': [10, 20]}
+        shared_data: Pre-loaded data to pass to backtest_fn on every call.
+                     This data is shared (read-only) across all threads.
+        n_workers: Number of worker threads. Default: 80% of CPU cores.
+        metric: Which metric to optimize (default: 'sharpe').
+        minimize: If True, find minimum instead of maximum (e.g., for max_dd).
+        progress_interval: Log progress every N completions.
+
+    Returns:
+        Dictionary with:
+            'best_params': Dict of best parameter values
+            'best_metrics': Dict of metrics for best params
+            'all_results': List of {'params': {...}, 'metrics': {...}, 'error': str|None}
+
+    Example:
+        >>> from src.backtesting.optimization.sweep_runner import run_generic_parameter_sweep
+        >>> from src.backtesting.optimization.data_loader import load_minute_cache_polars
+        >>> from backtest_scripts.ramp_minute_parallel import simulate_all_days
+        >>>
+        >>> # Load data once
+        >>> minute_cache = load_minute_cache_polars('cache.parquet')
+        >>>
+        >>> # Define parameter space
+        >>> param_space = {
+        ...     'stop_loss_pct': [None, 0.05, 0.10],
+        ...     'top_n': [10, 15, 20]
+        ... }
+        >>>
+        >>> # Run sweep
+        >>> results = run_generic_parameter_sweep(
+        ...     backtest_fn=simulate_all_days,
+        ...     param_space=param_space,
+        ...     shared_data={'minute_cache': minute_cache},
+        ...     metric='sharpe'
+        ... )
+        >>> print(f"Best params: {results['best_params']}")
+        >>> print(f"Best Sharpe: {results['best_metrics']['sharpe']}")
+
+    Note:
+        - Uses ThreadPoolExecutor (not ProcessPoolExecutor) to share data
+        - NumPy releases GIL, so threading works well for array operations
+        - All threads share the same shared_data reference (no copying)
+    """
+    if n_workers is None:
+        n_workers = get_default_workers()
+
+    if shared_data is None:
+        shared_data = {}
+
+    # Generate all parameter combinations
+    param_names = list(param_space.keys())
+    param_values = list(param_space.values())
+    combinations = list(product(*param_values))
+
+    total_combos = len(combinations)
+    logger.info(f"Running {total_combos} parameter combinations with {n_workers} threads")
+
+    results: List[Dict[str, Any]] = []
+
+    def run_trial(params: Dict[str, Any]) -> Dict[str, Any]:
+        """Run a single parameter combination."""
+        try:
+            # Merge shared data with trial-specific params
+            call_kwargs = {**shared_data, **params}
+            metrics = backtest_fn(**call_kwargs)
+            return {'params': params, 'metrics': metrics, 'error': None}
+        except Exception as e:
+            logger.error(f"Trial failed for {params}: {e}")
+            return {'params': params, 'metrics': None, 'error': str(e)}
+
+    with ThreadPoolExecutor(max_workers=n_workers) as executor:
+        # Submit all tasks
+        futures = {}
+        for combo in combinations:
+            params = dict(zip(param_names, combo))
+            future = executor.submit(run_trial, params)
+            futures[future] = params
+
+        # Collect results as they complete
+        for i, future in enumerate(as_completed(futures)):
+            result = future.result()
+            results.append(result)
+
+            if (i + 1) % progress_interval == 0 or (i + 1) == total_combos:
+                logger.info(f"Completed {i + 1}/{total_combos} trials")
+
+    # Find best result
+    valid_results = [r for r in results if r['metrics'] is not None]
+
+    if not valid_results:
+        logger.error("No valid results found in parameter sweep")
+        return {
+            'best_params': None,
+            'best_metrics': None,
+            'all_results': results
+        }
+
+    def get_metric_value(r: Dict[str, Any]) -> float:
+        """Extract metric value with fallback."""
+        val = r['metrics'].get(metric)
+        if val is None:
+            return float('inf') if minimize else float('-inf')
+        return val
+
+    if minimize:
+        best = min(valid_results, key=get_metric_value)
+    else:
+        best = max(valid_results, key=get_metric_value)
+
+    logger.success(f"Best {metric}: {best['metrics'].get(metric)}")
+    logger.info(f"Best params: {best['params']}")
+
+    return {
+        'best_params': best['params'],
+        'best_metrics': best['metrics'],
+        'all_results': results
+    }
