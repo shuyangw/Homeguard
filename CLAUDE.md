@@ -107,6 +107,31 @@ Write clean, maintainable code following project conventions.
 - Always run unit tests before committing
 - Details: [`.claude/code_standards.md`](.claude/code_standards.md)
 
+### Cross-Platform Character Encoding
+**CRITICAL**: Use ASCII-only characters in all code and documentation for Windows compatibility.
+
+Windows uses cp1252 encoding by default, which cannot display Unicode characters like emojis or special symbols. This causes `UnicodeEncodeError` when printing to console.
+
+| Avoid | Use Instead | Context |
+|-------|-------------|---------|
+| `->` (arrow) | `->` | Docstrings, comments |
+| `x` (multiplication) | `x` | Math formulas |
+| `^2` (superscript) | `^2` | Exponents |
+| `~` (approx) | `approx` or `~` | Approximations |
+| `Sum` (sigma) | `Sum` | Summation |
+| Emojis (checkmark) | `[+]` | Success indicators |
+| Emojis (warning) | `[!]` | Warning indicators |
+| Emojis (x mark) | `[-]` | Error/failure indicators |
+| Emojis (star) | `*` | Ratings/highlights |
+| Emojis (chart) | (remove) | Section headers |
+
+**Rules:**
+- Never use emojis in Python code, logging, or print statements
+- Use ASCII art alternatives: `[+]`, `[-]`, `[!]`, `[*]` for status indicators
+- In docstrings, use `->` instead of arrow symbols
+- In formulas, use `x` for multiplication, `^` for exponents
+- Test console output on Windows before committing
+
 ### Backtesting Guidelines
 **CRITICAL**: Avoid lookahead bias, survivorship bias, and overfitting.
 - **ALWAYS use the config-driven backtesting system** - don't write ad-hoc scripts
@@ -163,6 +188,23 @@ Write clean, maintainable code following project conventions.
 - Use `logger.error()` for all caught exceptions
 - Color-coded output (green=success, red=error, etc.)
 - Details: [`.claude/logging.md`](.claude/logging.md)
+
+### Output and Memory Efficiency
+**CRITICAL**: Minimize unnecessary output and memory usage.
+
+#### Output Volume
+- Avoid dumping entire DataFrames or large data structures to logs/console
+- Use `logger.debug()` for verbose output that's off by default
+- Summarize large results (e.g., "Processed 1,500 symbols" not full symbol list)
+- Limit loop logging - log every Nth iteration or summary only
+- Never print full file contents unless explicitly requested
+
+#### Memory Management
+- Don't load entire datasets when a subset suffices
+- Use chunked/streaming processing for large files (see `StreamingDataLoader`)
+- Release large objects when no longer needed (`del df; gc.collect()`)
+- Prefer lazy loading over eager full-file loads unless explicitly needed
+- For backtests: load data year-by-year or symbol-by-symbol, not all at once
 
 ### GUI Design
 **CRITICAL**: Dark theme with bright text for readability.
@@ -263,8 +305,9 @@ Update docs when modifying user-facing functionality.
 - Universe: S&P 500 stocks
 - Position sizing: Dynamic 1/N (100% allocation / top_n positions)
 - Regime detection: 5 market regimes (STRONG_BULL, WEAK_BULL, SIDEWAYS, UNPREDICTABLE, BEAR)
-- Walk-forward validated: 1.859 Sharpe ratio out-of-sample (2022-2024)
+- Walk-forward validated: **0.846 Sharpe ratio out-of-sample** (2022-2024, Yahoo Finance split-adjusted data)
 - Full docs: [`docs/strategies/RAMP_STRATEGY.md`](docs/strategies/RAMP_STRATEGY.md)
+- Validation docs: [`docs/strategies/20251212_RAMP_WALK_FORWARD_VALIDATION.md`](docs/strategies/20251212_RAMP_WALK_FORWARD_VALIDATION.md)
 
 ### Live Trading Tools & Agents
 **Available agents and tools for live trading diagnostics:**
@@ -401,40 +444,42 @@ Before committing ANY code change, verify:
 
 ## Critical Rules (Always Follow)
 
-1. ✅ Use `fintech` conda environment for all Python operations
-2. ✅ Keep root directory clean - no script files
-3. ✅ Run unit tests before committing code changes
-4. ✅ Use proper risk management in backtests
-5. ✅ Use centralized logger - never `print()`
-6. ✅ **ALWAYS log exceptions with `logger.error()` - never silently swallow errors**
-7. ✅ Bright text on dark backgrounds in GUI
-8. ✅ Update documentation when modifying features
-9. ✅ **Update architecture docs when changing system structure**
-10. ✅ **Update infrastructure docs when modifying AWS deployment**
-11. ✅ Consult `backtest_guidelines/guidelines.md` before backtesting changes
-12. ✅ **Timestamp all documentation files (YYYYMMDD_filename.md format)**
-13. ✅ **NEVER push to remote without explicit user permission**
-14. ✅ **Use config-driven backtesting system** - don't write ad-hoc backtest scripts
-15. ✅ **Verify before claiming success** - run tests, don't assume code works
-16. ✅ **Check existing backtest tools first** - see "Existing Backtest Tools" table before creating new ones
-17. ✅ **Follow canonical data schema** - all downloaded data must match S&P 500 schema (see Data Handling section)
-18. ✅ **Never hardcode sensitive data** - Use `.env` for secrets, use placeholders in docs (see Sensitive Data Protection)
+1. [+] Use `fintech` conda environment for all Python operations
+2. [+] Keep root directory clean - no script files
+3. [+] Run unit tests before committing code changes
+4. [+] Use proper risk management in backtests
+5. [+] Use centralized logger - never `print()`
+6. [+] **ALWAYS log exceptions with `logger.error()` - never silently swallow errors**
+7. [+] Bright text on dark backgrounds in GUI
+8. [+] Update documentation when modifying features
+9. [+] **Update architecture docs when changing system structure**
+10. [+] **Update infrastructure docs when modifying AWS deployment**
+11. [+] Consult `backtest_guidelines/guidelines.md` before backtesting changes
+12. [+] **Timestamp all documentation files (YYYYMMDD_filename.md format)**
+13. [+] **NEVER push to remote without explicit user permission**
+14. [+] **Use config-driven backtesting system** - don't write ad-hoc backtest scripts
+15. [+] **Verify before claiming success** - run tests, don't assume code works
+16. [+] **Check existing backtest tools first** - see "Existing Backtest Tools" table before creating new ones
+17. [+] **Follow canonical data schema** - all downloaded data must match S&P 500 schema (see Data Handling section)
+18. [+] **Never hardcode sensitive data** - Use `.env` for secrets, use placeholders in docs (see Sensitive Data Protection)
+19. [+] **Use ASCII-only characters** - No emojis or Unicode symbols in code/docs (see Cross-Platform Character Encoding)
+20. [+] **Minimize output and memory usage** - Don't dump large data structures or load entire datasets unnecessarily (see Output and Memory Efficiency)
 
 ## When to Consult Detailed Guides
 
-- **Running a backtest** → Use config-driven system, see [`.claude/backtesting.md`](.claude/backtesting.md)
-- **Before backtesting work** → Read [`.claude/backtesting.md`](.claude/backtesting.md)
-- **Live trading issues** → Read [`.claude/live_trading.md`](.claude/live_trading.md)
-- **Adding GUI components** → Read [`.claude/gui_design.md`](.claude/gui_design.md)
-- **Writing tests** → Read [`.claude/testing.md`](.claude/testing.md)
-- **Implementing risk features** → Read [`.claude/risk_management.md`](.claude/risk_management.md)
-- **Fixing type errors** → Read [`.claude/type_issues.md`](.claude/type_issues.md)
-- **Organizing files** → Read [`.claude/project_structure.md`](.claude/project_structure.md)
-- **Adding logging** → Read [`.claude/logging.md`](.claude/logging.md)
-- **Creating documentation** → Read [`.claude/documentation.md`](.claude/documentation.md)
-- **Committing or pushing code** → Read [`.claude/git_workflow.md`](.claude/git_workflow.md)
-- **Modifying AWS infrastructure** → Update `docs/INFRASTRUCTURE_OVERVIEW.md` and `terraform/README.md`
-- **Downloading market data** → Follow canonical schema in Data Handling section above
+- **Running a backtest** - Use config-driven system, see [`.claude/backtesting.md`](.claude/backtesting.md)
+- **Before backtesting work** - Read [`.claude/backtesting.md`](.claude/backtesting.md)
+- **Live trading issues** - Read [`.claude/live_trading.md`](.claude/live_trading.md)
+- **Adding GUI components** - Read [`.claude/gui_design.md`](.claude/gui_design.md)
+- **Writing tests** - Read [`.claude/testing.md`](.claude/testing.md)
+- **Implementing risk features** - Read [`.claude/risk_management.md`](.claude/risk_management.md)
+- **Fixing type errors** - Read [`.claude/type_issues.md`](.claude/type_issues.md)
+- **Organizing files** - Read [`.claude/project_structure.md`](.claude/project_structure.md)
+- **Adding logging** - Read [`.claude/logging.md`](.claude/logging.md)
+- **Creating documentation** - Read [`.claude/documentation.md`](.claude/documentation.md)
+- **Committing or pushing code** - Read [`.claude/git_workflow.md`](.claude/git_workflow.md)
+- **Modifying AWS infrastructure** - Update `docs/INFRASTRUCTURE_OVERVIEW.md` and `terraform/README.md`
+- **Downloading market data** - Follow canonical schema in Data Handling section above
 
 ---
 
