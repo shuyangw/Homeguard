@@ -1,0 +1,65 @@
+# ICT Strategy Optimization - Find Best Parameters
+# Usage: python -m src.backtest_runner --config config/backtesting/ict_optimize.yaml
+
+mode: optimize
+
+strategy:
+  name: ICTStrategy
+  parameters:
+    # Fixed parameters (not being optimized)
+    swing_lookback: 5
+    min_impulse_move_pct: 0.003
+    order_block_max_age: 60
+    impulse_bars: 12
+    use_regime: true
+    long_only: false
+    atr_period: 14
+    atr_stop_multiplier: 1.5
+    exit_time_hour: 15
+    exit_time_minute: 45
+    sweep_threshold_pct: 0.001
+    session_filter: none
+    rvol_threshold: 1.3
+    htf_lookback: 30
+    min_body_ratio: 0.35
+
+symbols:
+  list: [NVDA, TSLA, AMD, META, GOOGL, AMZN, NFLX, AAPL, MSFT, SPY]
+
+dates:
+  start: "2024-01-01"
+  end: "2024-06-30"
+
+backtest:
+  initial_capital: 100000
+  fees: 0.001
+  slippage: 0.0005
+  benchmark: SPY
+  market_hours_only: true
+  allow_shorts: true
+  portfolio_mode: multi
+
+risk:
+  enabled: true
+  position_sizing_method: fixed_percent
+  position_size_pct: 0.08
+  max_positions: 5
+
+output:
+  save_trades: false
+  save_reports: false
+  quantstats: false
+  visualize: false
+  verbosity: 0
+
+optimization:
+  metric: sharpe_ratio
+  n_jobs: 4
+  param_grid:
+    trade_type: [continuation, both]
+    max_positions_per_day: [2, 3, 5]
+    risk_reward_ratio: [1.2, 1.5, 2.0]
+    use_htf_filter: [true, false]
+    use_volume_filter: [true, false]
+    min_wick_ratio: [0.4, 0.5]
+    min_swing_size_pct: [0.0015, 0.002]

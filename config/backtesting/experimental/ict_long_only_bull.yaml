@@ -1,0 +1,61 @@
+# ICT Strategy - Long Only on Bull ETFs
+# Hypothesis: Markets drift up, long-only on bull ETFs should outperform
+# Remove bear ETFs, only go long
+
+mode: single
+
+strategy:
+  name: ICTStrategy
+  parameters:
+    trade_type: both
+    swing_lookback: 5
+    min_swing_size_pct: 0.003
+    min_impulse_move_pct: 0.005
+    order_block_max_age: 30
+    impulse_bars: 8
+    risk_reward_ratio: 2.0
+    use_htf_filter: false
+    htf_lookback: 20
+    use_regime: false
+    use_volume_filter: false
+    rvol_threshold: 1.5
+    session_filter: none
+    max_positions_per_day: 3
+    atr_period: 14
+    atr_stop_multiplier: 1.5
+    min_wick_ratio: 0.5
+    min_body_ratio: 0.3
+    sweep_threshold_pct: 0.0015
+    long_only: true                 # LONG ONLY
+    exit_time_hour: 15
+    exit_time_minute: 45
+
+# ONLY BULL ETFs - no inverse ETFs
+symbols:
+  list: [TQQQ, UPRO, TNA, SOXL, TECL, FAS]
+
+dates:
+  start: "2024-01-01"
+  end: "2024-12-31"
+
+backtest:
+  initial_capital: 100000
+  fees: 0.001
+  slippage: 0.0005
+  benchmark: SPY
+  market_hours_only: true
+  allow_shorts: false               # NO SHORTS
+  portfolio_mode: multi
+
+risk:
+  enabled: true
+  position_sizing_method: fixed_percent
+  position_size_pct: 0.15           # Slightly higher since long-only
+  max_positions: 3
+
+output:
+  save_trades: true
+  save_reports: true
+  quantstats: false
+  visualize: false
+  verbosity: 1

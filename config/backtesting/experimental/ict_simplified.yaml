@@ -1,0 +1,61 @@
+# ICT Strategy - Simplified Version
+# Remove complexity, focus on core concept: sweep + reversal
+# Hypothesis: Overcomplication is hurting performance
+
+mode: single
+
+strategy:
+  name: ICTStrategy
+  parameters:
+    trade_type: both
+    swing_lookback: 5
+    min_swing_size_pct: 0.003       # Slightly larger swings (more significant)
+    min_impulse_move_pct: 0.005     # Slightly larger impulse for OB
+    order_block_max_age: 30         # Fresher OBs only
+    impulse_bars: 8
+    risk_reward_ratio: 2.0          # Better R:R
+    # DISABLE complex filters
+    use_htf_filter: false           # DISABLED - was adding complexity
+    htf_lookback: 20
+    use_regime: false               # DISABLED - was filtering trades
+    use_volume_filter: false        # DISABLED
+    rvol_threshold: 1.5
+    session_filter: none
+    max_positions_per_day: 3
+    atr_period: 14
+    atr_stop_multiplier: 1.5        # Tighter stops (was 1.8)
+    min_wick_ratio: 0.5
+    min_body_ratio: 0.3
+    sweep_threshold_pct: 0.0015     # Slightly larger sweep required
+    long_only: false
+    exit_time_hour: 15
+    exit_time_minute: 45
+
+symbols:
+  list: [TQQQ, SQQQ, UPRO, SPXU, TNA, TZA, SOXL, SOXS, TECL, FAS, FAZ]
+
+dates:
+  start: "2024-01-01"
+  end: "2024-12-31"
+
+backtest:
+  initial_capital: 100000
+  fees: 0.001
+  slippage: 0.0005
+  benchmark: SPY
+  market_hours_only: true
+  allow_shorts: true
+  portfolio_mode: multi
+
+risk:
+  enabled: true
+  position_sizing_method: fixed_percent
+  position_size_pct: 0.10           # REDUCED from 25% to 10%
+  max_positions: 4
+
+output:
+  save_trades: true
+  save_reports: true
+  quantstats: false
+  visualize: false
+  verbosity: 1
