@@ -19,7 +19,7 @@ from utils import logger
 def check_database():
     """Check if database exists and has data."""
     try:
-        from backtesting.engine.data_loader import DataLoader
+        from backtesting.engine.streaming_data_loader import StreamingDataLoader as DataLoader
         loader = DataLoader()
 
         # Try to get date range for a common symbol

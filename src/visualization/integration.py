@@ -11,7 +11,7 @@ from src.visualization.logger import TradeLogger, TradeEvent
 from src.visualization.charts.candlestick import CandlestickChart
 from src.visualization.reports.report_generator import ReportGenerator
 from src.visualization.utils.output_manager import OutputManager
-from src.backtesting.engine.data_loader import DataLoader
+from src.backtesting.engine.streaming_data_loader import StreamingDataLoader as DataLoader
 
 
 class BacktestVisualizer:
