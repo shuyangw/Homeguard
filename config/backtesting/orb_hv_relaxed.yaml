@@ -1,0 +1,81 @@
+# ORB High Volatility Strategy - Relaxed filters for testing
+# Usage: python -m src.backtest_runner --config config/backtesting/orb_hv_relaxed.yaml
+
+mode: single
+
+strategy:
+  name: ORBHighVolatilityStrategy
+  parameters:
+    # Opening Range (5 minutes)
+    opening_range_minutes: 5
+
+    # Relaxed SIP Score (1.0 = average, essentially disabled)
+    sip_lookback_days: 14
+    sip_min_score: 1.0
+
+    # Relaxed Gap Filtering (0.5% to 20%)
+    min_gap_pct: 0.005
+    max_gap_pct: 0.20
+    gap_direction_filter: false
+
+    # Relaxed Volatility bounds
+    atr_period: 14
+    min_atr_pct: 0.5
+    max_atr_pct: 20.0
+
+    # Tiered Exits
+    target1_multiplier: 1.0
+    target1_exit_pct: 0.5
+    target2_multiplier: 2.0
+    use_trailing_stop: true
+    trailing_offset_pct: 0.02
+    eod_exit_hour: 15
+    eod_exit_minute: 55
+
+    # Daily Risk Limits
+    daily_max_loss_pct: 0.05
+    max_daily_trades: 20
+    max_concurrent_positions: 10
+
+    # Entry Filters
+    entry_cutoff_hour: 15
+    entry_cutoff_minute: 30
+    rvol_threshold: 0.5
+
+    # Sentiment disabled
+    use_sentiment: false
+    min_sentiment_score: 0.0
+
+    # Regime Filter disabled
+    use_regime: false
+
+    # Both directions
+    long_only: false
+
+symbols:
+  list: [TQQQ]
+
+dates:
+  start: "2024-01-01"
+  end: "2024-03-31"
+
+backtest:
+  initial_capital: 100000
+  fees: 0.001
+  slippage: 0.001
+  benchmark: SPY
+  market_hours_only: true
+  allow_shorts: true
+
+risk:
+  enabled: true
+  position_sizing_method: fixed_percent
+  position_size_pct: 0.10
+  max_positions: 5
+
+output:
+  save_trades: true
+  save_reports: true
+  quantstats: false
+  visualize: false
+  verbosity: 2

@@ -1,0 +1,81 @@
+# ORB High Volatility Strategy - Baseline
+# Usage: python -m src.backtest_runner --config config/backtesting/orb_hv_baseline.yaml
+
+mode: single
+
+strategy:
+  name: ORBHighVolatilityStrategy
+  parameters:
+    # Opening Range (5 minutes)
+    opening_range_minutes: 5
+
+    # Stocks in Play (SIP) Score
+    sip_lookback_days: 14
+    sip_min_score: 2.0
+
+    # Gap Filtering (2-15% gaps only)
+    min_gap_pct: 0.02
+    max_gap_pct: 0.15
+    gap_direction_filter: true
+
+    # Volatility (ATR-based bounds)
+    atr_period: 14
+    min_atr_pct: 2.0
+    max_atr_pct: 10.0
+
+    # Tiered Exits
+    target1_multiplier: 1.0
+    target1_exit_pct: 0.5
+    target2_multiplier: 2.0
+    use_trailing_stop: true
+    trailing_offset_pct: 0.02
+    eod_exit_hour: 15
+    eod_exit_minute: 55
+
+    # Daily Risk Limits
+    daily_max_loss_pct: 0.03
+    max_daily_trades: 10
+    max_concurrent_positions: 5
+
+    # Entry Filters
+    entry_cutoff_hour: 15
+    entry_cutoff_minute: 30
+    rvol_threshold: 1.5
+
+    # Sentiment (disabled for baseline)
+    use_sentiment: false
+    min_sentiment_score: 0.2
+
+    # Regime Filter
+    use_regime: true
+
+    # Direction
+    long_only: false
+
+symbols:
+  list: [TQQQ, SQQQ, SOXL, SOXS, UPRO, SPXU, TNA, TZA]
+
+dates:
+  start: "2024-01-01"
+  end: "2024-06-30"
+
+backtest:
+  initial_capital: 100000
+  fees: 0.001
+  slippage: 0.001
+  benchmark: SPY
+  market_hours_only: true
+  allow_shorts: true
+
+risk:
+  enabled: true
+  position_sizing_method: fixed_percent
+  position_size_pct: 0.10
+  max_positions: 5
+
+output:
+  save_trades: true
+  save_reports: true
+  quantstats: false
+  visualize: false
+  verbosity: 1
