@@ -55,8 +55,6 @@ class OptionsTradingInterface(OrderManagementInterface):
     adapter (e.g., TastyTradeBroker, IBKRBroker) when needed.
     """
 
-    # ==================== Options Chain ====================
-
     @abstractmethod
     def get_options_chain(
         self,
@@ -68,7 +66,6 @@ class OptionsTradingInterface(OrderManagementInterface):
 
         Args:
             underlying: Underlying stock symbol (e.g., "AAPL")
-            expiration: Specific expiration date (None = all expirations)
 
         Returns:
             List[Dict] where each Dict contains:
@@ -89,8 +86,6 @@ class OptionsTradingInterface(OrderManagementInterface):
             SymbolNotFoundError: If underlying doesn't exist
         """
         pass
-
-    # ==================== Position Methods ====================
 
     @abstractmethod
     def get_options_positions(self) -> List[Dict]:
@@ -124,9 +119,6 @@ class OptionsTradingInterface(OrderManagementInterface):
         """
         Get specific options position by contract ID.
 
-        Args:
-            contract_id: Options contract identifier
-
         Returns:
             Dict with position details (same format as get_options_positions)
             or None if no position exists
@@ -135,8 +127,6 @@ class OptionsTradingInterface(OrderManagementInterface):
             BrokerConnectionError: If broker connection fails
         """
         pass
-
-    # ==================== Order Methods ====================
 
     @abstractmethod
     def place_options_order(
@@ -157,15 +147,6 @@ class OptionsTradingInterface(OrderManagementInterface):
 
         Args:
             underlying: Underlying stock symbol (e.g., "AAPL")
-            expiration: Option expiration date
-            strike: Strike price
-            option_type: OptionType.CALL or OptionType.PUT
-            quantity: Number of contracts
-            side: OrderSide.BUY or OrderSide.SELL
-            order_type: Order type (market, limit)
-            limit_price: Limit price (required for LIMIT orders)
-            time_in_force: Time in force
-            **kwargs: Additional broker-specific parameters
 
         Returns:
             Dict with order details:
@@ -203,13 +184,6 @@ class OptionsTradingInterface(OrderManagementInterface):
         """
         Place a multi-leg options order (spreads, straddles, etc.).
 
-        Args:
-            legs: List of OptionLeg objects defining the strategy
-            order_type: Order type (usually LIMIT for spreads)
-            limit_price: Net debit/credit for the spread
-            time_in_force: Time in force
-            **kwargs: Additional broker-specific parameters
-
         Returns:
             Dict with order details:
                 - order_id (str): Unique order identifier
@@ -228,15 +202,10 @@ class OptionsTradingInterface(OrderManagementInterface):
         """
         pass
 
-    # ==================== Greeks ====================
-
     @abstractmethod
     def get_greeks(self, contract_id: str) -> Dict:
         """
         Get option Greeks for a specific contract.
-
-        Args:
-            contract_id: Options contract identifier
 
         Returns:
             Dict with Greeks:
@@ -253,8 +222,6 @@ class OptionsTradingInterface(OrderManagementInterface):
         """
         pass
 
-    # ==================== Position Closing ====================
-
     @abstractmethod
     def close_options_position(
         self,
@@ -263,10 +230,6 @@ class OptionsTradingInterface(OrderManagementInterface):
     ) -> Dict:
         """
         Close an options position (or partial position).
-
-        Args:
-            contract_id: Options contract identifier
-            quantity: Number of contracts to close (None = close all)
 
         Returns:
             Dict with order details (same format as place_options_order)

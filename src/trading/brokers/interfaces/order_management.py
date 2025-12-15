@@ -26,9 +26,6 @@ class OrderManagementInterface(ABC):
         """
         Cancel a pending order.
 
-        Args:
-            order_id: Order ID to cancel
-
         Returns:
             True if cancellation successful, False otherwise
 
@@ -42,9 +39,6 @@ class OrderManagementInterface(ABC):
     def get_order(self, order_id: str) -> Dict:
         """
         Get order details by ID.
-
-        Args:
-            order_id: Order ID
 
         Returns:
             Dict with order details:
@@ -75,11 +69,6 @@ class OrderManagementInterface(ABC):
     ) -> List[Dict]:
         """
         Get orders with optional filters.
-
-        Args:
-            status: Filter by order status (None = all)
-            start_date: Filter orders after this date
-            end_date: Filter orders before this date
 
         Returns:
             List[Dict] of orders (same format as get_order)

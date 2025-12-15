@@ -17,8 +17,6 @@ class StockTradingInterface(OrderManagementInterface):
     Provides stock-specific position and order methods.
     """
 
-    # ==================== Position Methods ====================
-
     @abstractmethod
     def get_stock_positions(self) -> List[Dict]:
         """
@@ -57,8 +55,6 @@ class StockTradingInterface(OrderManagementInterface):
         """
         pass
 
-    # ==================== Order Methods ====================
-
     @abstractmethod
     def place_stock_order(
         self,
@@ -76,13 +72,6 @@ class StockTradingInterface(OrderManagementInterface):
 
         Args:
             symbol: Stock symbol (e.g., "AAPL")
-            quantity: Number of shares (positive integer)
-            side: OrderSide.BUY or OrderSide.SELL
-            order_type: Order type (market, limit, stop, etc.)
-            limit_price: Limit price (required for LIMIT orders)
-            stop_price: Stop price (required for STOP orders)
-            time_in_force: Time in force (day, gtc, ioc, fok)
-            **kwargs: Additional broker-specific parameters
 
         Returns:
             Dict with order details:
@@ -113,10 +102,6 @@ class StockTradingInterface(OrderManagementInterface):
     ) -> Dict:
         """
         Close a stock position (or partial position).
-
-        Args:
-            symbol: Stock symbol
-            quantity: Number of shares to close (None = close all)
 
         Returns:
             Dict with order details (same format as place_stock_order)
