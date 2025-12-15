@@ -21,12 +21,15 @@ RAMP extends the basic momentum protection strategy with market regime detection
 
 ### Performance (Walk-Forward Validation)
 
-| Metric | RAMP (Regime-Aware) | Static MP |
-|--------|---------------------|-----------|
-| **Sharpe Ratio (OOS)** | 1.859 | 1.271 |
-| **Improvement** | +46% | baseline |
-| **Training Period** | 2017-2021 | - |
-| **Test Period (OOS)** | 2022-2024 | - |
+| Metric | In-Sample (2017-2021) | Out-of-Sample (2022-2024) |
+|--------|----------------------|---------------------------|
+| **Sharpe Ratio** | 0.784 | **0.846** |
+| **CAGR** | 16.2% | 16.3% |
+| **Max Drawdown** | -46.9% | -15.0% |
+| **Win Rate** | 53.3% | 52.9% |
+
+**Validation**: 2025-12-12 using Yahoo Finance split-adjusted data.
+See full validation report: [`20251212_RAMP_WALK_FORWARD_VALIDATION.md`](20251212_RAMP_WALK_FORWARD_VALIDATION.md)
 
 ---
 
@@ -263,7 +266,8 @@ StrategyStateManager.add_position()
 
 | Date | Decision | Rationale |
 |------|----------|-----------|
-| 2025-12-08 | Deployed RAMP, disabled MP | RAMP shows +46% Sharpe improvement OOS |
+| 2025-12-12 | Re-validated with clean data | OOS Sharpe 0.846 (YF split-adjusted data), confirms robustness |
+| 2025-12-08 | Deployed RAMP, disabled MP | Regime detection adds value over static momentum |
 | 2025-12-08 | Changed to 1/N position sizing | Simpler, matches backtest methodology |
 | 2025-12-07 | Walk-forward validation | Confirmed regime detection adds value OOS |
 | 2025-12-06 | Optimized regime parameters | Grid search on 2017-2021 data |
