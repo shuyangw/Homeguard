@@ -1,7 +1,7 @@
 # Homeguard Module Reference
 
-**Version**: 1.4
-**Last Updated**: 2025-12-08
+**Version**: 1.5
+**Last Updated**: 2025-12-14
 **Purpose**: Comprehensive module-by-module reference for the Homeguard codebase
 
 ---
@@ -333,6 +333,178 @@ pipeline.run(
 
 ---
 
+## News and Sentiment Layer
+
+### Overview
+
+The news and sentiment layer provides infrastructure for downloading news from the Alpaca News API, computing sentiment scores using FinBERT, and caching results for backtesting strategies like ORB HV.
+
+**Location**: `src/data/news/`
+
+---
+
+### `src/data/news/news_schema.py`
+**Purpose**: Parquet schema definitions for news and sentiment data
+
+**Key Constants**:
+- `NEWS_SCHEMA`: PyArrow schema for news articles
+- `SENTIMENT_SCHEMA`: PyArrow schema for sentiment scores
+
+**Key Dataclasses**:
+- `NewsArticle`: timestamp, symbol, headline, summary, source
+- `SentimentResult`: timestamp, symbol, headline, sentiment_score, positive, negative
+
+**Key Functions**:
+- `validate_news_dataframe(df)`: Validate DataFrame against schema
+- `save_news_parquet(df, path)`: Save with proper schema
+- `load_news_parquet(path)`: Load and validate
+- `get_news_output_path(symbol, year)`: Get Hive-partitioned path
+- `get_sentiment_output_path(symbol, year)`: Get sentiment path
+
+**Dependencies**: `pyarrow`, `pandas`, `dataclasses`
+
+---
+
+### `src/data/news/news_downloader.py`
+**Purpose**: Download news articles from Alpaca News API
+
+**Key Classes**:
+- `NewsDownloadResult`: Result dataclass with articles, stats
+- `NewsDownloader`: Main downloader class
+
+**Key Methods**:
+- `download(symbols, start, end)`: Download news for symbols
+- `save_parquet(symbol, year)`: Save to Hive-partitioned parquet
+
+**Features**:
+- Automatic pagination for large date ranges
+- Rate limiting and retry logic
+- Hive-partitioned storage (`symbol={SYM}/year={YYYY}/news.parquet`)
+- Progress tracking
+
+**Dependencies**: `alpaca.data.historical.NewsClient`, `pandas`, `pyarrow`
+
+**Usage Example**:
+```python
+from src.data.news import NewsDownloader
+
+downloader = NewsDownloader()
+result = downloader.download(
+    symbols=['AAPL', 'MSFT'],
+    start_date=datetime(2024, 1, 1),
+    end_date=datetime(2024, 6, 30)
+)
+print(f"Downloaded {result.article_count} articles")
+```
+
+---
+
+### `src/data/news/sentiment_analyzer.py`
+**Purpose**: FinBERT-based sentiment analysis for financial news
+
+**Key Classes**:
+- `SentimentScore`: Dataclass with score, positive, negative, neutral
+- `SentimentAnalyzer`: FinBERT wrapper with lazy loading
+- `MockSentimentAnalyzer`: Testing mock (no GPU required)
+
+**Key Methods**:
+- `analyze(text)`: Analyze single text, returns SentimentScore
+- `analyze_batch(texts)`: Batch analysis for efficiency
+
+**Features**:
+- **Lazy model loading**: Only loads on first use
+- **Class-level caching**: Model shared across instances
+- **Batch processing**: Efficient GPU utilization
+- **Mock analyzer**: For testing without GPU/model
+
+**Dependencies**: `transformers`, `torch` (optional)
+
+**Usage Example**:
+```python
+from src.data.news import get_sentiment_analyzer
+
+# Returns MockSentimentAnalyzer if transformers not installed
+analyzer = get_sentiment_analyzer()
+
+score = analyzer.analyze("Apple beats earnings expectations")
+print(f"Sentiment: {score.sentiment_score:.3f}")  # ~0.7 (positive)
+```
+
+---
+
+### `src/data/news/sentiment_cache.py`
+**Purpose**: Pre-computed sentiment storage and retrieval
+
+**Key Classes**:
+- `SentimentCache`: Cache manager for pre-computed sentiment
+
+**Key Methods**:
+- `compute_and_save(symbol, year)`: Compute and cache sentiment
+- `load(symbol, year)`: Load cached sentiment
+- `load_range(symbol, start, end)`: Load sentiment for date range
+- `get_daily_sentiment(symbol, date)`: Get aggregated daily score
+- `list_available_news()`: List symbols with news data
+
+**Storage Pattern**:
+```
+{storage_dir}/news/
+  symbol=AAPL/
+    year=2024/
+      news.parquet      # Raw articles
+      sentiment.parquet # Pre-computed scores
+```
+
+**Dependencies**: `pandas`, `pyarrow`, `SentimentAnalyzer`
+
+**Usage Example**:
+```python
+from src.data.news import SentimentCache
+
+cache = SentimentCache()
+
+# Compute and cache sentiment for a symbol
+cache.compute_and_save('AAPL', 2024)
+
+# Load pre-computed sentiment
+df = cache.load('AAPL', 2024)
+
+# Get daily aggregated score
+daily_score = cache.get_daily_sentiment('AAPL', datetime(2024, 3, 15))
+```
+
+---
+
+### `scripts/download_news.py`
+**Purpose**: CLI script for news download
+
+**Usage**:
+```bash
+# Download news for specific symbols
+python scripts/download_news.py --symbols AAPL,MSFT --start 2024-01-01
+
+# Download for date range
+python scripts/download_news.py --symbols TQQQ --start 2024-01-01 --end 2024-06-30
+```
+
+---
+
+### `scripts/compute_sentiment.py`
+**Purpose**: CLI script for batch sentiment computation
+
+**Usage**:
+```bash
+# List available news
+python scripts/compute_sentiment.py --list
+
+# Compute for all available news
+python scripts/compute_sentiment.py --all
+
+# Compute for specific symbol
+python scripts/compute_sentiment.py --symbol AAPL --year 2024
+```
+
+---
+
 ## Backtesting Engine Layer
 
 ### Core Engine Modules
@@ -386,11 +558,34 @@ portfolio = engine.run(
 
 ---
 
+#### `src/backtesting/engine/base_portfolio.py`
+**Purpose**: Abstract base class for portfolio simulators
+
+**Key Classes**:
+- `BasePortfolio`: Abstract base with common functionality
+
+**Shared Methods**:
+- `_is_market_hours(timestamp)`: Check if within trading hours (9:35 AM - 3:55 PM EST)
+- `_get_periods_per_year()`: Get annualization factor based on data frequency
+- `_calculate_basic_metrics(equity, trades)`: Calculate common performance metrics
+
+**Class Constants**:
+- `DEFAULT_MARKET_OPEN`: time(9, 35)
+- `DEFAULT_MARKET_CLOSE`: time(15, 55)
+- `FREQ_TO_PERIODS`: Mapping of frequencies to periods/year
+
+**Subclasses**:
+- `Portfolio` (portfolio_simulator.py)
+- `MultiAssetPortfolio` (multi_asset_portfolio.py)
+- `PairsPortfolio` (pairs_portfolio.py)
+
+---
+
 #### `src/backtesting/engine/portfolio_simulator.py`
 **Purpose**: Custom portfolio simulator (replaces VectorBT)
 
 **Key Classes**:
-- `Portfolio`: Portfolio state and results
+- `Portfolio(BasePortfolio)`: Portfolio state and results (inherits from BasePortfolio)
 - `PortfolioSimulator`: Bar-by-bar simulator (internal use)
 
 **Portfolio Attributes**:
@@ -461,44 +656,50 @@ print(f"Total Return: {stats['Total Return [%]']:.2f}%")
 
 ---
 
-#### `src/backtesting/engine/data_loader.py`
-**Purpose**: Load OHLCV data from Parquet via DuckDB
+#### `src/backtesting/engine/streaming_data_loader.py`
+**Purpose**: Load OHLCV data from Parquet with Polars and LRU caching
 
 **Key Classes**:
-- `DataLoader`: Data loading manager
+- `StreamingDataLoader`: Data loading manager with caching
+- `SymbolCache`: LRU cache for loaded symbols
 
 **Key Methods**:
-- `load_bars(symbol, start, end, timeframe)`: Load data
-- `load_multiple(symbols, start, end, timeframe)`: Load multiple symbols
-- `get_available_symbols(timeframe)`: List available symbols
-- `get_date_range(symbol, timeframe)`: Get available date range
+- `load_symbol(symbol, start, end)`: Load single symbol (Polars LazyFrame)
+- `iter_symbols(symbols, start, end)`: Iterate through symbols (generator)
+- `load_symbols_synchronized(symbols, start, end)`: Load aligned multi-symbol data
+- `load_minute_cache(symbols, start, end)`: Load into numpy arrays for optimization
+- `get_available_symbols()`: List available symbols
+- `get_symbol_date_range(symbol)`: Get available date range
 
 **Performance Optimization**:
-- **DuckDB SQL queries**: 10-100x faster than Pandas
-- **Lazy loading**: Only loads requested date range
-- **Market day filtering**: Built-in NYSE calendar filtering
+- **Polars LazyFrames**: Deferred execution with query optimization
+- **LRU caching**: Avoids reloading frequently-used symbols
+- **Streaming mode**: Memory-efficient for large datasets
+- **Parallel loading**: ThreadPoolExecutor for multi-symbol loads
 
-**Market Calendar Integration**:
-- Filters weekends automatically
-- Filters NYSE holidays
-- Trading hours: 9:30 AM - 4:00 PM EST
-- Can optionally filter to 9:35 AM - 3:55 PM (avoid auction)
+**Cache Configuration**:
+- Default max size: 50 symbols
+- Thread-safe access with RLock
+- Stats tracking (hits/misses/evictions)
 
-**Dependencies**: `duckdb`, `pandas`, `MarketCalendar`, `ParquetStorage`
+**Dependencies**: `polars`, `pandas`, `pathlib`
 
 **Usage Example**:
 ```python
-from backtesting.engine.data_loader import DataLoader
+from backtesting.engine.streaming_data_loader import StreamingDataLoader
 
-loader = DataLoader(data_dir='data/')
-data = loader.load_bars('AAPL', '2023-01-01', '2024-01-01', '1Min')
-# Returns: pd.DataFrame with OHLCV columns, DatetimeIndex
+loader = StreamingDataLoader()
+data = loader.load_symbol('AAPL', '2023-01-01', '2024-01-01')
+# Returns: pl.DataFrame with OHLCV columns
+
+# Multi-symbol synchronized
+dfs = loader.load_symbols_synchronized(['AAPL', 'MSFT'], '2023-01-01', '2024-01-01')
 ```
 
 ---
 
-#### `src/backtesting/engine/sweep_runner.py`
-**Purpose**: Run strategy across multiple symbols in parallel
+#### `src/backtesting/optimization/sweep_runner.py`
+**Purpose**: Run strategy across multiple symbols in parallel with parameter sweeps
 
 **Key Classes**:
 - `SweepRunner`: Multi-symbol sweep orchestrator
@@ -511,6 +712,7 @@ data = loader.load_bars('AAPL', '2023-01-01', '2024-01-01', '1Min')
 **Key Methods**:
 - `run_sweep(strategy, symbols, start, end)`: Run sweep
 - `set_callbacks(on_start, on_complete, on_error)`: Progress callbacks
+- `run_generic_parameter_sweep()`: Generic parameter sweep function
 
 **Execution Model**:
 - **ThreadPoolExecutor** for parallel execution
@@ -533,8 +735,8 @@ def on_symbol_error(symbol: str, error: Exception):
 
 **Usage Example**:
 ```python
-from backtesting.engine.sweep_runner import SweepRunner
-from backtesting.engine.backtest_engine import BacktestEngine
+from src.backtesting.optimization.sweep_runner import SweepRunner
+from src.backtesting.engine.backtest_engine import BacktestEngine
 
 engine = BacktestEngine()
 runner = SweepRunner(engine, workers=4)
@@ -754,6 +956,43 @@ else:
 from backtesting.engine.metrics import calculate_sharpe_ratio
 
 sharpe = calculate_sharpe_ratio(returns_series, risk_free_rate=0.02)
+```
+
+---
+
+#### `src/backtesting/utils/metrics_polars.py`
+**Purpose**: Polars-native vectorized metrics calculations
+
+**Key Functions**:
+- `calculate_returns(equity_col)`: Polars expression for returns
+- `calculate_total_return(equity)`: Total return percentage
+- `calculate_sharpe_ratio(equity, periods_per_year)`: Annualized Sharpe ratio
+- `calculate_max_drawdown(equity)`: Maximum drawdown percentage
+- `calculate_sortino_ratio(equity, periods_per_year)`: Sortino ratio
+- `calculate_calmar_ratio(equity, periods_per_year)`: Calmar ratio
+- `calculate_win_rate(pnl_series)`: Win rate from P&L
+- `calculate_profit_factor(pnl_series)`: Profit factor
+- `calculate_all_metrics(equity, pnl_series)`: All metrics in one call
+
+**Performance Benefits**:
+- Uses Polars lazy evaluation for query optimization
+- Vectorized operations (no Python loops)
+- Works with LazyFrames for deferred execution
+- Numerical parity with pandas implementations (validated by tests)
+
+**Dependencies**: `polars`
+
+**Usage Example**:
+```python
+import polars as pl
+from src.backtesting.utils.metrics_polars import calculate_all_metrics
+
+equity = pl.Series([100000, 101000, 99500, 102000, 105000])
+pnl = pl.Series([1000, -1500, 2500, 3000])
+
+metrics = calculate_all_metrics(equity, pnl)
+print(f"Sharpe: {metrics['sharpe_ratio']:.3f}")
+print(f"Max DD: {metrics['max_drawdown_pct']:.2f}%")
 ```
 
 ---

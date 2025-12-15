@@ -182,7 +182,7 @@ portfolio = engine.run_with_data(strategy, data)
   - Trade logging and metrics calculation
   - Returns `Portfolio` object with equity curve, trades, stats
 
-- **SweepRunner** ([sweep_runner.py](../../src/backtesting/engine/sweep_runner.py))
+- **SweepRunner** ([sweep_runner.py](../../src/backtesting/optimization/sweep_runner.py))
   - Runs strategy across multiple symbols **in parallel**
   - ThreadPoolExecutor for concurrent execution
   - Callbacks for progress tracking
@@ -209,7 +209,7 @@ portfolio = engine.run_with_data(strategy, data)
   - Supports Sharpe Ratio, Total Return, Max Drawdown metrics
   - Returns best parameters, value, and portfolio
 
-- **SweepRunner.optimize_across_universe()** ([sweep_runner.py](../../src/backtesting/engine/sweep_runner.py))
+- **SweepRunner.optimize_across_universe()** ([sweep_runner.py](../../src/backtesting/optimization/sweep_runner.py))
   - Universe-wide parameter optimization
   - Finds parameters optimal across multiple symbols
   - Aggregation metrics: median/mean Sharpe, returns, win rate
