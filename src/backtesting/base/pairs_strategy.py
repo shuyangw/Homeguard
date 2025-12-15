@@ -31,12 +31,6 @@ class PairsStrategy(MultiSymbolStrategy):
     """
 
     def get_required_symbols(self) -> int:
-        """
-        Pairs strategies always require exactly 2 symbols.
-
-        Returns:
-            2 (int): Fixed requirement for pairs trading
-        """
         return 2
 
     @abstractmethod
@@ -54,8 +48,6 @@ class PairsStrategy(MultiSymbolStrategy):
         synchronized long/short signals for both legs of the pair trade.
 
         Args:
-            data1: OHLCV DataFrame for first symbol
-            data2: OHLCV DataFrame for second symbol
             symbol1: Name of first symbol (e.g., 'AAPL')
             symbol2: Name of second symbol (e.g., 'MSFT')
 
@@ -116,9 +108,6 @@ class PairsStrategy(MultiSymbolStrategy):
 
         This method validates that exactly 2 symbols are provided, then
         calls the strategy-specific generate_pairs_signals() method.
-
-        Args:
-            data_dict: Dictionary with exactly 2 symbols and their OHLCV data
 
         Returns:
             Dictionary of signals for both symbols

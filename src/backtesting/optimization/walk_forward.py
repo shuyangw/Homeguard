@@ -188,11 +188,11 @@ class WalkForwardOptimizer:
 
                 logger.success(f"Test {metric}: {test_result['value']:.4f}")
                 if degradation > 0.5:
-                    logger.error(f"Degradation: {degradation:.4f} ⚠️  HIGH (overfitting risk)")
+                    logger.error(f"Degradation: {degradation:.4f} [!] HIGH (overfitting risk)")
                 elif degradation > 0.3:
-                    logger.warning(f"Degradation: {degradation:.4f} ⚠️  MODERATE")
+                    logger.warning(f"Degradation: {degradation:.4f} [!] MODERATE")
                 else:
-                    logger.profit(f"Degradation: {degradation:.4f} ✅ LOW (robust)")
+                    logger.profit(f"Degradation: {degradation:.4f} [+] LOW (robust)")
 
                 all_params.append(train_result['best_params'])
 
@@ -510,13 +510,13 @@ class WalkForwardOptimizer:
         # Interpretation
         avg_deg = analysis['avg_degradation']
         if avg_deg < 0.3:
-            logger.profit("✅ EXCELLENT: Parameters are robust across time periods")
+            logger.profit("[+] EXCELLENT: Parameters are robust across time periods")
         elif avg_deg < 0.5:
-            logger.success("✅ GOOD: Acceptable degradation")
+            logger.success("[+] GOOD: Acceptable degradation")
         elif avg_deg < 0.8:
-            logger.warning("⚠️  CONCERNING: Significant overfitting risk")
+            logger.warning("[!] CONCERNING: Significant overfitting risk")
         else:
-            logger.error("❌ SEVERE: Parameters highly overfit to training data")
+            logger.error("[-] SEVERE: Parameters highly overfit to training data")
 
         logger.blank()
 

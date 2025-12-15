@@ -31,7 +31,7 @@ This returns optimal parameters for each regime:
         'SIDEWAYS': {'fast': 10, 'slow': 50, 'sharpe': -0.5}  # Don't trade!
     }
 
-In live trading: Detect current regime → Use regime-specific parameters
+In live trading: Detect current regime -> Use regime-specific parameters
 """
 
 from typing import Dict, List, Any, Optional, Union
@@ -135,7 +135,7 @@ class RegimeAwareOptimizer:
             logger.info(f"    Periods: {stats['n_periods']}")
 
             if stats['total_days'] < min_regime_days:
-                logger.warning(f"    ⚠️  Insufficient data (< {min_regime_days} days)")
+                logger.warning(f"    [!] Insufficient data (< {min_regime_days} days)")
 
         logger.blank()
 
@@ -237,15 +237,15 @@ class RegimeAwareOptimizer:
             symbol = symbols
 
         # Load data
-        from backtesting.engine.data_loader import DataLoader
-        loader = DataLoader()
-        data = loader.load_data([symbol], start_date, end_date)
+        from src.backtesting.engine.streaming_data_loader import StreamingDataLoader
+        loader = StreamingDataLoader()
+        data = loader.load_single_symbol(symbol, start_date, end_date)
 
         if data.empty:
             raise ValueError(f"No data available for {symbol}")
 
-        # Extract close prices
-        prices = data['close'].unstack(level='symbol')[symbol]
+        # Extract close prices (load_single_symbol returns DataFrame with timestamp index)
+        prices = data['close']
 
         # Detect regimes based on type
         if regime_type == 'trend':
@@ -364,13 +364,13 @@ class RegimeAwareOptimizer:
                 sharpe = result['best_value']
 
                 if sharpe > 1.0:
-                    recommendations[regime] = f"✅ TRADE: Excellent performance (Sharpe {sharpe:.2f})"
+                    recommendations[regime] = f"[+] TRADE: Excellent performance (Sharpe {sharpe:.2f})"
                 elif sharpe > 0.5:
-                    recommendations[regime] = f"✅ TRADE: Good performance (Sharpe {sharpe:.2f})"
+                    recommendations[regime] = f"[+] TRADE: Good performance (Sharpe {sharpe:.2f})"
                 elif sharpe > 0.0:
-                    recommendations[regime] = f"⚠️  MARGINAL: Low profitability (Sharpe {sharpe:.2f})"
+                    recommendations[regime] = f"[!] MARGINAL: Low profitability (Sharpe {sharpe:.2f})"
                 else:
-                    recommendations[regime] = f"❌ AVOID: Negative performance (Sharpe {sharpe:.2f})"
+                    recommendations[regime] = f"[-] AVOID: Negative performance (Sharpe {sharpe:.2f})"
 
         return recommendations
 
@@ -457,11 +457,11 @@ class RegimeAwareOptimizer:
         logger.blank()
 
         for regime, rec in analysis['recommendations'].items():
-            if '✅' in rec:
+            if '[+]' in rec:
                 logger.profit(f"{regime}: {rec}")
-            elif '⚠️' in rec:
+            elif '[!]' in rec:
                 logger.warning(f"{regime}: {rec}")
-            elif '❌' in rec:
+            elif '[-]' in rec:
                 logger.error(f"{regime}: {rec}")
             else:
                 logger.info(f"{regime}: {rec}")
@@ -477,7 +477,7 @@ class RegimeAwareOptimizer:
         logger.info("2. Look up regime-specific parameters from table above")
         logger.info("3. Use those parameters for strategy")
         logger.info("4. Monitor regime changes and update parameters accordingly")
-        logger.info("5. Avoid trading in regimes marked with ❌ (negative Sharpe)")
+        logger.info("5. Avoid trading in regimes marked with [-] (negative Sharpe)")
         logger.blank()
 
         logger.info("Example code:")

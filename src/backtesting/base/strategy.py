@@ -16,12 +16,7 @@ class BaseStrategy(ABC):
     """
 
     def __init__(self, **params):
-        """
-        Initialize strategy with parameters.
-
-        Args:
-            **params: Strategy-specific parameters
-        """
+        """Initialize strategy with parameters."""
         self.params = params
         self.validate_parameters()
 
@@ -29,9 +24,6 @@ class BaseStrategy(ABC):
     def generate_signals(self, data: pd.DataFrame) -> Tuple[pd.Series, pd.Series]:
         """
         Generate entry and exit signals based on price data.
-
-        Args:
-            data: DataFrame with OHLCV columns and timestamp index
 
         Returns:
             Tuple of (entries, exits) as boolean Series
@@ -58,26 +50,15 @@ class BaseStrategy(ABC):
         return self.params.copy()
 
     def set_parameters(self, **params) -> None:
-        """
-        Update strategy parameters.
-
-        Args:
-            **params: Parameters to update
-        """
+        """Update strategy parameters."""
         self.params.update(params)
         self.validate_parameters()
 
     def __repr__(self) -> str:
-        """
-        String representation of strategy.
-        """
         params_str = ', '.join(f"{k}={v}" for k, v in self.params.items())
         return f"{self.__class__.__name__}({params_str})"
 
     def __str__(self) -> str:
-        """
-        Human-readable string representation.
-        """
         return self.__repr__()
 
 
@@ -100,9 +81,6 @@ class LongOnlyStrategy(BaseStrategy):
     def generate_long_signals(self, data: pd.DataFrame) -> Tuple[pd.Series, pd.Series]:
         """
         Generate long entry and exit signals.
-
-        Args:
-            data: DataFrame with OHLCV columns
 
         Returns:
             Tuple of (long_entries, long_exits) as boolean Series
@@ -131,9 +109,6 @@ class LongShortStrategy(BaseStrategy):
     ) -> Tuple[pd.Series, pd.Series, pd.Series, pd.Series]:
         """
         Generate long and short entry and exit signals.
-
-        Args:
-            data: DataFrame with OHLCV columns
 
         Returns:
             Tuple of (long_entries, long_exits, short_entries, short_exits)
