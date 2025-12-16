@@ -1,7 +1,7 @@
 # Homeguard Module Reference
 
-**Version**: 1.5
-**Last Updated**: 2025-12-14
+**Version**: 1.6
+**Last Updated**: 2025-12-15
 **Purpose**: Comprehensive module-by-module reference for the Homeguard codebase
 
 ---
@@ -16,6 +16,8 @@ Each major module in `src/` now has comprehensive architecture documentation at 
 | `src/trading/` | [LIVE_TRADING_SYSTEM.md](../../src/trading/LIVE_TRADING_SYSTEM.md) | Brokers, adapters, execution, state management |
 | `src/strategies/` | [STRATEGY_FRAMEWORK.md](../../src/strategies/STRATEGY_FRAMEWORK.md) | Strategy implementations, registry, signals |
 | `src/data/` | [DATA_PROVIDERS.md](../../src/data/DATA_PROVIDERS.md) | Data providers, fallback chains, caching |
+| `src/streaming/` | [README.md](../../src/streaming/README.md) | Real-time WebSocket streaming platform |
+| `src/web/` | [README.md](../../src/web/README.md) | Web API (FastAPI) + React frontend |
 | `src/settings/` | [CONFIGURATION_SYSTEM.md](../../src/settings/CONFIGURATION_SYSTEM.md) | Config schema, YAML loading, validation |
 | `src/utils/` | [UTILITY_MODULES.md](../../src/utils/UTILITY_MODULES.md) | Logger, timezone, VIX provider |
 | `src/discord_bot/` | [DISCORD_BOT_ARCHITECTURE.md](../../src/discord_bot/DISCORD_BOT_ARCHITECTURE.md) | Discord monitoring bot |
@@ -29,11 +31,13 @@ Each major module in `src/` now has comprehensive architecture documentation at 
 
 1. [Root Level Modules](#root-level-modules)
 2. [Data Engine Layer](#data-engine-layer)
-3. [Backtesting Engine Layer](#backtesting-engine-layer)
-4. [Strategy Layer](#strategy-layer)
-5. [Visualization Layer](#visualization-layer)
-6. [GUI Layer](#gui-layer)
-7. [Utility Layer](#utility-layer)
+3. [Streaming Layer](#streaming-layer) (NEW)
+4. [Web API Layer](#web-api-layer) (NEW)
+5. [Backtesting Engine Layer](#backtesting-engine-layer)
+6. [Strategy Layer](#strategy-layer)
+7. [Visualization Layer](#visualization-layer)
+8. [GUI Layer](#gui-layer)
+9. [Utility Layer](#utility-layer)
 
 ---
 
@@ -502,6 +506,101 @@ python scripts/compute_sentiment.py --all
 # Compute for specific symbol
 python scripts/compute_sentiment.py --symbol AAPL --year 2024
 ```
+
+---
+
+## Streaming Layer
+
+Real-time market data streaming via WebSocket. See [src/streaming/README.md](../../src/streaming/README.md) for full documentation.
+
+### `src/streaming/live_data_provider.py`
+**Purpose**: Public API for real-time market data
+
+**Key Class**: `LiveDataProvider`
+
+**Key Methods**:
+- `get_price(symbol)`: Get latest price
+- `get_bars(symbol, n)`: Get n recent bars
+- `get_quote(symbol)`: Get bid/ask quote
+- `get_vwap(symbol)`: Get VWAP
+- `on_bar(callback)`: Register bar callback
+
+**Usage**:
+```python
+from src.streaming import LiveDataProvider
+
+provider = LiveDataProvider(symbols=['TQQQ', 'SOXL'], feed='iex')
+provider.start()
+
+price = provider.get_price('TQQQ')
+bars = provider.get_bars('TQQQ', 10)
+```
+
+### `src/streaming/_stream.py`
+**Purpose**: WebSocket connection manager
+
+### `src/streaming/_buffer.py`
+**Purpose**: In-memory bar cache (500 bars/symbol)
+
+### `src/streaming/_hub.py`
+**Purpose**: Stream coordinator for multiple symbols
+
+### `src/streaming/_fallback.py`
+**Purpose**: REST API fallback when streaming unavailable
+
+### `src/streaming/types.py`
+**Purpose**: Type definitions (Bar, Quote, Trade)
+
+---
+
+## Web API Layer
+
+Browser-based backtesting interface. See [src/web/README.md](../../src/web/README.md) for full documentation.
+
+### Backend (`src/web/backend/`)
+
+#### `src/web/backend/main.py`
+**Purpose**: FastAPI application setup
+
+**Features**:
+- CORS middleware for frontend access
+- API route registration
+- Error handling
+
+#### `src/web/backend/api/router.py`
+**Purpose**: REST API endpoints
+
+**Endpoints**:
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/run` | POST | Execute backtest |
+| `/strategies` | GET | List strategies |
+| `/symbols` | GET | Get symbol universes |
+
+#### `src/web/backend/schemas.py`
+**Purpose**: Pydantic request/response models
+
+**Key Classes**:
+- `BacktestRequest`: Input parameters
+- `BacktestResponse`: Results with metrics
+
+#### `src/web/backend/core/engine_wrapper.py`
+**Purpose**: Bridges FastAPI to BacktestEngine
+
+#### `src/web/backend/core/cache.py`
+**Purpose**: Response caching
+
+### Frontend (`src/web/frontend/`)
+
+Built with React 18 + Vite + Tailwind CSS.
+
+**Key Components**:
+- `App.jsx`: Main application
+- `components/ConfigForm.jsx`: Strategy configuration
+- `components/StrategySelector.jsx`: Strategy dropdown
+- `components/SymbolSelector.jsx`: Symbol selection
+- `components/ResultsDashboard.jsx`: Results display
+- `components/ErrorBoundary.jsx`: Error handling
 
 ---
 

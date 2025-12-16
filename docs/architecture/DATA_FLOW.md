@@ -1,7 +1,7 @@
 # Homeguard Data Flow Documentation
 
-**Version**: 1.0
-**Last Updated**: 2025-11-05
+**Version**: 1.1
+**Last Updated**: 2025-12-15
 **Purpose**: Comprehensive data flow diagrams for all system operations
 
 ---
@@ -9,13 +9,16 @@
 ## Table of Contents
 
 1. [Data Ingestion Flow](#data-ingestion-flow)
-2. [Single Symbol Backtest Flow](#single-symbol-backtest-flow)
-3. [Multi-Symbol Sweep Flow](#multi-symbol-sweep-flow)
-4. [Multi-Asset Portfolio Flow](#multi-asset-portfolio-flow)
-5. [GUI Backtest Flow](#gui-backtest-flow)
-6. [Visualization Pipeline Flow](#visualization-pipeline-flow)
-7. [Risk Management Flow](#risk-management-flow)
-8. [Signal Generation Flow](#signal-generation-flow)
+2. [Streaming Data Flow](#streaming-data-flow) (NEW)
+3. [News & Sentiment Pipeline Flow](#news--sentiment-pipeline-flow) (NEW)
+4. [Single Symbol Backtest Flow](#single-symbol-backtest-flow)
+5. [Multi-Symbol Sweep Flow](#multi-symbol-sweep-flow)
+6. [Multi-Asset Portfolio Flow](#multi-asset-portfolio-flow)
+7. [GUI Backtest Flow](#gui-backtest-flow)
+8. [Live Trading Execution Flow](#live-trading-execution-flow) (NEW)
+9. [Visualization Pipeline Flow](#visualization-pipeline-flow)
+10. [Risk Management Flow](#risk-management-flow)
+11. [Signal Generation Flow](#signal-generation-flow)
 
 ---
 
@@ -161,6 +164,278 @@ AlpacaClient.fetch_bars(symbol)
     │
     └─→ RateLimitError
         └─→ Sleep 60 seconds, retry
+```
+
+---
+
+## Streaming Data Flow
+
+### Real-Time Market Data via WebSocket
+
+The streaming platform provides 32x faster data access compared to REST polling.
+
+### High-Level Overview
+
+```
+WebSocket Connection (Alpaca)
+    |
+StreamManager
+    |-> Subscribe to symbols (AAPL, MSFT, ...)
+    |-> Receive real-time bars/quotes/trades
+    |
+BarBuffer (in-memory cache)
+    |-> Store last 500 bars per symbol
+    |-> LRU eviction for memory management
+    |
+LiveDataProvider (public API)
+    |-> get_price(symbol) -> float
+    |-> get_bars(symbol, n) -> DataFrame
+    |-> get_quote(symbol) -> Quote
+    |-> get_vwap(symbol) -> float
+    |
+Strategy Adapters (OMR, RAMP)
+    |-> Real-time signal generation
+```
+
+### Detailed Flow
+
+```
++--------------------------------------------------------------+
+| 1. INITIALIZATION (live_data_provider.py)                    |
+|    provider = LiveDataProvider(                              |
+|        symbols=['TQQQ', 'SOXL', ...],                        |
+|        feed='iex'  # or 'sip' for paid feed                  |
+|    )                                                         |
+|    provider.start()                                          |
++--------------------------------------------------------------+
+                 |
+                 v
++--------------------------------------------------------------+
+| 2. WEBSOCKET CONNECTION (streaming/_stream.py)               |
+|    stream = StreamManager(                                   |
+|        api_key=ALPACA_API_KEY,                               |
+|        feed='iex'                                            |
+|    )                                                         |
+|    stream.subscribe_bars(symbols)                            |
+|    stream.subscribe_quotes(symbols)                          |
+|                                                              |
+|    WebSocket URL:                                            |
+|    wss://stream.data.alpaca.markets/v2/{feed}               |
++--------------------------------------------------------------+
+                 |
+                 v (real-time messages)
++--------------------------------------------------------------+
+| 3. MESSAGE HANDLING                                          |
+|    on_bar(bar: Bar):                                         |
+|        symbol = bar.symbol                                   |
+|        buffer.add_bar(symbol, bar)                           |
+|                                                              |
+|    on_quote(quote: Quote):                                   |
+|        symbol = quote.symbol                                 |
+|        buffer.update_quote(symbol, quote)                    |
+|                                                              |
+|    Bar format:                                               |
+|    {symbol, timestamp, open, high, low, close, volume, vwap} |
++--------------------------------------------------------------+
+                 |
+                 v
++--------------------------------------------------------------+
+| 4. BAR BUFFER (streaming/_buffer.py)                         |
+|    buffer = BarBuffer(max_bars=500)                          |
+|                                                              |
+|    Internal storage:                                         |
+|    {                                                         |
+|        'TQQQ': deque([bar1, bar2, ..., bar500]),            |
+|        'SOXL': deque([bar1, bar2, ..., bar500]),            |
+|        ...                                                   |
+|    }                                                         |
+|                                                              |
+|    Methods:                                                  |
+|    - add_bar(symbol, bar)                                    |
+|    - get_bars(symbol, n) -> list[Bar]                        |
+|    - get_latest(symbol) -> Bar                               |
++--------------------------------------------------------------+
+                 |
+                 v
++--------------------------------------------------------------+
+| 5. FALLBACK MECHANISM (streaming/_fallback.py)               |
+|    if buffer.coverage(symbol) < 0.9:  # Less than 90% filled |
+|        # Fall back to REST API                               |
+|        bars = alpaca_broker.get_historical_bars(             |
+|            symbol, limit=n                                   |
+|        )                                                     |
+|        return bars                                           |
+|                                                              |
+|    Triggers:                                                 |
+|    - Mid-day restart (buffer not filled)                     |
+|    - WebSocket disconnect                                    |
+|    - Before market open (no streaming data yet)              |
++--------------------------------------------------------------+
+                 |
+                 v
++--------------------------------------------------------------+
+| 6. STRATEGY CONSUMPTION                                      |
+|    # OMR Adapter                                             |
+|    price = provider.get_price('TQQQ')                        |
+|    bars = provider.get_bars('TQQQ', 10)                      |
+|                                                              |
+|    # RAMP Adapter (500 symbols)                              |
+|    for symbol in sp500:                                      |
+|        close = provider.get_price(symbol)                    |
+|        closes[symbol] = close                                |
+|                                                              |
+|    Performance: 150s -> 0.5s for 500 symbols                 |
++--------------------------------------------------------------+
+```
+
+### Feature Flag Control
+
+```
+Environment Variables:
+    USE_STREAMING=true     # Enable streaming (default: false)
+    STREAMING_FEED=iex     # Feed type: 'iex' or 'sip'
+
+Behavior:
+    if USE_STREAMING == 'true':
+        provider = LiveDataProvider(...)  # WebSocket
+    else:
+        provider = CompositeDataProvider(...)  # REST API
+```
+
+---
+
+## News & Sentiment Pipeline Flow
+
+### Alpaca News API to Sentiment Scores
+
+```
+Alpaca News API
+    |
+NewsDownloader
+    |-> Parallel download by symbol
+    |-> Thread-safe with ThreadPoolExecutor
+    |
+Parquet Storage
+    |-> news/symbol={SYMBOL}/year={YYYY}/news.parquet
+    |
+SentimentAnalyzer (FinBERT)
+    |-> Process headlines
+    |-> Score: -1 (negative) to +1 (positive)
+    |
+SentimentCache
+    |-> sentiment/symbol={SYMBOL}/year={YYYY}/sentiment.parquet
+    |
+Strategy Filter
+    |-> Filter trades based on sentiment
+```
+
+### Detailed Flow
+
+```
++--------------------------------------------------------------+
+| 1. NEWS DOWNLOAD (data/news/news_downloader.py)              |
+|    downloader = NewsDownloader()                             |
+|    result = downloader.download_symbol(                      |
+|        symbol='AAPL',                                        |
+|        start_date='2024-01-01',                              |
+|        end_date='2024-12-31'                                 |
+|    )                                                         |
+|                                                              |
+|    API Request:                                              |
+|    GET /v1beta1/news                                         |
+|    ?symbols=AAPL&start=2024-01-01&end=2024-12-31            |
++--------------------------------------------------------------+
+                 |
+                 v
++--------------------------------------------------------------+
+| 2. NEWS SCHEMA (data/news/news_schema.py)                    |
+|    Canonical schema:                                         |
+|    - id: string (unique article ID)                          |
+|    - timestamp: datetime64[us, UTC]                          |
+|    - symbol: string                                          |
+|    - headline: string                                        |
+|    - summary: string (optional)                              |
+|    - source: string (e.g., 'Benzinga')                       |
+|    - url: string                                             |
+|    - author: string (optional)                               |
++--------------------------------------------------------------+
+                 |
+                 v
++--------------------------------------------------------------+
+| 3. PARQUET STORAGE                                           |
+|    Path: {storage}/news/symbol=AAPL/year=2024/news.parquet  |
+|                                                              |
+|    Hive partitioning for efficient queries:                  |
+|    news/                                                     |
+|    +-- symbol=AAPL/                                          |
+|    |   +-- year=2024/                                        |
+|    |       +-- news.parquet                                  |
+|    +-- symbol=MSFT/                                          |
+|        +-- year=2024/                                        |
+|            +-- news.parquet                                  |
++--------------------------------------------------------------+
+                 |
+                 v
++--------------------------------------------------------------+
+| 4. SENTIMENT ANALYSIS (data/news/sentiment_analyzer.py)      |
+|    analyzer = SentimentAnalyzer()                            |
+|                                                              |
+|    For each headline:                                        |
+|    1. Tokenize with FinBERT tokenizer                        |
+|    2. Run through FinBERT model                              |
+|    3. Extract probabilities: [negative, neutral, positive]   |
+|    4. Calculate score: positive_prob - negative_prob         |
+|                                                              |
+|    Result:                                                   |
+|    {                                                         |
+|        'timestamp': '2024-01-11 08:30:00',                   |
+|        'headline': 'Bitcoin ETF Approved...',                |
+|        'sentiment_score': 0.65,  # Positive                  |
+|        'confidence': 0.82                                    |
+|    }                                                         |
++--------------------------------------------------------------+
+                 |
+                 v
++--------------------------------------------------------------+
+| 5. SENTIMENT CACHE (data/news/sentiment_cache.py)            |
+|    Path: {storage}/sentiment/symbol=AAPL/year=2024/          |
+|          sentiment.parquet                                   |
+|                                                              |
+|    Schema:                                                   |
+|    - timestamp: datetime64[us, UTC]                          |
+|    - headline: string                                        |
+|    - sentiment_score: float64 (-1 to +1)                     |
+|    - confidence: float64 (0 to 1)                            |
++--------------------------------------------------------------+
+                 |
+                 v
++--------------------------------------------------------------+
+| 6. STRATEGY USAGE                                            |
+|    # In HV ORB Strategy                                      |
+|    if use_sentiment:                                         |
+|        # Get premarket sentiment (prev day 4PM to 9:30AM)    |
+|        sentiment = get_premarket_sentiment(symbol, date)     |
+|                                                              |
+|        # Filter: Skip if negative sentiment on gap-up        |
+|        if gap_pct > 0 and sentiment.avg_score < -0.1:        |
+|            skip_trade = True  # Divergence detected          |
+|                                                              |
+|        # Or: Require positive sentiment                      |
+|        if sentiment.avg_score < min_sentiment_score:         |
+|            skip_trade = True                                 |
++--------------------------------------------------------------+
+```
+
+### News Timing Distribution
+
+```
+News Publication Times (Eastern Time):
+    04:00-09:30  Premarket    30.2%  <- Available before ORB entry
+    09:30-16:00  Market Hours 54.5%
+    16:00-20:00  After Hours  10.8%
+    20:00-04:00  Overnight     4.5%
+
+Key Insight: ~35% of news available before 9:35 AM ORB entry
 ```
 
 ---
@@ -942,6 +1217,194 @@ Raw OHLCV Data
 
 ---
 
+## Live Trading Execution Flow
+
+### Strategy Signal to Order Execution (EC2 Deployment)
+
+```
+Scheduled Trigger (systemd timer)
+    |
+Strategy Adapter (OMR/RAMP)
+    |-> Load market data (streaming or REST)
+    |-> Generate signals
+    |-> Apply filters (regime, position limits)
+    |
+Execution Engine
+    |-> Validate signals
+    |-> Calculate position sizes
+    |-> Submit orders to Alpaca
+    |
+State Manager
+    |-> Persist positions to file
+    |-> Track pending orders
+```
+
+### Detailed Flow
+
+```
++--------------------------------------------------------------+
+| 1. SCHEDULED EXECUTION (systemd timer)                       |
+|    Schedule:                                                 |
+|    - OMR Entry: 3:50 PM ET (Mon-Fri)                         |
+|    - OMR Exit: 9:31 AM ET (Mon-Fri)                          |
+|    - RAMP Rebalance: 3:55 PM ET (Mon-Fri)                    |
+|                                                              |
+|    systemctl start homeguard-omr.service                     |
+|    systemctl start homeguard-ramp.service                    |
++--------------------------------------------------------------+
+                 |
+                 v
++--------------------------------------------------------------+
+| 2. STRATEGY ADAPTER INITIALIZATION                           |
+|    # OMR Adapter (trading/adapters/omr_live_adapter.py)      |
+|    adapter = OMRLiveAdapter(                                 |
+|        broker=AlpacaBroker(),                                |
+|        provider=LiveDataProvider(),  # or CompositeProvider  |
+|        config=load_omr_config()                              |
+|    )                                                         |
++--------------------------------------------------------------+
+                 |
+                 v
++--------------------------------------------------------------+
+| 3. MARKET DATA RETRIEVAL                                     |
+|    # With streaming (USE_STREAMING=true)                     |
+|    for symbol in universe:                                   |
+|        price = provider.get_price(symbol)                    |
+|        bars = provider.get_bars(symbol, 10)                  |
+|                                                              |
+|    # Without streaming (REST fallback)                       |
+|    for symbol in universe:                                   |
+|        bars = broker.get_historical_bars(symbol, limit=10)   |
+|        price = bars[-1].close                                |
++--------------------------------------------------------------+
+                 |
+                 v
++--------------------------------------------------------------+
+| 4. SIGNAL GENERATION                                         |
+|    # OMR: Bayesian overnight mean reversion                  |
+|    signals = strategy.generate_entry_signals(                |
+|        prices=current_prices,                                |
+|        historical_data=historical_bars,                      |
+|        regime=market_regime                                  |
+|    )                                                         |
+|                                                              |
+|    # RAMP: Cross-sectional momentum ranking                  |
+|    signals = strategy.generate_rebalance_signals(            |
+|        prices=sp500_closes,                                  |
+|        momentum_scores=calculate_momentum(prices),           |
+|        top_n=10                                              |
+|    )                                                         |
+|                                                              |
+|    Signal format:                                            |
+|    [                                                         |
+|        Signal(symbol='TQQQ', direction='long', weight=0.2),  |
+|        Signal(symbol='SOXL', direction='long', weight=0.2),  |
+|        ...                                                   |
+|    ]                                                         |
++--------------------------------------------------------------+
+                 |
+                 v
++--------------------------------------------------------------+
+| 5. FILTER APPLICATION                                        |
+|    # Market regime filter                                    |
+|    if regime == 'BEAR' and not allow_bear_trades:            |
+|        signals = []  # No trades in bear regime              |
+|                                                              |
+|    # Position limit filter                                   |
+|    if len(open_positions) >= max_positions:                  |
+|        signals = signals[:max_positions - len(open_positions)]
+|                                                              |
+|    # Daily loss limit filter                                 |
+|    if daily_pnl < -daily_max_loss:                           |
+|        signals = []  # Stop trading for the day              |
++--------------------------------------------------------------+
+                 |
+                 v
++--------------------------------------------------------------+
+| 6. ORDER SUBMISSION (broker/alpaca_broker.py)                |
+|    for signal in signals:                                    |
+|        # Calculate position size                             |
+|        shares = calculate_shares(                            |
+|            capital=available_capital,                        |
+|            weight=signal.weight,                             |
+|            price=signal.price                                |
+|        )                                                     |
+|                                                              |
+|        # Submit market order                                 |
+|        order = broker.submit_order(                          |
+|            symbol=signal.symbol,                             |
+|            qty=shares,                                       |
+|            side='buy' if signal.direction == 'long' else 'sell',
+|            type='market',                                    |
+|            time_in_force='day'                               |
+|        )                                                     |
+|                                                              |
+|        logger.info(f"Submitted: {signal.symbol} {shares} shares")
++--------------------------------------------------------------+
+                 |
+                 v
++--------------------------------------------------------------+
+| 7. STATE PERSISTENCE (trading/state/strategy_state_manager.py)|
+|    state_manager.save_position(                              |
+|        symbol=signal.symbol,                                 |
+|        shares=shares,                                        |
+|        entry_price=fill_price,                               |
+|        entry_time=now(),                                     |
+|        strategy='OMR'                                        |
+|    )                                                         |
+|                                                              |
+|    State file: strategy_positions.json                       |
+|    {                                                         |
+|        "OMR": {                                               |
+|            "TQQQ": {"shares": 100, "entry_price": 45.50},    |
+|            "SOXL": {"shares": 50, "entry_price": 32.10}      |
+|        },                                                    |
+|        "RAMP": {                                              |
+|            "AAPL": {"shares": 25, "entry_price": 195.00},    |
+|            ...                                                |
+|        }                                                     |
+|    }                                                         |
++--------------------------------------------------------------+
+                 |
+                 v
++--------------------------------------------------------------+
+| 8. ORDER FILL VERIFICATION                                   |
+|    # Wait for fills                                          |
+|    for order_id in pending_orders:                           |
+|        status = broker.get_order(order_id)                   |
+|        if status == 'filled':                                |
+|            logger.info(f"Filled: {order_id}")                |
+|        elif status == 'rejected':                            |
+|            logger.error(f"Rejected: {order_id}")             |
+|                                                              |
+|    # Log final positions                                     |
+|    positions = broker.get_positions()                        |
+|    for pos in positions:                                     |
+|        logger.info(f"{pos.symbol}: {pos.qty} @ {pos.avg_entry_price}")
++--------------------------------------------------------------+
+```
+
+### Multi-Strategy Coordination
+
+```
+homeguard-trading.target
+    |
+    +-- homeguard-omr.service (3:50 PM entry, 9:31 AM exit)
+    |   |-- Leveraged ETF universe (TQQQ, SOXL, UPRO, ...)
+    |   +-- Max 5 concurrent positions at 20% each
+    |
+    +-- homeguard-ramp.service (3:55 PM rebalance)
+        |-- S&P 500 universe
+        +-- Top 10 by momentum, dynamic 1/N sizing
+
+Coordination:
+    - Non-overlapping universes (no conflicts)
+    - Execution lock for 3:50-4:00 PM window
+    - Shared state file with atomic writes
+```
+
+---
+
 ## Visualization Pipeline Flow
 
 ```
@@ -994,13 +1457,16 @@ Portfolio object
 | Operation | Entry Point | Data Path | Output |
 |-----------|-------------|-----------|--------|
 | **Data Ingestion** | `run_ingestion.py` | AlpacaAPI → ParquetStorage → Metadata | Parquet files |
+| **Streaming Data** | `LiveDataProvider` | WebSocket → StreamManager → BarBuffer → Strategy | Real-time prices |
+| **News/Sentiment** | `NewsDownloader` | NewsAPI → Parquet → SentimentAnalyzer → Cache | Sentiment scores |
 | **Single Backtest (CLI)** | `backtest_runner.py` | DataLoader → Strategy → PortfolioSim → Visualizer | Reports/Charts |
 | **Multi-Symbol Sweep** | `backtest_runner.py` | SweepRunner → [Parallel Engines] → Aggregator | Comparison tables |
 | **Multi-Asset Portfolio** | `backtest_runner.py` | DataLoader → MultiAssetPortfolio → Visualizer | Portfolio reports |
 | **GUI Backtest** | `gui/__main__.py` | GUIController → [Worker Thread] SweepRunner → Queue → UI | Interactive results |
+| **Live Trading** | `homeguard-*.service` | Adapter → Provider → Signals → Broker → StateManager | Orders/Positions |
 
 ---
 
-**Last Updated**: 2025-11-05
+**Last Updated**: 2025-12-15
 **Maintainers**: Update when adding new data flows or changing execution paths
 **Related Docs**: [ARCHITECTURE_OVERVIEW.md](ARCHITECTURE_OVERVIEW.md), [MODULE_REFERENCE.md](MODULE_REFERENCE.md)

@@ -1,7 +1,7 @@
 # Homeguard Backtesting Framework - Architecture Overview
 
-**Version**: 1.4
-**Last Updated**: 2025-12-08
+**Version**: 1.5
+**Last Updated**: 2025-12-15
 **Status**: Current
 
 ---
@@ -28,12 +28,18 @@ Homeguard is a professional-grade backtesting framework for algorithmic trading 
 │                    LAYER 5: PRESENTATION                    │
 │                                                             │
 │  ┌─────────────────────┐    ┌─────────────────────────┐    │
-│  │     GUI (Flet)      │    │  Discord Bot (Optional) │    │
-│  │  - Setup View       │    │  - Natural language     │    │
-│  │  - Run View         │    │    queries via Claude   │    │
-│  │  - Results View     │    │  - Read-only observer   │    │
-│  │  - Thread-safe      │    │  - EC2 log inspection   │    │
+│  │     GUI (Flet)      │    │   Web API (FastAPI)     │    │
+│  │  - Setup View       │    │  - REST endpoints       │    │
+│  │  - Run View         │    │  - Backtest execution   │    │
+│  │  - Results View     │    │  - React frontend       │    │
+│  │  - Thread-safe      │    │  - Real-time dashboard  │    │
 │  └─────────────────────┘    └─────────────────────────┘    │
+│                                                             │
+│  ┌─────────────────────────────────────────────────────┐   │
+│  │              Discord Bot (Optional)                  │   │
+│  │  - Natural language queries via Claude               │   │
+│  │  - Read-only observer for EC2 log inspection         │   │
+│  └─────────────────────────────────────────────────────┘   │
 └────────────────────────┬────────────────────────────────────┘
                          │
 ┌────────────────────────▼────────────────────────────────────┐
@@ -64,9 +70,11 @@ Homeguard is a professional-grade backtesting framework for algorithmic trading 
 ┌────────────────────────▼────────────────────────────────────┐
 │           LAYER 1: DATA INGESTION & STORAGE                 │
 │  Data fetching, storage, and retrieval                      │
-│  - Alpaca API client                                        │
+│  - Alpaca API client (REST + WebSocket streaming)           │
+│  - LiveDataProvider (real-time streaming)                   │
 │  - Parquet storage (partitioned by symbol/date)             │
 │  - DuckDB query engine                                      │
+│  - News/Sentiment pipeline (Alpaca News + FinBERT)          │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -103,6 +111,32 @@ Homeguard is a professional-grade backtesting framework for algorithmic trading 
 
 **Dependencies**: Alpaca API, Pandas, PyArrow, DuckDB
 
+#### Real-Time Streaming (src/streaming/)
+
+- **LiveDataProvider** ([src/streaming/live_data_provider.py](../../src/streaming/live_data_provider.py))
+  - WebSocket-based real-time market data
+  - 32x faster than polling (167s -> 5s for RAMP)
+  - Public API: `get_price()`, `get_bars()`, `get_quote()`, `get_vwap()`
+
+- **StreamManager** - WebSocket connection management
+- **BarBuffer** - In-memory cache (500 bars per symbol)
+- **FallbackPoller** - REST API backup when streaming unavailable
+
+**Feature Flag**: `USE_STREAMING=true` environment variable enables streaming
+
+#### News & Sentiment (src/data/news/)
+
+- **NewsDownloader** ([src/data/news/news_downloader.py](../../src/data/news/news_downloader.py))
+  - Fetches news from Alpaca News API
+  - Thread-safe parallel downloads
+  - Parquet storage: `news/symbol={SYMBOL}/year={YYYY}/news.parquet`
+
+- **SentimentAnalyzer** ([src/data/news/sentiment_analyzer.py](../../src/data/news/sentiment_analyzer.py))
+  - FinBERT-based sentiment scoring
+  - Score range: -1 (negative) to +1 (positive)
+
+- **SentimentCache** - Caches computed sentiment scores
+
 ---
 
 ### Layer 2: Strategy Layer
@@ -127,10 +161,12 @@ Homeguard is a professional-grade backtesting framework for algorithmic trading 
 **Strategy Categories**:
 
 1. **Production Strategies** ([src/strategies/advanced/](../../src/strategies/advanced/))
-   - `OvernightMeanReversion` (OMR): Overnight gap trading with Bayesian model
+   - `OvernightMeanReversion` (OMR): Overnight gap trading with Bayesian model - **LIVE**
    - `MomentumProtectionStrategy` (MP): Cross-sectional momentum with VIX protection
-   - `RAMPStrategy`: Regime-Aware Momentum Protection (in development)
-   - Supporting modules: `bayesian_reversion_model.py`, `market_regime_detector.py`
+   - `RAMPStrategy` (RAMP): Regime-Aware Momentum Protection - **LIVE** (deployed Dec 2025)
+   - `HVORBStrategy` (HV ORB): High Volatility Opening Range Breakout - **RESEARCH**
+   - `ICTStrategy` (ICT): Smart Money Concepts / Institutional Chart Techniques - **RESEARCH**
+   - Supporting modules: `bayesian_reversion_model.py`, `market_regime_detector.py`, `orb_numba_core.py`
 
 2. **Research Strategies** ([src/strategies/research/](../../src/strategies/research/))
    - `MovingAverageCrossover`: Fast MA > Slow MA
@@ -343,7 +379,40 @@ portfolio = engine.run_with_data(strategy, data)
 
 ---
 
-### Layer 5b: Discord Bot (Optional Addon)
+### Layer 5b: Web API & Frontend
+
+**Purpose**: Browser-based interface for backtesting via REST API
+
+**Backend** ([src/web/backend/](../../src/web/backend/)):
+
+- **FastAPI Application** ([main.py](../../src/web/backend/main.py))
+  - REST API for backtest execution
+  - CORS-enabled for frontend access
+  - Async request handling
+
+- **API Router** ([api/router.py](../../src/web/backend/api/router.py))
+  - `/run` - Execute backtest
+  - `/strategies` - List available strategies
+  - `/symbols` - Symbol universe management
+
+- **Engine Wrapper** ([core/engine_wrapper.py](../../src/web/backend/core/engine_wrapper.py))
+  - Bridges FastAPI to BacktestEngine
+  - Result caching for performance
+
+**Frontend** ([src/web/frontend/](../../src/web/frontend/)):
+
+- **React 18** with Vite bundler
+- **Tailwind CSS** for styling
+- **Components**:
+  - `ConfigForm.jsx` - Strategy and parameter configuration
+  - `SymbolSelector.jsx` - Symbol universe selection
+  - `ResultsDashboard.jsx` - Performance metrics display
+
+**Dependencies**: FastAPI, uvicorn, React, Vite, Tailwind CSS
+
+---
+
+### Layer 5c: Discord Bot (Optional Addon)
 
 **Purpose**: Read-only observability for live trading via natural language queries
 
@@ -721,6 +790,28 @@ python -m gui
   - Research strategies moved to `src/strategies/research/`
   - Backward compatibility via re-exports in `base_strategies/`
 
+- ✅ **Real-time streaming platform** - WebSocket-based market data (December 2025)
+  - `LiveDataProvider` for real-time bar/quote data
+  - 32x performance improvement over polling
+  - Smart fallback to REST API when streaming unavailable
+  - Feature flag: `USE_STREAMING=true`
+  - See [20251209_STREAMING_DATA_PLATFORM.md](20251209_STREAMING_DATA_PLATFORM.md)
+
+- ✅ **Web API & Frontend** - Browser-based backtesting interface (December 2025)
+  - FastAPI backend with REST endpoints
+  - React 18 + Vite + Tailwind CSS frontend
+  - Real-time backtest execution and results display
+
+- ✅ **News & Sentiment pipeline** - Market sentiment analysis (December 2025)
+  - Alpaca News API integration
+  - FinBERT-based sentiment scoring
+  - Premarket sentiment filters for strategies
+
+- ✅ **New research strategies** - HV ORB and ICT (December 2025)
+  - `HVORBStrategy`: High Volatility Opening Range Breakout
+  - `ICTStrategy`: Smart Money Concepts / Institutional Chart Techniques
+  - Numba JIT compilation for ORB signal generation
+
 ---
 
 ## References
@@ -733,6 +824,6 @@ python -m gui
 
 ---
 
-**Last Updated**: 2025-12-08
+**Last Updated**: 2025-12-15
 **Maintainers**: Update this doc when adding/removing/moving major modules
 **Review Frequency**: After any architectural changes
