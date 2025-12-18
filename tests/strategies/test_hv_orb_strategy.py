@@ -1,5 +1,5 @@
 """
-Unit Tests for ORB High Volatility Strategy.
+Unit Tests for HV ORB (High Volatility Opening Range Breakout) Strategy.
 
 Tests initialization, parameter validation, and signal generation.
 """
@@ -9,9 +9,9 @@ import pandas as pd
 import numpy as np
 from datetime import datetime, time, timedelta
 
-from src.strategies.advanced.orb_hv_strategy import (
-    ORBHighVolatilityStrategy,
-    ORBHVPosition
+from src.strategies.advanced.hv_orb_strategy import (
+    HVORBStrategy,
+    HVORBPosition
 )
 
 
@@ -20,7 +20,7 @@ class TestStrategyInitialization:
 
     def test_default_parameters(self):
         """Test initialization with default parameters."""
-        strategy = ORBHighVolatilityStrategy()
+        strategy = HVORBStrategy()
 
         assert strategy.opening_range_minutes == 5
         assert strategy.sip_min_score == 2.0
@@ -33,7 +33,7 @@ class TestStrategyInitialization:
 
     def test_custom_parameters(self):
         """Test initialization with custom parameters."""
-        strategy = ORBHighVolatilityStrategy(
+        strategy = HVORBStrategy(
             opening_range_minutes=10,
             sip_min_score=3.0,
             min_gap_pct=0.03,
@@ -60,22 +60,22 @@ class TestParameterValidation:
     def test_invalid_opening_range(self):
         """Test invalid opening range minutes."""
         with pytest.raises(ValueError, match="opening_range_minutes"):
-            ORBHighVolatilityStrategy(opening_range_minutes=7)
+            HVORBStrategy(opening_range_minutes=7)
 
     def test_invalid_sip_min_score(self):
         """Test invalid SIP minimum score."""
         with pytest.raises(ValueError, match="sip_min_score"):
-            ORBHighVolatilityStrategy(sip_min_score=0.5)
+            HVORBStrategy(sip_min_score=0.5)
 
     def test_invalid_gap_range(self):
         """Test invalid gap percentage range."""
         with pytest.raises(ValueError, match="min_gap_pct"):
-            ORBHighVolatilityStrategy(min_gap_pct=0.10, max_gap_pct=0.05)
+            HVORBStrategy(min_gap_pct=0.10, max_gap_pct=0.05)
 
     def test_invalid_target_multipliers(self):
         """Test invalid target multipliers."""
         with pytest.raises(ValueError, match="target1_multiplier"):
-            ORBHighVolatilityStrategy(
+            HVORBStrategy(
                 target1_multiplier=2.0,
                 target2_multiplier=1.5
             )
@@ -83,7 +83,7 @@ class TestParameterValidation:
     def test_invalid_daily_max_loss(self):
         """Test invalid daily max loss."""
         with pytest.raises(ValueError, match="daily_max_loss_pct"):
-            ORBHighVolatilityStrategy(daily_max_loss_pct=1.5)
+            HVORBStrategy(daily_max_loss_pct=1.5)
 
 
 class TestSignalGeneration:
@@ -149,7 +149,7 @@ class TestSignalGeneration:
 
     def test_empty_data(self):
         """Test with empty DataFrame."""
-        strategy = ORBHighVolatilityStrategy()
+        strategy = HVORBStrategy()
         df = pd.DataFrame()
 
         le, lx, se, sx = strategy.generate_long_short_signals(df)
@@ -161,7 +161,7 @@ class TestSignalGeneration:
 
     def test_missing_columns(self):
         """Test with missing required columns."""
-        strategy = ORBHighVolatilityStrategy()
+        strategy = HVORBStrategy()
 
         times = pd.date_range('2025-01-06 09:30:00', periods=30, freq='1min')
         df = pd.DataFrame({
@@ -178,7 +178,7 @@ class TestSignalGeneration:
 
     def test_generates_signals(self):
         """Test that strategy generates signals on valid data."""
-        strategy = ORBHighVolatilityStrategy(
+        strategy = HVORBStrategy(
             sip_min_score=1.5,  # Lower threshold for test
             min_gap_pct=0.01,   # Lower gap requirement
         )
@@ -195,7 +195,7 @@ class TestSignalGeneration:
 
     def test_long_only_mode(self):
         """Test long-only mode disables shorts."""
-        strategy = ORBHighVolatilityStrategy(long_only=True)
+        strategy = HVORBStrategy(long_only=True)
 
         data = self._create_test_data(days=20)
 
@@ -210,7 +210,7 @@ class TestRiskLimits:
 
     def test_risk_limits_trade_count(self):
         """Test trade count limit."""
-        strategy = ORBHighVolatilityStrategy(max_daily_trades=5)
+        strategy = HVORBStrategy(max_daily_trades=5)
 
         # Internal method check
         assert strategy._check_risk_limits(daily_trades=4, daily_pnl=0) == True
@@ -219,7 +219,7 @@ class TestRiskLimits:
 
     def test_risk_limits_daily_loss(self):
         """Test daily loss limit."""
-        strategy = ORBHighVolatilityStrategy(daily_max_loss_pct=0.03)
+        strategy = HVORBStrategy(daily_max_loss_pct=0.03)
         capital = 100000
 
         # -2% loss should be OK
@@ -232,12 +232,12 @@ class TestRiskLimits:
         assert strategy._check_risk_limits(0, -5000, capital) == False
 
 
-class TestORBHVPosition:
-    """Test ORBHVPosition dataclass."""
+class TestHVORBPosition:
+    """Test HVORBPosition dataclass."""
 
     def test_position_creation(self):
         """Test position creation."""
-        position = ORBHVPosition(
+        position = HVORBPosition(
             symbol='TQQQ',
             direction='long',
             entry_price=50.0,
@@ -269,9 +269,9 @@ class TestExitConditions:
 
     def test_stop_loss_long(self):
         """Test stop loss detection for long position."""
-        strategy = ORBHighVolatilityStrategy()
+        strategy = HVORBStrategy()
 
-        position = ORBHVPosition(
+        position = HVORBPosition(
             symbol='TQQQ',
             direction='long',
             entry_price=50.0,
@@ -311,9 +311,9 @@ class TestExitConditions:
 
     def test_target1_long(self):
         """Test target 1 detection for long position."""
-        strategy = ORBHighVolatilityStrategy()
+        strategy = HVORBStrategy()
 
-        position = ORBHVPosition(
+        position = HVORBPosition(
             symbol='TQQQ',
             direction='long',
             entry_price=50.0,
@@ -343,12 +343,12 @@ class TestExitConditions:
 
     def test_eod_exit(self):
         """Test EOD exit."""
-        strategy = ORBHighVolatilityStrategy(
+        strategy = HVORBStrategy(
             eod_exit_hour=15,
             eod_exit_minute=55
         )
 
-        position = ORBHVPosition(
+        position = HVORBPosition(
             symbol='TQQQ',
             direction='long',
             entry_price=50.0,
@@ -397,24 +397,24 @@ class TestRegistration:
 
         # Should be in list
         strategies = list_strategies()
-        assert 'ORBHighVolatilityStrategy' in strategies
+        assert 'HVORBStrategy' in strategies
 
     def test_get_by_class_name(self):
         """Test getting strategy by class name."""
         from src.strategies.registry import get_strategy_class
 
-        cls = get_strategy_class('ORBHighVolatilityStrategy')
-        assert cls == ORBHighVolatilityStrategy
+        cls = get_strategy_class('HVORBStrategy')
+        assert cls == HVORBStrategy
 
     def test_get_by_display_name(self):
         """Test getting strategy by display name."""
         from src.strategies.registry import get_strategy_class
 
-        cls = get_strategy_class('ORB HV')
-        assert cls == ORBHighVolatilityStrategy
+        cls = get_strategy_class('HV ORB')
+        assert cls == HVORBStrategy
 
-        cls = get_strategy_class('ORB High Volatility')
-        assert cls == ORBHighVolatilityStrategy
+        cls = get_strategy_class('High Volatility ORB')
+        assert cls == HVORBStrategy
 
 
 class TestSentimentIntegration:
@@ -422,12 +422,12 @@ class TestSentimentIntegration:
 
     def test_sentiment_disabled_by_default(self):
         """Test that sentiment is disabled by default."""
-        strategy = ORBHighVolatilityStrategy()
+        strategy = HVORBStrategy()
         assert strategy.use_sentiment == False
 
     def test_sentiment_enabled_parameter(self):
         """Test enabling sentiment via parameter."""
-        strategy = ORBHighVolatilityStrategy(
+        strategy = HVORBStrategy(
             use_sentiment=True,
             min_sentiment_score=0.3
         )
@@ -436,7 +436,7 @@ class TestSentimentIntegration:
 
     def test_check_sentiment_filter_disabled(self):
         """Test sentiment filter when disabled returns True."""
-        strategy = ORBHighVolatilityStrategy(use_sentiment=False)
+        strategy = HVORBStrategy(use_sentiment=False)
 
         passes, score = strategy.check_sentiment_filter(
             symbol='AAPL',
@@ -449,7 +449,7 @@ class TestSentimentIntegration:
 
     def test_check_sentiment_filter_long_positive(self):
         """Test sentiment filter for long with positive sentiment."""
-        strategy = ORBHighVolatilityStrategy(
+        strategy = HVORBStrategy(
             use_sentiment=True,
             min_sentiment_score=0.2
         )
@@ -472,7 +472,7 @@ class TestSentimentIntegration:
 
     def test_check_sentiment_filter_long_negative(self):
         """Test sentiment filter rejects long with very negative sentiment."""
-        strategy = ORBHighVolatilityStrategy(
+        strategy = HVORBStrategy(
             use_sentiment=True,
             min_sentiment_score=0.2
         )
@@ -496,7 +496,7 @@ class TestSentimentIntegration:
 
     def test_check_sentiment_filter_short_negative(self):
         """Test sentiment filter for short with negative sentiment."""
-        strategy = ORBHighVolatilityStrategy(
+        strategy = HVORBStrategy(
             use_sentiment=True,
             min_sentiment_score=0.2
         )
@@ -520,7 +520,7 @@ class TestSentimentIntegration:
 
     def test_get_sentiment_for_date_no_data(self):
         """Test getting sentiment when no data available."""
-        strategy = ORBHighVolatilityStrategy(use_sentiment=True)
+        strategy = HVORBStrategy(use_sentiment=True)
 
         score = strategy.get_sentiment_for_date('AAPL', datetime(2024, 1, 15))
 
@@ -528,7 +528,7 @@ class TestSentimentIntegration:
 
     def test_get_sentiment_for_date_with_data(self):
         """Test getting sentiment with data."""
-        strategy = ORBHighVolatilityStrategy(use_sentiment=True)
+        strategy = HVORBStrategy(use_sentiment=True)
 
         # Mock sentiment data with multiple articles on same day
         strategy._sentiment_data = pd.DataFrame({
@@ -548,10 +548,10 @@ class TestSentimentIntegration:
 
     def test_confidence_score_with_sentiment(self):
         """Test that sentiment affects confidence score."""
-        from src.strategies.advanced.orb_hv_indicators import ORBHVIndicators
+        from src.strategies.advanced.hv_orb_indicators import HVORBIndicators
 
         # Without sentiment
-        score_no_sentiment = ORBHVIndicators.confidence_score(
+        score_no_sentiment = HVORBIndicators.confidence_score(
             sip_score=3.0,
             sentiment_score=0.0,
             gap_pct=0.05,
@@ -560,7 +560,7 @@ class TestSentimentIntegration:
         )
 
         # With positive sentiment aligned with long
-        score_with_sentiment = ORBHVIndicators.confidence_score(
+        score_with_sentiment = HVORBIndicators.confidence_score(
             sip_score=3.0,
             sentiment_score=0.5,
             gap_pct=0.05,

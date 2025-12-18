@@ -1,5 +1,5 @@
 """
-Opening Range Breakout High Volatility (ORB HV) Strategy.
+High Volatility Opening Range Breakout (HV ORB) Strategy.
 
 An advanced intraday breakout strategy that focuses on "Stocks in Play" -
 stocks with abnormally high opening volume driven by news catalysts.
@@ -30,7 +30,7 @@ import numpy as np
 
 from src.backtesting.base.strategy import LongShortStrategy
 from src.backtesting.utils.indicators import Indicators
-from src.strategies.advanced.orb_hv_indicators import ORBHVIndicators
+from src.strategies.advanced.hv_orb_indicators import HVORBIndicators
 from src.strategies.advanced.market_regime_detector import MarketRegimeDetector
 from src.backtesting.utils.tiered_exit_manager import (
     TieredExitManager,
@@ -46,7 +46,7 @@ logger = get_logger(__name__)
 
 
 @dataclass
-class ORBHVPosition:
+class HVORBPosition:
     """Represents an active ORB HV position."""
     symbol: str
     direction: str  # 'long' or 'short'
@@ -74,9 +74,9 @@ class ORBHVPosition:
     max_favorable_price: float = 0.0
 
 
-class ORBHighVolatilityStrategy(LongShortStrategy):
+class HVORBStrategy(LongShortStrategy):
     """
-    Opening Range Breakout High Volatility Strategy.
+    High Volatility Opening Range Breakout (HV ORB) Strategy.
 
     Trades breakouts from the 5-minute opening range (9:30-9:35 AM ET)
     with "Stocks in Play" scoring and tiered exit management.
@@ -152,10 +152,25 @@ class ORBHighVolatilityStrategy(LongShortStrategy):
         # Sentiment (Phase 2)
         use_sentiment: bool = False,
         min_sentiment_score: float = 0.2,
+        min_sentiment_confidence: float = 0.0,  # Filter low-confidence sentiment
         sentiment_data_path: Optional[str] = None,
+        skip_earnings_days: bool = True,  # Skip trading on earnings announcement days
 
         # Regime
         use_regime: bool = True,
+
+        # Momentum filter (require price > MA for longs)
+        use_momentum_filter: bool = False,
+        momentum_ma_period: int = 20,
+
+        # Pullback entry (wait for retest instead of immediate entry)
+        use_pullback_entry: bool = False,
+        pullback_threshold_pct: float = 0.5,  # How close to OR high for valid pullback
+        pullback_timeout_bars: int = 30,  # Cancel setup after N bars without pullback
+
+        # Time-based stop (exit if not profitable after N minutes)
+        use_time_stop: bool = False,
+        time_stop_minutes: int = 30,  # Exit if not profitable after this many minutes
 
         # Base
         long_only: bool = False,
@@ -192,10 +207,24 @@ class ORBHighVolatilityStrategy(LongShortStrategy):
 
         self.use_sentiment = use_sentiment
         self.min_sentiment_score = min_sentiment_score
+        self.min_sentiment_confidence = min_sentiment_confidence
         self.sentiment_data_path = sentiment_data_path
+        self.skip_earnings_days = skip_earnings_days
 
         self.use_regime = use_regime
         self.long_only = long_only
+
+        self.use_momentum_filter = use_momentum_filter
+        self.momentum_ma_period = momentum_ma_period
+        self._daily_ma = {}  # Cache for daily MA values by symbol
+
+        self.use_pullback_entry = use_pullback_entry
+        self.pullback_threshold_pct = pullback_threshold_pct
+        self.pullback_timeout_bars = pullback_timeout_bars
+        self._pending_setups = {}  # Track breakouts waiting for pullback entry
+
+        self.use_time_stop = use_time_stop
+        self.time_stop_minutes = time_stop_minutes
 
         # Calculate OR end time
         or_end_minutes = 30 + opening_range_minutes
@@ -299,14 +328,50 @@ class ORBHighVolatilityStrategy(LongShortStrategy):
         Returns:
             Tuple of (long_entries, long_exits, short_entries, short_exits)
         """
-        # Initialize signal arrays
-        n = len(data)
-        long_entries = pd.Series(False, index=data.index)
-        long_exits = pd.Series(False, index=data.index)
-        short_entries = pd.Series(False, index=data.index)
-        short_exits = pd.Series(False, index=data.index)
+        # Initialize signal arrays with original index (for proper return)
+        original_index = data.index
+        long_entries = pd.Series(False, index=original_index)
+        long_exits = pd.Series(False, index=original_index)
+        short_entries = pd.Series(False, index=original_index)
+        short_exits = pd.Series(False, index=original_index)
 
         if data.empty:
+            return long_entries, long_exits, short_entries, short_exits
+
+        # Store data reference for momentum MA calculation
+        self._current_data = data
+
+        # Load sentiment data if enabled
+        if self.use_sentiment:
+            symbol = getattr(self, '_current_symbol', None)
+            if symbol:
+                # Track last symbol to detect changes
+                last_symbol = getattr(self, '_last_sentiment_symbol', None)
+                if symbol != last_symbol:
+                    # New symbol - reload sentiment data
+                    self._sentiment_data = None
+                    self._last_sentiment_symbol = symbol
+                    start_date = data.index.min().to_pydatetime()
+                    end_date = data.index.max().to_pydatetime()
+                    self.load_sentiment_for_symbols([symbol], start_date, end_date)
+
+        # Filter to market hours (9:30 AM - 4:00 PM ET)
+        # Convert index to ET for filtering
+        if data.index.tz is not None:
+            et_index = data.index.tz_convert('America/New_York')
+        else:
+            et_index = data.index.tz_localize('UTC').tz_convert('America/New_York')
+
+        # Create mask for market hours
+        market_open = time(9, 30)
+        market_close = time(16, 0)
+        et_times = et_index.time
+        market_hours_mask = (et_times >= market_open) & (et_times <= market_close)
+
+        # Filter data to market hours only
+        data = data[market_hours_mask].copy()
+        if data.empty:
+            logger.warning("No data in market hours after filtering")
             return long_entries, long_exits, short_entries, short_exits
 
         # Ensure we have required columns
@@ -319,7 +384,7 @@ class ORBHighVolatilityStrategy(LongShortStrategy):
         data = data.copy()
 
         # ATR for volatility filter
-        data['atr'] = ORBHVIndicators.atr(
+        data['atr'] = HVORBIndicators.atr(
             data['high'], data['low'], data['close'], self.atr_period
         )
         data['atr_pct'] = (data['atr'] / data['close']) * 100
@@ -334,23 +399,35 @@ class ORBHighVolatilityStrategy(LongShortStrategy):
             data['vwap'] = data['close']
 
         # Calculate SIP scores and gaps by day
-        data['date'] = data.index.date
-        data['time'] = data.index.time
+        # Convert to Eastern Time for proper market hour comparisons
+        if data.index.tz is not None:
+            et_index = data.index.tz_convert('America/New_York')
+        else:
+            et_index = data.index.tz_localize('UTC').tz_convert('America/New_York')
+        data['date'] = et_index.date
+        data['time'] = et_index.time
 
         # Get daily gap and SIP data
-        gap_df = ORBHVIndicators.gap_by_day(data, self.min_gap_pct, self.max_gap_pct)
-        sip_scores = ORBHVIndicators.stocks_in_play_score(
+        gap_df = HVORBIndicators.gap_by_day(data, self.min_gap_pct, self.max_gap_pct)
+        sip_scores = HVORBIndicators.stocks_in_play_score(
             data,
             lookback_days=self.sip_lookback_days,
             opening_minutes=self.opening_range_minutes
         )
 
         # Generate signals using pure Python implementation
-        long_entries, long_exits, short_entries, short_exits = self._generate_signals_python(
+        filtered_long_entries, filtered_long_exits, filtered_short_entries, filtered_short_exits = self._generate_signals_python(
             data=data,
             gap_df=gap_df,
             sip_scores=sip_scores
         )
+
+        # Map filtered signals back to original index
+        # (signals only exist during market hours, rest are False)
+        long_entries.loc[filtered_long_entries.index] = filtered_long_entries
+        long_exits.loc[filtered_long_exits.index] = filtered_long_exits
+        short_entries.loc[filtered_short_entries.index] = filtered_short_entries
+        short_exits.loc[filtered_short_exits.index] = filtered_short_exits
 
         return long_entries, long_exits, short_entries, short_exits
 
@@ -372,11 +449,14 @@ class ORBHighVolatilityStrategy(LongShortStrategy):
         short_exits = pd.Series(False, index=data.index)
 
         # State tracking
-        position: Optional[ORBHVPosition] = None
+        position: Optional[HVORBPosition] = None
         current_date = None
         daily_or: Dict[str, float] = {}
         daily_trades = 0
         daily_pnl = 0.0
+
+        # Pullback entry tracking: {date: {setup_info}}
+        pending_pullback: Optional[Dict] = None
 
         # Process bar by bar
         for i, (idx, row) in enumerate(data.iterrows()):
@@ -385,15 +465,24 @@ class ORBHighVolatilityStrategy(LongShortStrategy):
 
             # Reset daily tracking on new day
             if bar_date != current_date:
+                # Force exit any open position from previous day (missed EOD)
+                if position is not None:
+                    if position.direction == 'long':
+                        long_exits.iloc[i] = True
+                    else:
+                        short_exits.iloc[i] = True
+                    position = None
+
                 current_date = bar_date
                 daily_or = {}
                 daily_trades = 0
                 daily_pnl = 0.0
+                pending_pullback = None  # Reset pending pullback setup on new day
 
             # Calculate opening range after OR period ends
             if bar_time >= self.or_end_time and not daily_or:
                 day_data = data[data['date'] == bar_date]
-                daily_or = ORBHVIndicators.opening_range(
+                daily_or = HVORBIndicators.opening_range(
                     day_data,
                     start_time=self.MARKET_OPEN,
                     end_time=self.or_end_time
@@ -413,7 +502,8 @@ class ORBHighVolatilityStrategy(LongShortStrategy):
                     current_high=row['high'],
                     current_low=row['low'],
                     current_close=row['close'],
-                    current_time=bar_time
+                    current_time=bar_time,
+                    current_bar_idx=i
                 )
 
                 if should_exit:
@@ -440,6 +530,7 @@ class ORBHighVolatilityStrategy(LongShortStrategy):
 
                 # Check entry cutoff
                 if bar_time >= self.entry_cutoff_time:
+                    pending_pullback = None  # Cancel pending setup after cutoff
                     continue
 
                 # Get gap info for today
@@ -449,27 +540,151 @@ class ORBHighVolatilityStrategy(LongShortStrategy):
 
                 # Get SIP score for today
                 sip_score = sip_scores.get(bar_date, 1.0)
+                current_symbol = getattr(self, '_current_symbol', '')
 
-                # Check entry conditions
-                entry_result = self._check_entry_conditions(
-                    row=row,
-                    prev_close=data['close'].iloc[i-1] if i > 0 else row['close'],
-                    daily_or=daily_or,
-                    gap_info=gap_info,
-                    sip_score=sip_score,
-                    bar_idx=i
-                )
+                # === PULLBACK ENTRY MODE ===
+                if self.use_pullback_entry:
+                    # Check if we have a pending pullback setup
+                    if pending_pullback is not None:
+                        # Increment bar count
+                        pending_pullback['bars_waited'] += 1
 
-                if entry_result is not None:
-                    position = entry_result
-                    daily_trades += 1
+                        # Check for timeout
+                        if pending_pullback['bars_waited'] > self.pullback_timeout_bars:
+                            pending_pullback = None
+                            continue
 
-                    if position.direction == 'long':
-                        long_entries.iloc[i] = True
-                    else:
-                        short_entries.iloc[i] = True
+                        # Check for pullback entry condition
+                        or_high = pending_pullback['or_high']
+                        or_low = pending_pullback['or_low']
+                        direction = pending_pullback['direction']
+
+                        current_close = row['close']
+                        current_low = row['low']
+                        current_open = row['open']
+
+                        if direction == 'long':
+                            # For long: price pulled back near OR high and is bouncing
+                            pullback_level = or_high * (1 + self.pullback_threshold_pct / 100)
+                            touched_pullback = current_low <= pullback_level
+                            is_bouncing = current_close > current_open  # Green candle
+                            still_above_or = current_close > or_high
+
+                            if touched_pullback and is_bouncing and still_above_or:
+                                # Valid pullback entry!
+                                position = self._create_position_from_setup(
+                                    pending_pullback, row, current_symbol
+                                )
+                                if position is not None:
+                                    daily_trades += 1
+                                    long_entries.iloc[i] = True
+                                    pending_pullback = None
+                        else:
+                            # For short: price pulled back near OR low and is dropping
+                            pullback_level = or_low * (1 - self.pullback_threshold_pct / 100)
+                            touched_pullback = row['high'] >= pullback_level
+                            is_dropping = current_close < current_open  # Red candle
+                            still_below_or = current_close < or_low
+
+                            if touched_pullback and is_dropping and still_below_or:
+                                position = self._create_position_from_setup(
+                                    pending_pullback, row, current_symbol
+                                )
+                                if position is not None:
+                                    daily_trades += 1
+                                    short_entries.iloc[i] = True
+                                    pending_pullback = None
+
+                    # No pending setup - look for breakout to create one
+                    elif pending_pullback is None:
+                        entry_result = self._check_entry_conditions(
+                            row=row,
+                            prev_close=data['close'].iloc[i-1] if i > 0 else row['close'],
+                            daily_or=daily_or,
+                            gap_info=gap_info,
+                            sip_score=sip_score,
+                            bar_idx=i,
+                            symbol=current_symbol
+                        )
+
+                        if entry_result is not None:
+                            # Don't enter immediately - create pending setup
+                            pending_pullback = {
+                                'or_high': daily_or.get('or_high', 0),
+                                'or_low': daily_or.get('or_low', 0),
+                                'direction': entry_result.direction,
+                                'breakout_price': row['close'],
+                                'gap_info': gap_info,
+                                'sip_score': sip_score,
+                                'bars_waited': 0,
+                                'entry_result': entry_result  # Store for position creation
+                            }
+
+                # === IMMEDIATE ENTRY MODE (original behavior) ===
+                else:
+                    entry_result = self._check_entry_conditions(
+                        row=row,
+                        prev_close=data['close'].iloc[i-1] if i > 0 else row['close'],
+                        daily_or=daily_or,
+                        gap_info=gap_info,
+                        sip_score=sip_score,
+                        bar_idx=i,
+                        symbol=current_symbol
+                    )
+
+                    if entry_result is not None:
+                        position = entry_result
+                        daily_trades += 1
+
+                        if position.direction == 'long':
+                            long_entries.iloc[i] = True
+                        else:
+                            short_entries.iloc[i] = True
 
         return long_entries, long_exits, short_entries, short_exits
+
+    def _create_position_from_setup(
+        self,
+        setup: Dict,
+        row: pd.Series,
+        symbol: str
+    ) -> Optional[HVORBPosition]:
+        """Create a position from a pending pullback setup at current price."""
+        original_entry = setup.get('entry_result')
+        if original_entry is None:
+            return None
+
+        # Update entry price to current price (pullback entry)
+        entry_price = row['close']
+        or_high = setup['or_high']
+        or_low = setup['or_low']
+        direction = setup['direction']
+
+        # Recalculate targets based on new entry price
+        targets = HVORBIndicators.calculate_tiered_targets(
+            entry_price=entry_price,
+            or_high=or_high,
+            or_low=or_low,
+            direction=direction,
+            target1_multiplier=self.target1_multiplier,
+            target2_multiplier=self.target2_multiplier
+        )
+
+        return HVORBPosition(
+            symbol=symbol,
+            direction=direction,
+            entry_price=entry_price,
+            entry_bar_idx=original_entry.entry_bar_idx,  # Keep original bar idx
+            entry_time=row.name if hasattr(row.name, 'hour') else original_entry.entry_time,
+            shares=original_entry.shares,
+            stop_loss=targets['stop_loss'],
+            target1=targets['target1'],
+            target2=targets['target2'],
+            or_height=original_entry.or_height,
+            sip_score=original_entry.sip_score,
+            gap_pct=original_entry.gap_pct,
+            confidence=original_entry.confidence
+        )
 
     def _check_entry_conditions(
         self,
@@ -480,7 +695,7 @@ class ORBHighVolatilityStrategy(LongShortStrategy):
         sip_score: float,
         bar_idx: int,
         symbol: str = ''
-    ) -> Optional[ORBHVPosition]:
+    ) -> Optional[HVORBPosition]:
         """
         Check all entry conditions and return position if valid.
 
@@ -491,7 +706,9 @@ class ORBHighVolatilityStrategy(LongShortStrategy):
         4. Breakout from opening range
         5. Direction alignment (gap direction matches breakout)
         6. RVOL confirmation (optional)
-        7. Sentiment alignment (optional, when use_sentiment=True)
+        7. Not an earnings day (optional, when skip_earnings_days=True)
+        8. Sentiment alignment (optional, when use_sentiment=True)
+        9. Regime alignment (optional, when use_regime=True)
         """
         or_high = daily_or.get('or_high', 0)
         or_low = daily_or.get('or_low', 0)
@@ -545,7 +762,13 @@ class ORBHighVolatilityStrategy(LongShortStrategy):
         if self.rvol_threshold > 0 and rvol < self.rvol_threshold:
             return None
 
-        # 7. Sentiment filter (optional)
+        # 7. Earnings day filter (optional)
+        if self.skip_earnings_days and symbol:
+            bar_date = row.name if isinstance(row.name, datetime) else row.get('date')
+            if self._is_earnings_day(symbol, bar_date):
+                return None
+
+        # 8. Sentiment filter (optional)
         sentiment_score = 0.0
         if self.use_sentiment and symbol:
             bar_date = row.name if isinstance(row.name, datetime) else row.get('date')
@@ -557,18 +780,27 @@ class ORBHighVolatilityStrategy(LongShortStrategy):
             if not passes_sentiment:
                 return None
 
-        # 8. Regime filter (optional)
+        # 9. Regime filter (optional)
         if self.use_regime and self.regime_detector:
             if breakout_direction == 'long' and self.current_regime == 'BEAR':
                 return None
             if breakout_direction == 'short' and self.current_regime == 'STRONG_BULL':
                 return None
 
+        # 10. Momentum filter (optional) - price must be above MA for longs
+        if self.use_momentum_filter and symbol:
+            ma_value = self._get_daily_ma(symbol, row)
+            if ma_value is not None and ma_value > 0:
+                if breakout_direction == 'long' and current_close < ma_value:
+                    return None
+                if breakout_direction == 'short' and current_close > ma_value:
+                    return None
+
         # All filters passed - create position
         entry_price = current_close
 
         # Calculate exit levels
-        targets = ORBHVIndicators.calculate_tiered_targets(
+        targets = HVORBIndicators.calculate_tiered_targets(
             entry_price=entry_price,
             or_high=or_high,
             or_low=or_low,
@@ -578,7 +810,7 @@ class ORBHighVolatilityStrategy(LongShortStrategy):
         )
 
         # Calculate confidence score with sentiment
-        confidence = ORBHVIndicators.confidence_score(
+        confidence = HVORBIndicators.confidence_score(
             sip_score=sip_score,
             sentiment_score=sentiment_score,
             gap_pct=gap_pct,
@@ -586,7 +818,7 @@ class ORBHighVolatilityStrategy(LongShortStrategy):
             direction=breakout_direction
         )
 
-        return ORBHVPosition(
+        return HVORBPosition(
             symbol=symbol,
             direction=breakout_direction,
             entry_price=entry_price,
@@ -606,20 +838,22 @@ class ORBHighVolatilityStrategy(LongShortStrategy):
 
     def _check_exit_conditions(
         self,
-        position: ORBHVPosition,
+        position: HVORBPosition,
         current_high: float,
         current_low: float,
         current_close: float,
-        current_time: time
+        current_time: time,
+        current_bar_idx: int = 0
     ) -> Tuple[bool, Optional[str]]:
         """
         Check all exit conditions for current position.
 
         Exit priority:
         1. Stop loss (including trailing stop)
-        2. Target 1 (partial exit - handled externally for actual partial)
-        3. Target 2
-        4. EOD exit
+        2. Time-based stop (if not profitable after N minutes)
+        3. Target 1 (partial exit - handled externally for actual partial)
+        4. Target 2
+        5. EOD exit
         """
         # Update max favorable price
         if position.direction == 'long':
@@ -644,7 +878,21 @@ class ORBHighVolatilityStrategy(LongShortStrategy):
             if current_high >= position.current_stop:
                 return True, 'stop_loss' if not position.trailing_active else 'trailing'
 
-        # 2. Check target 1 (for tracking - full exit here, partial in real impl)
+        # 2. Check time-based stop (exit if not profitable after N minutes)
+        if self.use_time_stop:
+            bars_held = current_bar_idx - position.entry_bar_idx
+            # Each bar is 1 minute
+            if bars_held >= self.time_stop_minutes:
+                # Check if trade is profitable
+                if position.direction == 'long':
+                    is_profitable = current_close > position.entry_price
+                else:
+                    is_profitable = current_close < position.entry_price
+
+                if not is_profitable:
+                    return True, 'time_stop'
+
+        # 3. Check target 1 (for tracking - full exit here, partial in real impl)
         if not position.target1_hit:
             if position.direction == 'long' and current_high >= position.target1:
                 position.target1_hit = True
@@ -660,18 +908,81 @@ class ORBHighVolatilityStrategy(LongShortStrategy):
                 position.current_stop = position.entry_price - buffer
                 return True, 'target1'
 
-        # 3. Check target 2
+        # 4. Check target 2
         if position.target1_hit:
             if position.direction == 'long' and current_high >= position.target2:
                 return True, 'target2'
             elif position.direction == 'short' and current_low <= position.target2:
                 return True, 'target2'
 
-        # 4. Check EOD exit
+        # 5. Check EOD exit
         if current_time >= self.eod_exit_time:
             return True, 'eod'
 
         return False, None
+
+    # Earnings-related keywords in headlines
+    EARNINGS_KEYWORDS = [
+        'earnings',
+        'quarterly results',
+        'q1 results', 'q2 results', 'q3 results', 'q4 results',
+        'beat estimates',
+        'miss estimates',
+        'beats expectations',
+        'misses expectations',
+        'eps of',
+        'revenue of',
+        'reports profit',
+        'reports loss',
+        'fiscal quarter',
+        'guidance',
+    ]
+
+    def _is_earnings_day(self, symbol: str, date: datetime) -> bool:
+        """
+        Detect if this is likely an earnings day based on news headlines.
+
+        If 2+ headlines contain earnings-related keywords, skip the day.
+        Earnings days have high volatility but are unpredictable for ORB.
+
+        Args:
+            symbol: Stock symbol
+            date: Trading date
+
+        Returns:
+            True if this appears to be an earnings day
+        """
+        if self._sentiment_data is None:
+            return False
+
+        try:
+            target_date = date.date() if hasattr(date, 'date') else date
+
+            # Filter news for this symbol and date
+            mask = (
+                (self._sentiment_data['symbol'] == symbol) &
+                (self._sentiment_data['timestamp'].dt.date == target_date)
+            )
+            day_news = self._sentiment_data[mask]
+
+            if day_news.empty or 'headline' not in day_news.columns:
+                return False
+
+            # Count headlines with earnings keywords
+            earnings_count = 0
+            for headline in day_news['headline'].dropna():
+                headline_lower = headline.lower()
+                for keyword in self.EARNINGS_KEYWORDS:
+                    if keyword in headline_lower:
+                        earnings_count += 1
+                        break  # Only count once per headline
+
+            # If 2+ earnings-related headlines, it's likely earnings day
+            return earnings_count >= 2
+
+        except Exception as e:
+            logger.debug(f"Error checking earnings day for {symbol}/{date}: {e}")
+            return False
 
     def _check_risk_limits(
         self,
@@ -810,6 +1121,21 @@ class ORBHighVolatilityStrategy(LongShortStrategy):
             if day_sentiment.empty:
                 return 0.0
 
+            # Filter out spam headlines
+            if 'headline' in day_sentiment.columns:
+                spam_mask = day_sentiment['headline'].apply(self._is_spam_headline)
+                day_sentiment = day_sentiment[~spam_mask]
+                if day_sentiment.empty:
+                    # Only spam news, treat as neutral
+                    return 0.0
+
+            # Filter by confidence if threshold set
+            if self.min_sentiment_confidence > 0 and 'confidence' in day_sentiment.columns:
+                day_sentiment = day_sentiment[day_sentiment['confidence'] >= self.min_sentiment_confidence]
+                if day_sentiment.empty:
+                    # No high-confidence sentiment, treat as neutral
+                    return 0.0
+
             # Return mean sentiment score
             return float(day_sentiment['sentiment_score'].mean())
         except Exception as e:
@@ -838,11 +1164,122 @@ class ORBHighVolatilityStrategy(LongShortStrategy):
 
         sentiment_score = self.get_sentiment_for_date(symbol, date)
 
-        # For longs, we want neutral to positive sentiment
+        # For longs, we want positive sentiment (>= threshold)
         if direction == 'long':
-            passes = sentiment_score >= -self.min_sentiment_score
-        # For shorts, we want neutral to negative sentiment
+            passes = sentiment_score >= self.min_sentiment_score
+        # For shorts, we want negative sentiment (<= -threshold)
         else:
-            passes = sentiment_score <= self.min_sentiment_score
+            passes = sentiment_score <= -self.min_sentiment_score
 
         return passes, sentiment_score
+
+    def _get_daily_ma(self, symbol: str, row: pd.Series) -> Optional[float]:
+        """
+        Get the daily moving average for momentum filter.
+
+        Calculates MA from daily close prices. Uses cached values when available.
+
+        Args:
+            symbol: Stock symbol
+            row: Current bar data with 'close' price
+
+        Returns:
+            MA value or None if not enough data
+        """
+        # Get the date from the row
+        if isinstance(row.name, datetime):
+            current_date = row.name.date() if hasattr(row.name, 'date') else row.name
+        else:
+            current_date = row.get('date')
+
+        if current_date is None:
+            return None
+
+        # Check cache
+        cache_key = f"{symbol}_{current_date}"
+        if cache_key in self._daily_ma:
+            return self._daily_ma[cache_key]
+
+        # Calculate from daily data if available
+        # For intraday data, we use the close prices aggregated by day
+        # The MA is calculated on previous days only (no lookahead)
+        try:
+            # Use SMA of recent daily closes from the data we have
+            # This approximates a daily MA from intraday data
+            data = getattr(self, '_current_data', None)
+            if data is None or data.empty:
+                return None
+
+            # Get daily closes (last close of each day)
+            if 'date' in data.columns:
+                daily_closes = data.groupby('date')['close'].last()
+            else:
+                # Infer date from index
+                if hasattr(data.index, 'date'):
+                    data_copy = data.copy()
+                    data_copy['_date'] = data.index.date
+                    daily_closes = data_copy.groupby('_date')['close'].last()
+                else:
+                    return None
+
+            # Filter to dates before current
+            daily_closes = daily_closes[daily_closes.index < current_date]
+
+            if len(daily_closes) < self.momentum_ma_period:
+                return None
+
+            # Calculate SMA
+            ma_value = float(daily_closes.tail(self.momentum_ma_period).mean())
+
+            # Cache it
+            self._daily_ma[cache_key] = ma_value
+            return ma_value
+
+        except Exception:
+            return None
+
+    # Spam patterns to filter from sentiment analysis
+    SPAM_HEADLINE_PATTERNS = [
+        'whale alert',
+        'wsb',
+        'wallstreetbets',
+        'trending on reddit',
+        'trending stock',
+        'most talked about',
+        'unusual options',
+        'dark pool',
+        'insider buying',
+        'insider selling',
+        'short squeeze',
+        'to the moon',
+        'diamond hands',
+        'rocket emoji',
+        'meme stock',
+    ]
+
+    def _is_spam_headline(self, headline: str) -> bool:
+        """
+        Check if a headline is spam/low-quality.
+
+        Filters out:
+        - Whale alerts
+        - WSB/Reddit trending
+        - Generic aggregator content
+        - Meme stock hype
+
+        Args:
+            headline: News headline text
+
+        Returns:
+            True if headline should be filtered out
+        """
+        if not headline:
+            return True
+
+        headline_lower = headline.lower()
+
+        for pattern in self.SPAM_HEADLINE_PATTERNS:
+            if pattern in headline_lower:
+                return True
+
+        return False

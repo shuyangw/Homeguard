@@ -1,5 +1,5 @@
 """
-ORB High Volatility strategy indicators.
+HV ORB (High Volatility Opening Range Breakout) strategy indicators.
 
 Provides calculations for:
 - Stocks in Play (SIP) score: Opening volume vs historical average
@@ -18,9 +18,9 @@ from src.utils.logger import get_logger
 logger = get_logger(__name__)
 
 
-class ORBHVIndicators:
+class HVORBIndicators:
     """
-    Indicators specific to ORB High Volatility strategy.
+    Indicators specific to HV ORB (High Volatility Opening Range Breakout) strategy.
 
     Key differentiator from standard ORB: "Stocks in Play" scoring
     based on abnormal opening volume relative to historical average.
@@ -61,11 +61,17 @@ class ORBHVIndicators:
 
         df = df.copy()
 
-        # Extract date and time components
-        df['date'] = df.index.date
-        df['time'] = df.index.time
+        # Convert to Eastern Time for proper market hour comparisons
+        if df.index.tz is not None:
+            et_index = df.index.tz_convert('America/New_York')
+        else:
+            et_index = df.index.tz_localize('UTC').tz_convert('America/New_York')
 
-        # Define opening range end time
+        # Extract date and time components in ET
+        df['date'] = et_index.date
+        df['time'] = et_index.time
+
+        # Define opening range end time (ET)
         opening_end = time(9, 30 + opening_minutes)
 
         # Calculate opening volume for each day
@@ -184,7 +190,13 @@ class ORBHVIndicators:
             return pd.DataFrame()
 
         df = df.copy()
-        df['date'] = df.index.date
+
+        # Convert to Eastern Time for proper date grouping
+        if df.index.tz is not None:
+            et_index = df.index.tz_convert('America/New_York')
+        else:
+            et_index = df.index.tz_localize('UTC').tz_convert('America/New_York')
+        df['date'] = et_index.date
 
         # Get first bar of each day (open) and last bar of previous day (close)
         daily_open = df.groupby('date')['open'].first()
@@ -198,7 +210,7 @@ class ORBHVIndicators:
             if date not in prev_close.index or pd.isna(prev_close[date]):
                 continue
 
-            gap_info = ORBHVIndicators.premarket_gap(
+            gap_info = HVORBIndicators.premarket_gap(
                 today_open=daily_open[date],
                 yesterday_close=prev_close[date],
                 min_gap_pct=min_gap_pct,
@@ -273,7 +285,7 @@ class ORBHVIndicators:
         Returns:
             ATR percentage series
         """
-        atr_value = ORBHVIndicators.atr(high, low, close, period)
+        atr_value = HVORBIndicators.atr(high, low, close, period)
         return (atr_value / close) * 100
 
     @staticmethod
@@ -299,7 +311,7 @@ class ORBHVIndicators:
         Returns:
             Boolean series (True = within acceptable volatility)
         """
-        atr_pct = ORBHVIndicators.atr_percent(high, low, close, period)
+        atr_pct = HVORBIndicators.atr_percent(high, low, close, period)
         return (atr_pct >= min_atr_pct) & (atr_pct <= max_atr_pct)
 
     @staticmethod
@@ -328,8 +340,14 @@ class ORBHVIndicators:
             logger.warning("DataFrame index is not DatetimeIndex")
             return {}
 
-        # Filter to opening range time window
-        idx_time = df.index.time
+        # Convert to Eastern Time for proper market hour comparisons
+        if df.index.tz is not None:
+            et_index = df.index.tz_convert('America/New_York')
+        else:
+            et_index = df.index.tz_localize('UTC').tz_convert('America/New_York')
+
+        # Filter to opening range time window (using ET times)
+        idx_time = et_index.time
         or_mask = (idx_time >= start_time) & (idx_time < end_time)
         or_data = df[or_mask]
 

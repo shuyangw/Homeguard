@@ -1,10 +1,10 @@
-# ORB High Volatility Strategy - Relaxed filters for testing
-# Usage: python -m src.backtest_runner --config config/backtesting/orb_hv_relaxed.yaml
+# HV ORB (High Volatility Opening Range Breakout) Strategy - Relaxed filters for testing
+# Usage: python -m src.backtest_runner --config config/backtesting/hv_orb_relaxed.yaml
 
 mode: single
 
 strategy:
-  name: ORBHighVolatilityStrategy
+  name: HVORBStrategy
   parameters:
     # Opening Range (5 minutes)
     opening_range_minutes: 5

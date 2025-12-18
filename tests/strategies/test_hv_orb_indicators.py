@@ -1,5 +1,5 @@
 """
-Unit Tests for ORB High Volatility Indicators.
+Unit Tests for HV ORB (High Volatility Opening Range Breakout) Indicators.
 
 Tests SIP score, gap detection, ATR filter, and confidence score calculations.
 """
@@ -9,7 +9,7 @@ import pandas as pd
 import numpy as np
 from datetime import datetime, time, timedelta
 
-from src.strategies.advanced.orb_hv_indicators import ORBHVIndicators
+from src.strategies.advanced.hv_orb_indicators import HVORBIndicators
 
 
 class TestStocksInPlayScore:
@@ -48,7 +48,7 @@ class TestStocksInPlayScore:
             dfs.append(df)
 
         data = pd.concat(dfs)
-        sip_scores = ORBHVIndicators.stocks_in_play_score(
+        sip_scores = HVORBIndicators.stocks_in_play_score(
             data,
             lookback_days=14,
             opening_minutes=5
@@ -64,7 +64,7 @@ class TestStocksInPlayScore:
         today_volume = 15000  # 3x normal
         historical_volumes = [5000, 5000, 5000, 5000, 5000]  # Consistent 5000
 
-        score = ORBHVIndicators.stocks_in_play_score_single_day(
+        score = HVORBIndicators.stocks_in_play_score_single_day(
             today_volume,
             historical_volumes
         )
@@ -74,12 +74,12 @@ class TestStocksInPlayScore:
     def test_sip_score_empty_data(self):
         """Test SIP score with empty data."""
         df = pd.DataFrame()
-        result = ORBHVIndicators.stocks_in_play_score(df)
+        result = HVORBIndicators.stocks_in_play_score(df)
         assert result.empty
 
     def test_sip_score_no_history(self):
         """Test SIP score with no historical data."""
-        score = ORBHVIndicators.stocks_in_play_score_single_day(
+        score = HVORBIndicators.stocks_in_play_score_single_day(
             5000, []
         )
         assert score == 1.0
@@ -90,7 +90,7 @@ class TestPremarketGap:
 
     def test_gap_up(self):
         """Test positive gap detection."""
-        result = ORBHVIndicators.premarket_gap(
+        result = HVORBIndicators.premarket_gap(
             today_open=105.0,
             yesterday_close=100.0,
             min_gap_pct=0.02,
@@ -104,7 +104,7 @@ class TestPremarketGap:
 
     def test_gap_down(self):
         """Test negative gap detection."""
-        result = ORBHVIndicators.premarket_gap(
+        result = HVORBIndicators.premarket_gap(
             today_open=95.0,
             yesterday_close=100.0,
             min_gap_pct=0.02,
@@ -117,7 +117,7 @@ class TestPremarketGap:
 
     def test_gap_too_small(self):
         """Test gap below minimum threshold."""
-        result = ORBHVIndicators.premarket_gap(
+        result = HVORBIndicators.premarket_gap(
             today_open=100.5,
             yesterday_close=100.0,
             min_gap_pct=0.02,
@@ -129,7 +129,7 @@ class TestPremarketGap:
 
     def test_gap_too_large(self):
         """Test gap above maximum threshold."""
-        result = ORBHVIndicators.premarket_gap(
+        result = HVORBIndicators.premarket_gap(
             today_open=120.0,
             yesterday_close=100.0,
             min_gap_pct=0.02,
@@ -141,7 +141,7 @@ class TestPremarketGap:
 
     def test_gap_invalid_price(self):
         """Test gap with invalid price."""
-        result = ORBHVIndicators.premarket_gap(
+        result = HVORBIndicators.premarket_gap(
             today_open=100.0,
             yesterday_close=0.0
         )
@@ -161,7 +161,7 @@ class TestATRVolatilityFilter:
         low = pd.Series([98.0] * n)
         close = pd.Series([100.0] * n)
 
-        atr = ORBHVIndicators.atr(high, low, close, period=14)
+        atr = HVORBIndicators.atr(high, low, close, period=14)
 
         # ATR should be around 4 (high - low)
         assert 3.5 <= atr.iloc[-1] <= 4.5
@@ -173,7 +173,7 @@ class TestATRVolatilityFilter:
         low = pd.Series([98.0] * n)
         close = pd.Series([100.0] * n)
 
-        atr_pct = ORBHVIndicators.atr_percent(high, low, close, period=14)
+        atr_pct = HVORBIndicators.atr_percent(high, low, close, period=14)
 
         # ATR% should be around 4% (4 / 100)
         assert 3.5 <= atr_pct.iloc[-1] <= 4.5
@@ -186,7 +186,7 @@ class TestATRVolatilityFilter:
         low = pd.Series([96.0] * n)
         close = pd.Series([100.0] * n)
 
-        result = ORBHVIndicators.volatility_filter(
+        result = HVORBIndicators.volatility_filter(
             high, low, close,
             period=14,
             min_atr_pct=2.0,
@@ -204,7 +204,7 @@ class TestATRVolatilityFilter:
         low = pd.Series([99.5] * n)
         close = pd.Series([100.0] * n)
 
-        result = ORBHVIndicators.volatility_filter(
+        result = HVORBIndicators.volatility_filter(
             high, low, close,
             period=14,
             min_atr_pct=2.0,
@@ -220,7 +220,7 @@ class TestConfidenceScore:
 
     def test_confidence_score_high_sip(self):
         """Test confidence with high SIP score."""
-        score = ORBHVIndicators.confidence_score(
+        score = HVORBIndicators.confidence_score(
             sip_score=5.0,      # 5x average
             sentiment_score=0.0,
             gap_pct=0.05,       # 5% gap up
@@ -233,7 +233,7 @@ class TestConfidenceScore:
 
     def test_confidence_score_sentiment_aligned(self):
         """Test confidence with aligned sentiment."""
-        score = ORBHVIndicators.confidence_score(
+        score = HVORBIndicators.confidence_score(
             sip_score=3.0,
             sentiment_score=0.5,  # Strong positive
             gap_pct=0.05,
@@ -247,7 +247,7 @@ class TestConfidenceScore:
     def test_confidence_score_range(self):
         """Test that confidence score is always between 0 and 1."""
         # Test extremes
-        score_low = ORBHVIndicators.confidence_score(
+        score_low = HVORBIndicators.confidence_score(
             sip_score=0.5,
             sentiment_score=-0.5,
             gap_pct=-0.05,
@@ -255,7 +255,7 @@ class TestConfidenceScore:
             direction='long'
         )
 
-        score_high = ORBHVIndicators.confidence_score(
+        score_high = HVORBIndicators.confidence_score(
             sip_score=15.0,
             sentiment_score=0.9,
             gap_pct=0.10,
@@ -288,7 +288,7 @@ class TestOpeningRange:
             'volume': [1000] * n
         }, index=times)
 
-        result = ORBHVIndicators.opening_range(
+        result = HVORBIndicators.opening_range(
             df,
             start_time=time(9, 30),
             end_time=time(9, 35)  # 5-minute OR
@@ -307,7 +307,7 @@ class TestOpeningRange:
     def test_opening_range_empty(self):
         """Test opening range with empty data."""
         df = pd.DataFrame()
-        result = ORBHVIndicators.opening_range(df)
+        result = HVORBIndicators.opening_range(df)
         assert result == {}
 
 
@@ -316,7 +316,7 @@ class TestTieredTargets:
 
     def test_long_targets(self):
         """Test target calculation for long position."""
-        result = ORBHVIndicators.calculate_tiered_targets(
+        result = HVORBIndicators.calculate_tiered_targets(
             entry_price=100.0,
             or_high=100.0,
             or_low=98.0,
@@ -334,7 +334,7 @@ class TestTieredTargets:
 
     def test_short_targets(self):
         """Test target calculation for short position."""
-        result = ORBHVIndicators.calculate_tiered_targets(
+        result = HVORBIndicators.calculate_tiered_targets(
             entry_price=98.0,
             or_high=100.0,
             or_low=98.0,
@@ -366,14 +366,14 @@ class TestVolatilityRegime:
         close = 500 + np.cumsum(np.random.randn(len(times)) * 0.05)
         df = pd.DataFrame({'close': close}, index=times)
 
-        regime = ORBHVIndicators.volatility_regime(df, lookback_bars=12)
+        regime = HVORBIndicators.volatility_regime(df, lookback_bars=12)
         # Should be normal or low in calm conditions
         assert regime in ['low', 'normal']
 
     def test_empty_data(self):
         """Test volatility regime with empty data."""
         df = pd.DataFrame()
-        regime = ORBHVIndicators.volatility_regime(df)
+        regime = HVORBIndicators.volatility_regime(df)
         assert regime == 'normal'  # Default
 
 
@@ -382,7 +382,7 @@ class TestPositionSizeAdjustment:
 
     def test_normal_adjustment(self):
         """Test adjustment in normal conditions."""
-        mult = ORBHVIndicators.position_size_adjustment(
+        mult = HVORBIndicators.position_size_adjustment(
             confidence=0.5,
             volatility_regime='normal'
         )
@@ -392,7 +392,7 @@ class TestPositionSizeAdjustment:
 
     def test_high_vol_reduction(self):
         """Test reduced size in high volatility."""
-        mult = ORBHVIndicators.position_size_adjustment(
+        mult = HVORBIndicators.position_size_adjustment(
             confidence=0.5,
             volatility_regime='high'
         )
@@ -402,7 +402,7 @@ class TestPositionSizeAdjustment:
 
     def test_extreme_vol_reduction(self):
         """Test significant reduction in extreme volatility."""
-        mult = ORBHVIndicators.position_size_adjustment(
+        mult = HVORBIndicators.position_size_adjustment(
             confidence=1.0,
             volatility_regime='extreme'
         )

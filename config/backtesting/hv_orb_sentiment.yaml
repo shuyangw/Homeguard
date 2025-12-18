@@ -1,32 +1,31 @@
-# ORB High Volatility Strategy with Sentiment
-# Usage: python -m src.backtest_runner --config config/backtesting/orb_hv_sentiment.yaml
+# HV ORB (High Volatility Opening Range Breakout) Strategy with Sentiment
+# Usage: python -m src.backtest_runner --config config/backtesting/hv_orb_sentiment.yaml
 #
-# NOTE: Requires pre-computed sentiment data. Run these steps first:
-#   1. Download news: python scripts/download_news.py --symbols TQQQ,SQQQ --start 2024-01-01
-#   2. Install sentiment: pip install transformers torch
-#   3. Compute sentiment: python scripts/compute_sentiment.py --all
+# Prerequisites:
+#   1. Download news: python scripts/download_news.py --symbols AAPL,MSFT,NVDA,TSLA,AMD,META,GOOGL,AMZN
+#   2. Compute sentiment: python scripts/compute_all_sentiment.py
 
 mode: single
 
 strategy:
-  name: ORBHighVolatilityStrategy
+  name: HVORBStrategy
   parameters:
     # Opening Range (5 minutes)
     opening_range_minutes: 5
 
-    # Stocks in Play (SIP) Score
+    # Stocks in Play (SIP) Score - 1.5x average volume threshold
     sip_lookback_days: 14
-    sip_min_score: 2.0
+    sip_min_score: 1.5
 
-    # Gap Filtering (2-15% gaps)
+    # Gap Filtering (2-15% gaps only)
     min_gap_pct: 0.02
     max_gap_pct: 0.15
     gap_direction_filter: true
 
-    # Volatility (ATR-based bounds)
+    # Volatility (ATR-based bounds) - adjusted for individual stocks
     atr_period: 14
-    min_atr_pct: 2.0
-    max_atr_pct: 10.0
+    min_atr_pct: 0.03
+    max_atr_pct: 3.0
 
     # Tiered Exits
     target1_multiplier: 1.0
@@ -42,23 +41,25 @@ strategy:
     max_daily_trades: 10
     max_concurrent_positions: 5
 
-    # Entry Filters
-    entry_cutoff_hour: 15
-    entry_cutoff_minute: 30
+    # Entry Filters - ORB works best in first 2 hours
+    entry_cutoff_hour: 11
+    entry_cutoff_minute: 0
     rvol_threshold: 1.5
 
-    # SENTIMENT ENABLED
+    # SENTIMENT ENABLED (FinBERT)
     use_sentiment: true
-    min_sentiment_score: 0.2
+    min_sentiment_score: 0.3
+    min_sentiment_confidence: 0.7  # Only use high-confidence sentiment
+    skip_earnings_days: true       # Avoid trading on earnings announcement days
 
     # Regime Filter
     use_regime: true
 
-    # Both directions
-    long_only: false
+    # Direction (long_only=true required due to backtest engine signal handling)
+    long_only: true
 
 symbols:
-  list: [TQQQ, SQQQ, SOXL, SOXS, UPRO, SPXU]
+  list: [AAPL, MSFT, NVDA, TSLA, AMD, META, GOOGL, AMZN]
 
 dates:
   start: "2024-01-01"
@@ -70,7 +71,8 @@ backtest:
   slippage: 0.001
   benchmark: SPY
   market_hours_only: true
-  allow_shorts: true
+  allow_shorts: false
+  portfolio_mode: multi
 
 risk:
   enabled: true
