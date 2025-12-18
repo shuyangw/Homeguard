@@ -249,10 +249,39 @@ class RAMPSignals:
         # RAMP momentum formula: long_w * long_ret - pen_w * short_ret
         momentum = (long_w * long_returns) - (pen_w * short_returns)
 
-        # Get latest momentum scores
-        latest_scores = momentum.iloc[-1].dropna()
+        # Get latest momentum scores with diagnostics
+        latest_momentum = momentum.iloc[-1]
+        valid_scores = latest_momentum.dropna()
 
-        return latest_scores
+        # Calculate and log data quality statistics
+        total_symbols = len(latest_momentum)
+        valid_count = len(valid_scores)
+        nan_count = latest_momentum.isna().sum()
+        valid_pct = (valid_count / total_symbols * 100) if total_symbols > 0 else 0
+
+        logger.info(f"[RAMP] Momentum Score Summary:")
+        logger.info(f"[RAMP]   Total symbols: {total_symbols}")
+        logger.info(f"[RAMP]   Valid scores: {valid_count} ({valid_pct:.1f}%)")
+        logger.info(f"[RAMP]   NaN scores: {nan_count}")
+
+        # Alert on degraded data quality (CRITICAL - this was silently failing before!)
+        if valid_pct < 80.0:
+            logger.error(f"[RAMP] DATA QUALITY ALERT: Only {valid_pct:.1f}% of symbols have valid momentum!")
+            logger.error(f"[RAMP] Expected ~95%, got {valid_pct:.1f}% - indicates missing price data")
+            nan_symbols = latest_momentum[latest_momentum.isna()].index[:20].tolist()
+            logger.error(f"[RAMP] Sample symbols with NaN scores: {nan_symbols}")
+
+        if valid_pct < 50.0:
+            logger.error("[RAMP] CRITICAL: Less than 50% valid scores - strategy operating in DEGRADED MODE!")
+
+        # Log top 5 momentum scores for transparency
+        if len(valid_scores) > 0:
+            logger.info(f"[RAMP] Top 5 momentum scores:")
+            top_5 = valid_scores.sort_values(ascending=False).head(5)
+            for symbol, score in top_5.items():
+                logger.info(f"[RAMP]   {symbol}: {score:.4f} ({score*100:.2f}%)")
+
+        return valid_scores
 
     def calculate_risk_signals(
         self,

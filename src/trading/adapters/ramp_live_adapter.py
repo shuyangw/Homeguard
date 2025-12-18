@@ -8,6 +8,8 @@ Rebalances daily at 3:55 PM EST based on regime-adjusted momentum rankings.
 
 from typing import List, Dict, Optional, Any, TYPE_CHECKING, Union
 from datetime import datetime, time, timedelta
+from pathlib import Path
+import pickle
 import pandas as pd
 import numpy as np
 
@@ -33,6 +35,127 @@ from src.utils.trading_logger import get_trade_log_writer
 
 # Strategy identifier for state tracking
 STRATEGY_NAME = 'ramp'
+
+# Disk cache configuration
+CACHE_DIR = Path.home() / '.homeguard' / 'cache'
+CACHE_FILE_PREFIX = 'ramp_historical_cache'
+
+
+def _get_cache_path(cache_date: datetime) -> Path:
+    """Get cache file path for a specific date."""
+    date_str = cache_date.strftime('%Y%m%d')
+    return CACHE_DIR / f'{CACHE_FILE_PREFIX}_{date_str}.pkl'
+
+
+def _save_cache_to_disk(data_cache: Dict, cache_date: datetime) -> bool:
+    """
+    Save historical data cache to disk.
+
+    Args:
+        data_cache: Dict with 'prices', 'SPY', 'VIX' DataFrames
+        cache_date: Date of the cache
+
+    Returns:
+        True if successful, False otherwise
+    """
+    try:
+        CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        cache_path = _get_cache_path(cache_date)
+
+        with open(cache_path, 'wb') as f:
+            pickle.dump({
+                'data': data_cache,
+                'date': cache_date,
+                'version': 1
+            }, f)
+
+        # Clean up old cache files (keep only last 3 days)
+        _cleanup_old_caches(keep_days=3)
+
+        logger.success(f"[RAMP] Saved historical cache to {cache_path}")
+        return True
+
+    except Exception as e:
+        logger.error(f"[RAMP] Failed to save cache to disk: {e}")
+        return False
+
+
+def _load_cache_from_disk(max_age_days: int = 1) -> Optional[Dict]:
+    """
+    Load historical data cache from disk.
+
+    Args:
+        max_age_days: Maximum age of cache to consider valid
+
+    Returns:
+        Dict with 'data' and 'date' if valid cache found, None otherwise
+    """
+    try:
+        if not CACHE_DIR.exists():
+            logger.info("[RAMP] No cache directory found")
+            return None
+
+        # Find most recent cache file
+        cache_files = list(CACHE_DIR.glob(f'{CACHE_FILE_PREFIX}_*.pkl'))
+        if not cache_files:
+            logger.info("[RAMP] No cache files found")
+            return None
+
+        # Sort by date (newest first)
+        cache_files.sort(reverse=True)
+        latest_cache = cache_files[0]
+
+        with open(latest_cache, 'rb') as f:
+            cached = pickle.load(f)
+
+        cache_date = cached.get('date')
+        if cache_date is None:
+            logger.warning("[RAMP] Cache file missing date field")
+            return None
+
+        # Check cache age
+        now = tz.now()
+        if hasattr(cache_date, 'tzinfo') and cache_date.tzinfo is None:
+            cache_date = cache_date.replace(tzinfo=now.tzinfo)
+
+        age_days = (now - cache_date).days
+        if age_days > max_age_days:
+            logger.info(f"[RAMP] Cache is {age_days} days old (max: {max_age_days}), will refresh")
+            return None
+
+        data_cache = cached.get('data')
+        if data_cache is None or 'prices' not in data_cache:
+            logger.warning("[RAMP] Cache file missing data")
+            return None
+
+        prices_df = data_cache['prices']
+        logger.success(f"[RAMP] Loaded cache from {latest_cache.name}: {len(prices_df.columns)} symbols, {len(prices_df)} days")
+
+        return cached
+
+    except Exception as e:
+        logger.error(f"[RAMP] Failed to load cache from disk: {e}")
+        return None
+
+
+def _cleanup_old_caches(keep_days: int = 3) -> None:
+    """Remove cache files older than keep_days."""
+    try:
+        if not CACHE_DIR.exists():
+            return
+
+        cache_files = list(CACHE_DIR.glob(f'{CACHE_FILE_PREFIX}_*.pkl'))
+        if len(cache_files) <= keep_days:
+            return
+
+        # Sort by name (date) and remove oldest
+        cache_files.sort()
+        for old_cache in cache_files[:-keep_days]:
+            old_cache.unlink()
+            logger.info(f"[RAMP] Removed old cache: {old_cache.name}")
+
+    except Exception as e:
+        logger.warning(f"[RAMP] Failed to cleanup old caches: {e}")
 
 
 class RAMPSignalWrapper(StrategySignals):
@@ -134,6 +257,21 @@ class RAMPSignalWrapper(StrategySignals):
                     confidence=1.0,
                     price=price,
                     metadata={'action': 'sell', 'regime': rs.regime}
+                ))
+            elif rs.action == 'hold':
+                # Include HOLD signals for transparency and logging
+                signals.append(Signal(
+                    timestamp=now,
+                    symbol=rs.symbol,
+                    direction='HOLD',
+                    confidence=rs.weight,
+                    price=price,
+                    metadata={
+                        'momentum_score': rs.momentum_score,
+                        'rank': rs.rank,
+                        'regime': rs.regime,
+                        'action': 'hold'
+                    }
                 ))
 
         return signals
@@ -288,14 +426,58 @@ class RAMPLiveAdapter(StrategyAdapter):
         """
         Pre-load historical data for momentum calculation.
 
-        Fetches via Alpaca:
-        1. Daily prices for all symbols (252+ days for momentum)
-        2. SPY prices for drawdown calculation and regime detection
-        3. VIX prices for fear signals and regime detection
+        First tries to load from disk cache (fast). If cache is missing or stale,
+        fetches via Alpaca and saves to disk for next time.
+
+        Data sources:
+        1. Disk cache (~/.homeguard/cache/) - instant load
+        2. Alpaca API (fallback) - 4-5 minutes for 503 symbols
         """
         logger.info("[RAMP] Pre-loading historical data for regime-aware momentum strategy...")
 
         try:
+            # Try loading from disk cache first (instant)
+            cached = _load_cache_from_disk(max_age_days=1)
+            if cached is not None:
+                data_cache = cached['data']
+                cache_date = cached['date']
+
+                # Use cached data
+                self._data_cache = data_cache
+                self._cache_date = cache_date
+
+                prices_df = data_cache['prices']
+                spy_data = data_cache.get('SPY')
+                vix_data = data_cache.get('VIX')
+
+                # Extract close prices for RAMP signals
+                spy_prices = pd.Series()
+                if spy_data is not None and not spy_data.empty:
+                    if 'close' in spy_data.columns:
+                        spy_prices = spy_data['close']
+                    elif 'Close' in spy_data.columns:
+                        spy_prices = spy_data['Close']
+
+                vix_prices = pd.Series()
+                if vix_data is not None and not vix_data.empty:
+                    if 'Close' in vix_data.columns:
+                        vix_prices = vix_data['Close']
+                    elif 'close' in vix_data.columns:
+                        vix_prices = vix_data['close']
+
+                # Update RAMP signals with cached data
+                self._ramp_signals.update_historical_data(prices_df, spy_prices, vix_prices)
+
+                # Detect regime
+                regime, confidence = self._ramp_signals.detect_regime(spy_prices, vix_prices)
+                logger.info(f"[RAMP] Regime from cache: {regime} (confidence: {confidence:.1%})")
+
+                logger.success(f"[RAMP] Loaded from disk cache: {len(prices_df.columns)} symbols, {len(prices_df)} days")
+                return
+
+            # No valid cache - fetch from Alpaca (slow path)
+            logger.info("[RAMP] No valid disk cache - fetching from Alpaca...")
+
             end_date = tz.now()
             start_date = end_date - timedelta(days=self.data_lookback_days)
 
@@ -392,6 +574,9 @@ class RAMPLiveAdapter(StrategyAdapter):
             logger.success(f"[RAMP] Historical data pre-loaded: {len(prices_df.columns)} symbols")
             logger.info(f"[RAMP]   SPY data: {len(spy_prices)} days")
             logger.info(f"[RAMP]   VIX data: {len(vix_prices)} days")
+
+            # Save to disk cache for next startup
+            _save_cache_to_disk(self._data_cache, end_date)
 
         except Exception as e:
             logger.error(f"[RAMP] Failed to pre-load historical data: {e}")
@@ -501,6 +686,21 @@ class RAMPLiveAdapter(StrategyAdapter):
 
                 logger.info(f"[RAMP] Retrieved {len(todays_prices)}/{len(self.symbols)} symbols from streaming buffer ({failed} failed)")
 
+            # Check fetch success rate (CRITICAL - this was silently failing before!)
+            success_rate = len(todays_prices) / len(self.symbols) * 100 if self.symbols else 0
+            if success_rate < 80.0:
+                logger.error(f"[RAMP] CRITICAL DATA LOSS: Only {success_rate:.1f}% fetch success from streaming!")
+                logger.error(f"[RAMP] Retrieved: {len(todays_prices)}, Failed: {failed}, Expected: {len(self.symbols)}")
+                failed_symbols = set(self.symbols) - set(todays_prices.keys())
+                sample_failed = list(failed_symbols)[:20]
+                logger.error(f"[RAMP] Sample failed symbols: {sample_failed}")
+
+                if success_rate < 50.0:
+                    logger.error("[RAMP] Less than 50% data - falling back to broker API for today's closes")
+                    # Fall through to broker API fallback below
+                    todays_prices = {}
+                    failed = 0
+
             else:
                 # Fall back to broker API polling (original behavior)
                 logger.info("[RAMP] No LiveDataProvider, fetching from broker API...")
@@ -526,6 +726,15 @@ class RAMPLiveAdapter(StrategyAdapter):
                         continue
 
                 logger.info(f"[RAMP] Fetched {len(todays_prices)}/{len(self.symbols)} symbols from broker API ({failed} failed)")
+
+                # Check fetch success rate for broker API path
+                success_rate = len(todays_prices) / len(self.symbols) * 100 if self.symbols else 0
+                if success_rate < 80.0:
+                    logger.error(f"[RAMP] CRITICAL DATA LOSS: Only {success_rate:.1f}% fetch success from broker API!")
+                    logger.error(f"[RAMP] Retrieved: {len(todays_prices)}, Failed: {failed}, Expected: {len(self.symbols)}")
+                    failed_symbols = set(self.symbols) - set(todays_prices.keys())
+                    sample_failed = list(failed_symbols)[:20]
+                    logger.error(f"[RAMP] Sample failed symbols: {sample_failed}")
 
             if not todays_prices:
                 logger.error("[RAMP] Failed to fetch any today's prices")
@@ -594,7 +803,41 @@ class RAMPLiveAdapter(StrategyAdapter):
 
             # Re-detect regime with updated data
             regime, confidence = self._ramp_signals.detect_regime(spy_prices, vix_prices)
-            logger.info(f"[RAMP] Current regime: {regime} (confidence: {confidence:.1%})")
+
+            # Enhanced regime logging
+            logger.info(f"[RAMP] Regime Classification:")
+            logger.info(f"[RAMP]   Regime: {regime}")
+            logger.info(f"[RAMP]   Confidence: {confidence:.1%}")
+
+            # Get regime parameters for logging
+            from src.strategies.advanced.ramp_strategy import REGIME_PARAMS
+            regime_params = REGIME_PARAMS.get(regime, {})
+            top_n = regime_params.get('top_n', 10)
+            logger.info(f"[RAMP]   TopN: {top_n} positions")
+            logger.info(f"[RAMP]   Params: L{regime_params.get('long_p', '?')}/S{regime_params.get('short_p', '?')}, "
+                       f"LW={regime_params.get('long_w', '?')}, PW={regime_params.get('pen_w', '?')}")
+
+            # Alert on low confidence
+            if confidence < 0.6:
+                logger.warning(f"[RAMP] LOW CONFIDENCE ({confidence:.1%}) - regime classification may be unreliable!")
+
+            # Check data freshness
+            today = tz.now().date()
+            if spy_prices is not None and len(spy_prices) > 0:
+                last_spy_date = spy_prices.index[-1]
+                if hasattr(last_spy_date, 'date'):
+                    last_spy_date = last_spy_date.date()
+                if last_spy_date < today:
+                    logger.warning("[RAMP] Using YESTERDAY'S SPY data for regime detection!")
+            else:
+                logger.error("[RAMP] SPY data missing for regime detection!")
+
+            if vix_prices is not None and len(vix_prices) > 0:
+                last_vix_date = vix_prices.index[-1]
+                if hasattr(last_vix_date, 'date'):
+                    last_vix_date = last_vix_date.date()
+                if last_vix_date < today:
+                    logger.warning("[RAMP] Using YESTERDAY'S VIX data for regime detection!")
 
             logger.success(f"[RAMP] Appended today's data - cache now has {len(new_prices_df)} days")
             return True
@@ -785,12 +1028,41 @@ class RAMPLiveAdapter(StrategyAdapter):
 
             logger.info(f"[RAMP] Portfolio value: ${portfolio_value:,.2f}")
 
-            # Separate buy and sell signals
+            # Separate buy, sell, and hold signals
             buy_signals = [s for s in signals if s.direction == 'BUY']
             sell_signals = [s for s in signals if s.direction == 'SELL']
+            hold_signals = [s for s in signals if s.direction == 'HOLD']
 
             # Get current top_n from RAMP (regime-dependent)
             current_top_n = self._ramp_signals.current_top_n
+
+            # Log signal summary for transparency (CRITICAL - this was missing before!)
+            logger.info(f"[RAMP] " + "=" * 50)
+            logger.info(f"[RAMP] SIGNAL GENERATION SUMMARY")
+            logger.info(f"[RAMP] " + "=" * 50)
+            logger.info(f"[RAMP]   BUY signals: {len(buy_signals)}")
+            logger.info(f"[RAMP]   SELL signals: {len(sell_signals)}")
+            logger.info(f"[RAMP]   HOLD signals: {len(hold_signals)}")
+            logger.info(f"[RAMP]   TOTAL: {len(signals)}")
+            logger.info(f"[RAMP]   Expected (top_n): {current_top_n}")
+
+            # Log top N positions with ranking
+            top_positions = sorted(buy_signals + hold_signals, key=lambda s: s.metadata.get('rank', 999) if s.metadata else 999)
+            if top_positions:
+                logger.info(f"[RAMP] Top {current_top_n} Momentum Positions:")
+                for signal in top_positions[:current_top_n]:
+                    rank = signal.metadata.get('rank', '?') if signal.metadata else '?'
+                    score = signal.metadata.get('momentum_score', 0) if signal.metadata else 0
+                    action = signal.direction
+                    logger.info(f"[RAMP]   #{rank}: {signal.symbol} (score: {score:.2%}) [{action}]")
+
+            # Log positions being sold (dropped from top N)
+            if sell_signals:
+                logger.info(f"[RAMP] Positions to Exit (dropped from top {current_top_n}):")
+                for signal in sell_signals:
+                    logger.info(f"[RAMP]   - {signal.symbol}")
+
+            logger.info(f"[RAMP] " + "=" * 50)
 
             # Execute sells first
             for signal in sell_signals:
