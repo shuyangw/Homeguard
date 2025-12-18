@@ -1,0 +1,78 @@
+# ML Crypto Mean Reversion Strategy - Baseline Configuration
+#
+# A mean reversion strategy for crypto (BTC/ETH) with ML regime filter.
+# Exploits ranging market conditions (~70-80% of time) while avoiding
+# trend traps via GradientBoosting regime classification.
+#
+# Entry: Z-score < -2 (long) or > +2 (short) when ML predicts "ranging"
+# Exit: Mean reversion, ATR-based stop/target (~3:1 R:R), or time stop
+#
+# Source: Reddit r/algotrading "2 years building, 3 months live"
+# Reported: 767% return, 38% win rate, 3.18 R:R, 4.64 Sharpe (1yr backtest)
+#
+# Usage: python -m src.backtest_runner --config config/backtesting/ml_crypto_mr_baseline.yaml
+
+mode: single
+
+strategy:
+  name: MLCryptoMRStrategy
+  parameters:
+    # Z-score parameters
+    zscore_window: 20
+    zscore_entry_threshold: 2.0
+    zscore_exit_threshold: 0.5
+
+    # RSI confirmation
+    rsi_period: 14
+    rsi_oversold: 30.0
+    rsi_overbought: 70.0
+    use_rsi_confirmation: true
+
+    # ATR-based risk management
+    atr_period: 14
+    atr_stop_multiplier: 1.5      # Stop = ATR x 1.5
+    atr_target_multiplier: 4.5    # Target = ATR x 4.5 (~3:1 R:R)
+
+    # ML regime filter
+    use_ml_filter: true
+    ml_lookback_days: 252
+    ml_retrain_frequency: 20
+    adx_threshold: 25.0
+    choppiness_threshold: 61.8
+
+    # Trade management
+    long_only: false              # Long + Short
+    max_hold_bars: 10             # Max 10 days per trade
+
+symbols:
+  list:
+    - BTC_USD
+    - ETH_USD
+
+dates:
+  start: '2021-01-01'
+  end: '2024-12-31'
+
+backtest:
+  initial_capital: 100000
+  fees: 0.001                     # 0.1% per trade
+  slippage: 0.001                 # 0.1% slippage
+  benchmark: BTC_USD
+  market_hours_only: false        # Crypto trades 24/7
+  allow_shorts: true
+  portfolio_mode: multi
+  timeframe: crypto_1day
+
+risk:
+  enabled: true
+  position_sizing_method: fixed_percent
+  position_size_pct: 0.20         # 20% per position (not 100% as in original)
+  max_positions: 2
+  stop_loss_pct: null             # Using ATR-based stops
+
+output:
+  save_trades: true
+  save_reports: true
+  quantstats: true
+  visualize: false
+  verbosity: 1
