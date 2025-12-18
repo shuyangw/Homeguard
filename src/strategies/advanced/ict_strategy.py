@@ -136,8 +136,11 @@ class ICTStrategy(LongShortStrategy):
         max_loss_pct: float = 0.0,  # Max loss % before forced exit (0 = disabled). 0.15 = 15%
         # NEW: Signal quality filters for improved win rate
         min_sweep_depth_pct: float = 0.0,  # Min sweep depth % (0.002 = 0.2%)
-        use_momentum_filter: bool = False,  # Require momentum alignment
+        use_momentum_filter: bool = False,  # Require momentum alignment (non-ICT)
         momentum_ema_period: int = 10,  # EMA period for momentum
+        # ICT-aligned filters
+        use_structure_filter: bool = False,  # Only trade with market structure (pure ICT)
+        require_ob_confluence: bool = False,  # Require nearby unmitigated OB for entry
         # NEW: Trailing stop for locking in profits
         use_trailing_stop: bool = False,  # Enable trailing stop after hitting profit target
         trailing_trigger_r: float = 1.0,  # R multiple to trigger trailing (1.0 = 1R)
@@ -182,6 +185,9 @@ class ICTStrategy(LongShortStrategy):
         self.min_sweep_depth_pct = min_sweep_depth_pct
         self.use_momentum_filter = use_momentum_filter
         self.momentum_ema_period = momentum_ema_period
+        # ICT-aligned filters
+        self.use_structure_filter = use_structure_filter
+        self.require_ob_confluence = require_ob_confluence
 
         # NEW: Trailing stop
         self.use_trailing_stop = use_trailing_stop
@@ -526,11 +532,19 @@ class ICTStrategy(LongShortStrategy):
             if self.use_volume_filter and not volume_mask[i]:
                 continue
 
-            # NEW: Momentum alignment filter - trade with the short-term trend
+            # NEW: Momentum alignment filter - trade with the short-term trend (non-ICT)
             if self.use_momentum_filter:
                 if direction == 'long' and not bullish_momentum[i]:
                     continue
                 if direction == 'short' and not bearish_momentum[i]:
+                    continue
+
+            # ICT-ALIGNED: Market structure filter - only trade with structure
+            # This is pure ICT: longs only in bullish structure, shorts only in bearish
+            if self.use_structure_filter:
+                if direction == 'long' and market_structure != 'bullish':
+                    continue
+                if direction == 'short' and market_structure != 'bearish':
                     continue
 
             # Find nearby unmitigated order block for stop placement
@@ -554,6 +568,11 @@ class ICTStrategy(LongShortStrategy):
                 elif direction == 'short' and high_values[i] >= ob.low * 0.99:
                     nearby_ob = ob
                     break
+
+            # ICT-ALIGNED: Require order block confluence for entry
+            # This is core ICT - sweeps should occur near valid order blocks
+            if self.require_ob_confluence and nearby_ob is None:
+                continue
 
             # Calculate stop loss
             if direction == 'long':

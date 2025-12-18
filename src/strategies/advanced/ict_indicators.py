@@ -1058,6 +1058,11 @@ class ICTIndicators:
         - 'power_hour': Last hour of trading (3:00 PM - 4:00 PM ET)
         - 'none': No session filter (always returns True)
 
+        Crypto sessions (in UTC, converted from ET internally):
+        - 'crypto_us': US hours for crypto (9:00 AM - 5:00 PM ET)
+        - 'crypto_overlap': US/EU overlap highest volume (8:00 AM - 12:00 PM ET)
+        - 'crypto_asia': Asian session (8:00 PM - 4:00 AM ET)
+
         Args:
             timestamp: Datetime to check (UTC timestamps will be converted to ET)
             session_filter: Session type to check against
@@ -1082,11 +1087,20 @@ class ICTIndicators:
             t = timestamp.time() if hasattr(timestamp, 'time') else timestamp
 
         session_windows = {
+            # Equity sessions (ET)
             'us_regular': (time(9, 30), time(16, 0)),
             'us_core': (time(10, 0), time(15, 0)),
             'ny_open': (time(9, 30), time(11, 30)),
             'power_hour': (time(15, 0), time(16, 0)),
+            # Crypto sessions (ET) - when institutional volume is highest
+            'crypto_us': (time(9, 0), time(17, 0)),  # US business hours
+            'crypto_overlap': (time(8, 0), time(12, 0)),  # US/EU overlap
         }
+
+        # Handle overnight sessions separately (spans midnight)
+        if session_filter == 'crypto_asia':
+            # Asian session: 8 PM - 4 AM ET (overnight)
+            return t >= time(20, 0) or t <= time(4, 0)
 
         if session_filter not in session_windows:
             return True
