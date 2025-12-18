@@ -1,0 +1,69 @@
+# Bull Market Support Band (BMSB) Strategy - Crypto Backtest Configuration
+#
+# A macro trend-following strategy using the Bull Market Support Band
+# (20-week SMA and 21-week EMA) to identify bull/bear market regimes.
+#
+# Original TradingView indicator by zkdev.
+#
+# Trading Logic:
+# - Long when weekly close > both 20w SMA and 21w EMA (above band)
+# - Short/Exit when weekly close < both 20w SMA and 21w EMA (below band)
+# - Optional trailing stop to lock in profits
+#
+# Best suited for:
+# - Position trading (weeks to months holding period)
+# - Crypto assets with clear bull/bear market cycles
+# - BTC, ETH, and major altcoins
+
+mode: single
+
+strategy:
+  name: BMSBStrategy
+  parameters:
+    # Core BMSB parameters (weekly timeframe)
+    sma_period: 20           # 20-week SMA
+    ema_period: 21           # 21-week EMA
+
+    # Trading mode
+    long_only: false         # Allow both long and short
+
+    # Signal timing
+    signal_on_weekly_close: true   # Only signal on weekly candle close
+    require_both_above: true       # Require close > both SMA and EMA for long
+    require_both_below: true       # Require close < both SMA and EMA for short
+
+    # Trailing stop (for profit protection)
+    use_trailing_stop: true
+    trailing_stop_pct: 0.15  # 15% trailing stop from high
+
+symbols:
+  list:
+    - BTC_USD
+    - ETH_USD
+
+dates:
+  start: '2020-01-01'
+  end: '2024-12-31'
+
+backtest:
+  initial_capital: 100000
+  fees: 0.001              # 0.1% per trade (typical crypto exchange)
+  slippage: 0.001          # 0.1% slippage
+  benchmark: BTC_USD
+  market_hours_only: false  # Crypto trades 24/7
+  allow_shorts: true
+  portfolio_mode: multi
+  timeframe: crypto_1min    # Use crypto minute data directory
+
+risk:
+  enabled: true
+  position_sizing_method: fixed_percent
+  position_size_pct: 0.20   # 20% per position (macro strategy)
+  max_positions: 2          # Max 2 positions at once
+
+output:
+  save_trades: true
+  save_reports: true
+  quantstats: false
+  visualize: false
+  verbosity: 1
