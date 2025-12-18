@@ -256,3 +256,61 @@ docs/*
 # - docs/archive/ (archived legacy documentation - local only)
 # - docs/planning/ (implementation plans)
 # - docs/*.md (misc root-level docs)
+
+# ============================================================================
+# EXPERIMENTAL BACKTEST CONFIGS (Keep only baselines)
+# ============================================================================
+# Parameter sweep variants (alt1, alt2, test1, test2, option_a, etc.)
+config/backtesting/*_alt[0-9]*.yaml
+config/backtesting/*_test[0-9]*.yaml
+config/backtesting/*_option_*.yaml
+config/backtesting/*_micro_*.yaml
+
+# ML Crypto Mean Reversion variants (keep baseline and walk_forward only)
+config/backtesting/ml_crypto_mr_*.yaml
+!config/backtesting/ml_crypto_mr_baseline.yaml
+!config/backtesting/ml_crypto_mr_walk_forward.yaml
+
+# BMSB variants (keep baseline only)
+config/backtesting/bmsb_crypto_*.yaml
+!config/backtesting/bmsb_crypto.yaml
+
+# ICT research configs (shelved strategy - archive in git, don't track variants)
+config/backtesting/ict_crypto_*.yaml
+config/backtesting/ict_test2_*.yaml
+config/backtesting/ict_ict_*.yaml
+
+# ORB extended variants
+config/backtesting/orb_leveraged_*.yaml
+config/backtesting/orb_sp500_*.yaml
+
+# HV_ORB batch and symbol variants (keep baseline configs)
+config/backtesting/hv_orb_*_symbols.yaml
+config/backtesting/hv_orb_batch*.yaml
+config/backtesting/hv_orb_top*.yaml
+
+# ============================================================================
+# ANALYSIS OUTPUTS (Temporary)
+# ============================================================================
+*_SUMMARY.txt
+ANALYSIS_*.txt
+RELEVANT_LOG_EXCERPTS.txt
+
+# ============================================================================
+# WEB UI BUILD ARTIFACTS
+# ============================================================================
+src/web/frontend/node_modules/
+src/web/frontend/dist/
+src/web/frontend/.vite/
+
+# ============================================================================
+# DEBUG SCRIPTS (Track selectively)
+# ============================================================================
+# Ignore temporary debug outputs
+scripts/debug/*.log
+scripts/debug/*.tmp
+
+# Ignore one-time analysis scripts
+scripts/debug/check_all_orders_today.py
+scripts/debug/check_omr_orders.py
+scripts/debug/check_recent_activity.py

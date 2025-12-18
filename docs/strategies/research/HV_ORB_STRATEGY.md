@@ -1,4 +1,4 @@
-# Opening Range Breakout High Volatility (ORB HV) Strategy
+# HV ORB (High Volatility Opening Range Breakout) Strategy
 
 **Status**: Research/Backtesting
 **Last Updated**: 2025-12-14
@@ -7,7 +7,7 @@
 
 ## Overview
 
-The ORB High Volatility Strategy is an advanced intraday breakout strategy that focuses on "Stocks in Play" - stocks with abnormally high opening volume driven by news catalysts. It combines multiple confirmation filters with tiered exit management for improved risk-adjusted returns.
+The HV ORB (High Volatility Opening Range Breakout) Strategy is an advanced intraday breakout strategy that focuses on "Stocks in Play" - stocks with abnormally high opening volume driven by news catalysts. It combines multiple confirmation filters with tiered exit management for improved risk-adjusted returns.
 
 ### Key Features
 
@@ -180,7 +180,7 @@ Position Entry
 
 ### Overview
 
-The ORB HV strategy supports optional sentiment filtering using FinBERT, a financial domain-specific BERT model. Sentiment analysis helps filter entries based on news-driven market expectations.
+The HV ORB strategy supports optional sentiment filtering using FinBERT, a financial domain-specific BERT model. Sentiment analysis helps filter entries based on news-driven market expectations.
 
 ### How It Works
 
@@ -212,7 +212,7 @@ python scripts/download_news.py --symbols TQQQ,SQQQ --start 2024-01-01
 python scripts/compute_sentiment.py --all
 
 # 4. Run backtest with sentiment
-python -m src.backtest_runner --config config/backtesting/orb_hv_sentiment.yaml
+python -m src.backtest_runner --config config/backtesting/hv_orb_sentiment.yaml
 ```
 
 ### Sentiment Filtering Logic
@@ -285,7 +285,7 @@ Uses `MarketRegimeDetector` for adaptive filtering:
 ### Backtest (Single, No Sentiment)
 
 ```bash
-python -m src.backtest_runner --config config/backtesting/orb_hv_baseline.yaml
+python -m src.backtest_runner --config config/backtesting/hv_orb_baseline.yaml
 ```
 
 ### Backtest (With Sentiment)
@@ -296,21 +296,21 @@ python scripts/download_news.py --symbols TQQQ,SQQQ --start 2024-01-01
 python scripts/compute_sentiment.py --all
 
 # Then run with sentiment config
-python -m src.backtest_runner --config config/backtesting/orb_hv_sentiment.yaml
+python -m src.backtest_runner --config config/backtesting/hv_orb_sentiment.yaml
 ```
 
 ### Walk-Forward Validation
 
 ```bash
-python -m src.backtest_runner --config config/backtesting/orb_hv_walk_forward.yaml
+python -m src.backtest_runner --config config/backtesting/hv_orb_walk_forward.yaml
 ```
 
 ### Programmatic Usage
 
 ```python
-from src.strategies.advanced.orb_hv_strategy import ORBHighVolatilityStrategy
+from src.strategies.advanced.hv_orb_strategy import HVORBStrategy
 
-strategy = ORBHighVolatilityStrategy(
+strategy = HVORBStrategy(
     opening_range_minutes=5,
     sip_min_score=2.0,
     target1_multiplier=1.0,
@@ -390,10 +390,10 @@ long_e, long_x, short_e, short_x = strategy.generate_long_short_signals(minute_d
 
 | File | Purpose |
 |------|---------|
-| `config/backtesting/orb_hv_baseline.yaml` | Basic backtest without sentiment |
-| `config/backtesting/orb_hv_sentiment.yaml` | Backtest with sentiment enabled |
-| `config/backtesting/orb_hv_relaxed.yaml` | Relaxed filters for more signals |
-| `config/backtesting/orb_hv_walk_forward.yaml` | Out-of-sample validation |
+| `config/backtesting/hv_orb_baseline.yaml` | Basic backtest without sentiment |
+| `config/backtesting/hv_orb_sentiment.yaml` | Backtest with sentiment enabled |
+| `config/backtesting/hv_orb_relaxed.yaml` | Relaxed filters for more signals |
+| `config/backtesting/hv_orb_walk_forward.yaml` | Out-of-sample validation |
 
 ---
 
@@ -434,8 +434,8 @@ long_e, long_x, short_e, short_x = strategy.generate_long_short_signals(minute_d
 
 ```
 src/strategies/advanced/
-  orb_hv_strategy.py       # Main strategy class
-  orb_hv_indicators.py     # SIP score, gap calc, ATR filter
+  hv_orb_strategy.py       # Main strategy class
+  hv_orb_indicators.py     # SIP score, gap calc, ATR filter
 
 src/backtesting/utils/
   tiered_exit_manager.py   # Tiered exit logic
@@ -470,7 +470,7 @@ scripts/
   - Sentiment-enhanced confidence scoring
   - SentimentCache integration for backtesting
   - 54 unit tests passing
-  - Created orb_hv_sentiment.yaml config
+  - Created hv_orb_sentiment.yaml config
 
 - **2025-12-14**: Phase 3 Complete - Sentiment Analysis
   - FinBERT sentiment analyzer with lazy loading
@@ -486,7 +486,7 @@ scripts/
   - 21 news downloader tests passing
 
 - **2025-12-13**: Phase 1 Complete - Core Strategy
-  - ORBHighVolatilityStrategy with SIP score
+  - HVORBStrategy with SIP score
   - Gap detection and filtering
   - ATR volatility bounds
   - Tiered exit management
