@@ -39,7 +39,8 @@ class BacktestEngine:
         benchmark: str = 'SPY',
         risk_config: Optional[RiskConfig] = None,
         enable_regime_analysis: bool = False,
-        allow_shorts: bool = True
+        allow_shorts: bool = True,
+        timeframe: str = '1min'
     ):
         """
         Initialize backtesting engine.
@@ -54,6 +55,7 @@ class BacktestEngine:
             risk_config: Risk management configuration (default: RiskConfig.moderate())
             enable_regime_analysis: If True, automatically analyze performance by market regime (default: False)
             allow_shorts: If True, enable short selling for strategies (default: True)
+            timeframe: Data timeframe for loading - '1min', '1hour', '1day', 'crypto_1min', etc. (default: '1min')
 
         Raises:
             ValueError: If initial_capital <= 0
@@ -74,7 +76,10 @@ class BacktestEngine:
         self.risk_config = risk_config or RiskConfig.moderate()
         self.enable_regime_analysis = enable_regime_analysis
         self.allow_shorts = allow_shorts
-        self.data_loader = StreamingDataLoader()
+        self.timeframe = timeframe
+        # For crypto data, disable market day filtering (24/7 trading)
+        filter_market_days = not timeframe.startswith('crypto_')
+        self.data_loader = StreamingDataLoader(timeframe=timeframe, filter_market_days=filter_market_days)
         self.reporter = QuantStatsReporter(benchmark=benchmark)
 
         # Cache for regime analysis
@@ -505,6 +510,9 @@ class BacktestEngine:
             pdf = pl_df.to_pandas().set_index('timestamp')
             prices_dict[symbol] = pdf[price_type]
 
+            # Tell strategy which symbol we're processing (for sentiment loading, etc.)
+            strategy._current_symbol = symbol
+
             # Generate signals - handle both standard (2 signals) and LongShort (4 signals) strategies
             try:
                 if isinstance(strategy, LongShortStrategy):
@@ -545,6 +553,10 @@ class BacktestEngine:
         # Create multi-asset portfolio
         # Pass max_positions from risk_config for concentrated portfolios
         max_pos = self.risk_config.max_positions if self.risk_config else 10
+
+        # Extract max_hold_bars from strategy if available (for time-based exits)
+        max_hold_bars = getattr(strategy, 'max_hold_bars', 0)
+
         portfolio = MultiAssetPortfolio(
             symbols=symbols,
             prices=prices_df,
@@ -557,7 +569,8 @@ class BacktestEngine:
             market_hours_only=self.market_hours_only,
             risk_config=self.risk_config,
             max_positions=max_pos,
-            price_data=data
+            price_data=data,
+            max_hold_bars=max_hold_bars
         )
 
         return portfolio  # type: ignore[return-value]

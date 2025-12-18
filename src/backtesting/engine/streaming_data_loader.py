@@ -160,6 +160,10 @@ class StreamingDataLoader:
             "1min": "equities_1min",
             "1hour": "equities_1hour",
             "1day": "equities_1day",
+            # Crypto data directories
+            "crypto_1min": "crypto_1min",
+            "crypto_1hour": "crypto_1hour",
+            "crypto_1day": "crypto_1day",
         }
         if timeframe not in timeframe_dirs:
             raise ValueError(f"Invalid timeframe: {timeframe}. Must be one of {list(timeframe_dirs.keys())}")
@@ -256,8 +260,28 @@ class StreamingDataLoader:
         if not paths:
             raise FileNotFoundError(f"No data found for symbol {symbol} between {start_date} and {end_date}")
 
-        # Scan parquet files
-        lf = pl.scan_parquet(paths)
+        # Scan parquet files - handle potential schema mismatches between files
+        # by loading each file separately and concatenating if needed
+        if len(paths) == 1:
+            lf = pl.scan_parquet(paths[0])
+        else:
+            # Load files individually to handle schema mismatches
+            dfs = []
+            for p in paths:
+                try:
+                    df = pl.read_parquet(p)
+                    # Normalize timestamp to microseconds if needed
+                    if "ns" in str(df["timestamp"].dtype):
+                        df = df.with_columns(
+                            pl.col("timestamp").cast(pl.Datetime("us", "UTC"))
+                        )
+                    dfs.append(df)
+                except Exception:
+                    continue
+            if not dfs:
+                raise FileNotFoundError(f"No data found for symbol {symbol} between {start_date} and {end_date}")
+            combined = pl.concat(dfs)
+            lf = combined.lazy()
 
         # Filter by date range using date strings to avoid timezone issues
         # Convert timestamp to date string for comparison
@@ -737,27 +761,43 @@ class StreamingDataLoader:
         if not dfs:
             raise ValueError(f"No data loaded for any symbols: {symbols}")
 
-        # Find common timestamps using set intersection for efficiency
-        first_symbol = next(iter(dfs.keys()))
-        common_ts_set = set(dfs[first_symbol]["timestamp"].to_list())
+        # Find common timestamps using Polars join operations to avoid type conversion issues
+        # (Python datetime objects from to_list() have different timezone representation)
+        symbols_list = list(dfs.keys())
+        first_symbol = symbols_list[0]
 
-        # Intersect with all other symbols
-        for symbol in list(dfs.keys())[1:]:
-            other_ts_set = set(dfs[symbol]["timestamp"].to_list())
-            common_ts_set = common_ts_set.intersection(other_ts_set)
+        # Normalize all timestamp columns to microsecond precision to avoid join errors
+        # Different data sources may have ns vs us precision
+        for symbol in dfs:
+            ts_dtype = dfs[symbol]["timestamp"].dtype
+            if "ns" in str(ts_dtype):
+                # Cast nanosecond timestamps to microsecond
+                dfs[symbol] = dfs[symbol].with_columns(
+                    pl.col("timestamp").cast(pl.Datetime("us", "UTC"))
+                )
 
-        if not common_ts_set:
+        # Start with first symbol's timestamps as a Series
+        common_ts_df = dfs[first_symbol].select("timestamp").unique()
+
+        # Inner join with each other symbol to get intersection
+        for symbol in symbols_list[1:]:
+            other_ts_df = dfs[symbol].select("timestamp").unique()
+            common_ts_df = common_ts_df.join(other_ts_df, on="timestamp", how="inner")
+
+        if common_ts_df.is_empty():
             logger.warning("No common timestamps found across symbols")
             return dfs
 
-        # Convert to sorted list for filtering
-        common_ts_list = sorted(common_ts_set)
+        # Get the common timestamps as a Polars Series
+        common_ts_series = common_ts_df["timestamp"]
 
-        # Filter all dataframes to common timestamps
+        # Filter all dataframes to common timestamps using semi join
         for symbol in dfs:
-            dfs[symbol] = dfs[symbol].filter(pl.col("timestamp").is_in(common_ts_list))
+            dfs[symbol] = dfs[symbol].join(
+                common_ts_df, on="timestamp", how="semi"
+            ).sort("timestamp")
 
-        logger.info(f"Synchronized {len(dfs)} symbols to {len(common_ts_list)} common timestamps")
+        logger.info(f"Synchronized {len(dfs)} symbols to {len(common_ts_series)} common timestamps")
         return dfs
 
     def load_symbols_panel(

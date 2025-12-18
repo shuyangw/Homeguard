@@ -90,7 +90,8 @@ class MultiAssetPortfolio(BasePortfolio):
         position_sizing_method: str = 'equal_weight',
         max_positions: int = 10,
         rebalancing_frequency: str = 'never',
-        price_data: Optional[pd.DataFrame] = None  # Full OHLCV data
+        price_data: Optional[pd.DataFrame] = None,  # Full OHLCV data
+        max_hold_bars: int = 0  # Maximum bars to hold position (0 = no limit)
     ):
         """
         Initialize multi-asset portfolio.
@@ -110,6 +111,7 @@ class MultiAssetPortfolio(BasePortfolio):
             max_positions: Maximum concurrent positions
             rebalancing_frequency: 'never', 'monthly', 'quarterly', 'on_signal'
             price_data: Full OHLCV data for all symbols
+            max_hold_bars: Maximum bars to hold position (0 = no limit)
         """
         # Initialize base class (handles init_cash, fees, slippage, freq, market_hours_only,
         # market hours constants)
@@ -128,6 +130,7 @@ class MultiAssetPortfolio(BasePortfolio):
         self.max_positions = max_positions
         self.rebalancing_frequency = rebalancing_frequency
         self.price_data = price_data
+        self.max_hold_bars = max_hold_bars
 
         # Align data across all symbols
         self.prices, self.entries, self.exits, self.unified_index = self._align_data(
@@ -146,6 +149,9 @@ class MultiAssetPortfolio(BasePortfolio):
         self.position_count_history: List[Tuple[pd.Timestamp, int]] = []
         self.symbol_weights_history: List[Tuple[pd.Timestamp, Dict[str, float]]] = []
         self.cash_history: List[Tuple[pd.Timestamp, float]] = []
+
+        # Track symbols that exited in current bar to prevent same-bar re-entry
+        self._exited_this_bar: set = set()
 
         # Initialize position sizer
         self._init_position_sizer()
@@ -272,10 +278,25 @@ class MultiAssetPortfolio(BasePortfolio):
         exit_symbols = {}
 
         for symbol in list(self.positions.keys()):
-            # Check strategy exit signal
+            position = self.positions[symbol]
+
+            # CRITICAL: Check time-based exit FIRST (cannot be bypassed)
+            # This is the ultimate safety net - if we've held too long, EXIT.
+            # Strategy signals may get out of sync due to data alignment issues.
+            if self.max_hold_bars > 0:
+                bars_held = bar_index - position.entry_bar
+                if bars_held >= self.max_hold_bars:
+                    exit_symbols[symbol] = 'max_hold_bars'
+                    continue  # Force exit, skip strategy signal check
+
+            # Check strategy exit signal (only if not already exiting)
             if symbol in self.exits.columns:
-                if self.exits.loc[timestamp, symbol]:
-                    exit_symbols[symbol] = 'strategy_signal'
+                try:
+                    exit_signal = self.exits.loc[timestamp, symbol]
+                    if pd.notna(exit_signal) and exit_signal:
+                        exit_symbols[symbol] = 'strategy_signal'
+                except KeyError:
+                    pass  # Timestamp not in exits index
 
         # TODO: Check stop losses via RiskManager
 
@@ -323,8 +344,9 @@ class MultiAssetPortfolio(BasePortfolio):
             'hold_duration_days': hold_duration
         })
 
-        # Remove position
+        # Remove position and mark as exited this bar
         del self.positions[symbol]
+        self._exited_this_bar.add(symbol)
 
     def _check_entry_signals(
         self,
@@ -345,9 +367,18 @@ class MultiAssetPortfolio(BasePortfolio):
                 entry_signals[symbol] = False
                 continue
 
+            # Skip if exited this bar (prevent same-bar re-entry)
+            if symbol in self._exited_this_bar:
+                entry_signals[symbol] = False
+                continue
+
             # Check entry signal
             if symbol in self.entries.columns:
-                entry_signals[symbol] = bool(self.entries.loc[timestamp, symbol])
+                try:
+                    entry_signal = self.entries.loc[timestamp, symbol]
+                    entry_signals[symbol] = bool(entry_signal) if pd.notna(entry_signal) else False
+                except KeyError:
+                    entry_signals[symbol] = False
             else:
                 entry_signals[symbol] = False
 
@@ -450,6 +481,9 @@ class MultiAssetPortfolio(BasePortfolio):
 
         for timestamp in self.unified_index:
             bar_index += 1
+
+            # Clear the exited-this-bar tracker at the start of each bar
+            self._exited_this_bar.clear()
 
             # Check market hours
             if not self._is_market_hours(timestamp):

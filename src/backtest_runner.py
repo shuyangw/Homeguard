@@ -564,6 +564,8 @@ def run_single_from_config(config: 'BacktestConfig') -> None:
         slippage=config.backtest.slippage,
         allow_shorts=config.backtest.allow_shorts,
         risk_config=risk_config,
+        timeframe=config.backtest.timeframe,
+        market_hours_only=config.backtest.market_hours_only,
     )
 
     output_dir = _create_output_dir(config)
@@ -693,6 +695,8 @@ def run_sweep_from_config(config: 'BacktestConfig') -> None:
         fees=config.backtest.fees,
         slippage=config.backtest.slippage,
         allow_shorts=config.backtest.allow_shorts,
+        timeframe=config.backtest.timeframe,
+        market_hours_only=config.backtest.market_hours_only,
     )
 
     sweep_runner = SweepRunner(
@@ -740,6 +744,8 @@ def run_optimize_from_config(config: 'BacktestConfig') -> None:
         fees=config.backtest.fees,
         slippage=config.backtest.slippage,
         allow_shorts=config.backtest.allow_shorts,
+        timeframe=config.backtest.timeframe,
+        market_hours_only=config.backtest.market_hours_only,
     )
 
     if not config.optimization.param_grid:
@@ -788,6 +794,8 @@ def run_walk_forward_from_config(config: 'BacktestConfig') -> None:
         fees=config.backtest.fees,
         slippage=config.backtest.slippage,
         allow_shorts=config.backtest.allow_shorts,
+        timeframe=config.backtest.timeframe,
+        market_hours_only=config.backtest.market_hours_only,
     )
 
     base_optimizer = GridSearchOptimizer(engine)

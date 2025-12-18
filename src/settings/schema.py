@@ -76,6 +76,7 @@ class BacktestSettings(BaseModel):
     market_hours_only: bool = Field(default=True, description="Filter to market hours only")
     allow_shorts: bool = Field(default=False, description="Allow short selling")
     portfolio_mode: str = Field(default="single", description="Portfolio mode: 'single' or 'multi'")
+    timeframe: str = Field(default="1min", description="Data timeframe: '1min', '1hour', '1day', 'crypto_1min', etc.")
 
 
 class RiskSettings(BaseModel):

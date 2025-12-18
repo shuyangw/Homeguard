@@ -355,6 +355,14 @@ def main():
             data_provider=data_provider  # Shared streaming provider
         )
         logger.success("RAMP adapter created")
+
+        # Pre-load RAMP historical data at startup (uses disk cache if available)
+        # This prevents the 5-minute delay at 3:55 PM execution time
+        logger.info("")
+        logger.info("=" * 60)
+        logger.info("PRE-LOADING RAMP HISTORICAL DATA")
+        logger.info("=" * 60)
+        ramp_adapter.preload_historical_data()
         logger.info("")
 
         # Create multi-strategy runner
