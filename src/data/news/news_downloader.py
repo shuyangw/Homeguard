@@ -242,43 +242,64 @@ class NewsDownloader:
     def _download_symbol_impl(self, symbol: str) -> int:
         """Download news for a single symbol (no retry logic)."""
         client = _get_news_client()
-
-        # Fetch news from Alpaca API
-        request = NewsRequest(
-            symbols=symbol,
-            start=self.start_date,
-            end=self.end_date,
-            include_content=self.include_content,
-            limit=50,  # Per page limit
-        )
-
         all_articles: List[NewsArticle] = []
 
-        # Paginate through all results
-        news_set = client.get_news(request)
+        # Alpaca API returns max 50 articles per request without pagination
+        # Chunk by week to get full coverage
+        chunk_days = 7
+        current_start = self.start_date
+        seen_ids = set()  # Deduplicate articles
 
-        # Extract news from NewsSet - data is in news_set.data['news']
-        news_list = news_set.data.get('news', []) if hasattr(news_set, 'data') else []
+        while current_start < self.end_date:
+            chunk_end = min(current_start + timedelta(days=chunk_days), self.end_date)
 
-        for article in news_list:
-            news_article = NewsArticle.from_alpaca(article, symbol)
-            all_articles.append(news_article)
-
-        # Handle pagination
-        while news_set.next_page_token:
             request = NewsRequest(
                 symbols=symbol,
-                start=self.start_date,
-                end=self.end_date,
+                start=current_start,
+                end=chunk_end,
                 include_content=self.include_content,
                 limit=50,
-                page_token=news_set.next_page_token,
+                sort='ASC',  # Chronological order
             )
-            news_set = client.get_news(request)
-            news_list = news_set.data.get('news', []) if hasattr(news_set, 'data') else []
-            for article in news_list:
-                news_article = NewsArticle.from_alpaca(article, symbol)
-                all_articles.append(news_article)
+
+            try:
+                news_set = client.get_news(request)
+                news_list = news_set.data.get('news', []) if hasattr(news_set, 'data') else []
+
+                for article in news_list:
+                    # Deduplicate by article ID
+                    article_id = getattr(article, 'id', None) or str(article.created_at)
+                    if article_id not in seen_ids:
+                        seen_ids.add(article_id)
+                        news_article = NewsArticle.from_alpaca(article, symbol)
+                        all_articles.append(news_article)
+
+                # Handle pagination within chunk (in case API does provide tokens)
+                while news_set.next_page_token:
+                    request = NewsRequest(
+                        symbols=symbol,
+                        start=current_start,
+                        end=chunk_end,
+                        include_content=self.include_content,
+                        limit=50,
+                        sort='ASC',
+                        page_token=news_set.next_page_token,
+                    )
+                    news_set = client.get_news(request)
+                    news_list = news_set.data.get('news', []) if hasattr(news_set, 'data') else []
+                    for article in news_list:
+                        article_id = getattr(article, 'id', None) or str(article.created_at)
+                        if article_id not in seen_ids:
+                            seen_ids.add(article_id)
+                            news_article = NewsArticle.from_alpaca(article, symbol)
+                            all_articles.append(news_article)
+
+            except Exception as e:
+                logger.warning(f"[{_get_thread_id()}] {symbol} chunk {current_start.date()}-{chunk_end.date()}: {e}")
+
+            # Small delay to avoid rate limiting
+            time.sleep(0.2)
+            current_start = chunk_end
 
         if not all_articles:
             logger.debug(f"[{_get_thread_id()}] {symbol}: No news articles found")

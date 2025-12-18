@@ -196,7 +196,10 @@ def load_news_parquet(input_path: str) -> pd.DataFrame:
     Returns:
         DataFrame with news data
     """
-    table = pq.read_table(input_path)
+    # Use ParquetFile to read single file directly (avoids dataset inference
+    # which can cause schema merge conflicts in Hive-partitioned directories)
+    pf = pq.ParquetFile(input_path)
+    table = pf.read()
     return table.to_pandas()
 
 

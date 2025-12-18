@@ -118,7 +118,10 @@ class SentimentCache:
         if not Path(path).exists():
             raise FileNotFoundError(f"Sentiment data not found: {path}")
 
-        table = pq.read_table(path)
+        # Use ParquetFile to read single file directly (avoids dataset inference
+        # which can cause schema merge conflicts in Hive-partitioned directories)
+        pf = pq.ParquetFile(path)
+        table = pf.read()
         return table.to_pandas()
 
     def load_range(
@@ -154,8 +157,20 @@ class SentimentCache:
 
         # Filter to date range
         result['timestamp'] = pd.to_datetime(result['timestamp'], utc=True)
-        mask = (result['timestamp'] >= pd.Timestamp(start_date, tz='UTC')) & \
-               (result['timestamp'] <= pd.Timestamp(end_date, tz='UTC'))
+
+        # Convert dates to UTC-aware timestamps (handle both tz-aware and naive)
+        start_ts = pd.Timestamp(start_date)
+        end_ts = pd.Timestamp(end_date)
+        if start_ts.tz is None:
+            start_ts = start_ts.tz_localize('UTC')
+        else:
+            start_ts = start_ts.tz_convert('UTC')
+        if end_ts.tz is None:
+            end_ts = end_ts.tz_localize('UTC')
+        else:
+            end_ts = end_ts.tz_convert('UTC')
+
+        mask = (result['timestamp'] >= start_ts) & (result['timestamp'] <= end_ts)
         return result[mask].reset_index(drop=True)
 
     def compute_and_save(
@@ -193,7 +208,8 @@ class SentimentCache:
 
         logger.info(f"Computing sentiment for {symbol}/{year}: {len(news_df)} articles")
 
-        # Analyze sentiment
+        # Use headlines only for sentiment analysis
+        # Summaries dilute sentiment signal (more neutral/factual language)
         headlines = news_df['headline'].fillna('').tolist()
         results = self.analyzer.analyze_batch(headlines)
 
@@ -214,14 +230,24 @@ class SentimentCache:
         # Ensure timestamp is UTC
         sentiment_df['timestamp'] = pd.to_datetime(sentiment_df['timestamp'], utc=True)
 
-        # Save to Parquet
+        # Save to Parquet - build columns explicitly to avoid dictionary encoding
         Path(sentiment_path).parent.mkdir(parents=True, exist_ok=True)
 
-        table = pa.Table.from_pandas(
-            sentiment_df,
-            schema=SENTIMENT_SCHEMA,
-            preserve_index=False
-        )
+        # Build PyArrow arrays explicitly with correct types
+        arrays = [
+            pa.array(sentiment_df['id'].astype(str).tolist(), type=pa.string()),
+            pa.array(sentiment_df['timestamp'].tolist(), type=pa.timestamp('us', tz='UTC')),
+            pa.array(sentiment_df['symbol'].astype(str).tolist(), type=pa.string()),
+            pa.array(sentiment_df['headline'].astype(str).tolist(), type=pa.string()),
+            pa.array(sentiment_df['sentiment_score'].tolist(), type=pa.float64()),
+            pa.array(sentiment_df['sentiment_positive'].tolist(), type=pa.float64()),
+            pa.array(sentiment_df['sentiment_negative'].tolist(), type=pa.float64()),
+            pa.array(sentiment_df['sentiment_neutral'].tolist(), type=pa.float64()),
+            pa.array(sentiment_df['sentiment_label'].astype(str).tolist(), type=pa.string()),
+            pa.array(sentiment_df['confidence'].tolist(), type=pa.float64()),
+        ]
+
+        table = pa.Table.from_arrays(arrays, schema=SENTIMENT_SCHEMA)
         pq.write_table(
             table,
             sentiment_path,
