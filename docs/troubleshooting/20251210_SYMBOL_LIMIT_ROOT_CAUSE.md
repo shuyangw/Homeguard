@@ -31,10 +31,10 @@ error: symbol limit exceeded (405)
 
 ### Dec 10, 2025 - 3:50 PM ET (OMR Execution)
 **What happened**:
-1. OMR tried to fetch bars from streaming buffer → All 19 symbols empty
-2. Fallback triggered → REST API calls for each symbol
-3. REST API failed → `subscription does not permit querying recent SIP data`
-4. 0 symbols retrieved → 0 signals generated → No trades
+1. OMR tried to fetch bars from streaming buffer -> All 19 symbols empty
+2. Fallback triggered -> REST API calls for each symbol
+3. REST API failed -> `subscription does not permit querying recent SIP data`
+4. 0 symbols retrieved -> 0 signals generated -> No trades
 
 **Why REST API failed**:
 - FallbackPoller was using SIP feed (default) instead of IEX

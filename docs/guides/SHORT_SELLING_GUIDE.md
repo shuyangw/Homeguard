@@ -26,10 +26,10 @@
 Short selling capability has been added to the Homeguard backtesting framework to enable strategies to profit from both **uptrends** (long positions) and **downtrends** (short positions).
 
 **Key Benefits**:
-- ✅ Profit in bear markets (2022: -25% SPY drop)
-- ✅ Improved Sharpe ratios (+0.5 to +1.0 expected)
-- ✅ Reduced drawdowns during market declines
-- ✅ More consistent performance across market regimes
+- [+] Profit in bear markets (2022: -25% SPY drop)
+- [+] Improved Sharpe ratios (+0.5 to +1.0 expected)
+- [+] Reduced drawdowns during market declines
+- [+] More consistent performance across market regimes
 
 **Backward Compatible**: Short selling is **disabled by default** (`allow_shorts=False`). Existing strategies continue to work without modification.
 
@@ -44,9 +44,9 @@ Traditional long-only strategies face severe limitations:
 ```
 MARKET SCENARIO          LONG-ONLY              LONG/SHORT
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Bull Market (↑)          ✅ Profit               ✅ Profit (long)
-Bear Market (↓)          ❌ Losses or cash       ✅ Profit (short)
-Sideways Market (→)      ⚠️  Whipsaws            ✅ Both directions
+Bull Market (^)          [+] Profit               [+] Profit (long)
+Bear Market (v)          [-] Losses or cash       [+] Profit (short)
+Sideways Market (->)      [!]️  Whipsaws            [+] Both directions
 ```
 
 **Historical Evidence**:
@@ -73,13 +73,13 @@ Short selling is implemented through a **signal reinterpretation** approach:
 ```
                          LONG-ONLY MODE              LONG/SHORT MODE
                     ┌──────────────────────┐    ┌──────────────────────┐
-Entry Signal (=1)   │  position==0 → LONG  │    │  position==0  → LONG │
-                    │  position>0  → Hold  │    │  position<0   → COVER│
+Entry Signal (=1)   │  position==0 -> LONG  │    │  position==0  -> LONG │
+                    │  position>0  -> Hold  │    │  position<0   -> COVER│
                     └──────────────────────┘    └──────────────────────┘
 
                     ┌──────────────────────┐    ┌──────────────────────┐
-Exit Signal (=1)    │  position>0  → FLAT  │    │  position>0  → SHORT │
-                    │  position==0 → Hold  │    │  position==0 → SHORT │
+Exit Signal (=1)    │  position>0  -> FLAT  │    │  position>0  -> SHORT │
+                    │  position==0 -> Hold  │    │  position==0 -> SHORT │
                     └──────────────────────┘    └──────────────────────┘
 ```
 
@@ -141,10 +141,10 @@ The simulator now generates **4 trade types**:
 
 | Trade Type | Description | Position Change |
 |------------|-------------|-----------------|
-| `entry` | Open long position | 0 → +N |
-| `exit` | Close long position | +N → 0 |
-| `short_entry` | Open short position | 0 → -N |
-| `cover_short` | Close short position | -N → 0 |
+| `entry` | Open long position | 0 -> +N |
+| `exit` | Close long position | +N -> 0 |
+| `short_entry` | Open short position | 0 -> -N |
+| `cover_short` | Close short position | -N -> 0 |
 
 ---
 
@@ -163,7 +163,7 @@ engine = BacktestEngine(
     initial_capital=100000,
     fees=0.001,
     slippage=0.0005,
-    allow_shorts=True  # ← Enable short selling
+    allow_shorts=True  # <- Enable short selling
 )
 
 # Run backtest (no strategy changes needed)
@@ -188,7 +188,7 @@ portfolio = from_signals(
     init_cash=100000,
     fees=0.001,
     slippage=0.0005,
-    allow_shorts=True  # ← Enable short selling
+    allow_shorts=True  # <- Enable short selling
 )
 ```
 
@@ -228,9 +228,9 @@ exits = (fast_ma < slow_ma) & (fast_ma.shift(1) >= slow_ma.shift(1))
 |--------------|--------|------------------|-------------------|
 | Uptrend starts | entry=True | Open long | Open long |
 | Uptrend continues | - | Hold long | Hold long |
-| Uptrend ends | exit=True | Close long → Flat | Close long → **Short** |
+| Uptrend ends | exit=True | Close long -> Flat | Close long -> **Short** |
 | Downtrend continues | - | Stay flat | Hold short |
-| Downtrend ends | entry=True | Open long | Cover short → Long |
+| Downtrend ends | entry=True | Open long | Cover short -> Long |
 
 **Key Difference**: Exit signals become **short entries** instead of **go flat**.
 
@@ -245,9 +245,9 @@ exits = rsi > 70    # Overbought (sell signal)
 **Long/Short Interpretation**:
 
 ```
-RSI < 30  (oversold)  → entries=True  → Go LONG  (expect bounce)
-RSI > 70  (overbought) → exits=True   → Go SHORT (expect pullback)
-RSI = 50  (neutral)    → no signal    → Hold current position
+RSI < 30  (oversold)  -> entries=True  -> Go LONG  (expect bounce)
+RSI > 70  (overbought) -> exits=True   -> Go SHORT (expect pullback)
+RSI = 50  (neutral)    -> no signal    -> Hold current position
 ```
 
 ---
@@ -402,7 +402,7 @@ results = regime_optimizer.optimize(
 
 # Expected pattern with shorts enabled:
 # BULL: High Sharpe (long profits)
-# BEAR: High Sharpe (short profits)  ← This is the key difference!
+# BEAR: High Sharpe (short profits)  <- This is the key difference!
 # SIDEWAYS: Low Sharpe (whipsaws)
 ```
 
@@ -424,10 +424,10 @@ python backtest_scripts/test_short_selling_2022_bear.py
 2. RSI Mean Reversion: Long-only vs Long/short on 2022 bear market
 
 **Success Criteria**:
-- ✅ Sharpe improvement >= +0.5 (Target)
-- ✅ Sharpe improvement >= +0.3 (Good)
-- ⚠️ Sharpe improvement > 0 (Marginal)
-- ❌ Sharpe improvement <= 0 (Failed)
+- [+] Sharpe improvement >= +0.5 (Target)
+- [+] Sharpe improvement >= +0.3 (Good)
+- [!]️ Sharpe improvement > 0 (Marginal)
+- [-] Sharpe improvement <= 0 (Failed)
 
 ### Manual Verification
 
@@ -453,7 +453,7 @@ cost_to_cover = shares * exit_price * (1 + 0.0005) + (shares * exit_price * 0.00
 pnl = proceeds_from_short - cost_to_cover
 # = 9985 - 9013.50 = $971.50
 
-# Expected: ~$1000 profit minus fees/slippage = $971.50 ✓
+# Expected: ~$1000 profit minus fees/slippage = $971.50 [+]
 ```
 
 ---
@@ -462,13 +462,13 @@ pnl = proceeds_from_short - cost_to_cover
 
 ### 1. When to Enable Short Selling
 
-✅ **ENABLE shorts when**:
+[+] **ENABLE shorts when**:
 - Testing across multiple market regimes (bull + bear + sideways)
 - Optimizing strategies for production deployment
 - You understand and accept short selling risks
 - You want to profit from downtrends
 
-❌ **DISABLE shorts when**:
+[-] **DISABLE shorts when**:
 - Learning/testing basic strategy logic
 - You want to match long-only benchmark behavior
 - Regulatory constraints prohibit shorting
@@ -508,8 +508,8 @@ params_short = {'fast_window': 15, 'slow_window': 80}
 Short positions have **unlimited loss potential**:
 
 ```
-LONG:  Max loss = 100% (price → $0)
-SHORT: Max loss = ∞ (price → ∞)
+LONG:  Max loss = 100% (price -> $0)
+SHORT: Max loss = ∞ (price -> ∞)
 ```
 
 **Mitigation**:
@@ -578,10 +578,10 @@ portfolio_b = engine_b.run(strategy_b, ...)
 ## Conclusion
 
 Short selling capability enables Homeguard strategies to:
-- ✅ Profit in all market conditions (up, down, sideways)
-- ✅ Improve Sharpe ratios by +0.5 to +1.0 in bear markets
-- ✅ Reduce drawdowns during market declines
-- ✅ Provide more consistent performance
+- [+] Profit in all market conditions (up, down, sideways)
+- [+] Improve Sharpe ratios by +0.5 to +1.0 in bear markets
+- [+] Reduce drawdowns during market declines
+- [+] Provide more consistent performance
 
 **Next Steps**:
 1. Run validation test: `python backtest_scripts/test_short_selling_2022_bear.py`

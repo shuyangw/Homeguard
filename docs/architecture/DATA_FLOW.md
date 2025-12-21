@@ -28,16 +28,16 @@
 
 ```
 User Input (Symbol List, Date Range)
-    ↓
+    v
 IngestionPipeline
-    ├─→ SymbolLoader (load symbol list)
-    ├─→ ThreadPoolExecutor (spawn workers)
-    │   ├─ Worker 1: AlpacaClient → ParquetStorage (AAPL)
-    │   ├─ Worker 2: AlpacaClient → ParquetStorage (MSFT)
-    │   ├─ Worker 3: AlpacaClient → ParquetStorage (GOOGL)
-    │   └─ Worker 4: AlpacaClient → ParquetStorage (TSLA)
-    └─→ MetadataStore (update metadata)
-        ↓
+    ├─-> SymbolLoader (load symbol list)
+    ├─-> ThreadPoolExecutor (spawn workers)
+    │   ├─ Worker 1: AlpacaClient -> ParquetStorage (AAPL)
+    │   ├─ Worker 2: AlpacaClient -> ParquetStorage (MSFT)
+    │   ├─ Worker 3: AlpacaClient -> ParquetStorage (GOOGL)
+    │   └─ Worker 4: AlpacaClient -> ParquetStorage (TSLA)
+    └─-> MetadataStore (update metadata)
+        v
 Data stored in Parquet files
 ```
 
@@ -58,13 +58,13 @@ Data stored in Parquet files
 │    pipeline.run(symbols, start, end, timeframe, workers=4)  │
 └────────────────┬─────────────────────────────────────────────┘
                  │
-                 ├─→ Load symbol list
+                 ├─-> Load symbol list
                  │   SymbolLoader.load_from_csv('symbols.csv')
                  │
-                 ├─→ Initialize workers
+                 ├─-> Initialize workers
                  │   ThreadPoolExecutor(max_workers=4)
                  │
-                 └─→ Spawn parallel workers
+                 └─-> Spawn parallel workers
                       │
       ┌───────────────┼───────────────┬───────────────┐
       │               │               │               │
@@ -144,7 +144,7 @@ Data stored in Parquet files
 │    Update progress: 1/4 complete (25%)                       │
 └──────────────────────────────────────────────────────────────┘
 
-All workers complete → Pipeline finished → Data ready for backtesting
+All workers complete -> Pipeline finished -> Data ready for backtesting
 ```
 
 ### Error Handling Flow
@@ -152,18 +152,18 @@ All workers complete → Pipeline finished → Data ready for backtesting
 ```
 AlpacaClient.fetch_bars(symbol)
     │
-    ├─→ Success → Return data
+    ├─-> Success -> Return data
     │
-    ├─→ ConnectionError
-    │   └─→ Retry (3 attempts, exponential backoff)
-    │       ├─→ Success → Return data
-    │       └─→ Fail → Log error, skip symbol, continue
+    ├─-> ConnectionError
+    │   └─-> Retry (3 attempts, exponential backoff)
+    │       ├─-> Success -> Return data
+    │       └─-> Fail -> Log error, skip symbol, continue
     │
-    ├─→ AuthenticationError
-    │   └─→ Fail fast, abort pipeline
+    ├─-> AuthenticationError
+    │   └─-> Fail fast, abort pipeline
     │
-    └─→ RateLimitError
-        └─→ Sleep 60 seconds, retry
+    └─-> RateLimitError
+        └─-> Sleep 60 seconds, retry
 ```
 
 ---
@@ -446,15 +446,15 @@ Key Insight: ~35% of news available before 9:35 AM ORB entry
 
 ```
 CLI Command
-    ↓
+    v
 BacktestEngine
-    ├─→ DataLoader (load OHLCV)
-    ├─→ Strategy.generate_signals()
-    ├─→ PortfolioSimulator (execute trades)
-    └─→ Return Portfolio
-        ↓
+    ├─-> DataLoader (load OHLCV)
+    ├─-> Strategy.generate_signals()
+    ├─-> PortfolioSimulator (execute trades)
+    └─-> Return Portfolio
+        v
 BacktestVisualizer (charts, tearsheet, reports)
-    ↓
+    v
 Output files (HTML, PNG, CSV)
 ```
 
@@ -487,18 +487,18 @@ Output files (HTML, PNG, CSV)
 │    data = loader.load_bars('AAPL', '2023-01-01', '2024-01-01', '1Min')
 │                                                              │
 │    Steps:                                                    │
-│    ├─→ Query Parquet files via DuckDB SQL                   │
+│    ├─-> Query Parquet files via DuckDB SQL                   │
 │    │   SELECT * FROM 'data/equities_1min/AAPL/*.parquet'    │
 │    │   WHERE timestamp >= '2023-01-01'                       │
 │    │   AND timestamp < '2024-01-01'                          │
 │    │                                                          │
-│    ├─→ Load into DataFrame (pandas)                          │
+│    ├─-> Load into DataFrame (pandas)                          │
 │    │                                                          │
-│    ├─→ Market calendar filtering                             │
+│    ├─-> Market calendar filtering                             │
 │    │   calendar.filter_market_days(data)                     │
 │    │   (removes weekends, NYSE holidays)                     │
 │    │                                                          │
-│    └─→ Market hours filtering (9:35 AM - 3:55 PM)           │
+│    └─-> Market hours filtering (9:35 AM - 3:55 PM)           │
 │        (optional, if market_hours_only=True)                 │
 │                                                              │
 │    Result: DataFrame[timestamp, open, high, low, close, volume]
@@ -508,14 +508,14 @@ Output files (HTML, PNG, CSV)
                  ▼
 ┌──────────────────────────────────────────────────────────────┐
 │ 4. DATA VALIDATION (backtest_engine.py)                     │
-│    ├─→ Check for duplicate timestamps                       │
+│    ├─-> Check for duplicate timestamps                       │
 │    │   if data.index.duplicated().any():                    │
 │    │       data = data[~data.index.duplicated(keep='first')]│
 │    │                                                          │
-│    ├─→ Check for NaN values                                 │
+│    ├─-> Check for NaN values                                 │
 │    │   data.dropna(inplace=True)  # or forward fill         │
 │    │                                                          │
-│    └─→ Validate OHLC relationships                           │
+│    └─-> Validate OHLC relationships                           │
 │        assert (data['high'] >= data['low']).all()            │
 │                                                              │
 │    Clean data ready for strategy                             │
@@ -536,19 +536,19 @@ Output files (HTML, PNG, CSV)
 │    entries, exits = strategy.generate_signals(data)         │
 │                                                              │
 │    Process:                                                  │
-│    ├─→ Calculate indicators                                  │
+│    ├─-> Calculate indicators                                  │
 │    │   fast_ma = sma(data['close'], window=20)              │
 │    │   slow_ma = sma(data['close'], window=50)              │
 │    │                                                          │
-│    ├─→ Generate entry signals                                │
+│    ├─-> Generate entry signals                                │
 │    │   entries = (fast_ma > slow_ma) & (fast_ma.shift(1) <= slow_ma.shift(1))
 │    │                                                          │
-│    └─→ Generate exit signals                                 │
+│    └─-> Generate exit signals                                 │
 │        exits = (fast_ma < slow_ma) & (fast_ma.shift(1) >= slow_ma.shift(1))
 │                                                              │
 │    Result: Two boolean Series                                │
-│            entries[i] = True → Enter long on bar i           │
-│            exits[i] = True → Exit long on bar i              │
+│            entries[i] = True -> Enter long on bar i           │
+│            exits[i] = True -> Exit long on bar i              │
 └────────────────┬─────────────────────────────────────────────┘
                  │
                  ▼
@@ -594,10 +594,10 @@ Output files (HTML, PNG, CSV)
 │    visualizer.generate_all(portfolio, strategy, data)       │
 │                                                              │
 │    Generates:                                                │
-│    ├─→ QuantStats Tearsheet (HTML/PDF)                      │
-│    ├─→ Candlestick Chart with trade markers (PNG)           │
-│    ├─→ Trade log (CSV)                                      │
-│    └─→ Summary report (TXT)                                 │
+│    ├─-> QuantStats Tearsheet (HTML/PDF)                      │
+│    ├─-> Candlestick Chart with trade markers (PNG)           │
+│    ├─-> Trade log (CSV)                                      │
+│    └─-> Summary report (TXT)                                 │
 └────────────────┬─────────────────────────────────────────────┘
                  │
                  ▼
@@ -619,17 +619,17 @@ Output files (HTML, PNG, CSV)
 
 ```
 CLI Command (multiple symbols)
-    ↓
+    v
 SweepRunner
-    ├─→ ThreadPoolExecutor (4 workers)
+    ├─-> ThreadPoolExecutor (4 workers)
     │   ├─ Worker 1: BacktestEngine('AAPL')
     │   ├─ Worker 2: BacktestEngine('MSFT')
     │   ├─ Worker 3: BacktestEngine('GOOGL')
     │   └─ Worker 4: BacktestEngine('TSLA')
     │       (each follows Single Symbol Backtest Flow)
     │
-    └─→ ResultsAggregator
-        ↓
+    └─-> ResultsAggregator
+        v
     Combined reports (comparison tables, aggregate metrics)
 ```
 
@@ -682,29 +682,29 @@ SweepRunner
 └────┬────┘ └────┬────┘ └────┬────┘ └────┬────┘ └────┬────┘
      │           │           │           │           │
      │ T+0s      │           │           │           │
-     ├─→ on_start('AAPL')───────────────────────────→│
+     ├─-> on_start('AAPL')───────────────────────────->│
      │           │ T+0.1s    │           │           │
-     │           ├─→ on_start('MSFT')────────────────→│
+     │           ├─-> on_start('MSFT')────────────────->│
      │           │           │ T+0.1s    │           │
-     │           │           ├─→ on_start('GOOGL')───→│
+     │           │           ├─-> on_start('GOOGL')───->│
      │           │           │           │ T+0.1s    │
-     │           │           │           ├─→ on_start('TSLA')
+     │           │           │           ├─-> on_start('TSLA')
      │           │           │           │           │
      ├── Load data (DuckDB)                          │
      ├── Generate signals                            │
      ├── Simulate portfolio                          │
      │           │           │           │           │
      │ T+3.2s    │           │           │           │
-     ├─→ on_complete('AAPL', portfolio)──────────────→│
+     ├─-> on_complete('AAPL', portfolio)──────────────->│
      │           │           │           │           │
      │           │ T+3.5s    │           │           │
-     │           ├─→ on_complete('MSFT', portfolio)──→│
+     │           ├─-> on_complete('MSFT', portfolio)──->│
      │           │           │           │           │
      │           │           │ T+4.1s    │           │
-     │           │           ├─→ on_complete('GOOGL', portfolio)→│
+     │           │           ├─-> on_complete('GOOGL', portfolio)->│
      │           │           │           │           │
      │           │           │           │ T+3.8s    │
-     │           │           │           ├─→ on_complete('TSLA', portfolio)
+     │           │           │           ├─-> on_complete('TSLA', portfolio)
      │           │           │           │           │
      └───────────┴───────────┴───────────┴───────────┘
                                                      │
@@ -731,7 +731,7 @@ SweepRunner
                  ▼
 ┌──────────────────────────────────────────────────────────────┐
 │ 5. COMPARISON REPORTS                                        │
-│    ├─→ Comparison table (CSV)                                │
+│    ├─-> Comparison table (CSV)                                │
 │    │   Symbol | Return | Sharpe | Max DD | Trades            │
 │    │   -------|--------|--------|--------|-------            │
 │    │   AAPL   | 25.3%  | 1.87   | -12.4% | 24                │
@@ -739,10 +739,10 @@ SweepRunner
 │    │   GOOGL  | 32.1%  | 2.15   | -15.2% | 31                │
 │    │   TSLA   | -5.4%  | -0.32  | -28.3% | 42                │
 │    │                                                          │
-│    ├─→ Combined equity curve chart                           │
+│    ├─-> Combined equity curve chart                           │
 │    │   (All 4 symbols on same chart)                         │
 │    │                                                          │
-│    └─→ Individual tearsheets for each symbol                 │
+│    └─-> Individual tearsheets for each symbol                 │
 │        (4 separate HTML files)                               │
 └──────────────────────────────────────────────────────────────┘
 ```
@@ -792,37 +792,37 @@ SweepRunner
 │                                                              │
 │    FOR each bar (synchronized across all symbols):          │
 │    │                                                          │
-│    ├─→ Check exit signals for all open positions            │
+│    ├─-> Check exit signals for all open positions            │
 │    │   for symbol in portfolio.open_positions:              │
 │    │       if signals_dict[symbol].exits[current_bar]:      │
 │    │           portfolio.close_position(symbol)              │
 │    │                                                          │
-│    ├─→ Calculate available cash                              │
+│    ├─-> Calculate available cash                              │
 │    │   available_cash = portfolio.cash                       │
 │    │                                                          │
-│    ├─→ Check entry signals                                   │
+│    ├─-> Check entry signals                                   │
 │    │   entry_signals = []                                    │
 │    │   for symbol in symbols:                                │
 │    │       if signals_dict[symbol].entries[current_bar]:    │
 │    │           entry_signals.append(symbol)                  │
 │    │                                                          │
-│    ├─→ Calculate position sizes (using weighting scheme)     │
+│    ├─-> Calculate position sizes (using weighting scheme)     │
 │    │   if weighting == 'equal':                              │
 │    │       allocation_per_symbol = available_cash / len(entry_signals)
 │    │   elif weighting == 'risk_parity':                      │
 │    │       # Allocate inversely proportional to volatility   │
 │    │       allocations = calculate_risk_parity_weights()     │
 │    │                                                          │
-│    ├─→ Enter new positions                                   │
+│    ├─-> Enter new positions                                   │
 │    │   for symbol in entry_signals:                          │
 │    │       shares = allocation / current_price[symbol]       │
 │    │       portfolio.add_position(symbol, shares, price)     │
 │    │                                                          │
-│    ├─→ Check rebalancing trigger                             │
+│    ├─-> Check rebalancing trigger                             │
 │    │   if should_rebalance(current_date):                    │
 │    │       portfolio.rebalance(current_prices)               │
 │    │                                                          │
-│    └─→ Update equity curve                                   │
+│    └─-> Update equity curve                                   │
 │        portfolio.equity = cash + sum(position_values)        │
 └────────────────┬─────────────────────────────────────────────┘
                  │
@@ -865,7 +865,7 @@ SweepRunner
 │    └─ result_queue = Queue()                                 │
 │                                                              │
 │    worker_thread.start()  # Starts in background            │
-│    return immediately → GUI stays responsive                 │
+│    return immediately -> GUI stays responsive                 │
 └────────────────┬─────────────────────────────────────────────┘
                  │
         ┌────────┴────────┐
@@ -876,9 +876,9 @@ SweepRunner
 │   (GUI)      │   │  (Backtest)      │
 └──────┬───────┘   └────────┬─────────┘
        │                    │
-       │                    ├─→ SweepRunner.run_sweep(...)
+       │                    ├─-> SweepRunner.run_sweep(...)
        │                    │
-       │                    ├─→ Callback: on_symbol_start('AAPL')
+       │                    ├─-> Callback: on_symbol_start('AAPL')
        │                    │   progress_queue.put({
        │                    │       'type': 'start',
        │                    │       'symbol': 'AAPL'
@@ -889,10 +889,10 @@ SweepRunner
        │   if update['type'] == 'start':
        │       RunView.update_status('Starting AAPL...')
        │                    │
-       │                    ├─→ Run backtest for AAPL
+       │                    ├─-> Run backtest for AAPL
        │                    │   (Load data, signals, simulate)
        │                    │
-       │                    ├─→ Callback: on_symbol_complete('AAPL', portfolio)
+       │                    ├─-> Callback: on_symbol_complete('AAPL', portfolio)
        │                    │   progress_queue.put({
        │                    │       'type': 'complete',
        │                    │       'symbol': 'AAPL',
@@ -902,12 +902,12 @@ SweepRunner
        ├── Poll queue
        │   update = progress_queue.get_nowait()
        │   if update['type'] == 'complete':
-       │       RunView.update_progress('AAPL: ✓ 25.3%')
+       │       RunView.update_progress('AAPL: [+] 25.3%')
        │       RunView.progress_bar.value = 0.33  # 1/3 complete
        │                    │
-       │                    ├─→ Repeat for MSFT, GOOGL
+       │                    ├─-> Repeat for MSFT, GOOGL
        │                    │
-       │                    ├─→ All symbols complete
+       │                    ├─-> All symbols complete
        │                    │   result_queue.put({
        │                    │       'type': 'complete',
        │                    │       'portfolios': [...]
@@ -919,9 +919,9 @@ SweepRunner
        │       Navigate to ResultsView
        │       Display metrics table
        │                    │
-       │                    └─→ Thread exits
+       │                    └─-> Thread exits
        │
-       └─→ Continue polling (cleanup)
+       └─-> Continue polling (cleanup)
 ```
 
 ---
@@ -1089,7 +1089,7 @@ SweepRunner
     │     equity[i] = cash + position_value          │
     └────────┬───────────────────────────────────────┘
              │
-             ├──→ Next bar (i+1)
+             ├──-> Next bar (i+1)
              │
              ▼
     ┌────────────────────────────────────────────────┐
@@ -1122,8 +1122,8 @@ Entry Signal Triggered
 │ ├─ Position size < max_position_%?  │
 │ └─ Not already in position?         │
 │                                     │
-│ If all pass → Allow entry           │
-│ If any fail → Reject entry          │
+│ If all pass -> Allow entry           │
+│ If any fail -> Reject entry          │
 └────────┬────────────────────────────┘
          │ Allowed
          ▼
@@ -1154,12 +1154,12 @@ Entry Signal Triggered
 │ if stop_loss_type == 'percentage':  │
 │     stop_price = entry * (1 - %)    │
 │     if current_price <= stop_price: │
-│         → Force exit                │
+│         -> Force exit                │
 │                                     │
 │ elif stop_loss_type == 'atr':       │
 │     stop_price = entry - (N * ATR)  │
 │     if current_price <= stop_price: │
-│         → Force exit                │
+│         -> Force exit                │
 └─────────────────────────────────────┘
 ```
 
@@ -1167,7 +1167,7 @@ Entry Signal Triggered
 
 ## Signal Generation Flow
 
-### Indicator Calculation → Signal Logic
+### Indicator Calculation -> Signal Logic
 
 ```
 Raw OHLCV Data
@@ -1207,8 +1207,8 @@ Raw OHLCV Data
 │    exits = bearish_cross             │
 │                                      │
 │    # Result: pd.Series of booleans   │
-│    entries[i] = True → Enter at bar i│
-│    exits[i] = True → Exit at bar i   │
+│    entries[i] = True -> Enter at bar i│
+│    exits[i] = True -> Exit at bar i   │
 └────────┬─────────────────────────────┘
          │
          ▼
@@ -1410,16 +1410,16 @@ Coordination:
 ```
 Portfolio object
     │
-    ├─→ equity_curve (pd.Series)
-    ├─→ trades (List[Dict])
-    └─→ stats (Dict)
+    ├─-> equity_curve (pd.Series)
+    ├─-> trades (List[Dict])
+    └─-> stats (Dict)
         │
         ▼
 ┌──────────────────────────────────────────────┐
 │ BacktestVisualizer.generate_all()            │
 └────────┬─────────────────────────────────────┘
          │
-         ├─→ QuantStatsReporter
+         ├─-> QuantStatsReporter
          │   ├─ Convert equity to returns
          │   ├─ Load benchmark (SPY)
          │   ├─ Calculate 50+ metrics
@@ -1429,19 +1429,19 @@ Portfolio object
          │       ├─ Rolling Sharpe
          │       └─ Monte Carlo
          │
-         ├─→ CandlestickChart
+         ├─-> CandlestickChart
          │   ├─ Plot OHLC bars
          │   ├─ Add trade markers
          │   │   ├─ Green ▲ for entries
          │   │   └─ Red ▼ for exits
          │   └─ Save as PNG
          │
-         ├─→ ReportGenerator
+         ├─-> ReportGenerator
          │   ├─ Create summary table
          │   ├─ Format metrics
          │   └─ Save as TXT/CSV
          │
-         └─→ OutputManager
+         └─-> OutputManager
              └─ Organize files in output directory
                  logs/AAPL_20250105_153045/
                  ├── tearsheet.html
@@ -1456,14 +1456,14 @@ Portfolio object
 
 | Operation | Entry Point | Data Path | Output |
 |-----------|-------------|-----------|--------|
-| **Data Ingestion** | `run_ingestion.py` | AlpacaAPI → ParquetStorage → Metadata | Parquet files |
-| **Streaming Data** | `LiveDataProvider` | WebSocket → StreamManager → BarBuffer → Strategy | Real-time prices |
-| **News/Sentiment** | `NewsDownloader` | NewsAPI → Parquet → SentimentAnalyzer → Cache | Sentiment scores |
-| **Single Backtest (CLI)** | `backtest_runner.py` | DataLoader → Strategy → PortfolioSim → Visualizer | Reports/Charts |
-| **Multi-Symbol Sweep** | `backtest_runner.py` | SweepRunner → [Parallel Engines] → Aggregator | Comparison tables |
-| **Multi-Asset Portfolio** | `backtest_runner.py` | DataLoader → MultiAssetPortfolio → Visualizer | Portfolio reports |
-| **GUI Backtest** | `gui/__main__.py` | GUIController → [Worker Thread] SweepRunner → Queue → UI | Interactive results |
-| **Live Trading** | `homeguard-*.service` | Adapter → Provider → Signals → Broker → StateManager | Orders/Positions |
+| **Data Ingestion** | `run_ingestion.py` | AlpacaAPI -> ParquetStorage -> Metadata | Parquet files |
+| **Streaming Data** | `LiveDataProvider` | WebSocket -> StreamManager -> BarBuffer -> Strategy | Real-time prices |
+| **News/Sentiment** | `NewsDownloader` | NewsAPI -> Parquet -> SentimentAnalyzer -> Cache | Sentiment scores |
+| **Single Backtest (CLI)** | `backtest_runner.py` | DataLoader -> Strategy -> PortfolioSim -> Visualizer | Reports/Charts |
+| **Multi-Symbol Sweep** | `backtest_runner.py` | SweepRunner -> [Parallel Engines] -> Aggregator | Comparison tables |
+| **Multi-Asset Portfolio** | `backtest_runner.py` | DataLoader -> MultiAssetPortfolio -> Visualizer | Portfolio reports |
+| **GUI Backtest** | `gui/__main__.py` | GUIController -> [Worker Thread] SweepRunner -> Queue -> UI | Interactive results |
+| **Live Trading** | `homeguard-*.service` | Adapter -> Provider -> Signals -> Broker -> StateManager | Orders/Positions |
 
 ---
 

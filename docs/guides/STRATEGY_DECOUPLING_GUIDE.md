@@ -22,9 +22,9 @@ src/strategies/
 │   ├── volatility_targeted_momentum.py
 │   ├── cross_sectional_momentum.py
 │   ├── pairs_trading.py
-│   ├── market_regime_detector.py   # ✅ Already reused in live trading
-│   ├── bayesian_reversion_model.py # ✅ Already reused in live trading
-│   └── overnight_signal_generator.py # ✅ Already reused in live trading
+│   ├── market_regime_detector.py   # [+] Already reused in live trading
+│   ├── bayesian_reversion_model.py # [+] Already reused in live trading
+│   └── overnight_signal_generator.py # [+] Already reused in live trading
 ```
 
 ### Live Trading Strategies (src/trading/strategies/)
@@ -183,14 +183,14 @@ class StrategySignals(ABC):
 **Before** (tightly coupled to backtesting engine):
 ```python
 # src/strategies/base_strategies/moving_average.py
-from src.engine.base_strategy import Strategy  # ❌ Coupled to backtest engine
+from src.engine.base_strategy import Strategy  # [-] Coupled to backtest engine
 
 class MovingAverageCrossover(Strategy):
     def generate_signals(self, data, timestamp):
         # Uses self.portfolio, self.get_indicator()
         # Tightly coupled to backtesting infrastructure
 
-        prices = self.portfolio.get_latest_price(...)  # ❌ Backtest-specific
+        prices = self.portfolio.get_latest_price(...)  # [-] Backtest-specific
         ...
 ```
 
@@ -375,9 +375,9 @@ class MALiveAdapter(TradingStrategy):
 ## Example: Reusing OMR Strategy
 
 The OMR strategy components are **already well-structured** for reuse:
-- `market_regime_detector.py` - Pure regime classification logic ✅
-- `bayesian_reversion_model.py` - Pure probability calculations ✅
-- `overnight_signal_generator.py` - Mostly pure signal generation ✅
+- `market_regime_detector.py` - Pure regime classification logic [+]
+- `bayesian_reversion_model.py` - Pure probability calculations [+]
+- `overnight_signal_generator.py` - Mostly pure signal generation [+]
 
 Just need to remove hardcoded ETF list:
 
@@ -385,10 +385,10 @@ Just need to remove hardcoded ETF list:
 ```python
 # src/strategies/advanced/overnight_signal_generator.py
 class OvernightReversionSignals:
-    LEVERAGED_ETFS = ['TQQQ', 'SQQQ', ...]  # ❌ Hardcoded
+    LEVERAGED_ETFS = ['TQQQ', 'SQQQ', ...]  # [-] Hardcoded
 
     def generate_signals(self, market_data, timestamp):
-        for symbol in self.LEVERAGED_ETFS:  # ❌ Hardcoded
+        for symbol in self.LEVERAGED_ETFS:  # [-] Hardcoded
             ...
 ```
 
@@ -398,18 +398,18 @@ class OvernightReversionSignals:
 class OMRSignals(StrategySignals):
     def __init__(
         self,
-        symbols: List[str],  # ✅ Injected
+        symbols: List[str],  # [+] Injected
         regime_detector: MarketRegimeDetector,
         bayesian_model: BayesianReversionModel,
         ...
     ):
-        self.symbols = symbols  # ✅ Not hardcoded
+        self.symbols = symbols  # [+] Not hardcoded
         self.regime_detector = regime_detector
         self.bayesian_model = bayesian_model
         ...
 
     def generate_signals(self, market_data, timestamp):
-        for symbol in self.symbols:  # ✅ Configurable
+        for symbol in self.symbols:  # [+] Configurable
             ...
 ```
 
@@ -557,7 +557,7 @@ The key insight is **three-layer architecture**:
 │  - No infrastructure dependencies               │
 │  - Reusable across backtest and live trading    │
 └─────────────────────────────────────────────────┘
-                       ↑
+                       ^
                        │ (used by)
          ┌─────────────┴─────────────┐
          │                           │

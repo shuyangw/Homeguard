@@ -6,10 +6,10 @@
 
 ## Prerequisites (Already Installed)
 
-- ✅ Terraform
-- ✅ AWS CLI configured
-- ✅ EC2 key pair created
-- ✅ Repository cloned
+- [+] Terraform
+- [+] AWS CLI configured
+- [+] EC2 key pair created
+- [+] Repository cloned
 
 ---
 

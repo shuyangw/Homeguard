@@ -11,9 +11,9 @@
 When the trading bot restarts mid-day (e.g., at 2:00 PM ET), the streaming buffer only contains bars from the restart time forward. OMR requires 390 continuous minute bars from market open (9:30 AM ET) to correctly calculate intraday price movements for overnight mean reversion signals.
 
 **Without smart fallback:**
-- Bot restarts at 2:00 PM → buffer has ~120 bars (2:01 PM - 4:00 PM)
-- OMR requests 390 bars → receives 120 incomplete bars
-- Signal calculation uses wrong data → incorrect trades
+- Bot restarts at 2:00 PM -> buffer has ~120 bars (2:01 PM - 4:00 PM)
+- OMR requests 390 bars -> receives 120 incomplete bars
+- Signal calculation uses wrong data -> incorrect trades
 
 ---
 
@@ -157,8 +157,8 @@ if bars_df is not None and not bars_df.empty:
 
 | Strategy | Streaming Enabled | IEX Connection |
 |----------|------------------|----------------|
-| **OMR** | ❌ No (polling) | - |
-| **RAMP** | ✅ Yes | Active |
+| **OMR** | [-] No (polling) | - |
+| **RAMP** | [+] Yes | Active |
 
 **IEX Feed Limitation**: Only 1 WebSocket connection allowed per account.
 
@@ -217,13 +217,13 @@ STREAMING_FEED="sip"  # Was "iex"
 ## Recommendation
 
 ### For Paper Trading (Current)
-✅ **Option 1 (Shared WebSocket)**
+[+] **Option 1 (Shared WebSocket)**
 - Refactor to single process with shared LiveDataProvider
 - Free IEX feed is sufficient for testing
 - Smart fallback handles all restart scenarios
 
 ### For Production (Real Money)
-✅ **Option 2 (Upgrade to SIP)**
+[+] **Option 2 (Upgrade to SIP)**
 - Invest in SIP feed for production trading
 - Independent strategy restarts
 - Best data quality and coverage
@@ -371,18 +371,18 @@ journalctl -u homeguard-trading -n 20 | grep "Data provider ready: composite"
 
 ## Summary
 
-✅ **Implementation Complete**:
+[+] **Implementation Complete**:
 - Smart fallback mechanism implemented and tested
 - 68/68 tests passing (including 10 new fallback tests)
 - Documentation updated
 - Ready for deployment
 
-⚠️ **Deployment Decision Required**:
+[!]️ **Deployment Decision Required**:
 - Choose Option 1 (shared provider) or Option 2 (SIP upgrade)
 - Option 1 requires combining services into single process
 - Option 2 requires paid Alpaca subscription
 
-🎯 **Expected Outcome**:
+[*] **Expected Outcome**:
 - OMR gets correct data even after mid-day restarts
 - First execution after restart is slower (~5-10s) but accurate
 - Subsequent executions use fast streaming buffer (<10ms)

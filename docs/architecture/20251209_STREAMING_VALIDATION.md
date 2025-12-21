@@ -22,19 +22,19 @@ Both OMR and RAMP strategies are **fully compatible** with streaming data infras
 
 ```
 3:50 PM - OMR execution triggered
-    ↓
+    v
 run_once() called
-    ↓
+    v
 fetch_market_data()
-    ↓
+    v
 For each symbol in symbols (~15 ETFs):
     broker.get_historical_bars(
         symbol=symbol,
         start=9:30 AM,
         end=3:50 PM,
         timeframe='1Min'
-    )  ← API CALL (500ms each)
-    ↓
+    )  <- API CALL (500ms each)
+    v
 Returns: Dict[symbol, DataFrame]
     - 390 rows per symbol (9:30 AM - 3:50 PM)
     - Columns: open, high, low, close, volume, vwap
@@ -57,7 +57,7 @@ else:
                 timeframe='1Min'
             )
             if df is not None and not df.empty:
-                market_data[symbol] = df  # ✅ Dict[str, DataFrame]
+                market_data[symbol] = df  # [+] Dict[str, DataFrame]
 ```
 
 #### **WITH STREAMING (Buffer Access)**
@@ -65,16 +65,16 @@ else:
 ```
 9:30 AM - WebSocket connects, subscribes to 15 symbols
 9:30-3:50 PM - Buffer accumulates bars in real-time
-    ↓
+    v
 3:50 PM - OMR execution triggered
-    ↓
+    v
 run_once() called
-    ↓
+    v
 fetch_market_data()
-    ↓
+    v
 For each symbol in symbols (~15 ETFs):
-    provider.get_bars(symbol, n=390)  ← MEMORY READ (<10ms)
-    ↓
+    provider.get_bars(symbol, n=390)  <- MEMORY READ (<10ms)
+    v
 Returns: Dict[symbol, DataFrame]
     - 390 rows per symbol (last 390 bars from buffer)
     - Columns: open, high, low, close, volume, vwap
@@ -93,10 +93,10 @@ elif self._data_provider is not None and hasattr(self._data_provider, 'get_bars'
             bars_df = self._data_provider.get_bars(symbol, n=390)
 
             if bars_df is not None and not bars_df.empty:
-                market_data[symbol] = bars_df  # ✅ Dict[str, DataFrame]
+                market_data[symbol] = bars_df  # [+] Dict[str, DataFrame]
 ```
 
-**✅ VALIDATION**: Both paths return **identical data structure**: `Dict[str, pd.DataFrame]`
+**[+] VALIDATION**: Both paths return **identical data structure**: `Dict[str, pd.DataFrame]`
 
 ---
 
@@ -111,7 +111,7 @@ def generate_signals(self, market_data: Dict[str, pd.DataFrame]) -> List[Signal]
     Generate trading signals using pure strategy.
 
     Args:
-        market_data: Market data for all symbols  ← SAME FORMAT
+        market_data: Market data for all symbols  <- SAME FORMAT
 
     Returns:
         List of trading signals
@@ -127,7 +127,7 @@ def generate_signals(self, market_data: Dict[str, pd.DataFrame]) -> List[Signal]
                 f"(confidence: {signal.confidence:.1%})"
             )
 
-        return signals  # ✅ List[Signal]
+        return signals  # [+] List[Signal]
 ```
 
 **Signal Object** (`src/strategies/core.py`):
@@ -142,7 +142,7 @@ class Signal:
     metadata: Dict[str, Any] = field(default_factory=dict)
 ```
 
-**✅ VALIDATION**: Signal generation receives same `Dict[str, DataFrame]` format from both polling and streaming.
+**[+] VALIDATION**: Signal generation receives same `Dict[str, DataFrame]` format from both polling and streaming.
 
 ---
 
@@ -156,7 +156,7 @@ def execute_signals(self, signals: List[Signal]) -> None:
     """Execute trading signals with position tracking."""
 
     # Get account info
-    account = self.broker.get_account()  # ← Broker API (not affected by streaming)
+    account = self.broker.get_account()  # <- Broker API (not affected by streaming)
     buying_power = float(account['buying_power'])
 
     for signal in signals:
@@ -170,16 +170,16 @@ def execute_signals(self, signals: List[Signal]) -> None:
             quantity=qty,
             side=OrderSide.BUY,
             order_type=OrderType.MARKET
-        )  # ← Broker API (not affected by streaming)
+        )  # <- Broker API (not affected by streaming)
 
         if order:
             # Track position in state manager
             self.state_manager.add_or_update_position(
                 'omr', signal.symbol, qty, signal.price, order.get('order_id')
-            )  # ← State file (not affected by streaming)
+            )  # <- State file (not affected by streaming)
 ```
 
-**✅ VALIDATION**: Order execution uses broker API and state manager - **completely independent** of data source.
+**[+] VALIDATION**: Order execution uses broker API and state manager - **completely independent** of data source.
 
 ---
 
@@ -195,7 +195,7 @@ def preload_historical_data(self) -> None:
     self._data_cache = {}
 
     for symbol in self.symbols:
-        df = self.broker.get_historical_bars(  # ← STILL POLLS (historical)
+        df = self.broker.get_historical_bars(  # <- STILL POLLS (historical)
             symbol=symbol,
             start=start_date,  # 400 days ago
             end=end_date,      # today
@@ -206,7 +206,7 @@ def preload_historical_data(self) -> None:
 
 **Location**: In-memory dict `self._data_cache`
 
-**✅ VALIDATION**: Historical cache (400 days) **still uses broker polling** - streaming only replaces intraday data fetching.
+**[+] VALIDATION**: Historical cache (400 days) **still uses broker polling** - streaming only replaces intraday data fetching.
 
 #### **Position State** (persistent)
 
@@ -224,12 +224,12 @@ def add_or_update_position(self, strategy: str, symbol: str, qty: int, price: fl
     }
 
     # Persist to disk
-    self._save_state()  # → data/trading/strategy_positions.json
+    self._save_state()  # -> data/trading/strategy_positions.json
 ```
 
 **Location**: `data/trading/strategy_positions.json`
 
-**✅ VALIDATION**: Position tracking **completely independent** of data source.
+**[+] VALIDATION**: Position tracking **completely independent** of data source.
 
 ---
 
@@ -241,21 +241,21 @@ def add_or_update_position(self, strategy: str, symbol: str, qty: int, price: fl
 
 ```
 3:55 PM - RAMP execution triggered
-    ↓
+    v
 run_once() called
-    ↓
+    v
 fetch_todays_closes()
-    ↓
+    v
 For each symbol in symbols (~500 stocks):
     broker.get_historical_bars(
         symbol=symbol,
         start=today 00:00,
         end=now,
         timeframe='1D'
-    )  ← API CALL (300ms each)
-    ↓
+    )  <- API CALL (300ms each)
+    v
     Extract: close_price = df['close'].iloc[-1]
-    ↓
+    v
 Returns: Dict[symbol, float]  # Today's closing prices
 
 Total Time: 500 symbols × 300ms = 150 seconds
@@ -281,7 +281,7 @@ else:
             if df is not None and not df.empty:
                 df.columns = [c.lower() for c in df.columns]
                 if 'close' in df.columns:
-                    todays_prices[symbol] = df['close'].iloc[-1]  # ✅ Extract close
+                    todays_prices[symbol] = df['close'].iloc[-1]  # [+] Extract close
 ```
 
 #### **WITH STREAMING (Buffer Access)**
@@ -289,18 +289,18 @@ else:
 ```
 9:30 AM - WebSocket connects, subscribes to 500 symbols
 9:30-3:55 PM - Buffer accumulates bars in real-time
-    ↓
+    v
 3:55 PM - RAMP execution triggered
-    ↓
+    v
 run_once() called
-    ↓
+    v
 fetch_todays_closes()
-    ↓
+    v
 For each symbol in symbols (~500 stocks):
-    provider.get_bars(symbol, n=1)  ← MEMORY READ (<1ms)
-    ↓
+    provider.get_bars(symbol, n=1)  <- MEMORY READ (<1ms)
+    v
     Extract: close_price = latest_bar['close'].iloc[-1]
-    ↓
+    v
 Returns: Dict[symbol, float]  # Today's closing prices
 
 Total Time: 500 symbols × 1ms = 500ms
@@ -319,10 +319,10 @@ if self._data_provider is not None and hasattr(self._data_provider, 'get_bars'):
             if latest_bar is not None and not latest_bar.empty:
                 latest_bar.columns = [c.lower() for c in latest_bar.columns]
                 if 'close' in latest_bar.columns:
-                    todays_prices[symbol] = latest_bar['close'].iloc[-1]  # ✅ Extract close
+                    todays_prices[symbol] = latest_bar['close'].iloc[-1]  # [+] Extract close
 ```
 
-**✅ VALIDATION**: Both paths produce **identical result**: `Dict[str, float]` mapping symbol to close price.
+**[+] VALIDATION**: Both paths produce **identical result**: `Dict[str, float]` mapping symbol to close price.
 
 ---
 
@@ -351,10 +351,10 @@ def generate_signals(self, market_data: Dict[str, pd.DataFrame]) -> List[Signal]
         timestamp=datetime.now()
     )
 
-    return signals  # ✅ List[RAMPSignal] (converted to List[Signal])
+    return signals  # [+] List[RAMPSignal] (converted to List[Signal])
 ```
 
-**✅ VALIDATION**: Signal generation uses historical cache + today's data - same format from both sources.
+**[+] VALIDATION**: Signal generation uses historical cache + today's data - same format from both sources.
 
 ---
 
@@ -368,7 +368,7 @@ def execute_signals(self, signals: List[Signal]) -> None:
     """Execute RAMP rebalancing orders."""
 
     # Get current positions
-    current_positions = self.broker.get_positions()  # ← Broker API
+    current_positions = self.broker.get_positions()  # <- Broker API
 
     # Calculate target positions
     target_positions = self._calculate_target_positions(signals)
@@ -385,7 +385,7 @@ def execute_signals(self, signals: List[Signal]) -> None:
                 quantity=delta,
                 side=OrderSide.BUY,
                 order_type=OrderType.MARKET
-            )  # ← Broker API
+            )  # <- Broker API
         elif delta < 0:
             # Sell
             order = self.execution_engine.execute_order(
@@ -393,16 +393,16 @@ def execute_signals(self, signals: List[Signal]) -> None:
                 quantity=abs(delta),
                 side=OrderSide.SELL,
                 order_type=OrderType.MARKET
-            )  # ← Broker API
+            )  # <- Broker API
 
         if order:
             # Track position
             self.state_manager.add_or_update_position(
                 'ramp', symbol, target_qty, signal.price, order.get('order_id')
-            )  # ← State file
+            )  # <- State file
 ```
 
-**✅ VALIDATION**: Order execution **identical** - uses broker API and state manager.
+**[+] VALIDATION**: Order execution **identical** - uses broker API and state manager.
 
 ---
 
@@ -418,7 +418,7 @@ def preload_historical_data(self) -> None:
     prices_df = pd.DataFrame()  # Wide format: rows=dates, cols=symbols
 
     for symbol in self.symbols:
-        df = self.broker.get_historical_bars(  # ← STILL POLLS (historical)
+        df = self.broker.get_historical_bars(  # <- STILL POLLS (historical)
             symbol=symbol,
             start=start_date,  # 400 days ago
             end=end_date,      # today
@@ -435,7 +435,7 @@ def preload_historical_data(self) -> None:
 
 **Location**: In-memory dict `self._data_cache`
 
-**✅ VALIDATION**: Historical cache **still uses broker polling** - streaming only replaces today's close fetching.
+**[+] VALIDATION**: Historical cache **still uses broker polling** - streaming only replaces today's close fetching.
 
 #### **Cache Update** (append today's close)
 
@@ -456,7 +456,7 @@ logger.success(f"[RAMP] Appended today's data - cache now has {len(updated_price
 
 **Location**: In-memory dict `self._data_cache`
 
-**✅ VALIDATION**: Cache update **identical** - whether today's prices came from streaming or polling.
+**[+] VALIDATION**: Cache update **identical** - whether today's prices came from streaming or polling.
 
 ---
 
@@ -466,30 +466,30 @@ logger.success(f"[RAMP] Appended today's data - cache now has {len(updated_price
 
 | Stage | Polling (Current) | Streaming (New) | Identical? |
 |-------|-------------------|-----------------|------------|
-| **Intraday Data Fetch** | `broker.get_historical_bars()` (7.5s) | `provider.get_bars()` (150ms) | ❌ Different method |
-| **Data Format** | `Dict[str, DataFrame]` | `Dict[str, DataFrame]` | ✅ Same |
-| **Signal Generation** | `strategy.generate_signals(market_data)` | `strategy.generate_signals(market_data)` | ✅ Identical |
-| **Order Execution** | `broker.execute_order()` | `broker.execute_order()` | ✅ Identical |
-| **Position Tracking** | `state_manager.add_position()` | `state_manager.add_position()` | ✅ Identical |
-| **Historical Cache** | `broker.get_historical_bars()` (once) | `broker.get_historical_bars()` (once) | ✅ Identical |
+| **Intraday Data Fetch** | `broker.get_historical_bars()` (7.5s) | `provider.get_bars()` (150ms) | [-] Different method |
+| **Data Format** | `Dict[str, DataFrame]` | `Dict[str, DataFrame]` | [+] Same |
+| **Signal Generation** | `strategy.generate_signals(market_data)` | `strategy.generate_signals(market_data)` | [+] Identical |
+| **Order Execution** | `broker.execute_order()` | `broker.execute_order()` | [+] Identical |
+| **Position Tracking** | `state_manager.add_position()` | `state_manager.add_position()` | [+] Identical |
+| **Historical Cache** | `broker.get_historical_bars()` (once) | `broker.get_historical_bars()` (once) | [+] Identical |
 
 ### RAMP Data Flow
 
 | Stage | Polling (Current) | Streaming (New) | Identical? |
 |-------|-------------------|-----------------|------------|
-| **Today's Close Fetch** | `broker.get_historical_bars()` (150s) | `provider.get_bars()` (500ms) | ❌ Different method |
-| **Data Format** | `Dict[str, float]` | `Dict[str, float]` | ✅ Same |
-| **Cache Update** | Append to `prices_df` | Append to `prices_df` | ✅ Identical |
-| **Signal Generation** | `strategy.generate_signals(prices_df)` | `strategy.generate_signals(prices_df)` | ✅ Identical |
-| **Order Execution** | `broker.execute_order()` | `broker.execute_order()` | ✅ Identical |
-| **Position Tracking** | `state_manager.add_position()` | `state_manager.add_position()` | ✅ Identical |
-| **Historical Cache** | `broker.get_historical_bars()` (once) | `broker.get_historical_bars()` (once) | ✅ Identical |
+| **Today's Close Fetch** | `broker.get_historical_bars()` (150s) | `provider.get_bars()` (500ms) | [-] Different method |
+| **Data Format** | `Dict[str, float]` | `Dict[str, float]` | [+] Same |
+| **Cache Update** | Append to `prices_df` | Append to `prices_df` | [+] Identical |
+| **Signal Generation** | `strategy.generate_signals(prices_df)` | `strategy.generate_signals(prices_df)` | [+] Identical |
+| **Order Execution** | `broker.execute_order()` | `broker.execute_order()` | [+] Identical |
+| **Position Tracking** | `state_manager.add_position()` | `state_manager.add_position()` | [+] Identical |
+| **Historical Cache** | `broker.get_historical_bars()` (once) | `broker.get_historical_bars()` (once) | [+] Identical |
 
 ---
 
 ## Critical Validation Points
 
-### 1. DataFrame Schema Consistency ✅
+### 1. DataFrame Schema Consistency [+]
 
 **Polling** (via broker):
 ```python
@@ -505,11 +505,11 @@ df = provider.get_bars('TQQQ', n=390)
 # Index: DatetimeIndex
 ```
 
-**✅ VALIDATION**: Streaming provider's `get_bars()` returns DataFrame with **identical schema** to broker (see `src/streaming/types.py:Bar.from_alpaca()`).
+**[+] VALIDATION**: Streaming provider's `get_bars()` returns DataFrame with **identical schema** to broker (see `src/streaming/types.py:Bar.from_alpaca()`).
 
 ---
 
-### 2. Order Execution Independence ✅
+### 2. Order Execution Independence [+]
 
 ```python
 # Order execution ALWAYS uses broker API, never streaming data
@@ -527,14 +527,14 @@ self.broker.submit_order(
     side=side.value,
     type=order_type.value,
     time_in_force='day'
-)  # ← Alpaca Trading API (POST /v2/orders)
+)  # <- Alpaca Trading API (POST /v2/orders)
 ```
 
-**✅ VALIDATION**: Order execution path is **completely independent** of data source. Streaming only affects market data fetching, not trading operations.
+**[+] VALIDATION**: Order execution path is **completely independent** of data source. Streaming only affects market data fetching, not trading operations.
 
 ---
 
-### 3. State Persistence Independence ✅
+### 3. State Persistence Independence [+]
 
 ```python
 # Position tracking ALWAYS uses file system, never streaming data
@@ -565,21 +565,21 @@ self.state_manager.add_or_update_position(
 }
 ```
 
-**✅ VALIDATION**: State management is **completely independent** of data source. File format and persistence logic unchanged.
+**[+] VALIDATION**: State management is **completely independent** of data source. File format and persistence logic unchanged.
 
 ---
 
-### 4. Historical Data Caching Independence ✅
+### 4. Historical Data Caching Independence [+]
 
 **Both strategies preload 400 days at 9:30 AM**:
 
 ```python
 # OMR
-self.adapter.preload_historical_data()  # ← STILL POLLS broker API
+self.adapter.preload_historical_data()  # <- STILL POLLS broker API
 # Caches: 400 days × 15 symbols (daily bars for regime detection)
 
 # RAMP
-self.adapter.preload_historical_data()  # ← STILL POLLS broker API
+self.adapter.preload_historical_data()  # <- STILL POLLS broker API
 # Caches: 400 days × 500 symbols (daily closes for momentum)
 ```
 
@@ -587,7 +587,7 @@ self.adapter.preload_historical_data()  # ← STILL POLLS broker API
 - OMR: Today's intraday bars (390 bars at 3:50 PM)
 - RAMP: Today's close (1 bar at 3:55 PM)
 
-**✅ VALIDATION**: Historical caching (400 days) **unchanged** - still uses broker API for one-time bulk fetch.
+**[+] VALIDATION**: Historical caching (400 days) **unchanged** - still uses broker API for one-time bulk fetch.
 
 ---
 
@@ -604,7 +604,7 @@ def get_bars(self, symbol: str, n: Optional[int] = None) -> Optional[pd.DataFram
     bars = self._bar_buffer.get(symbol, n)
 
     if bars is not None and not bars.empty:
-        return bars  # ✅ Success
+        return bars  # [+] Success
 
     # Fallback to REST API if buffer empty
     logger.warning(f"Buffer empty for {symbol}, falling back to REST API")
@@ -634,7 +634,7 @@ if bars is None or len(bars) < 100:
 bars = provider.get_bars('UNKNOWN_SYMBOL', n=390)
 
 # Buffer doesn't have it
-# → Fallback fetches via REST API
+# -> Fallback fetches via REST API
 ```
 
 **Result**: Transparent fallback - strategy doesn't know or care.
@@ -667,7 +667,7 @@ bars = provider.get_bars('UNKNOWN_SYMBOL', n=390)
 
 ## Summary
 
-### ✅ Fully Compatible
+### [+] Fully Compatible
 
 1. **Data Format**: Both sources return `Dict[str, DataFrame]` with identical schema
 2. **Signal Generation**: Uses same strategy code regardless of data source
@@ -675,7 +675,7 @@ bars = provider.get_bars('UNKNOWN_SYMBOL', n=390)
 4. **Position Tracking**: Uses state manager - completely independent of streaming
 5. **Historical Caching**: Still uses broker polling for 400-day history
 
-### ✅ Transparent to Strategy Logic
+### [+] Transparent to Strategy Logic
 
 Strategies operate on DataFrames - they **don't know** if data came from:
 - Broker API (polling)
@@ -684,11 +684,11 @@ Strategies operate on DataFrames - they **don't know** if data came from:
 
 This is **by design** - streaming is an infrastructure optimization, not a strategy change.
 
-### ✅ Automatic Fallback
+### [+] Automatic Fallback
 
 If streaming fails, adapters automatically fall back to broker API polling - **zero code changes required**.
 
-### ✅ Independent Systems
+### [+] Independent Systems
 
 - **Market Data**: Streaming vs polling (changed)
 - **Order Execution**: Always broker API (unchanged)

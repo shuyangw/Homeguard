@@ -13,13 +13,13 @@
 
 | Component | Status | Details |
 |-----------|--------|---------|
-| **EC2 Instance** | ✓ Running | `<YOUR_INSTANCE_ID>` (t4g.small) |
-| **Public IP** | ✓ Active | `<YOUR_EC2_IP>` (Elastic IP) |
-| **Scheduled Start/Stop** | ✓ Enabled | 9:00 AM - 4:30 PM ET (Mon-Fri) |
-| **Security** | ✓ Active | SSH from `<YOUR_IP_CIDR>` only |
-| **Trading Bot** | ✓ Running | systemd service active |
-| **Management Scripts** | ✓ Available | 10 scripts in `scripts/ec2/` |
-| **Health Monitoring** | ✓ Configured | Automated 6-point health check |
+| **EC2 Instance** | [+] Running | `<YOUR_INSTANCE_ID>` (t4g.small) |
+| **Public IP** | [+] Active | `<YOUR_EC2_IP>` (Elastic IP) |
+| **Scheduled Start/Stop** | [+] Enabled | 9:00 AM - 4:30 PM ET (Mon-Fri) |
+| **Security** | [+] Active | SSH from `<YOUR_IP_CIDR>` only |
+| **Trading Bot** | [+] Running | systemd service active |
+| **Management Scripts** | [+] Available | 10 scripts in `scripts/ec2/` |
+| **Health Monitoring** | [+] Configured | Automated 6-point health check |
 
 ---
 
@@ -235,7 +235,7 @@
 **9:00 AM ET**:
 1. EventBridge triggers start Lambda
 2. Lambda checks instance state
-3. If stopped → starts instance
+3. If stopped -> starts instance
 4. Instance boots (~30 seconds)
 5. Systemd auto-starts trading bot
 6. Bot begins market monitoring
@@ -254,7 +254,7 @@
 **4:30 PM ET**:
 1. EventBridge triggers stop Lambda
 2. Lambda checks instance state
-3. If running → stops instance
+3. If running -> stops instance
 4. Instance shuts down gracefully
 5. Elastic IP preserved
 6. All data saved to EBS
@@ -490,20 +490,20 @@ ssh -i ~/.ssh/homeguard-trading.pem ec2-user@<YOUR_EC2_IP> \
 ## Security Summary
 
 **Network Security**:
-- ✓ SSH restricted to single IP (`<YOUR_IP_CIDR>` - your home/office IP)
-- ✓ No inbound ports except SSH (22)
-- ✓ Outbound traffic allowed (for API calls)
+- [+] SSH restricted to single IP (`<YOUR_IP_CIDR>` - your home/office IP)
+- [+] No inbound ports except SSH (22)
+- [+] Outbound traffic allowed (for API calls)
 
 **Data Security**:
-- ✓ EBS volume encrypted at rest
-- ✓ IMDSv2 required (metadata service protection)
-- ✓ Alpaca credentials in environment variables (not code)
-- ✓ Key pair required for SSH access
+- [+] EBS volume encrypted at rest
+- [+] IMDSv2 required (metadata service protection)
+- [+] Alpaca credentials in environment variables (not code)
+- [+] Key pair required for SSH access
 
 **IAM Security**:
-- ✓ Lambda has minimal permissions (EC2 start/stop only)
-- ✓ No root credentials stored
-- ✓ Service-specific roles
+- [+] Lambda has minimal permissions (EC2 start/stop only)
+- [+] No root credentials stored
+- [+] Service-specific roles
 
 ---
 

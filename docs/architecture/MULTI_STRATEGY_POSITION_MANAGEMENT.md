@@ -205,8 +205,8 @@ When a strategy opens a position:
 [MP] Acquiring execution lock...
 [MP] Lock acquired
 [MP] Checking pending orders for PLTR: none
-[MP] Buying power check: $65,000 available, $6,500 needed ✓
-[MP] Symbol conflict check: PLTR not owned by other strategies ✓
+[MP] Buying power check: $65,000 available, $6,500 needed [+]
+[MP] Symbol conflict check: PLTR not owned by other strategies [+]
 [MP] Submitting order: BUY 100 PLTR @ MARKET
 [MP] Order filled: 100 shares @ $65.00
 [MP] State updated: PLTR added to MP positions
@@ -303,7 +303,7 @@ This prevents:
 strategies:
   mp:
     enabled: true
-    shutdown_requested: true  # ← Set by disable command
+    shutdown_requested: true  # <- Set by disable command
 ```
 
 **Disable Command Flow:**
@@ -597,16 +597,16 @@ On restart:
 At **3:55 PM**, both strategies trigger and are serialized by execution lock:
 
 ```
-3:55:00 → [OMR] Acquires lock, starts buying overnight positions
-3:57:30 → [OMR] Releases lock after entry complete
-3:57:31 → [MP]  Acquires lock, starts rebalancing
-3:59:30 → [MP]  Releases lock after rebalancing complete
+3:55:00 -> [OMR] Acquires lock, starts buying overnight positions
+3:57:30 -> [OMR] Releases lock after entry complete
+3:57:31 -> [MP]  Acquires lock, starts rebalancing
+3:59:30 -> [MP]  Releases lock after rebalancing complete
 ```
 
 At **9:31 AM**, only OMR runs:
 ```
-9:31:00 → [OMR] Acquires lock, starts selling overnight positions
-9:31:45 → [OMR] Releases lock after selling complete
+9:31:00 -> [OMR] Acquires lock, starts selling overnight positions
+9:31:45 -> [OMR] Releases lock after selling complete
 ```
 
 ### Strategy Execution Details

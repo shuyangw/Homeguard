@@ -2,7 +2,7 @@
 
 ## Current State Analysis
 
-### ✅ Already Generic (Base Infrastructure)
+### [+] Already Generic (Base Infrastructure)
 
 These components are **already asset-agnostic** and work with any tradable security:
 
@@ -26,7 +26,7 @@ These components are **already asset-agnostic** and work with any tradable secur
    - Can trade stocks, ETFs, crypto (whatever Alpaca supports)
    - No asset-specific logic
 
-### ❌ Needs Decoupling (Strategy Layer)
+### [-] Needs Decoupling (Strategy Layer)
 
 These components have **ETF-specific hardcoded logic**:
 
@@ -53,7 +53,7 @@ These components have **ETF-specific hardcoded logic**:
 
 ## Proposed Architecture
 
-### Layer 1: Generic Trading Infrastructure (✅ Keep As-Is)
+### Layer 1: Generic Trading Infrastructure ([+] Keep As-Is)
 
 ```
 src/trading/
@@ -323,14 +323,14 @@ bot.start_trading()
 4. **No changes to existing code** - just new files
 
 ### Phase 2: Refactor Strategy Layer (Medium Risk)
-1. Rename `OMRLiveStrategy` → `OMRETFStrategy`
+1. Rename `OMRLiveStrategy` -> `OMRETFStrategy`
 2. Make it inherit from `TradingStrategy`
 3. Move hardcoded `LEVERAGED_ETFS` to `ETFUniverse` class
 4. Inject symbols via config instead of hardcoding
 5. Implement `get_data_requirements()` method
 
 ### Phase 3: Refactor Trading Bot (Medium Risk)
-1. Rename `PaperTradingBot` → `TradingBot`
+1. Rename `PaperTradingBot` -> `TradingBot`
 2. Accept `TradingStrategy` instead of hardcoded OMR
 3. Use `strategy.get_data_requirements()` for data fetching
 4. Remove ETF-specific comments
@@ -359,8 +359,8 @@ bot.start_trading()
 - `src/trading/strategies/options/` (future)
 
 ### Renamed Files:
-- `paper_trading_bot.py` → `trading_bot.py`
-- `omr_live_strategy.py` → `etf/omr_etf_strategy.py`
+- `paper_trading_bot.py` -> `trading_bot.py`
+- `omr_live_strategy.py` -> `etf/omr_etf_strategy.py`
 
 ### Modified Files:
 - `overnight_signal_generator.py` - remove hardcoded ETF list
@@ -368,10 +368,10 @@ bot.start_trading()
 - Strategy configs - add `symbols` parameter
 
 ### No Changes Needed:
-- ✅ `broker_interface.py`
-- ✅ `execution_engine.py`
-- ✅ `position_manager.py`
-- ✅ `alpaca_broker.py`
+- [+] `broker_interface.py`
+- [+] `execution_engine.py`
+- [+] `position_manager.py`
+- [+] `alpaca_broker.py`
 
 ## Conclusion
 

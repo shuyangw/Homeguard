@@ -237,23 +237,23 @@ changes = manager.sync_with_broker(broker_positions)
 
 ```
 Strategy Config (YAML)
-        ↓
+        v
   StrategyAdapter
-        ↓
-  preload_historical_data() → AlpacaBroker.get_bars()
-        ↓
-  prefetch_intraday_data() → AlpacaBroker.get_historical_bars()
-        ↓
-  generate_signals() → Pure Strategy
-        ↓
-  filter_signals() → PositionManager (risk checks)
-        ↓
-  execute_signals() → ExecutionEngine
-        ↓
-  ExecutionEngine.execute_order() → AlpacaBroker.place_order()
-        ↓
+        v
+  preload_historical_data() -> AlpacaBroker.get_bars()
+        v
+  prefetch_intraday_data() -> AlpacaBroker.get_historical_bars()
+        v
+  generate_signals() -> Pure Strategy
+        v
+  filter_signals() -> PositionManager (risk checks)
+        v
+  execute_signals() -> ExecutionEngine
+        v
+  ExecutionEngine.execute_order() -> AlpacaBroker.place_order()
+        v
   StrategyStateManager.add_position()
-        ↓
+        v
   State Persisted (JSON)
 ```
 

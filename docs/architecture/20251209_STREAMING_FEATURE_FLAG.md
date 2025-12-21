@@ -36,7 +36,7 @@ Or simply omit the variable (defaults to false).
 
 ### When `USE_STREAMING=false` (Default)
 
-**Data Provider**: `CompositeDataProvider` (Alpaca → yfinance fallback)
+**Data Provider**: `CompositeDataProvider` (Alpaca -> yfinance fallback)
 
 **Boot Sequence**:
 ```
@@ -51,15 +51,15 @@ Creating omr adapter...
 **OMR Execution (3:50 PM)**:
 ```
 [OMR] No data provider, fetching from broker...
-  → broker.get_historical_bars() × 15 symbols
-  → 7.5 seconds
+  -> broker.get_historical_bars() × 15 symbols
+  -> 7.5 seconds
 ```
 
 **RAMP Execution (3:55 PM)**:
 ```
 [RAMP] No LiveDataProvider, fetching from broker API...
-  → broker.get_historical_bars() × 500 symbols
-  → 150 seconds
+  -> broker.get_historical_bars() × 500 symbols
+  -> 150 seconds
 ```
 
 ---
@@ -92,16 +92,16 @@ Creating omr adapter...
 ```
 [OMR] Fetching intraday data from LiveDataProvider (streaming)...
 [OMR] Retrieved 15 symbols from streaming buffer
-  → provider.get_bars() × 15 symbols
-  → 150 milliseconds
+  -> provider.get_bars() × 15 symbols
+  -> 150 milliseconds
 ```
 
 **RAMP Execution (3:55 PM)**:
 ```
 [RAMP] Using LiveDataProvider streaming buffer for today's closes...
 [RAMP] Retrieved 503/503 symbols from streaming buffer (0 failed)
-  → provider.get_bars() × 503 symbols
-  → 500 milliseconds
+  -> provider.get_bars() × 503 symbols
+  -> 500 milliseconds
 ```
 
 ---
@@ -113,8 +113,8 @@ Creating omr adapter...
 **Type**: Boolean string
 **Default**: `"false"`
 **Valid Values**:
-- `"true"`, `"1"`, `"yes"` → Enable streaming
-- `"false"`, `"0"`, `"no"`, (empty) → Disable streaming
+- `"true"`, `"1"`, `"yes"` -> Enable streaming
+- `"false"`, `"0"`, `"no"`, (empty) -> Disable streaming
 
 **Example**:
 ```bash
@@ -126,8 +126,8 @@ USE_STREAMING="true"
 **Type**: String
 **Default**: `"iex"`
 **Valid Values**:
-- `"iex"` → IEX feed (free, ~2-10% of trades)
-- `"sip"` → SIP feed (paid subscription, 100% of trades)
+- `"iex"` -> IEX feed (free, ~2-10% of trades)
+- `"sip"` -> SIP feed (paid subscription, 100% of trades)
 
 **Only used when** `USE_STREAMING=true`
 
@@ -147,9 +147,9 @@ STREAMING_FEED="iex"
 ### Scenario 1: Gradual Rollout (Recommended)
 
 **Week 1**: Deploy code with `USE_STREAMING=false`
-- ✅ Code deployed (streaming infrastructure dormant)
-- ✅ Backward compatible (polling continues)
-- ✅ Zero risk
+- [+] Code deployed (streaming infrastructure dormant)
+- [+] Backward compatible (polling continues)
+- [+] Zero risk
 
 **Week 2**: Enable for OMR only
 ```bash

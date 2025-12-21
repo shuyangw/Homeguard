@@ -53,13 +53,13 @@ The OMR strategy has no trades because:
          ▼                       ▼
 ┌─────────────────┐     ┌─────────────────┐
 │ OMRLiveAdapter  │     │ MPLiveAdapter   │
-│                 │     │ import yfinance │  ← Tight coupling
+│                 │     │ import yfinance │  <- Tight coupling
 └────────┬────────┘     └────────┬────────┘
          │                       │
          ▼                       ▼
 ┌─────────────────────────────────────────┐
 │           AlpacaBroker                   │
-│  - get_historical_bars() → IEX only     │
+│  - get_historical_bars() -> IEX only     │
 │  - ~2% market coverage                   │
 └─────────────────────────────────────────┘
 ```
@@ -80,7 +80,7 @@ The OMR strategy has no trades because:
                      ▼
 ┌─────────────────────────────────────────┐
 │      CompositeDataProvider (NEW)         │
-│  - Fallback chain: Alpaca → yfinance     │
+│  - Fallback chain: Alpaca -> yfinance     │
 │  - Persistent cache as last resort       │
 │  - Follows VIXProvider pattern           │
 └────────┬───────────────────────┬────────┘

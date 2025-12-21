@@ -240,23 +240,23 @@ StrategyAdapter (base)
 
 ```
 Market Data (Alpaca API)
-        ↓
+        v
 RAMPSignals.generate_signals()
-        ↓
+        v
 MarketRegimeDetector.detect_regime()
-        ↓
+        v
 Calculate momentum with regime-specific params
-        ↓
+        v
 Rank stocks, select top_n
-        ↓
+        v
 Compare with current positions
-        ↓
+        v
 Generate BUY/SELL signals
-        ↓
+        v
 RAMPLiveAdapter.execute_signals()
-        ↓
+        v
 AlpacaBroker.place_stock_order()
-        ↓
+        v
 StrategyStateManager.add_position()
 ```
 

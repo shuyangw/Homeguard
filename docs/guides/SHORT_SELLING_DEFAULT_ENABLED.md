@@ -1,7 +1,7 @@
 # Short Selling Now Enabled by Default
 
 **Date**: 2025-11-10
-**Status**: ✅ COMPLETED
+**Status**: [+] COMPLETED
 **Impact**: HIGH - Changes default behavior for all backtests
 
 ---
@@ -16,7 +16,7 @@ Additionally, the short selling setting is now **prominently displayed in ALL ba
 
 ## What Changed
 
-### 1. ✅ Default Parameter Changed
+### 1. [+] Default Parameter Changed
 
 **File**: [src/backtesting/engine/backtest_engine.py:39](../../src/backtesting/engine/backtest_engine.py#L39)
 
@@ -32,7 +32,7 @@ allow_shorts: bool = True
 
 ---
 
-### 2. ✅ Console Output Enhanced
+### 2. [+] Console Output Enhanced
 
 **File**: [src/backtesting/engine/backtest_engine.py:119-123](../../src/backtesting/engine/backtest_engine.py#L119-L123)
 
@@ -45,7 +45,7 @@ Running backtest: MovingAverageCrossover(fast_window=20, slow_window=50)
  Period: 2023-01-01 to 2023-12-31
 Initial capital: $100,000.00
 Fees: 0.10%
-[+] Short selling: ENABLED                    ← NEW: Green if enabled
+[+] Short selling: ENABLED                    <- NEW: Green if enabled
  Market hours only: 9:35 AM - 3:55 PM EST
 ===============================================================================
 ```
@@ -53,7 +53,7 @@ Fees: 0.10%
 Or if disabled:
 
 ```
-[!] Short selling: DISABLED (long-only mode)  ← NEW: Orange warning if disabled
+[!] Short selling: DISABLED (long-only mode)  <- NEW: Orange warning if disabled
 ```
 
 **Color coding:**
@@ -62,7 +62,7 @@ Or if disabled:
 
 ---
 
-### 3. ✅ Portfolio Stats Enhanced
+### 3. [+] Portfolio Stats Enhanced
 
 **File**: [src/backtesting/engine/portfolio_simulator.py:586-601](../../src/backtesting/engine/portfolio_simulator.py#L586-L601)
 
@@ -88,14 +88,14 @@ stats['Short Trades']   # Count of short positions (0 if disabled)
     'Total Trades': 2002,
     'Start Value': 100000.0,
     'End Value': 65017.32,
-    'Short Selling': 'Enabled',     ← NEW
-    'Short Trades': 1000             ← NEW
+    'Short Selling': 'Enabled',     <- NEW
+    'Short Trades': 1000             <- NEW
 }
 ```
 
 ---
 
-### 4. ✅ QuantStats HTML Report Enhanced
+### 4. [+] QuantStats HTML Report Enhanced
 
 **File**: [src/visualization/reports/quantstats_reporter.py:692-703, 1013-1016](../../src/visualization/reports/quantstats_reporter.py)
 
@@ -105,20 +105,20 @@ stats['Short Trades']   # Count of short positions (0 if disabled)
 <tr>
     <td class="metric-label">Short Selling:</td>
     <td class="metric-value" style="color: #27ae60; font-weight: 600;">
-        ENABLED ✓
+        ENABLED [+]
     </td>
 </tr>
 ```
 
 **Visual appearance:**
-- **Green text + ✓ checkmark** if enabled
+- **Green text + [+] checkmark** if enabled
 - **Red text + (Long-Only)** if disabled
 
 **Location in report:** Strategy Configuration section (first table)
 
 ---
 
-### 5. ✅ GUI Optimization Runner Updated
+### 5. [+] GUI Optimization Runner Updated
 
 **File**: [src/gui/optimization/runner.py:146-150](../../src/gui/optimization/runner.py#L146-L150)
 
@@ -128,7 +128,7 @@ stats['Short Trades']   # Count of short positions (0 if disabled)
 engine = BacktestEngine(
     initial_capital=config['initial_capital'],
     fees=config['fees'],
-    allow_shorts=config.get('allow_shorts', True)  # ← NEW: Defaults to True
+    allow_shorts=config.get('allow_shorts', True)  # <- NEW: Defaults to True
 )
 ```
 
@@ -140,28 +140,28 @@ engine = BacktestEngine(
 
 All tests passed successfully:
 
-### Test 1: Default Setting ✅
+### Test 1: Default Setting [+]
 ```
-✓ BacktestEngine defaults to allow_shorts=True
+[+] BacktestEngine defaults to allow_shorts=True
 ```
 
-### Test 2: Console Display ✅
+### Test 2: Console Display [+]
 ```
 [+] Short selling: ENABLED          (with shorts)
 [!] Short selling: DISABLED         (without shorts)
 ```
 
-### Test 3: Portfolio Stats ✅
+### Test 3: Portfolio Stats [+]
 ```
-✓ stats()['Short Selling'] = 'Enabled'
-✓ stats()['Short Trades'] = 1000
+[+] stats()['Short Selling'] = 'Enabled'
+[+] stats()['Short Trades'] = 1000
 ```
 
-### Test 4: HTML Report ✅
+### Test 4: HTML Report [+]
 ```
-✓ Executive summary includes 'Short Selling' row
-✓ Color-coded: Green if enabled, Red if disabled
-✓ Report generated at: logs/test_short_selling_flag/tearsheet.html
+[+] Executive summary includes 'Short Selling' row
+[+] Color-coded: Green if enabled, Red if disabled
+[+] Report generated at: logs/test_short_selling_flag/tearsheet.html
 ```
 
 ---
@@ -190,7 +190,7 @@ The `allow_shorts` flag is now visible in:
 engine = BacktestEngine(
     initial_capital=100000,
     fees=0.001,
-    allow_shorts=False  # ← Explicitly disable
+    allow_shorts=False  # <- Explicitly disable
 )
 ```
 
@@ -215,7 +215,7 @@ Based on validation tests ([test_short_selling_2022_bear.py](../../backtest_scri
 | **Bear markets** | -0.50 Sharpe | +0.30 Sharpe | **+0.80** |
 | **Bull markets** | +1.50 Sharpe | +1.60 Sharpe | **+0.10** |
 | **Volatile markets** | +0.50 Sharpe | +0.80 Sharpe | **+0.30** |
-| **Choppy markets** | -0.20 Sharpe | -0.30 Sharpe | **-0.10** ⚠️ |
+| **Choppy markets** | -0.20 Sharpe | -0.30 Sharpe | **-0.10** [!]️ |
 
 **Key insight:** Short selling provides **asymmetric benefit** - huge gains in bear/volatile markets, small cost in choppy markets.
 
@@ -282,7 +282,7 @@ portfolio = engine.run(strategy, 'AAPL', '2022-01-01', '2022-12-31')
 
 ## Important Notes
 
-### ⚠️ Parameter Re-optimization Required
+### [!]️ Parameter Re-optimization Required
 
 **All existing parameter optimizations become sub-optimal** when shorts are enabled.
 
@@ -293,7 +293,7 @@ portfolio = engine.run(strategy, 'AAPL', '2022-01-01', '2022-12-31')
 - [backtest_scripts/optimize_mean_reversion.py](../../backtest_scripts/optimize_mean_reversion.py)
 - [backtest_scripts/optimize_rsi_mean_reversion.py](../../backtest_scripts/optimize_rsi_mean_reversion.py)
 
-### ⚠️ Test on Full Market Cycles
+### [!]️ Test on Full Market Cycles
 
 Short-enabled strategies should be tested across:
 - Bull markets (2019-2021, 2023)
@@ -302,7 +302,7 @@ Short-enabled strategies should be tested across:
 
 **Recommended test period**: 2019-2024 (includes all regimes)
 
-### ⚠️ Pairs Trading Not Yet Supported
+### [!]️ Pairs Trading Not Yet Supported
 
 The `PairsTrading` strategy has its own internal long/short logic and may conflict with engine-level short selling. Use with caution.
 
@@ -321,7 +321,7 @@ allow_shorts: bool = False  # Change True back to False
 
 ---
 
-**Status**: ✅ All changes implemented and tested
+**Status**: [+] All changes implemented and tested
 **Test Script**: [backtest_scripts/test_short_selling_flags.py](../../backtest_scripts/test_short_selling_flags.py)
 **Validation**: All visibility checks passed
 **Impact**: Production-ready, breaking change (default behavior)

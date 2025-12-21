@@ -388,7 +388,7 @@ result = optimizer.optimize(
 **100% Backward Compatible** - Existing code doesn't break:
 
 ```python
-# ✅ OLD CODE (Phases 1-3) - STILL WORKS!
+# [+] OLD CODE (Phases 1-3) - STILL WORKS!
 from backtesting.optimization import GridSearchOptimizer
 
 optimizer = GridSearchOptimizer(engine)
@@ -402,7 +402,7 @@ result = optimizer.optimize_parallel(
 # No changes needed!
 
 
-# ✅ NEW CODE (Phase 4) - New capabilities!
+# [+] NEW CODE (Phase 4) - New capabilities!
 from backtesting.optimization import BayesianOptimizer
 
 optimizer = BayesianOptimizer(engine)
@@ -422,31 +422,31 @@ Add dropdown to optimization dialog:
 │                                              │
 │  Optimization Method:                        │
 │  ┌──────────────────────────────────────┐   │
-│  │ Grid Search (Exhaustive)         ▼  │   │  ← NEW DROPDOWN
+│  │ Grid Search (Exhaustive)         ▼  │   │  <- NEW DROPDOWN
 │  └──────────────────────────────────────┘   │
 │     └─ Options:                              │
-│        • Grid Search (Exhaustive)            │
-│        • Random Search (Fast)                │
-│        • Bayesian Optimization (Smart)       │
-│        • Genetic Algorithm (Evolutionary)    │
+│        * Grid Search (Exhaustive)            │
+│        * Random Search (Fast)                │
+│        * Bayesian Optimization (Smart)       │
+│        * Genetic Algorithm (Evolutionary)    │
 │                                              │
 │  ┌─────────────────────────────────────────┐│
 │  │ Grid Search Settings (default)          ││
-│  │ • Tests all combinations                ││
-│  │ • Best for small grids                  ││
+│  │ * Tests all combinations                ││
+│  │ * Best for small grids                  ││
 │  └─────────────────────────────────────────┘│
 │                                              │
 │  ┌─────────────────────────────────────────┐│
 │  │ Random Search Settings (when selected)  ││
-│  │ • Number of iterations: [100      ]     ││
-│  │ • Tests random sample of space          ││
+│  │ * Number of iterations: [100      ]     ││
+│  │ * Tests random sample of space          ││
 │  └─────────────────────────────────────────┘│
 │                                              │
 │  ┌─────────────────────────────────────────┐│
 │  │ Bayesian Settings (when selected)       ││
-│  │ • Iterations: [50        ]              ││
-│  │ • Initial points: [10        ]          ││
-│  │ • Acquisition: [EI           ▼]        ││
+│  │ * Iterations: [50        ]              ││
+│  │ * Initial points: [10        ]          ││
+│  │ * Acquisition: [EI           ▼]        ││
 │  └─────────────────────────────────────────┘│
 │                                              │
 │  [Cancel]                    [Optimize]      │
@@ -457,7 +457,7 @@ Add dropdown to optimization dialog:
 
 ## Code Reuse: What's Shared vs New
 
-### ✅ **Reused from Phases 1-3** (No Duplication!)
+### [+] **Reused from Phases 1-3** (No Duplication!)
 
 All new optimizers inherit/reuse:
 
@@ -598,28 +598,28 @@ Each new optimizer needs:
 ## Decision: Grid Search vs Advanced Methods
 
 ### When to Use Grid Search (Phases 1-3)
-✅ Small parameter spaces (< 100 combinations)
-✅ Need guaranteed optimum
-✅ Parameters are discrete/categorical
-✅ Cheap objective function (fast backtests)
+[+] Small parameter spaces (< 100 combinations)
+[+] Need guaranteed optimum
+[+] Parameters are discrete/categorical
+[+] Cheap objective function (fast backtests)
 
 ### When to Use Random Search
-✅ Large continuous spaces
-✅ Time-constrained optimization
-✅ Quick exploration
-✅ Good enough > perfect
+[+] Large continuous spaces
+[+] Time-constrained optimization
+[+] Quick exploration
+[+] Good enough > perfect
 
 ### When to Use Bayesian Optimization
-✅ Expensive objective function (slow backtests)
-✅ Limited iteration budget
-✅ Want near-optimal quickly
-✅ Smooth parameter response
+[+] Expensive objective function (slow backtests)
+[+] Limited iteration budget
+[+] Want near-optimal quickly
+[+] Smooth parameter response
 
 ### When to Use Genetic Algorithm
-✅ Multi-modal objective (multiple peaks)
-✅ Complex parameter interactions
-✅ Need diverse solution set
-✅ Discrete + continuous mix
+[+] Multi-modal objective (multiple peaks)
+[+] Complex parameter interactions
+[+] Need diverse solution set
+[+] Discrete + continuous mix
 
 ---
 
@@ -694,10 +694,10 @@ bayes_optimizer.optimize(
 ## Conclusion
 
 Phase 4 would:
-- ✅ **Integrate seamlessly** - Reuses 70% of existing code
-- ✅ **Maintain compatibility** - Old code still works
-- ✅ **Add flexibility** - Multiple optimization strategies
-- ✅ **Solve real problems** - Makes large spaces tractable
-- ✅ **Clean architecture** - Strategy pattern with shared base
+- [+] **Integrate seamlessly** - Reuses 70% of existing code
+- [+] **Maintain compatibility** - Old code still works
+- [+] **Add flexibility** - Multiple optimization strategies
+- [+] **Solve real problems** - Makes large spaces tractable
+- [+] **Clean architecture** - Strategy pattern with shared base
 
 **Would you like to proceed with Phase 4?**

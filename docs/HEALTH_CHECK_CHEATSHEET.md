@@ -27,13 +27,13 @@ ssh -i ~/.ssh/homeguard-trading.pem ec2-user@<YOUR_EC2_IP> "sudo systemctl statu
 ```
 
 **What to look for**:
-- ✅ `Active: active (running)` in green
-- ✅ Recent timestamp (not stuck)
-- ❌ `Active: failed` or `inactive (dead)` = problem
+- [+] `Active: active (running)` in green
+- [+] Recent timestamp (not stuck)
+- [-] `Active: failed` or `inactive (dead)` = problem
 
 ---
 
-### 2. View Live Activity 📊
+### 2. View Live Activity 
 
 **Quick Script**:
 ```bash
@@ -49,15 +49,15 @@ ssh -i ~/.ssh/homeguard-trading.pem ec2-user@<YOUR_EC2_IP> "sudo journalctl -u h
 **Press Ctrl+C to stop**
 
 **What to look for**:
-- ✅ Regular updates every 15 seconds
-- ✅ `Market: OPEN` during trading hours (9:30 AM - 4:00 PM ET)
-- ✅ `Signals: N` and `Orders: N/N` when trading
-- ❌ No updates = bot is stuck
-- ❌ Repeated errors = problem
+- [+] Regular updates every 15 seconds
+- [+] `Market: OPEN` during trading hours (9:30 AM - 4:00 PM ET)
+- [+] `Signals: N` and `Orders: N/N` when trading
+- [-] No updates = bot is stuck
+- [-] Repeated errors = problem
 
 ---
 
-### 3. Check Recent Activity (Last 10 Lines) 📝
+### 3. Check Recent Activity (Last 10 Lines) 
 
 ```bash
 ssh -i ~/.ssh/homeguard-trading.pem ec2-user@<YOUR_EC2_IP> "sudo journalctl -u homeguard-trading -n 10 --no-pager"
@@ -65,17 +65,17 @@ ssh -i ~/.ssh/homeguard-trading.pem ec2-user@<YOUR_EC2_IP> "sudo journalctl -u h
 
 ---
 
-### 4. Check for Errors ⚠️
+### 4. Check for Errors [!]️
 
 ```bash
 ssh -i ~/.ssh/homeguard-trading.pem ec2-user@<YOUR_EC2_IP> "sudo journalctl -u homeguard-trading -p err -n 20 --no-pager"
 ```
 
 **What to look for**:
-- ✅ No output = no errors
-- ❌ API errors = check Alpaca credentials
-- ❌ Connection errors = network issue
-- ❌ Import errors = missing dependencies
+- [+] No output = no errors
+- [-] API errors = check Alpaca credentials
+- [-] Connection errors = network issue
+- [-] Import errors = missing dependencies
 
 ---
 
@@ -86,10 +86,10 @@ ssh -i ~/.ssh/homeguard-trading.pem ec2-user@<YOUR_EC2_IP> "sudo systemctl statu
 ```
 
 **What to look for**:
-- ✅ Memory: < 500M (normal)
-- ✅ CPU: < 5s total time
-- ❌ Memory: > 900M = approaching limit (1GB max)
-- ❌ CPU: very high = possible infinite loop
+- [+] Memory: < 500M (normal)
+- [+] CPU: < 5s total time
+- [-] Memory: > 900M = approaching limit (1GB max)
+- [-] CPU: very high = possible infinite loop
 
 ---
 
@@ -100,9 +100,9 @@ aws ec2 describe-instances --instance-ids <YOUR_INSTANCE_ID> --query 'Reservatio
 ```
 
 **Expected**:
-- ✅ `running` during market hours (9 AM - 4:30 PM ET weekdays)
-- ✅ `stopped` outside market hours
-- ❌ `stopping` or `pending` for too long = problem
+- [+] `running` during market hours (9 AM - 4:30 PM ET weekdays)
+- [+] `stopped` outside market hours
+- [-] `stopping` or `pending` for too long = problem
 
 ---
 
@@ -410,7 +410,7 @@ exit
 
 ## Health Status Indicators
 
-### ✅ Healthy
+### [+] Healthy
 
 - Bot status: `Active: active (running)`
 - Logs updating every 15 seconds
@@ -419,14 +419,14 @@ exit
 - Instance state matches schedule (running during market hours, stopped after)
 - Lambda functions executing on schedule
 
-### ⚠️ Warning
+### [!]️ Warning
 
 - Memory usage 500-900M (approaching limit)
 - Occasional API timeouts (retry attempts visible)
 - Logs updating but slower than 15 seconds
 - Instance state transitions taking longer than expected
 
-### ❌ Critical
+### [-] Critical
 
 - Bot status: `failed` or `inactive`
 - No log updates for > 5 minutes

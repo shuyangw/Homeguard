@@ -21,13 +21,13 @@ Enable real-time log streaming from parallel worker threads to individual Worker
 
 ## Current State (Phase 2.5)
 
-**✅ What's Already Done:**
+**[+] What's Already Done:**
 1. UI components exist (`WorkerLogViewer` class)
 2. ExecutionView has split layout with n worker panels
 3. Methods ready: `add_worker_log()`, `set_worker_symbol()`, `set_worker_idle()`
 4. app.py initializes correct number of worker viewers
 
-**❌ What's Missing:**
+**[-] What's Missing:**
 1. No tracking of which worker is processing which symbol
 2. No log capture from worker threads
 3. No routing of logs to correct worker panel
@@ -703,13 +703,13 @@ def test_worker_log_streaming():
 
 **Phase 3 Complete When:**
 
-- ✅ Each worker panel shows correct worker ID (1-8)
-- ✅ Worker panels show which symbol they're processing
-- ✅ Logs appear in real-time in correct worker panel
-- ✅ Workers show "Idle" when not processing
-- ✅ No crashes with 8 workers, 50 symbols
-- ✅ Performance acceptable (no UI lag)
-- ✅ Worker IDs correctly assigned and released
+- [+] Each worker panel shows correct worker ID (1-8)
+- [+] Worker panels show which symbol they're processing
+- [+] Logs appear in real-time in correct worker panel
+- [+] Workers show "Idle" when not processing
+- [+] No crashes with 8 workers, 50 symbols
+- [+] Performance acceptable (no UI lag)
+- [+] Worker IDs correctly assigned and released
 
 ---
 

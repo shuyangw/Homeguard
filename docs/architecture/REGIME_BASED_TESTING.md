@@ -1,7 +1,7 @@
 # Regime-Based Testing Architecture
 
 **Version:** 2.0
-**Status:** ✅ **ALL LEVELS COMPLETE** (Levels 1-4)
+**Status:** [+] **ALL LEVELS COMPLETE** (Levels 1-4)
 **Last Updated:** November 2025
 
 ## Overview
@@ -103,9 +103,9 @@ def validate(
 
 **Degradation Warnings:**
 
-- `< 10%`: Low degradation - strategy appears robust ✓
+- `< 10%`: Low degradation - strategy appears robust [+]
 - `10-20%`: Moderate degradation - acceptable range
-- `> 20%`: High degradation - strategy may be overfit! ⚠
+- `> 20%`: High degradation - strategy may be overfit! [!]
 
 ### 2. Regime Detection (`backtesting/regimes/detector.py`)
 
@@ -348,13 +348,13 @@ is_robust = abs(wf_results.degradation_pct) < 20
 is_consistent = regime_results.robustness_score >= 60
 
 if is_robust and is_consistent:
-    print("✓ PASS: Strategy is production-ready!")
+    print("[+] PASS: Strategy is production-ready!")
 elif is_robust:
-    print("⚠ CONDITIONAL: Low overfitting but inconsistent across regimes")
+    print("[!] CONDITIONAL: Low overfitting but inconsistent across regimes")
 elif is_consistent:
-    print("⚠ CONDITIONAL: Consistent but may be overfit")
+    print("[!] CONDITIONAL: Consistent but may be overfit")
 else:
-    print("✗ FAIL: Strategy not production-ready")
+    print("[-] FAIL: Strategy not production-ready")
 ```
 
 ### Example 4: GUI Integration with File Export (Level 4)
@@ -454,20 +454,20 @@ pytest tests/backtesting/chunking/ tests/backtesting/regimes/ -v
 
 ### When to Use Walk-Forward Validation
 
-✅ **Always use when:**
+[+] **Always use when:**
 - Optimizing strategy parameters
 - Backtesting over > 2 years
 - Testing for production deployment
 - Publishing research results
 
-❌ **Don't use when:**
+[-] **Don't use when:**
 - Quick exploratory analysis
 - Fixed parameters (no optimization)
 - Very short backtest periods (< 1 year)
 
 ### When to Use Regime Analysis
 
-✅ **Use when:**
+[+] **Use when:**
 - Strategy shows high variability in results
 - Backtesting across multiple market cycles
 - Comparing strategies for robustness
@@ -491,45 +491,45 @@ pytest tests/backtesting/chunking/ tests/backtesting/regimes/ -v
 
 | Degradation | Robustness | Assessment |
 |------------|-----------|------------|
-| < 20% | > 60 | ✓ Production Ready |
-| < 20% | < 60 | ⚠ Regime-Specific (consider adaptive sizing) |
-| > 20% | > 60 | ⚠ Overfit but Consistent (longer training) |
-| > 20% | < 60 | ✗ Not Production Ready |
+| < 20% | > 60 | [+] Production Ready |
+| < 20% | < 60 | [!] Regime-Specific (consider adaptive sizing) |
+| > 20% | > 60 | [!] Overfit but Consistent (longer training) |
+| > 20% | < 60 | [-] Not Production Ready |
 
 ## Implementation Status
 
-### Level 1: Transparent Integration ✅ COMPLETED (November 2025)
-- ✅ Added `enable_regime_analysis` parameter to BacktestEngine
-- ✅ Automatic regime analysis when enabled
-- ✅ Daily resampling for regime detection
-- ✅ Comprehensive output formatting
-- ✅ Zero overhead when disabled (default: False)
-- ✅ Backward compatible
+### Level 1: Transparent Integration [+] COMPLETED (November 2025)
+- [+] Added `enable_regime_analysis` parameter to BacktestEngine
+- [+] Automatic regime analysis when enabled
+- [+] Daily resampling for regime detection
+- [+] Comprehensive output formatting
+- [+] Zero overhead when disabled (default: False)
+- [+] Backward compatible
 
-### Level 2: GUI Integration ✅ COMPLETED (November 2025)
-- ✅ Checkbox toggle in SetupView (Output Settings section)
-- ✅ Data flow: SetupView → App → Controller → Engine
-- ✅ Persistent configuration (saves with backtest config)
-- ✅ Integration test suite
-- ✅ Documentation and user guide
+### Level 2: GUI Integration [+] COMPLETED (November 2025)
+- [+] Checkbox toggle in SetupView (Output Settings section)
+- [+] Data flow: SetupView -> App -> Controller -> Engine
+- [+] Persistent configuration (saves with backtest config)
+- [+] Integration test suite
+- [+] Documentation and user guide
 
-### Level 3: Advanced CLI/Script Tools ✅ COMPLETED (November 2025)
-- ✅ Walk-forward validation module
-- ✅ Regime detection module (trend, volatility, drawdown)
-- ✅ Regime analysis module
-- ✅ Proof-of-concept scripts (standard + fast versions)
-- ✅ Comprehensive test suite (43 tests)
-- ✅ Architecture documentation
+### Level 3: Advanced CLI/Script Tools [+] COMPLETED (November 2025)
+- [+] Walk-forward validation module
+- [+] Regime detection module (trend, volatility, drawdown)
+- [+] Regime analysis module
+- [+] Proof-of-concept scripts (standard + fast versions)
+- [+] Comprehensive test suite (43 tests)
+- [+] Architecture documentation
 
-### Level 4: Enhanced GUI Display & File Export ✅ COMPLETED (November 2025)
-- ✅ **Phase 1**: Regime data storage in controller and portfolio objects
-- ✅ **Phase 2**: File export to CSV/HTML/JSON formats
-- ✅ **Phase 3**: Dedicated "Regime Analysis" tab in results view
-- ✅ **Phase 4**: Summary cards, robustness gauge, and performance tables
-- ✅ Multi-symbol support with dropdown selector
-- ✅ Dark-themed HTML reports
-- ✅ Integration test suite (test_level4_regime_integration.py)
-- ✅ Complete documentation
+### Level 4: Enhanced GUI Display & File Export [+] COMPLETED (November 2025)
+- [+] **Phase 1**: Regime data storage in controller and portfolio objects
+- [+] **Phase 2**: File export to CSV/HTML/JSON formats
+- [+] **Phase 3**: Dedicated "Regime Analysis" tab in results view
+- [+] **Phase 4**: Summary cards, robustness gauge, and performance tables
+- [+] Multi-symbol support with dropdown selector
+- [+] Dark-themed HTML reports
+- [+] Integration test suite (test_level4_regime_integration.py)
+- [+] Complete documentation
 
 **All Four Levels Complete** - The regime-based testing system is now fully integrated and production-ready!
 
@@ -548,7 +548,7 @@ pytest tests/backtesting/chunking/ tests/backtesting/regimes/ -v
 ## Changelog
 
 ### Version 2.0 (November 2025)
-- ✅ **Level 4 Complete**: Enhanced GUI display and file export
+- [+] **Level 4 Complete**: Enhanced GUI display and file export
   - Regime data storage in controller and portfolio objects
   - File export to CSV/HTML/JSON formats
   - Dedicated "Regime Analysis" tab in results view
@@ -557,7 +557,7 @@ pytest tests/backtesting/chunking/ tests/backtesting/regimes/ -v
   - Multi-symbol support with dropdown selector
   - Dark-themed HTML reports
   - Integration test suite (test_level4_regime_integration.py)
-- ✅ **All Four Levels Complete**: System is production-ready
+- [+] **All Four Levels Complete**: System is production-ready
 - Updated documentation across all guides
 
 ### Version 1.0 (November 2025)

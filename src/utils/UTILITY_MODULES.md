@@ -234,9 +234,9 @@ trade_logger.export_trades("trades.csv")
 
 ```
 Application Code
-        ↓
+        v
   Logger / TimezoneManager / CacheManager
-        ↓
+        v
   ┌────────────────┬─────────────────┐
   │ Console Output │ File Output     │
   │ (Rich colored) │ (Plain text)    │

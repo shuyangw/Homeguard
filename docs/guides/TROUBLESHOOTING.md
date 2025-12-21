@@ -146,7 +146,7 @@ This performs a 6-point validation: instance state, bot status, recent errors, m
 **Symptoms**: "Failed to fetch VIX data" in logs.
 
 **Solutions**:
-1. Bot has built-in fallback chain (Yahoo Finance → FRED → cached)
+1. Bot has built-in fallback chain (Yahoo Finance -> FRED -> cached)
 2. Check if internet connectivity is working
 3. VIX failures are non-fatal; bot continues with cached/default values
 

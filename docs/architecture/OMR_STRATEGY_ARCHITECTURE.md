@@ -14,17 +14,17 @@ The Overnight Mean Reversion (OMR) strategy is a systematic overnight trading st
 **Key Metrics:**
 - **Expected Win Rate**: 51.96% (across all regimes)
 - **Expected Return per Trade**: 0.32%
-- **Holding Period**: ~16 hours (3:55 PM → 9:31 AM next day)
+- **Holding Period**: ~16 hours (3:55 PM -> 9:31 AM next day)
 - **Max Positions**: 5 concurrent positions
 - **Position Size**: 20% per position (equal-weighted)
 - **Trading Universe**: 22 leveraged 3x ETFs
 
-**Deployment Readiness**: ✅ All systems operational
-- ✅ Bayesian model trained (10 years of data)
-- ✅ Live trading infrastructure ready (Alpaca paper account)
-- ✅ Dual-time execution implemented (entry/exit)
-- ✅ Risk management configured
-- ✅ E2E tests passing (3/6 - core workflows validated)
+**Deployment Readiness**: [+] All systems operational
+- [+] Bayesian model trained (10 years of data)
+- [+] Live trading infrastructure ready (Alpaca paper account)
+- [+] Dual-time execution implemented (entry/exit)
+- [+] Risk management configured
+- [+] E2E tests passing (3/6 - core workflows validated)
 
 ---
 
@@ -37,8 +37,8 @@ The OMR strategy exploits **overnight mean reversion** - the statistical tendenc
 **Trading Logic:**
 1. **3:55 PM EST**: Identify leveraged ETFs with extreme intraday moves (up or down)
 2. **Position Entry**: Enter positions betting on overnight reversion
-   - Large DOWN move → BUY (expect bounce)
-   - Large UP move → SHORT (expect pullback)
+   - Large DOWN move -> BUY (expect bounce)
+   - Large UP move -> SHORT (expect pullback)
 3. **9:31 AM EST**: Exit all positions at next day's market open
 4. **Capture Overnight Return**: Profit from mean reversion
 
@@ -82,8 +82,8 @@ Day 2:
 
 **Process:**
 1. **Regime Detection**: Classify market into 5 regimes (SPY + VIX indicators)
-2. **Intraday Move Analysis**: Calculate return from 9:30 AM → 3:55 PM for each ETF
-3. **Bayesian Probability Lookup**: Query historical patterns for (regime, intraday_move) → overnight_return
+2. **Intraday Move Analysis**: Calculate return from 9:30 AM -> 3:55 PM for each ETF
+3. **Bayesian Probability Lookup**: Query historical patterns for (regime, intraday_move) -> overnight_return
 4. **Signal Filtering**: Apply regime-specific filters
    - Minimum win rate: 55%
    - Minimum expected return: 0.2%
@@ -235,7 +235,7 @@ The regime detector classifies SPY into 5 regimes using technical indicators:
 
 Each regime classification includes a confidence score (0-1):
 - Measures how well indicators match regime criteria
-- Higher confidence → More reliable signals
+- Higher confidence -> More reliable signals
 - Confidence factored into signal strength scoring
 
 **Example:**
@@ -248,7 +248,7 @@ Indicators:
   Momentum: +1.2%
   VIX: 14.5 (35th percentile)
 
-→ Strong match for WEAK_BULL criteria
+-> Strong match for WEAK_BULL criteria
 ```
 
 ---
@@ -306,16 +306,16 @@ Indicators:
 ### 4.2 Leveraged ETF Characteristics
 
 **Why Leveraged ETFs?**
-1. **Amplified Mean Reversion**: 3x leverage → larger intraday moves → stronger reversion signals
-2. **Volatility Decay**: Leveraged ETFs naturally decay over time → overnight holds capture decay premium
+1. **Amplified Mean Reversion**: 3x leverage -> larger intraday moves -> stronger reversion signals
+2. **Volatility Decay**: Leveraged ETFs naturally decay over time -> overnight holds capture decay premium
 3. **High Liquidity**: Major 3x ETFs have excellent liquidity for execution
 4. **Predictable Patterns**: 10 years of data show consistent overnight behaviors
 
 **Risk Considerations**:
-- ⚠️ High volatility (3x daily moves)
-- ⚠️ Potential for large losses if held long-term
-- ⚠️ Overnight gap risk (news events)
-- ✅ Mitigated by: Short holding period (16 hours), position limits, BEAR regime filter
+- [!]️ High volatility (3x daily moves)
+- [!]️ Potential for large losses if held long-term
+- [!]️ Overnight gap risk (news events)
+- [+] Mitigated by: Short holding period (16 hours), position limits, BEAR regime filter
 
 ---
 
@@ -385,7 +385,7 @@ BEAR:            0 positions (trading disabled)
 **Scenario 2: BEAR Regime Catastrophic Loss**
 - Risk: BEAR trades historically show -1.31 Sharpe
 - Mitigation: **BEAR regime filter ENABLED** (no trades in BEAR)
-- Status: ✅ Critical filter active
+- Status: [+] Critical filter active
 
 **Scenario 3: Multiple Losing Nights**
 - Risk: Win rate is 52%, so ~48% of trades lose
@@ -414,7 +414,7 @@ BEAR:            0 positions (trading disabled)
 - Comprehensive logging
 
 **Strategy Adapter**: `src/trading/adapters/omr_live_adapter.py`
-- Converts backtest strategy → live execution
+- Converts backtest strategy -> live execution
 - Fetches real-time SPY data from Alpaca for regime detection
 - Fetches VIX data from yfinance (Alpaca does not provide VIX)
 - Generates signals at 3:55 PM
@@ -511,9 +511,9 @@ After Hours (4:00 PM - 9:30 AM):
 
 [09:30:00] Market open - Checking overnight positions
 [09:31:00] EXECUTING STRATEGY (EXIT): 2025-11-15 09:31:00
-[09:31:01] Closing TQQQ: 205 shares @ $48.50 → $49.25 (P&L: $153.75, +1.55%)
-[09:31:02] Closing UPRO: 121 shares @ $82.30 → $82.55 (P&L: $30.25, +0.30%)
-[09:31:03] Closing SOXL: 181 shares @ $55.10 → $54.95 (P&L: -$27.15, -0.27%)
+[09:31:01] Closing TQQQ: 205 shares @ $48.50 -> $49.25 (P&L: $153.75, +1.55%)
+[09:31:02] Closing UPRO: 121 shares @ $82.30 -> $82.55 (P&L: $30.25, +0.30%)
+[09:31:03] Closing SOXL: 181 shares @ $55.10 -> $54.95 (P&L: -$27.15, -0.27%)
 [09:31:04] Overnight positions closed
 [09:31:05] Daily P&L: $156.85 (+0.16%)
 ```
@@ -612,7 +612,7 @@ Total Trades: 397
 Win Rate: 59.4%
 Avg Return/Trade: 0.519%
 Total Return: 20.6%
-Sharpe Ratio: 3.68 ⭐ (BEST SHARPE)
+Sharpe Ratio: 3.68 [*] (BEST SHARPE)
 Max Drawdown: -2.5%
 Monthly Win Rate: 69.6%
 Stop-Out Rate: 7.6%
@@ -623,7 +623,7 @@ Stop-Out Rate: 7.6%
 Total Trades: 893
 Win Rate: 61.6%
 Avg Return/Trade: 0.401%
-Total Return: 35.8% ⭐ (BEST RETURN)
+Total Return: 35.8% [*] (BEST RETURN)
 Sharpe Ratio: 3.64
 Max Drawdown: -4.2%
 Monthly Win Rate: 73.9%
@@ -633,7 +633,7 @@ Stop-Out Rate: 5.7%
 **Broad Market** (UPRO, SPXU, UDOW, SDOW, SSO, SDS, TNA, TZA):
 ```
 Total Trades: 265
-Win Rate: 65.3% ⭐ (BEST WIN RATE)
+Win Rate: 65.3% [*] (BEST WIN RATE)
 Avg Return/Trade: 0.349%
 Total Return: 9.3%
 Sharpe Ratio: 3.38
@@ -643,11 +643,11 @@ Stop-Out Rate: 4.5%
 ```
 
 **Key Findings**:
-- ✅ All configurations exceeded Sharpe > 1.5 threshold (range: 3.38-3.68)
-- ✅ Win rates consistently above 59% (range: 59.4%-65.3%)
-- ✅ Low drawdowns across all configurations (< 5%)
-- ✅ High monthly win rates (60%-74%)
-- ✅ Strategy performs well across different market regimes
+- [+] All configurations exceeded Sharpe > 1.5 threshold (range: 3.38-3.68)
+- [+] Win rates consistently above 59% (range: 59.4%-65.3%)
+- [+] Low drawdowns across all configurations (< 5%)
+- [+] High monthly win rates (60%-74%)
+- [+] Strategy performs well across different market regimes
 
 **Recommended Configuration**: Tech Sector (best risk-adjusted returns)
 
@@ -682,12 +682,12 @@ Stop-Out Rate: 4.5%
 ### 9.3 Testing
 
 - [x] E2E test suite created
-- [x] Multi-symbol trading tested (✅ PASSED)
-- [x] Portfolio health checks tested (✅ PASSED)
-- [x] Market hours detection tested (✅ PASSED)
-- [x] Single trade execution test (✅ FIXED - quote field corrected)
-- [x] Error handling test (✅ FIXED - logger.debug replaced with logger.info)
-- [x] Regime detection test (✅ FIXED - VIX data integration implemented)
+- [x] Multi-symbol trading tested ([+] PASSED)
+- [x] Portfolio health checks tested ([+] PASSED)
+- [x] Market hours detection tested ([+] PASSED)
+- [x] Single trade execution test ([+] FIXED - quote field corrected)
+- [x] Error handling test ([+] FIXED - logger.debug replaced with logger.info)
+- [x] Regime detection test ([+] FIXED - VIX data integration implemented)
 
 ### 9.4 Documentation
 
@@ -749,19 +749,19 @@ Stop-Out Rate: 4.5%
 
 ### 11.1 Strategy Risks
 
-⚠️ **Leveraged ETF Risk**: 3x leverage amplifies both gains and losses
-⚠️ **Overnight Gap Risk**: News events can cause large gaps against positions
-⚠️ **Model Risk**: Bayesian model based on historical patterns (may not predict future)
-⚠️ **Regime Risk**: Regime detection may misclassify market conditions
-⚠️ **Execution Risk**: Slippage at 3:55 PM or 9:31 AM can erode returns
+[!]️ **Leveraged ETF Risk**: 3x leverage amplifies both gains and losses
+[!]️ **Overnight Gap Risk**: News events can cause large gaps against positions
+[!]️ **Model Risk**: Bayesian model based on historical patterns (may not predict future)
+[!]️ **Regime Risk**: Regime detection may misclassify market conditions
+[!]️ **Execution Risk**: Slippage at 3:55 PM or 9:31 AM can erode returns
 
 ### 11.2 Mitigations
 
-✅ **Position Sizing**: Max 25% per position limits single-trade impact
-✅ **BEAR Filter**: Disabled trading in highest-risk regime
-✅ **Diversification**: 5 concurrent positions across different sectors
-✅ **Short Holding**: 16-hour holding period limits exposure
-✅ **Paper Trading**: Test thoroughly before live deployment
+[+] **Position Sizing**: Max 25% per position limits single-trade impact
+[+] **BEAR Filter**: Disabled trading in highest-risk regime
+[+] **Diversification**: 5 concurrent positions across different sectors
+[+] **Short Holding**: 16-hour holding period limits exposure
+[+] **Paper Trading**: Test thoroughly before live deployment
 
 ### 11.3 Failure Scenarios
 
@@ -822,7 +822,7 @@ Stop-Out Rate: 4.5%
 ## 13. Next Steps
 
 ### Immediate (Before Launch):
-1. ✅ Complete this deployment report
+1. [+] Complete this deployment report
 2. Fix remaining E2E test failures (quote field, logger.debug, VIX integration)
 3. Run comprehensive backtest validation
 4. Document expected vs actual performance metrics
@@ -851,17 +851,17 @@ Stop-Out Rate: 4.5%
 The Overnight Mean Reversion (OMR) strategy is a sophisticated overnight trading system combining machine learning, regime detection, and 10 years of historical pattern recognition. The strategy is **technically ready for paper trading deployment** with all infrastructure in place.
 
 **Strengths**:
-- ✅ Proven edge (51.96% win rate, 0.32% expected return)
-- ✅ Robust risk management (BEAR filter, position limits)
-- ✅ Fully automated execution (dual-time entry/exit)
-- ✅ 10 years of training data (10,217 patterns)
-- ✅ Regime-adaptive parameters
+- [+] Proven edge (51.96% win rate, 0.32% expected return)
+- [+] Robust risk management (BEAR filter, position limits)
+- [+] Fully automated execution (dual-time entry/exit)
+- [+] 10 years of training data (10,217 patterns)
+- [+] Regime-adaptive parameters
 
 **Weaknesses**:
-- ⚠️ Leveraged instruments (high volatility)
-- ⚠️ Overnight gap risk (news events)
-- ⚠️ Model assumptions (historical patterns may change)
-- ⚠️ Limited backtest validation (needs execution)
+- [!]️ Leveraged instruments (high volatility)
+- [!]️ Overnight gap risk (news events)
+- [!]️ Model assumptions (historical patterns may change)
+- [!]️ Limited backtest validation (needs execution)
 
 **Recommended Action**: **Proceed with paper trading deployment for 30 days**
 
@@ -880,7 +880,7 @@ The Overnight Mean Reversion (OMR) strategy is a sophisticated overnight trading
 **Document Version**: 1.2
 **Last Updated**: November 14, 2025
 **Author**: Homeguard Trading Team
-**Status**: ✅ Ready for Review
+**Status**: [+] Ready for Review
 
 **Changelog**:
 - v1.2 (2025-11-14): Updated symbol universe to reflect production config (20 validated symbols)

@@ -49,8 +49,8 @@ This deployment combines OMR and RAMP strategies into a single process that shar
 ## Benefits
 
 ### Performance
-- **OMR**: 7.5s → 0.15s (50x faster)
-- **RAMP**: 150s → 0.5s (300x faster)
+- **OMR**: 7.5s -> 0.15s (50x faster)
+- **RAMP**: 150s -> 0.5s (300x faster)
 - **Smart Fallback**: Auto-recovery from mid-day restarts
 
 ### Cost
@@ -144,7 +144,7 @@ The shared provider automatically handles incomplete buffer scenarios:
 ```python
 # Hub detects insufficient data after mid-day restart
 bars = provider.get_bars('TQQQ', n=390)  # OMR needs 390 bars
-# Buffer has 100/390 (25%) → triggers fallback
+# Buffer has 100/390 (25%) -> triggers fallback
 # Fetches from 9:30 AM to now via REST API
 # Returns complete 390-bar dataset
 ```
@@ -180,13 +180,13 @@ bash scripts/ec2/deploy_multi_strategy_streaming.sh
 ```
 
 **The script will:**
-1. ✅ Pull latest code from GitHub
-2. ✅ Enable streaming in .env
-3. ✅ Stop and disable homeguard-omr
-4. ✅ Stop and disable homeguard-ramp
-5. ✅ Install homeguard-multi service
-6. ✅ Start homeguard-multi
-7. ✅ Verify streaming is active
+1. [+] Pull latest code from GitHub
+2. [+] Enable streaming in .env
+3. [+] Stop and disable homeguard-omr
+4. [+] Stop and disable homeguard-ramp
+5. [+] Install homeguard-multi service
+6. [+] Start homeguard-multi
+7. [+] Verify streaming is active
 
 **Total deployment time:** ~2 minutes
 
@@ -202,7 +202,7 @@ sudo systemctl status homeguard-multi
 
 Expected output:
 ```
-● homeguard-multi.service - Homeguard Multi-Strategy Trading Bot
+* homeguard-multi.service - Homeguard Multi-Strategy Trading Bot
    Active: active (running) since Mon 2025-12-09 10:00:00 UTC
    Main PID: 12345 (python)
 ```
@@ -323,9 +323,9 @@ journalctl -u homeguard-multi -n 100
 ```
 
 **Common issues:**
-- Missing .env file → Copy from .env.example
-- Invalid API credentials → Check ALPACA_PAPER_KEY_ID/SECRET_KEY
-- Import errors → Check venv activation in service file
+- Missing .env file -> Copy from .env.example
+- Invalid API credentials -> Check ALPACA_PAPER_KEY_ID/SECRET_KEY
+- Import errors -> Check venv activation in service file
 
 ### WebSocket Connection Fails
 
@@ -489,23 +489,23 @@ All strategies share the same LiveDataProvider instance.
 
 ## Summary
 
-✅ **Implemented:**
+[+] **Implemented:**
 - Multi-strategy runner with shared WebSocket
 - Smart fallback for incomplete buffer
 - Proper scheduling for OMR and RAMP
 - Systemd service and deployment scripts
 
-✅ **Tested:**
+[+] **Tested:**
 - 68/68 streaming tests passing
 - Smart fallback mechanism verified
 - Schedule logic validated
 
-✅ **Ready for Deployment:**
+[+] **Ready for Deployment:**
 - Deployment script created
 - Documentation complete
 - Rollback procedure defined
 
-🎯 **Expected Outcome:**
+[*] **Expected Outcome:**
 - Both OMR and RAMP use streaming (50-300x faster)
 - Single IEX WebSocket connection (free tier)
 - Smart fallback handles mid-day restarts

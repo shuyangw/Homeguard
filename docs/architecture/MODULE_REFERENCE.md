@@ -1,7 +1,7 @@
 # Homeguard Module Reference
 
-**Version**: 1.6
-**Last Updated**: 2025-12-15
+**Version**: 1.7
+**Last Updated**: 2025-12-21
 **Purpose**: Comprehensive module-by-module reference for the Homeguard codebase
 
 ---
@@ -16,14 +16,14 @@ Each major module in `src/` now has comprehensive architecture documentation at 
 | `src/trading/` | [LIVE_TRADING_SYSTEM.md](../../src/trading/LIVE_TRADING_SYSTEM.md) | Brokers, adapters, execution, state management |
 | `src/strategies/` | [STRATEGY_FRAMEWORK.md](../../src/strategies/STRATEGY_FRAMEWORK.md) | Strategy implementations, registry, signals |
 | `src/data/` | [DATA_PROVIDERS.md](../../src/data/DATA_PROVIDERS.md) | Data providers, fallback chains, caching |
-| `src/streaming/` | [README.md](../../src/streaming/README.md) | Real-time WebSocket streaming platform |
-| `src/web/` | [README.md](../../src/web/README.md) | Web API (FastAPI) + React frontend |
+| `src/streaming/` | [STREAMING.md](../../src/streaming/STREAMING.md) | Real-time WebSocket streaming platform |
+| `src/web/` | [WEB.md](../../src/web/WEB.md) | Web API (FastAPI) + React frontend |
 | `src/settings/` | [CONFIGURATION_SYSTEM.md](../../src/settings/CONFIGURATION_SYSTEM.md) | Config schema, YAML loading, validation |
 | `src/utils/` | [UTILITY_MODULES.md](../../src/utils/UTILITY_MODULES.md) | Logger, timezone, VIX provider |
 | `src/discord_bot/` | [DISCORD_BOT_ARCHITECTURE.md](../../src/discord_bot/DISCORD_BOT_ARCHITECTURE.md) | Discord monitoring bot |
-| `src/data_engine/` | [README.md](../../src/data_engine/README.md) | Data ingestion system |
-| `src/gui/` | [README.md](../../src/gui/README.md) | Desktop GUI application |
-| `src/visualization/` | [README.md](../../src/visualization/README.md) | Charts and reporting |
+| `src/data_engine/` | [DATA_ENGINE.md](../../src/data_engine/DATA_ENGINE.md) | Data ingestion system |
+| `src/gui/` | [GUI.md](../../src/gui/GUI.md) | Desktop GUI application |
+| `src/visualization/` | [VISUALIZATION.md](../../src/visualization/VISUALIZATION.md) | Charts and reporting |
 
 ---
 
@@ -97,7 +97,7 @@ print(config.symbols.list)
 **Purpose**: API credential management (Alpaca API keys)
 
 **Security**:
-- ⚠️ **Never commit this file** (in `.gitignore`)
+- [!] **Never commit this file** (in `.gitignore`)
 - Store API keys securely
 
 **Key Variables**:
@@ -191,9 +191,9 @@ python -m src.run_ingestion
 - Respects Alpaca API rate limits (200 requests/minute)
 
 **Error Handling**:
-- Connection errors → retry
-- Authentication errors → fail fast
-- Data errors → log and skip
+- Connection errors -> retry
+- Authentication errors -> fail fast
+- Data errors -> log and skip
 
 **Dependencies**: `requests`, `pandas`, `api_key`
 
@@ -701,8 +701,8 @@ portfolio = engine.run(
 
 **Simulation Logic**:
 1. Iterate through each bar
-2. Check for exit signals → close positions
-3. Check for entry signals → open positions
+2. Check for exit signals -> close positions
+3. Check for entry signals -> open positions
 4. Update equity curve
 5. Log trades
 6. Check stop losses
@@ -941,8 +941,8 @@ def from_signals(
 
 **Execution Flow**:
 1. Iterate through each timestamp
-2. Check for exit signals → close both legs simultaneously
-3. Check for entry signals → open both legs simultaneously
+2. Check for exit signals -> close both legs simultaneously
+3. Check for entry signals -> open both legs simultaneously
 4. Calculate position sizes via PairsPositionSizer
 5. Update equity curve
 6. Log synchronized trades
@@ -1640,8 +1640,8 @@ class MyStrategy(Strategy):
 **Inheritance**:
 ```
 Strategy (base)
-  └─→ MultiSymbolStrategy
-       └─→ PairsStrategy (adds pairs-specific requirements)
+  └─-> MultiSymbolStrategy
+       └─-> PairsStrategy (adds pairs-specific requirements)
 ```
 
 **Key Methods**:
@@ -2184,9 +2184,9 @@ portfolio = engine.run(
 **Data Flow**:
 ```
 SetupView (checkbox)
-  └─→ App (_on_run_backtests)
-       └─→ GUIBacktestController (start_backtests)
-            └─→ BacktestEngine (enable_regime_analysis parameter)
+  └─-> App (_on_run_backtests)
+       └─-> GUIBacktestController (start_backtests)
+            └─-> BacktestEngine (enable_regime_analysis parameter)
 ```
 
 **User Experience**:
@@ -2436,7 +2436,7 @@ logger.error("Failed to load data")
 
 - `TradingInvestigator`: Main investigator class
   - `investigate(query, user_id)`: Run multi-step investigation
-  - Uses ReAct pattern: question → tool call → analyze → repeat
+  - Uses ReAct pattern: question -> tool call -> analyze -> repeat
   - Max 10 iterations per investigation
 
 **ReAct Pattern**:
@@ -2513,22 +2513,22 @@ python -m src.discord_bot.main
 
 ```
 GUI Layer
-  └─→ Workers (GUIBacktestController)
-       └─→ Backtesting Engine (SweepRunner, BacktestEngine)
+  └─-> Workers (GUIBacktestController)
+       └─-> Backtesting Engine (SweepRunner, BacktestEngine)
 
 Visualization Layer
-  └─→ Backtesting Engine (Portfolio results)
+  └─-> Backtesting Engine (Portfolio results)
 
 Backtesting Engine Layer
-  ├─→ Strategy Layer (signal generation)
-  ├─→ Data Layer (data loading)
-  └─→ Utilities (indicators, risk management)
+  ├─-> Strategy Layer (signal generation)
+  ├─-> Data Layer (data loading)
+  └─-> Utilities (indicators, risk management)
 
 Strategy Layer
-  └─→ Utilities (indicators)
+  └─-> Utilities (indicators)
 
 Data Layer
-  └─→ External APIs (Alpaca)
+  └─-> External APIs (Alpaca)
 ```
 
 ---
@@ -2557,14 +2557,14 @@ The broker abstraction layer follows the **Interface Segregation Principle (ISP)
 
 **Interface Hierarchy**:
 ```
-AccountInterface              ← Account info, connection testing
-MarketHoursInterface          ← Market schedule queries
-MarketDataInterface           ← Quotes, trades, historical bars
-OrderManagementInterface      ← Order retrieval, cancellation
-  ├─ StockTradingInterface    ← Stock positions, orders (inherits OrderManagement)
-  └─ OptionsTradingInterface  ← Options chains, orders (inherits OrderManagement)
+AccountInterface              <- Account info, connection testing
+MarketHoursInterface          <- Market schedule queries
+MarketDataInterface           <- Quotes, trades, historical bars
+OrderManagementInterface      <- Order retrieval, cancellation
+  ├─ StockTradingInterface    <- Stock positions, orders (inherits OrderManagement)
+  └─ OptionsTradingInterface  <- Options chains, orders (inherits OrderManagement)
 
-BrokerInterface               ← Composite: Account + MarketHours + MarketData + StockTrading
+BrokerInterface               <- Composite: Account + MarketHours + MarketData + StockTrading
 ```
 
 ---
@@ -2591,11 +2591,11 @@ BrokerInterface               ← Composite: Account + MarketHours + MarketData 
 **Key Classes**: `BrokerInterface` (inherits `AccountInterface`, `MarketHoursInterface`, `MarketDataInterface`, `StockTradingInterface`)
 
 **Backward Compatibility Aliases**:
-- `get_positions()` → `get_stock_positions()`
-- `get_position()` → `get_stock_position()`
-- `place_order()` → `place_stock_order()`
-- `close_position()` → `close_stock_position()`
-- `close_all_positions()` → `close_all_stock_positions()`
+- `get_positions()` -> `get_stock_positions()`
+- `get_position()` -> `get_stock_position()`
+- `place_order()` -> `place_stock_order()`
+- `close_position()` -> `close_stock_position()`
+- `close_all_positions()` -> `close_all_stock_positions()`
 
 **Note**: Does NOT inherit `OptionsTradingInterface` - options support is opt-in per broker
 
@@ -2970,7 +2970,7 @@ BrokerInterface               ← Composite: Account + MarketHours + MarketData 
   - 7 new focused interface files in `src/trading/brokers/interfaces/`
   - `BrokerInterface` now composite of focused interfaces (backward compatible)
   - Backward-compatible method aliases for existing code
-  - Standardized return types (`cancel_order` → bool, `get_bars` → DataFrame)
+  - Standardized return types (`cancel_order` -> bool, `get_bars` -> DataFrame)
   - New `OptionsTradingInterface` for future options support
   - 39 new interface compliance tests (`tests/trading/test_interface_compliance.py`)
   - All 131 trading tests pass, OMR live strategy unaffected

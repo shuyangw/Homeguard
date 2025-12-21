@@ -79,8 +79,8 @@ result = instance.method()
 Describe how data moves through this module:
 
 ```
-Input → Component1 → Component2 → Output
-          ↓
+Input -> Component1 -> Component2 -> Output
+          v
       Side Effect
 ```
 

@@ -186,10 +186,10 @@ signal = Signal.from_dict(data)
 | `RAMP` | `RAMPSignals` | Regime-aware momentum protection (production) |
 
 **Display Name Aliases**:
-- "OMR" → `OvernightMeanReversion`
-- "MP" → `MomentumProtection` (deprecated)
-- "RAMP" → `RAMPSignals`
-- "Moving Average Crossover" → `MovingAverageCrossover`
+- "OMR" -> `OvernightMeanReversion`
+- "MP" -> `MomentumProtection` (deprecated)
+- "RAMP" -> `RAMPSignals`
+- "Moving Average Crossover" -> `MovingAverageCrossover`
 
 **Usage**:
 ```python
@@ -269,7 +269,7 @@ momentum = (long_weight * return_long_period) - (penalty_weight * return_short_p
 
 **Position Sizing**:
 - Dynamic 1/N: Each position = `max_capital_allocation / top_n`
-- Example: 100% allocation with top_n=10 → 10% per position
+- Example: 100% allocation with top_n=10 -> 10% per position
 - Total allocation always equals `max_capital_allocation` when fully invested
 
 **Performance (Walk-Forward Validation 2022-2024)**:
@@ -289,21 +289,21 @@ See [RAMP Strategy Documentation](../../docs/strategies/RAMP_STRATEGY.md) for fu
 
 ```
 Market Data (Dict[symbol, DataFrame])
-        ↓
+        v
   StrategySignals.validate_market_data()
-        ↓
+        v
   StrategySignals.generate_signals()
-        ↓
+        v
   List[Signal]
-        ↓
+        v
   ┌────────────────────────────────────┐
   │        Adapter Layer               │
   ├──────────────┬─────────────────────┤
   │ BacktestAdapter │ LiveTradingAdapter │
   └──────────────┴─────────────────────┘
-        ↓                    ↓
+        v                    v
   PortfolioSimulator    ExecutionEngine
-        ↓                    ↓
+        v                    v
   Backtest Results      Live Orders
 ```
 

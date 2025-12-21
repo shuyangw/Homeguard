@@ -198,17 +198,17 @@ symbols = get_symbol_universe("production.conservative")
 
 ```
 YAML Config File
-        ↓
-  load_yaml() → Raw Dict
-        ↓
-  resolve_extends() → Merge Parent Configs
-        ↓
-  merge_dicts(DEFAULT_CONFIG, ...) → Full Dict
-        ↓
-  apply_overrides(CLI args) → Final Dict
-        ↓
-  BacktestConfig.model_validate() → Validated Config
-        ↓
+        v
+  load_yaml() -> Raw Dict
+        v
+  resolve_extends() -> Merge Parent Configs
+        v
+  merge_dicts(DEFAULT_CONFIG, ...) -> Full Dict
+        v
+  apply_overrides(CLI args) -> Final Dict
+        v
+  BacktestConfig.model_validate() -> Validated Config
+        v
   Backtest Engine
 ```
 

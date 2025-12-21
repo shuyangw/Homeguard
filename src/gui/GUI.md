@@ -76,13 +76,13 @@ gui/
 
 ```
 SetupView (Configuration)
-    ↓
+    v
 BacktestApp (Navigation & Polling)
-    ↓
+    v
 GUIBacktestController (Thread Coordination)
-    ↓
+    v
 SweepRunner (Parallel Execution)
-    ↓
+    v
 BacktestEngine (VectorBT)
 ```
 

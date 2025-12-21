@@ -9,7 +9,7 @@ This strategy exploits predictable overnight mean reversion patterns in leverage
 1. **Market Regime Classification** (5 regimes)
 2. **Leveraged ETF Universe** (high volatility instruments)
 3. **Bayesian Probability Model** (10 years historical data)
-4. **Overnight Holding Period** (3:50 PM → Market Open)
+4. **Overnight Holding Period** (3:50 PM -> Market Open)
 
 ---
 

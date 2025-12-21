@@ -146,11 +146,11 @@ Homeguard is a professional-grade backtesting framework for algorithmic trading 
 **Key Components**:
 - **Strategy** ([src/backtesting/base/strategy.py](../../src/backtesting/base/strategy.py))
   - Abstract base class for all strategies
-  - Defines interface: `generate_signals(data) → (entries, exits)`
+  - Defines interface: `generate_signals(data) -> (entries, exits)`
 
 - **MultiSymbolStrategy** ([src/backtesting/base/strategy.py](../../src/backtesting/base/strategy.py))
   - Base for strategies that trade multiple symbols simultaneously
-  - Interface: `generate_signals_multi(data_dict) → signals_dict`
+  - Interface: `generate_signals_multi(data_dict) -> signals_dict`
 
 - **PairsStrategy** ([src/backtesting/base/pairs_strategy.py](../../src/backtesting/base/pairs_strategy.py))
   - Base for pairs trading strategies (market-neutral)
@@ -459,15 +459,15 @@ User Command:
     --strategy MovingAverageCrossover \
     --symbols AAPL --start 2023-01-01 --end 2024-01-01
 
-    ↓
+    v
 
 backtest_runner.py (CLI entry point)
-    ↓
+    v
 BacktestEngine.run()
-    ├─→ DataLoader.load_data() → DuckDB query → Parquet files
-    ├─→ MarketCalendar.filter_market_days()
-    ├─→ Strategy.generate_signals(data) → (entries, exits)
-    ├─→ PortfolioSimulator.simulate()
+    ├─-> DataLoader.load_data() -> DuckDB query -> Parquet files
+    ├─-> MarketCalendar.filter_market_days()
+    ├─-> Strategy.generate_signals(data) -> (entries, exits)
+    ├─-> PortfolioSimulator.simulate()
     │     ├─ For each bar:
     │     │   ├─ Check entry/exit signals
     │     │   ├─ PositionSizer.calculate_shares()
@@ -476,18 +476,18 @@ BacktestEngine.run()
     │     │   ├─ Update equity curve
     │     │   └─ TradeLogger.log_trade()
     │     └─ Return Portfolio object
-    └─→ Calculate metrics
+    └─-> Calculate metrics
         ├─ Metrics.calculate_performance()
         └─ Return stats dict
 
-    ↓
+    v
 
 BacktestVisualizer.generate()
-    ├─→ QuantStatsReporter.create_tearsheet()
-    ├─→ Charts.generate_candlestick()
-    └─→ ReportGenerator.create_summary()
+    ├─-> QuantStatsReporter.create_tearsheet()
+    ├─-> Charts.generate_candlestick()
+    └─-> ReportGenerator.create_summary()
 
-    ↓
+    v
 
 Output:
   - Tearsheet HTML/PDF
@@ -500,24 +500,24 @@ Output:
 
 ```
 SweepRunner.run_sweep(symbols=['AAPL', 'MSFT', 'GOOGL'])
-    ↓
+    v
 ThreadPoolExecutor (parallel execution)
     ├─ Worker 1: BacktestEngine.run('AAPL')
     ├─ Worker 2: BacktestEngine.run('MSFT')
     └─ Worker 3: BacktestEngine.run('GOOGL')
         │
-        ├─→ Callback: on_symbol_start('AAPL')
-        ├─→ Callback: on_symbol_complete('AAPL', portfolio)
-        └─→ Callback: on_symbol_error('AAPL', error)
+        ├─-> Callback: on_symbol_start('AAPL')
+        ├─-> Callback: on_symbol_complete('AAPL', portfolio)
+        └─-> Callback: on_symbol_error('AAPL', error)
 
-    ↓ (all symbols complete)
+    v (all symbols complete)
 
 ResultsAggregator.aggregate()
     ├─ Combine equity curves
     ├─ Aggregate metrics
     └─ Create comparison charts
 
-    ↓
+    v
 
 Return: List[Portfolio] + Aggregate Reports
 ```
@@ -526,7 +526,7 @@ Return: List[Portfolio] + Aggregate Reports
 
 ```
 User clicks "Run Backtest" in GUI
-    ↓
+    v
 GUIBacktestController.start()
     ├─ Create worker thread
     ├─ Start SweepRunner in background
@@ -534,9 +534,9 @@ GUIBacktestController.start()
 
 Worker Thread:
   SweepRunner.run_sweep()
-    ├─→ Put progress updates in queue
-    ├─→ on_symbol_complete → Queue.put(result)
-    └─→ on_error → Queue.put(error)
+    ├─-> Put progress updates in queue
+    ├─-> on_symbol_complete -> Queue.put(result)
+    └─-> on_error -> Queue.put(error)
 
 Main Thread (UI):
   while running:
@@ -545,7 +545,7 @@ Main Thread (UI):
     ├─ Update status labels
     └─ Render results view when complete
 
-    ↓
+    v
 
 ResultsView displays:
   - Metrics table
@@ -720,7 +720,7 @@ python -m gui
 - **Timeframes**: 1-minute bars (primary), extensible to other frequencies
 
 ### Performance Benchmarks
-- **Data Loading**: DuckDB → ~1-2 seconds for 1 year of 1-minute data
+- **Data Loading**: DuckDB -> ~1-2 seconds for 1 year of 1-minute data
 - **Backtest Execution**: ~2-5 seconds per symbol per year
 - **Parallel Sweep**: 3-8x speedup with 4-8 workers
 - **Test Suite**: 50 tests in <5 seconds
@@ -743,22 +743,22 @@ python -m gui
 ## Future Extensibility
 
 ### Easy to Add
-- ✅ New strategies (inherit `BaseStrategy`)
-- ✅ New indicators (add to `indicators.py`)
-- ✅ New position sizing methods (add to `PositionSizer`)
-- ✅ New data sources (implement API client interface)
-- ✅ New risk constraints (add to `RiskManager`)
-- ✅ New brokers (implement focused interfaces - ISP-compliant design)
+- [+] New strategies (inherit `BaseStrategy`)
+- [+] New indicators (add to `indicators.py`)
+- [+] New position sizing methods (add to `PositionSizer`)
+- [+] New data sources (implement API client interface)
+- [+] New risk constraints (add to `RiskManager`)
+- [+] New brokers (implement focused interfaces - ISP-compliant design)
 
 ### Planned Enhancements
-- 🚧 Options trading support (interface ready: `OptionsTradingInterface`)
-- 📋 Futures trading support
-- 📋 Intraday rebalancing
-- 📋 Machine learning strategy integration
-- 📋 Additional broker integrations (TastyTrade, IBKR)
+-  Options trading support (interface ready: `OptionsTradingInterface`)
+-  Futures trading support
+-  Intraday rebalancing
+-  Machine learning strategy integration
+-  Additional broker integrations (TastyTrade, IBKR)
 
 ### Recently Deployed
-- ✅ **Config-driven backtesting** - YAML-based backtest configuration (November 2025)
+- [+] **Config-driven backtesting** - YAML-based backtest configuration (November 2025)
   - Single command: `python -m src.backtest_runner --config path/to/config.yaml`
   - Supports all modes: single, sweep, optimize, walk-forward
   - Pydantic-validated configuration schema with inheritance (`extends:` directive)
@@ -766,7 +766,7 @@ python -m gui
   - Strategy registry with lazy loading (no import chain issues)
   - See [config/backtesting/](../../config/backtesting/) for example configs
 
-- ✅ **Broker interface refactoring** - ISP-compliant interface design (November 2025)
+- [+] **Broker interface refactoring** - ISP-compliant interface design (November 2025)
   - 6 focused interfaces: AccountInterface, MarketHoursInterface, MarketDataInterface, OrderManagementInterface, StockTradingInterface, OptionsTradingInterface
   - BrokerInterface is now a composite interface (backward compatible)
   - Backward-compatible method aliases preserve existing code
@@ -774,7 +774,7 @@ python -m gui
   - 39 new interface compliance tests
   - See [MODULE_REFERENCE.md](MODULE_REFERENCE.md#trading-system-layer) for details
 
-- ✅ **Live trading integration** - Paper trading deployed to AWS EC2 with automated scheduling (November 2025)
+- [+] **Live trading integration** - Paper trading deployed to AWS EC2 with automated scheduling (November 2025)
   - EC2 instance with Python 3.11 (t4g.small ARM64)
   - Lambda-powered auto-start/stop (9 AM - 4:30 PM ET Mon-Fri)
   - **Multi-strategy architecture** (December 2025):
@@ -785,29 +785,29 @@ python -m gui
   - SSH management scripts (Windows .bat and Unix .sh) with `.env`-based configuration
   - See [Infrastructure Overview](../INFRASTRUCTURE_OVERVIEW.md) for details
 
-- ✅ **Strategy reorganization** - Separated production vs research strategies (December 2025)
+- [+] **Strategy reorganization** - Separated production vs research strategies (December 2025)
   - Production strategies in `src/strategies/advanced/`: OMR, MP, RAMP
   - Research strategies moved to `src/strategies/research/`
   - Backward compatibility via re-exports in `base_strategies/`
 
-- ✅ **Real-time streaming platform** - WebSocket-based market data (December 2025)
+- [+] **Real-time streaming platform** - WebSocket-based market data (December 2025)
   - `LiveDataProvider` for real-time bar/quote data
   - 32x performance improvement over polling
   - Smart fallback to REST API when streaming unavailable
   - Feature flag: `USE_STREAMING=true`
   - See [20251209_STREAMING_DATA_PLATFORM.md](20251209_STREAMING_DATA_PLATFORM.md)
 
-- ✅ **Web API & Frontend** - Browser-based backtesting interface (December 2025)
+- [+] **Web API & Frontend** - Browser-based backtesting interface (December 2025)
   - FastAPI backend with REST endpoints
   - React 18 + Vite + Tailwind CSS frontend
   - Real-time backtest execution and results display
 
-- ✅ **News & Sentiment pipeline** - Market sentiment analysis (December 2025)
+- [+] **News & Sentiment pipeline** - Market sentiment analysis (December 2025)
   - Alpaca News API integration
   - FinBERT-based sentiment scoring
   - Premarket sentiment filters for strategies
 
-- ✅ **New research strategies** - HV ORB and ICT (December 2025)
+- [+] **New research strategies** - HV ORB and ICT (December 2025)
   - `HVORBStrategy`: High Volatility Opening Range Breakout
   - `ICTStrategy`: Smart Money Concepts / Institutional Chart Techniques
   - Numba JIT compilation for ORB signal generation

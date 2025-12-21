@@ -45,9 +45,9 @@ terraform --version
 1. Download from https://www.terraform.io/downloads (Windows AMD64)
 2. Extract `terraform.exe` to `C:\Program Files\Terraform\`
 3. Add to PATH:
-   - Press Win + X → System
-   - Advanced system settings → Environment Variables
-   - Under System variables, select Path → Edit
+   - Press Win + X -> System
+   - Advanced system settings -> Environment Variables
+   - Under System variables, select Path -> Edit
    - Add `C:\Program Files\Terraform\`
    - Click OK
 4. Open new PowerShell: `terraform --version`
@@ -98,9 +98,9 @@ aws sts get-caller-identity
 ```
 
 **Get AWS Credentials**:
-1. AWS Console → IAM → Users → [Your username]
+1. AWS Console -> IAM -> Users -> [Your username]
 2. Security credentials tab
-3. Create access key → CLI
+3. Create access key -> CLI
 4. Download CSV or copy keys
 
 #### 5. Create EC2 Key Pair
@@ -244,7 +244,7 @@ ssh -i $env:USERPROFILE\.ssh\homeguard-trading-bot.pem ec2-user@<INSTANCE_IP>
    - Save private key as .ppk
 3. Open PuTTY:
    - Host: `ec2-user@<INSTANCE_IP>`
-   - Connection → SSH → Auth → Browse to .ppk
+   - Connection -> SSH -> Auth -> Browse to .ppk
    - Click Open
 
 #### 13. Verify Installation
@@ -887,13 +887,13 @@ python scripts/trading/test_alpaca_connection.py
 
 ### Monitor Costs
 
-1. AWS Console → Billing & Cost Management
+1. AWS Console -> Billing & Cost Management
 2. View by service (should see EC2, EBS)
 3. Expected: ~$13/month
 
 ### Set Billing Alert
 
-1. Billing → Budgets → Create budget
+1. Billing -> Budgets -> Create budget
 2. Monthly cost budget
 3. Set amount: $20
 4. Add email alert
@@ -915,9 +915,9 @@ terraform apply  # Restores original instance type
 
 After successful deployment:
 
-1. ✅ Monitor for one week
-2. ✅ Set up EBS snapshots (weekly backups)
-3. ✅ Document any customizations
+1. [+] Monitor for one week
+2. [+] Set up EBS snapshots (weekly backups)
+3. [+] Document any customizations
 4. ⚙️ Optional: Enable CloudWatch Logs
 5. ⚙️ Optional: Set up SNS email alerts
 6. ⚙️ Optional: Create staging environment
@@ -992,4 +992,4 @@ terraform output    # View outputs
 
 ---
 
-**That's it! You're ready to deploy on any platform.** 🚀
+**That's it! You're ready to deploy on any platform.** [*]

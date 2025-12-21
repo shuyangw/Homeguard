@@ -2,17 +2,17 @@
 
 ## Executive Summary
 
-### Current State ✅
+### Current State [+]
 - **Base trading infrastructure is already asset-agnostic**
   - `BrokerInterface`, `ExecutionEngine`, `PositionManager` work with any security
   - Well-designed foundation requiring minimal changes
 
-### What Needs Refactoring ⚠️
+### What Needs Refactoring [!]️
 - **Strategy layer has duplicated logic** between backtesting and live trading
 - **Hardcoded ETF lists** in signal generators
 - **No clear separation** between pure strategy logic and execution infrastructure
 
-### Proposed Solution 🎯
+### Proposed Solution [*]
 - **Three-layer architecture**:
   1. **Pure Strategy Layer**: Asset-agnostic signal generation (reusable)
   2. **Adapter Layer**: Connects strategies to backtesting or live trading
@@ -87,9 +87,9 @@ src/strategies/                      src/trading/strategies/
 
 ### 3. **Clean Separation of Concerns**
 ```
-Strategy Logic       →  "What to trade" (signals)
-Backtest Adapter     →  "How to simulate" (portfolio mechanics)
-Live Trading Adapter →  "How to execute" (broker integration)
+Strategy Logic       ->  "What to trade" (signals)
+Backtest Adapter     ->  "How to simulate" (portfolio mechanics)
+Live Trading Adapter ->  "How to execute" (broker integration)
 ```
 
 ### 4. **Testability**
@@ -109,7 +109,7 @@ Live Trading Adapter →  "How to execute" (broker integration)
 **Goal**: Create core abstractions without breaking existing code
 
 ```
-✅ Tasks:
+[+] Tasks:
 1. Create src/strategies/core/
    ├── base_strategy.py    # Abstract StrategySignals interface
    ├── signal.py           # Signal data structure
@@ -124,7 +124,7 @@ Live Trading Adapter →  "How to execute" (broker integration)
    - src/backtesting/adapters/
    - src/trading/adapters/
 
-✅ Status: Existing code still works (no changes to imports)
+[+] Status: Existing code still works (no changes to imports)
 ```
 
 ### Phase 2: Extract Pure Strategies (Week 2) - **Low Risk**
@@ -132,7 +132,7 @@ Live Trading Adapter →  "How to execute" (broker integration)
 **Goal**: Move strategy logic to pure implementations
 
 ```
-✅ Tasks:
+[+] Tasks:
 1. Extract MA Crossover:
    - Create: src/strategies/implementations/moving_average/ma_crossover_signals.py
    - Pure logic only (no backtest/live dependencies)
@@ -148,7 +148,7 @@ Live Trading Adapter →  "How to execute" (broker integration)
    - Pure logic only
    - Unit tests
 
-✅ Status: New files created, old files still exist (parallel implementation)
+[+] Status: New files created, old files still exist (parallel implementation)
 ```
 
 ### Phase 3: Create Adapters (Week 3) - **Medium Risk**
@@ -156,7 +156,7 @@ Live Trading Adapter →  "How to execute" (broker integration)
 **Goal**: Connect pure strategies to infrastructure
 
 ```
-✅ Tasks:
+[+] Tasks:
 1. Backtest adapters:
    - src/backtesting/adapters/ma_backtest_adapter.py
    - src/backtesting/adapters/momentum_backtest_adapter.py
@@ -169,7 +169,7 @@ Live Trading Adapter →  "How to execute" (broker integration)
 
 3. Update configs to use new adapters
 
-✅ Status: Both old and new implementations available (gradual migration)
+[+] Status: Both old and new implementations available (gradual migration)
 ```
 
 ### Phase 4: Migrate OMR Strategy (Week 4) - **High Value**
@@ -177,11 +177,11 @@ Live Trading Adapter →  "How to execute" (broker integration)
 **Goal**: Decouple and reuse OMR components
 
 ```
-✅ Tasks:
+[+] Tasks:
 1. Refactor existing components (already mostly pure!):
-   - market_regime_detector.py → Already reusable ✅
-   - bayesian_reversion_model.py → Already reusable ✅
-   - overnight_signal_generator.py → Remove hardcoded ETF list
+   - market_regime_detector.py -> Already reusable [+]
+   - bayesian_reversion_model.py -> Already reusable [+]
+   - overnight_signal_generator.py -> Remove hardcoded ETF list
 
 2. Create pure OMR signals:
    src/strategies/implementations/overnight/
@@ -195,7 +195,7 @@ Live Trading Adapter →  "How to execute" (broker integration)
 
 4. Update overnight_mean_reversion.py to use adapter
 
-✅ Status: OMR logic reusable for both backtest and live trading
+[+] Status: OMR logic reusable for both backtest and live trading
 ```
 
 ### Phase 5: Refactor Trading Bot (Week 5) - **Infrastructure**
@@ -203,8 +203,8 @@ Live Trading Adapter →  "How to execute" (broker integration)
 **Goal**: Make TradingBot strategy-agnostic
 
 ```
-✅ Tasks:
-1. Rename: paper_trading_bot.py → trading_bot.py
+[+] Tasks:
+1. Rename: paper_trading_bot.py -> trading_bot.py
 
 2. Update TradingBot.__init__():
    Before:
@@ -221,7 +221,7 @@ Live Trading Adapter →  "How to execute" (broker integration)
 
 4. Update tests to use new interface
 
-✅ Status: TradingBot can use ANY strategy
+[+] Status: TradingBot can use ANY strategy
 ```
 
 ### Phase 6: Testing & Validation (Week 6)
@@ -229,7 +229,7 @@ Live Trading Adapter →  "How to execute" (broker integration)
 **Goal**: Ensure everything works correctly
 
 ```
-✅ Tasks:
+[+] Tasks:
 1. Integration tests:
    - Test each pure strategy with backtest adapter
    - Test each pure strategy with live trading adapter
@@ -243,7 +243,7 @@ Live Trading Adapter →  "How to execute" (broker integration)
    - Full backtest with new adapters
    - Paper trading with new adapters
 
-✅ Status: All tests passing, ready for production
+[+] Status: All tests passing, ready for production
 ```
 
 ### Phase 7: Cleanup & Documentation (Week 7)
@@ -251,7 +251,7 @@ Live Trading Adapter →  "How to execute" (broker integration)
 **Goal**: Remove old code, update docs
 
 ```
-✅ Tasks:
+[+] Tasks:
 1. Deprecate old strategy files:
    - Add deprecation warnings
    - Update import paths in existing scripts
@@ -263,7 +263,7 @@ Live Trading Adapter →  "How to execute" (broker integration)
 
 3. Remove deprecated code (after grace period)
 
-✅ Status: Clean codebase with modern architecture
+[+] Status: Clean codebase with modern architecture
 ```
 
 ## File Changes Summary
@@ -308,7 +308,7 @@ src/trading/adapters/
 ### Modified Files
 ```
 src/trading/core/
-├── paper_trading_bot.py → trading_bot.py  [RENAMED]
+├── paper_trading_bot.py -> trading_bot.py  [RENAMED]
 │   - Accept TradingStrategy interface instead of hardcoded OMR
 │   - Use strategy.get_data_requirements() for data fetching
 │   - Remove ETF-specific comments
@@ -322,19 +322,19 @@ src/strategies/advanced/
 ### Deprecated Files (Eventually Remove)
 ```
 src/strategies/base_strategies/
-├── moving_average.py         [DEPRECATED → Use adapters]
-├── momentum.py               [DEPRECATED → Use adapters]
-└── mean_reversion.py         [DEPRECATED → Use adapters]
+├── moving_average.py         [DEPRECATED -> Use adapters]
+├── momentum.py               [DEPRECATED -> Use adapters]
+└── mean_reversion.py         [DEPRECATED -> Use adapters]
 
 src/strategies/advanced/
-├── overnight_mean_reversion.py   [DEPRECATED → Use adapters]
+├── overnight_mean_reversion.py   [DEPRECATED -> Use adapters]
 └── ...
 
 src/trading/strategies/
-└── omr_live_strategy.py      [DEPRECATED → Use omr_live_adapter.py]
+└── omr_live_strategy.py      [DEPRECATED -> Use omr_live_adapter.py]
 ```
 
-### No Changes Needed ✅
+### No Changes Needed [+]
 ```
 src/trading/brokers/
 ├── broker_interface.py       [NO CHANGE]
@@ -348,24 +348,24 @@ src/trading/core/
 ## Success Metrics
 
 ### Week 1-2
-- ✅ Core abstractions created
-- ✅ Unit tests for pure strategies
-- ✅ No regressions in existing backtests
+- [+] Core abstractions created
+- [+] Unit tests for pure strategies
+- [+] No regressions in existing backtests
 
 ### Week 3-4
-- ✅ All adapters implemented
-- ✅ Integration tests passing
-- ✅ OMR working with both backtest and live trading
+- [+] All adapters implemented
+- [+] Integration tests passing
+- [+] OMR working with both backtest and live trading
 
 ### Week 5-6
-- ✅ TradingBot refactored
-- ✅ All tests passing
-- ✅ Documentation updated
+- [+] TradingBot refactored
+- [+] All tests passing
+- [+] Documentation updated
 
 ### Week 7
-- ✅ Old code deprecated
-- ✅ Migration guide complete
-- ✅ Ready for new strategies
+- [+] Old code deprecated
+- [+] Migration guide complete
+- [+] Ready for new strategies
 
 ## Risk Mitigation
 

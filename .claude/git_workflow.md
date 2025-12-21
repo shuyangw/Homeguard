@@ -72,9 +72,9 @@ git branch             # List branches
 
 ### Commands Requiring Permission
 ```bash
-git push               # ❌ ALWAYS ASK FIRST
-git push --force       # ❌ ALWAYS ASK FIRST (even more dangerous)
-git push origin <branch>  # ❌ ALWAYS ASK FIRST
+git push               # [-] ALWAYS ASK FIRST
+git push --force       # [-] ALWAYS ASK FIRST (even more dangerous)
+git push origin <branch>  # [-] ALWAYS ASK FIRST
 ```
 
 ## Commit Message Best Practices
@@ -152,17 +152,17 @@ Before `git push`:
 - [ ] Changes tested
 - [ ] Commit message is clear and descriptive
 - [ ] Attribution footer added
-- [ ] **User permission obtained** ✅
+- [ ] **User permission obtained** [+]
 
 ## Anti-Patterns to Avoid
 
-❌ **Never do this:**
+[-] **Never do this:**
 ```bash
 # Committing and pushing without asking
 git add . && git commit -m "updates" && git push
 ```
 
-✅ **Always do this:**
+[+] **Always do this:**
 ```bash
 # Commit, then ask
 git add . && git commit -m "Clear description of changes"

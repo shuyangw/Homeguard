@@ -16,7 +16,7 @@
 
 ### Key Features
 - **Provider Abstraction**: `DataProviderInterface` for any data source
-- **Fallback Chain**: Try Alpaca → yfinance → cache automatically
+- **Fallback Chain**: Try Alpaca -> yfinance -> cache automatically
 - **Cache-First Strategy**: Check cache before API calls for intraday
 - **Bulk Downloads**: Multi-threaded downloader with retry logic
 - **Schema Enforcement**: Standardized lowercase columns, ET timezone
@@ -228,7 +228,7 @@ python scripts/download_symbols.py --csv etfs.csv --timeframe day
 
 ```
 API Request (symbol, timeframe, date range)
-        ↓
+        v
 ┌────────────────────────────────────────┐
 │        CompositeDataProvider           │
 ├────────────────────────────────────────┤
@@ -237,9 +237,9 @@ API Request (symbol, timeframe, date range)
 │  3. Try YFinanceDataProvider           │
 │  4. Return stale cache as last resort  │
 └────────────────────────────────────────┘
-        ↓
+        v
   Cache successful result
-        ↓
+        v
   Return DataFrame (or None on total failure)
 ```
 

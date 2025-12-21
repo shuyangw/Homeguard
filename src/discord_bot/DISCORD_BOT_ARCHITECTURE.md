@@ -235,21 +235,21 @@ config = load_config()  # Loads from environment
 
 ```
 Discord User
-        ↓
+        v
   Slash Command (/investigate "query")
-        ↓
+        v
   Security Checks (channel, user, rate limit)
-        ↓
+        v
   TradingInvestigator
-        ↓
+        v
   Claude API (with tool use)
-        ↓
+        v
   CommandExecutor (read-only shell)
-        ↓
+        v
   Claude Summarizes Findings
-        ↓
+        v
   Format for Discord
-        ↓
+        v
   Response to User
 ```
 

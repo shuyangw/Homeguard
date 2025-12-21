@@ -14,26 +14,26 @@ Build a lightweight GUI using **Flet** that wraps your **existing multithreaded 
 
 ### What You Already Have (No Changes Needed)
 
-✅ **SweepRunner** - Production-ready parallel backtest coordinator
+[+] **SweepRunner** - Production-ready parallel backtest coordinator
 - ThreadPoolExecutor with configurable max_workers (supports 1-16)
 - `run_sweep()` - orchestrates parallel/sequential execution
 - `_run_parallel()` - parallel execution with `as_completed()`
 - `run_and_report()` - generates CSV/HTML reports
 - **Status:** Keep as-is, add optional callbacks
 
-✅ **ResultsAggregator** - Comprehensive results analysis
+[+] **ResultsAggregator** - Comprehensive results analysis
 - `aggregate_results()` - creates summary DataFrame
 - `calculate_summary_stats()` - detailed statistics
 - `display_summary_stats()` - formatted console output
 - `export_to_csv()` / `export_to_html()` - proven exporters
 - **Status:** Reuse 100%, no changes
 
-✅ **BacktestEngine** - Core backtesting engine
+[+] **BacktestEngine** - Core backtesting engine
 - `run()` - executes backtests
 - `run_and_report()` - generates QuantStats reports
 - **Status:** Reuse 100%, no changes
 
-✅ **Logger** - Rich-based colored logging
+[+] **Logger** - Rich-based colored logging
 - **Status:** Reuse, add log capture wrapper
 
 ---
@@ -45,8 +45,8 @@ Build a lightweight GUI using **Flet** that wraps your **existing multithreaded 
 │                    FLET MAIN THREAD (UI)                    │
 │  ┌───────────────────────────────────────────────────────┐  │
 │  │ Execution View                                        │  │
-│  │  • Polls GUIBacktestController.get_updates()         │  │
-│  │  • Updates progress bars, logs, status               │  │
+│  │  * Polls GUIBacktestController.get_updates()         │  │
+│  │  * Updates progress bars, logs, status               │  │
 │  └────────────────────────┬──────────────────────────────┘  │
 └───────────────────────────┼─────────────────────────────────┘
                             │
@@ -55,11 +55,11 @@ Build a lightweight GUI using **Flet** that wraps your **existing multithreaded 
 ┌─────────────────────────────────────────────────────────────┐
 │       GUIBacktestController (NEW - Thin Wrapper)            │
 │  ┌───────────────────────────────────────────────────────┐  │
-│  │ • Creates progress/log queues for each symbol        │  │
-│  │ • Wraps SweepRunner with callbacks                   │  │
-│  │ • Runs SweepRunner in background thread              │  │
-│  │ • Provides get_updates() for UI                      │  │
-│  │ • Stores Portfolio objects for chart generation      │  │
+│  │ * Creates progress/log queues for each symbol        │  │
+│  │ * Wraps SweepRunner with callbacks                   │  │
+│  │ * Runs SweepRunner in background thread              │  │
+│  │ * Provides get_updates() for UI                      │  │
+│  │ * Stores Portfolio objects for chart generation      │  │
 │  └────────────────────────┬──────────────────────────────┘  │
 └───────────────────────────┼─────────────────────────────────┘
                             │
@@ -68,13 +68,13 @@ Build a lightweight GUI using **Flet** that wraps your **existing multithreaded 
 ┌─────────────────────────────────────────────────────────────┐
 │      SweepRunner (EXISTING - Minor Enhancements)            │
 │  ┌───────────────────────────────────────────────────────┐  │
-│  │ • ThreadPoolExecutor (1-16 workers)                  │  │
-│  │ • Calls optional callbacks:                          │  │
+│  │ * ThreadPoolExecutor (1-16 workers)                  │  │
+│  │ * Calls optional callbacks:                          │  │
 │  │   - on_symbol_start(symbol)                          │  │
 │  │   - on_symbol_progress(symbol, stage, progress)      │  │
 │  │   - on_symbol_complete(symbol, portfolio, stats)     │  │
 │  │   - on_symbol_error(symbol, exception)               │  │
-│  │ • If callbacks=None, behaves exactly as before       │  │
+│  │ * If callbacks=None, behaves exactly as before       │  │
 │  └────────────────────────┬──────────────────────────────┘  │
 └───────────────────────────┼─────────────────────────────────┘
                             │
@@ -87,18 +87,18 @@ Build a lightweight GUI using **Flet** that wraps your **existing multithreaded 
 │  │   with LogCapture(symbol, log_queue):                │  │
 │  │     portfolio = engine.run(...)                      │  │
 │  │                                                       │  │
-│  │ • Intercepts logger calls                            │  │
-│  │ • Routes to symbol-specific queue                    │  │
-│  │ • Restores logger after completion                   │  │
+│  │ * Intercepts logger calls                            │  │
+│  │ * Routes to symbol-specific queue                    │  │
+│  │ * Restores logger after completion                   │  │
 │  └───────────────────────────────────────────────────────┘  │
 └─────────────────────────────────────────────────────────────┘
                             │
                             ▼
 ┌─────────────────────────────────────────────────────────────┐
 │   ResultsAggregator (EXISTING - Reuse 100%)                │
-│  • aggregate_results()                                      │
-│  • calculate_summary_stats()                                │
-│  • export_to_csv() / export_to_html()                       │
+│  * aggregate_results()                                      │
+│  * calculate_summary_stats()                                │
+│  * export_to_csv() / export_to_html()                       │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -256,31 +256,31 @@ class SweepRunner:
 
 ## 6. Benefits of This Approach
 
-✅ **Reuses Battle-Tested Code**
+[+] **Reuses Battle-Tested Code**
 - SweepRunner already proven in production CLI
 - ResultsAggregator generates correct reports
 - No risk of introducing threading bugs
 
-✅ **Backward Compatible**
+[+] **Backward Compatible**
 - CLI completely unchanged
 - Optional callbacks (default=None)
 - Existing tests still pass
 
-✅ **46% Less Code**
+[+] **46% Less Code**
 - 1,300 lines vs 2,400 lines
 - Less code = less bugs = faster development
 
-✅ **Separation of Concerns**
+[+] **Separation of Concerns**
 - SweepRunner: Business logic (backtesting)
 - GUIBacktestController: GUI integration (queues, callbacks)
 - Flet views: Presentation (UI components)
 
-✅ **Easy to Test**
+[+] **Easy to Test**
 - SweepRunner testable independently
 - GUIBacktestController testable with mock callbacks
 - UI testable with mock controller
 
-✅ **Future-Proof**
+[+] **Future-Proof**
 - Improvements to SweepRunner benefit both CLI and GUI
 - Can add more callbacks later without breaking changes
 
@@ -288,12 +288,12 @@ class SweepRunner:
 
 ## 7. Performance Targets
 
-✅ **16 concurrent workers** - Maximum parallelism
-✅ **100ms UI updates** - Real-time feel
-✅ **50+ symbols** - Efficiently queue large universes
-✅ **< 1.5GB memory** - Peak with 16 workers
-✅ **Instant cancel** - Stop all workers < 500ms
-✅ **No UI freezing** - Main thread always responsive
+[+] **16 concurrent workers** - Maximum parallelism
+[+] **100ms UI updates** - Real-time feel
+[+] **50+ symbols** - Efficiently queue large universes
+[+] **< 1.5GB memory** - Peak with 16 workers
+[+] **Instant cancel** - Stop all workers < 500ms
+[+] **No UI freezing** - Main thread always responsive
 
 ### Expected Performance Benchmarks
 
@@ -378,22 +378,22 @@ Both use the same underlying engine!
 ## 11. Success Criteria
 
 ### Phase 1 Complete When:
-✅ SweepRunner enhanced with optional callbacks
-✅ CLI still works unchanged (existing tests pass)
-✅ GUIBacktestController created and functional
-✅ Unit tests pass (4 new tests)
-✅ Can run 10 symbol backtest with real-time queue updates
-✅ Documentation exported to `docs/`
+[+] SweepRunner enhanced with optional callbacks
+[+] CLI still works unchanged (existing tests pass)
+[+] GUIBacktestController created and functional
+[+] Unit tests pass (4 new tests)
+[+] Can run 10 symbol backtest with real-time queue updates
+[+] Documentation exported to `docs/`
 
 ### Full Project Complete When:
-✅ All 5 phases implemented
-✅ macOS .app builds and runs
-✅ Windows .exe builds and runs
-✅ Can backtest 100+ symbols with 16 workers
-✅ Real-time progress updates work smoothly
-✅ CSV/HTML export works
-✅ All unit and integration tests pass
-✅ User documentation complete
+[+] All 5 phases implemented
+[+] macOS .app builds and runs
+[+] Windows .exe builds and runs
+[+] Can backtest 100+ symbols with 16 workers
+[+] Real-time progress updates work smoothly
+[+] CSV/HTML export works
+[+] All unit and integration tests pass
+[+] User documentation complete
 
 ---
 

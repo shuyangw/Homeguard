@@ -97,8 +97,8 @@ Each symbol displays:
 **Status Icons:**
 - ⏳ Pending (grey) - Waiting to start
 - ⏱ Running (blue) - Currently executing
-- ✓ Completed (green) - Successfully finished
-- ✗ Failed (red) - Error occurred
+- [+] Completed (green) - Successfully finished
+- [-] Failed (red) - Error occurred
 
 **Actions:**
 - **Cancel**: Stop execution (cooperative cancellation)
@@ -150,7 +150,7 @@ Displays detailed metrics for each symbol:
 
 2. **Monitor Execution:**
    - Watch real-time progress for each symbol
-   - See status change: Pending → Running → Completed
+   - See status change: Pending -> Running -> Completed
    - Overall progress updates automatically
    - Wait for all symbols to complete (~30-60 seconds for 4 symbols)
 
@@ -197,7 +197,7 @@ pip install flet
 **Solution:**
 - Ensure dates are in format: `2024-01-01`
 - Start date must be before end date
-- Don't use slashes: ~~`01/01/2024`~~ ❌
+- Don't use slashes: ~~`01/01/2024`~~ [-]
 
 ### No Results to Display
 
@@ -263,14 +263,14 @@ trades = aapl_portfolio.trades.records_readable
 
 | Feature | GUI | CLI (backtest_runner.py) |
 |---------|-----|--------------------------|
-| **Ease of Use** | ⭐⭐⭐⭐⭐ Visual | ⭐⭐⭐ Command-line |
-| **Real-time Progress** | ✅ Live updates | ❌ Console logs only |
-| **Multi-Symbol Monitoring** | ✅ Individual cards | ❌ Sequential logs |
-| **Parameter Configuration** | ✅ Dynamic UI | ⚠️ Manual code editing |
-| **Results Visualization** | ✅ Color-coded table | ⚠️ Text output |
-| **Export** | ✅ CSV, HTML | ✅ CSV, HTML, QuantStats |
-| **Automation** | ❌ Manual only | ✅ Scriptable |
-| **Advanced Options** | ⚠️ Basic | ✅ Full control |
+| **Ease of Use** | [*][*][*][*][*] Visual | [*][*][*] Command-line |
+| **Real-time Progress** | [+] Live updates | [-] Console logs only |
+| **Multi-Symbol Monitoring** | [+] Individual cards | [-] Sequential logs |
+| **Parameter Configuration** | [+] Dynamic UI | [!]️ Manual code editing |
+| **Results Visualization** | [+] Color-coded table | [!]️ Text output |
+| **Export** | [+] CSV, HTML | [+] CSV, HTML, QuantStats |
+| **Automation** | [-] Manual only | [+] Scriptable |
+| **Advanced Options** | [!]️ Basic | [+] Full control |
 
 **Recommendation:**
 - **GUI**: Interactive testing, exploring strategies, quick analysis
@@ -316,4 +316,4 @@ For issues or questions:
 
 **Version:** Phase 2 Complete
 **Last Updated:** 2025-01-01
-**Status:** Production Ready ✅
+**Status:** Production Ready [+]

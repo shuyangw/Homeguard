@@ -41,14 +41,14 @@ The Discord bot provides read-only observability for the Homeguard trading syste
 ## Step 2: Configure Bot User
 
 1. Click **"Bot"** in left sidebar
-2. Click **"Add Bot"** → **"Yes, do it!"**
+2. Click **"Add Bot"** -> **"Yes, do it!"**
 3. Configure settings:
    - **Username**: `Homeguard Monitor`
    - **Public Bot**: OFF
    - **Require OAuth2 Code Grant**: OFF
 
 4. **Get Bot Token**:
-   - Click **"Reset Token"** → **"Yes, do it!"**
+   - Click **"Reset Token"** -> **"Yes, do it!"**
    - **COPY TOKEN IMMEDIATELY** (you won't see it again)
    - Save securely for later
 
@@ -71,7 +71,7 @@ Under **"Privileged Gateway Intents"**, enable:
 
 ## Step 4: Generate Invite URL
 
-1. Go to **OAuth2 → URL Generator**
+1. Go to **OAuth2 -> URL Generator**
 2. **Select Scopes**:
    - `bot`
    - `applications.commands`
@@ -98,14 +98,14 @@ Under **"Privileged Gateway Intents"**, enable:
 
 1. Open the invite URL in your browser
 2. Select your Discord server
-3. Review permissions → Click **"Authorize"**
+3. Review permissions -> Click **"Authorize"**
 4. Complete CAPTCHA if prompted
 
 ---
 
 ## Step 6: Get Channel ID
 
-1. In Discord: **User Settings → Advanced → Developer Mode: ON**
+1. In Discord: **User Settings -> Advanced -> Developer Mode: ON**
 2. Right-click your monitoring channel
 3. Click **"Copy Channel ID"**
 4. Save this ID for configuration
@@ -252,7 +252,7 @@ Try these commands:
 
 - Error message says "not available in this channel" = wrong channel
 - Check `ALLOWED_CHANNELS` in `.env`
-- Ensure channel ID is correct (right-click → Copy ID)
+- Ensure channel ID is correct (right-click -> Copy ID)
 
 ### Claude Errors
 
@@ -310,7 +310,7 @@ sudo journalctl -u homeguard-discord -f
 | Item | Value |
 |------|-------|
 | Command Type | Slash Commands (`/`) |
-| Bot Token Source | Discord Developer Portal → Bot → Reset Token |
+| Bot Token Source | Discord Developer Portal -> Bot -> Reset Token |
 | API Key Source | console.anthropic.com |
 | Permissions Integer | 377957124160 |
 | Service Name | homeguard-discord |

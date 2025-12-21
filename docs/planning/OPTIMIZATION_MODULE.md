@@ -76,10 +76,10 @@ src/gui/optimization/             # GUI optimization
 ```
 
 **Key Architectural Changes** (November 2025 Refactoring):
-- **Extracted** `GridSearchOptimizer` from `BacktestEngine` → `backtesting/optimization/grid_search.py`
-- **Moved** `SweepRunner` → `backtesting/optimization/sweep_runner.py`
-- **Moved** `OptimizationDialog` → `gui/optimization/dialog.py`
-- **Extracted** `OptimizationRunner` from `BacktestApp` → `gui/optimization/runner.py`
+- **Extracted** `GridSearchOptimizer` from `BacktestEngine` -> `backtesting/optimization/grid_search.py`
+- **Moved** `SweepRunner` -> `backtesting/optimization/sweep_runner.py`
+- **Moved** `OptimizationDialog` -> `gui/optimization/dialog.py`
+- **Extracted** `OptimizationRunner` from `BacktestApp` -> `gui/optimization/runner.py`
 - **Maintained** backward compatibility: `BacktestEngine.optimize()` still works
 
 ---
@@ -252,12 +252,12 @@ def optimize_parallel(
 6. Return best result + all tested combinations
 
 **Key Features**:
-- ✅ **Automatic fallback**: Uses sequential for small grids (< 10 combos)
-- ✅ **Progress tracking**: Real-time progress updates as tests complete
-- ✅ **Full results**: Returns all tested combinations for analysis
-- ✅ **Worker auto-detection**: Automatically uses optimal worker count
-- ✅ **Memory efficient**: Shares data across workers (loaded once)
-- ✅ **100% compatible**: Same results as sequential version
+- [+] **Automatic fallback**: Uses sequential for small grids (< 10 combos)
+- [+] **Progress tracking**: Real-time progress updates as tests complete
+- [+] **Full results**: Returns all tested combinations for analysis
+- [+] **Worker auto-detection**: Automatically uses optimal worker count
+- [+] **Memory efficient**: Shares data across workers (loaded once)
+- [+] **100% compatible**: Same results as sequential version
 
 **Performance**:
 - **Small grids (< 10 combos)**: Uses sequential (overhead not worth it)
@@ -301,11 +301,11 @@ print(all_results_df[['params', 'value']].sort_values('value', ascending=False))
 ```
 
 **When to Use**:
-- ✅ **Use parallel**: Grid size > 10 combinations
-- ✅ **Use parallel**: Walk-forward validation (many windows)
-- ✅ **Use parallel**: Complex strategies with slow execution
-- ❌ **Use sequential**: Grid size < 10 combinations
-- ❌ **Use sequential**: Very fast strategies (< 1 second per test)
+- [+] **Use parallel**: Grid size > 10 combinations
+- [+] **Use parallel**: Walk-forward validation (many windows)
+- [+] **Use parallel**: Complex strategies with slow execution
+- [-] **Use sequential**: Grid size < 10 combinations
+- [-] **Use sequential**: Very fast strategies (< 1 second per test)
 
 **Comparison with Sequential**:
 | Aspect | Sequential | Parallel (4 workers) |
@@ -415,7 +415,7 @@ Collects parameter grid from user input fields
 1. **Numeric Parameters (int/float)**:
    - User inputs: Min, Max, Step
    - Generation: `numpy.arange(min, max+step, step)`
-   - Example: min=5, max=15, step=5 → `[5, 10, 15]`
+   - Example: min=5, max=15, step=5 -> `[5, 10, 15]`
 
 2. **Boolean Parameters**:
    - User checkbox: Test both True/False
@@ -425,7 +425,7 @@ Collects parameter grid from user input fields
 3. **Value List Parameters (strings/custom)**:
    - User inputs: Comma-separated values
    - Parsing: Split by comma, strip whitespace
-   - Example: "sma, ema, wma" → `['sma', 'ema', 'wma']`
+   - Example: "sma, ema, wma" -> `['sma', 'ema', 'wma']`
 
 **Return Value**:
 ```python
@@ -448,8 +448,8 @@ for param_values in param_grid.values():
     total_combinations *= len(param_values)
 
 # Example:
-# fast_window: [5, 10, 15, 20] → 4 values
-# slow_window: [30, 40, 50] → 3 values
+# fast_window: [5, 10, 15, 20] -> 4 values
+# slow_window: [30, 40, 50] -> 3 values
 # Total: 4 × 3 = 12 combinations
 
 estimated_seconds = total_combinations * 2  # ~2 sec per backtest
@@ -464,20 +464,20 @@ estimated_minutes = estimated_seconds / 60
 **Usage Flow**:
 ```
 User opens OptimizationDialog
-  ↓
+  v
 User fills Min/Max/Step for each parameter
-  ↓
+  v
 User clicks "Estimate Combinations" button
-  ↓
+  v
 Dialog shows: "Total: 48 combinations (~1.6 minutes)"
-  ↓
+  v
 Dialog shows preview:
   1. fast_window=5, slow_window=30
   2. fast_window=5, slow_window=40
   ...
-  ↓
+  v
 User clicks "Start Optimization"
-  ↓
+  v
 Dialog returns param_grid to BacktestApp
 ```
 
@@ -672,7 +672,7 @@ aggregator.export_to_html(df, 'optimization_results.html')
 │  - User fills Min/Max/Step for each parameter               │
 │  - User selects optimization metric                         │
 │  - User clicks "Estimate Combinations"                      │
-│    → Shows: "Total: 48 combinations (~1.6 min)"            │
+│    -> Shows: "Total: 48 combinations (~1.6 min)"            │
 │  - User previews first 10 combinations                      │
 │  - User confirms: "Start Optimization"                      │
 └────────────────────────┬─────────────────────────────────────┘
@@ -712,9 +712,9 @@ aggregator.export_to_html(df, 'optimization_results.html')
 │  RESULTS DIALOG                                              │
 │  - Display: "Best Sharpe Ratio: 2.35"                       │
 │  - Display: "Best params: fast_window=15, slow_window=60"   │
-│  - Button: "Open CSV" → Opens in Excel/Sheets               │
-│  - Button: "Apply Best Params" → Auto-fills SetupView       │
-│  - Button: "Close" → Return to SetupView                    │
+│  - Button: "Open CSV" -> Opens in Excel/Sheets               │
+│  - Button: "Apply Best Params" -> Auto-fills SetupView       │
+│  - Button: "Close" -> Return to SetupView                    │
 └──────────────────────────────────────────────────────────────┘
 ```
 
@@ -748,10 +748,10 @@ param_grid = {
 - Above example: 6 × 5 × 4 × 2 × 2 × 3 × 3 = **4,320 combinations**
 
 **Parameter Type Inference**:
-- `int` values → Treated as integer parameters
-- `float` values → Treated as float parameters
-- `True/False` → Treated as boolean parameters
-- Strings → Treated as categorical parameters
+- `int` values -> Treated as integer parameters
+- `float` values -> Treated as float parameters
+- `True/False` -> Treated as boolean parameters
+- Strings -> Treated as categorical parameters
 
 ---
 
@@ -791,10 +791,10 @@ if current_value > best_value:  # e.g., -10% > -20%
 **Integration Point**: `optimize()` method (lines 408-500)
 
 **Calls**:
-- `DataLoader.load_data()` → Load historical data
-- `_run_single_symbol()` → Single-symbol backtest
-- `_run_multiple_symbols()` → Multi-symbol backtest
-- `portfolio.stats()` → Extract performance metrics
+- `DataLoader.load_data()` -> Load historical data
+- `_run_single_symbol()` -> Single-symbol backtest
+- `_run_multiple_symbols()` -> Multi-symbol backtest
+- `portfolio.stats()` -> Extract performance metrics
 
 **Data Dependencies**:
 - Requires data loaded into Parquet storage
@@ -815,7 +815,7 @@ if current_value > best_value:  # e.g., -10% > -20%
 
 **Communication Flow**:
 ```
-SetupView → OptimizationDialog → BacktestApp → ResultsDialog → SetupView
+SetupView -> OptimizationDialog -> BacktestApp -> ResultsDialog -> SetupView
 ```
 
 **Threading**:
@@ -1097,9 +1097,9 @@ System: Opens OptimizationDialog
 **Step 2: Specify Parameter Grid**
 ```
 User: Fills in parameter ranges
-  - fast_window: Min=5, Max=30, Step=5 → [5, 10, 15, 20, 25, 30]
-  - slow_window: Min=40, Max=80, Step=10 → [40, 50, 60, 70, 80]
-  - use_stops: Checked → [True, False]
+  - fast_window: Min=5, Max=30, Step=5 -> [5, 10, 15, 20, 25, 30]
+  - slow_window: Min=40, Max=80, Step=10 -> [40, 50, 60, 70, 80]
+  - use_stops: Checked -> [True, False]
 
 User: Selects metric = "Sharpe Ratio"
 ```

@@ -182,22 +182,22 @@ best_params, best_value = optimizer.optimize(
 
 ```
 YAML Config / CLI Args
-        ↓
+        v
    BacktestEngine
-        ↓
-   DataLoader → Parquet/DuckDB
-        ↓
+        v
+   DataLoader -> Parquet/DuckDB
+        v
    Strategy.generate_signals()
-        ↓
+        v
    PortfolioSimulator
-        ├─→ PositionSizer
-        ├─→ RiskManager
-        └─→ TradeLogger
-        ↓
+        ├─-> PositionSizer
+        ├─-> RiskManager
+        └─-> TradeLogger
+        v
    Portfolio (equity curve, trades, stats)
-        ↓
+        v
    TearsheetGenerator / ReportGenerator
-        ↓
+        v
    HTML/PDF Reports
 ```
 

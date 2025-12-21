@@ -94,13 +94,13 @@ Deploy trading bot to AWS EC2 with automated scheduling and monitoring.
 - Remote monitoring and management
 
 **Key Features**:
-- ✅ Automated start/stop scheduling (9 AM - 4:30 PM ET Mon-Fri)
-- ✅ Systemd service with auto-restart on failure
-- ✅ SSH management scripts for easy monitoring
-- ✅ ~$7/month cost (46% savings vs 24/7 operation)
+- [+] Automated start/stop scheduling (9 AM - 4:30 PM ET Mon-Fri)
+- [+] Systemd service with auto-restart on failure
+- [+] SSH management scripts for easy monitoring
+- [+] ~$7/month cost (46% savings vs 24/7 operation)
 
 **Setup Guides**:
-- **[Quick Start Deployment](docs/guides/QUICK_START_DEPLOYMENT.md)** - ⭐ Fast 5-minute cloud deployment
+- **[Quick Start Deployment](docs/guides/QUICK_START_DEPLOYMENT.md)** - [*] Fast 5-minute cloud deployment
 - **[Complete Deployment Guide](docs/guides/DEPLOYMENT_GUIDE.md)** - Comprehensive Windows/Mac/Linux setup
 - **[Infrastructure Overview](docs/INFRASTRUCTURE_OVERVIEW.md)** - Complete AWS architecture and cost breakdown
 

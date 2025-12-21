@@ -14,7 +14,7 @@ Both OMR and RAMP strategies have been migrated to use the new `LiveDataProvider
 
 ## What Gets Streamed vs. What Gets Polled
 
-### ✅ STREAMING (Real-Time via WebSocket)
+### [+] STREAMING (Real-Time via WebSocket)
 
 These data requests now hit the in-memory buffer instead of making API calls:
 
@@ -25,9 +25,9 @@ These data requests now hit the in-memory buffer instead of making API calls:
 | **Both** | Latest quotes (bid/ask) | On-demand | 1 API call per request | Instant from QuoteBuffer |
 | **Both** | Latest trades (price) | On-demand | 1 API call per request | Instant from TradeBuffer |
 
-**Total improvement**: ~160 seconds → ~1 second at execution time (160x faster)
+**Total improvement**: ~160 seconds -> ~1 second at execution time (160x faster)
 
-### ⚠️ STILL POLLING (Historical via REST API)
+### [!]️ STILL POLLING (Historical via REST API)
 
 These data requests still use broker API calls because they require historical data not available in streaming buffers:
 
@@ -68,10 +68,10 @@ These data requests still use broker API calls because they require historical d
           ▼                               ▼
 ┌─────────────────────┐          ┌─────────────────────┐
 │ Today's Data        │          │ Historical Data     │
-│ • Intraday bars     │          │ • 400 days SPY      │
-│ • Latest quotes     │          │ • 400 days VIX      │
-│ • Latest trades     │          │ • 400 days universe │
-│ • VWAP, spread      │          │ • For model training│
+│ * Intraday bars     │          │ * 400 days SPY      │
+│ * Latest quotes     │          │ * 400 days VIX      │
+│ * Latest trades     │          │ * 400 days universe │
+│ * VWAP, spread      │          │ * For model training│
 └─────────┬───────────┘          └─────────┬───────────┘
           │                               │
           │                               │
@@ -94,7 +94,7 @@ These data requests still use broker API calls because they require historical d
 ```python
 # omr_live_adapter.py:366-381 (old)
 for symbol in self.symbols:
-    df = self.broker.get_historical_bars(  # ❌ API call (500ms)
+    df = self.broker.get_historical_bars(  # [-] API call (500ms)
         symbol=symbol,
         start=market_open_today,
         end=end_date,
@@ -110,7 +110,7 @@ if self._data_provider is not None and hasattr(self._data_provider, 'get_bars'):
     logger.info("[OMR] Fetching intraday data from LiveDataProvider (streaming)...")
 
     for symbol in self.symbols:
-        bars_df = self._data_provider.get_bars(symbol, n=390)  # ✅ Memory access (<10ms)
+        bars_df = self._data_provider.get_bars(symbol, n=390)  # [+] Memory access (<10ms)
 
         if bars_df is not None and not bars_df.empty:
             market_data[symbol] = bars_df
@@ -122,7 +122,7 @@ if self._data_provider is not None and hasattr(self._data_provider, 'get_bars'):
 ```python
 # ramp_live_adapter.py:478-493 (old)
 for symbol in self.symbols:  # 500 symbols
-    df = self.broker.get_historical_bars(  # ❌ API call (300ms)
+    df = self.broker.get_historical_bars(  # [-] API call (300ms)
         symbol=symbol,
         start=today_start,
         end=today_end,
@@ -138,7 +138,7 @@ if self._data_provider is not None and hasattr(self._data_provider, 'get_bars'):
     logger.info("[RAMP] Using LiveDataProvider streaming buffer...")
 
     for symbol in self.symbols:
-        latest_bar = self._data_provider.get_bars(symbol, n=1)  # ✅ Memory access (<1ms)
+        latest_bar = self._data_provider.get_bars(symbol, n=1)  # [+] Memory access (<1ms)
 
         if latest_bar is not None and not latest_bar.empty:
             todays_prices[symbol] = latest_bar['close'].iloc[-1]
@@ -195,12 +195,12 @@ def main():
     # 5. Create strategy adapters with shared provider
     omr = OMRLiveAdapter(
         broker=broker,
-        data_provider=provider  # ✅ Pass streaming provider
+        data_provider=provider  # [+] Pass streaming provider
     )
 
     ramp = RAMPLiveAdapter(
         broker=broker,
-        data_provider=provider  # ✅ Pass streaming provider
+        data_provider=provider  # [+] Pass streaming provider
     )
 
     # 6. Preload historical data at startup (STILL POLLS via broker)
@@ -243,16 +243,16 @@ if __name__ == "__main__":
 ```
 9:25 AM - Bot starts
 9:30 AM - Market opens
-9:30 AM - Preload historical data (2-3 min) ✅ Still happens
+9:30 AM - Preload historical data (2-3 min) [+] Still happens
 ...
 3:50 PM - OMR execution begins
-3:50 PM - Fetch 15 symbols × 390 bars via API = 7.5s ❌ Now instant
+3:50 PM - Fetch 15 symbols × 390 bars via API = 7.5s [-] Now instant
 3:50 PM - Generate signals (0.5s)
 3:50 PM - Execute orders (1s)
 3:50 PM - OMR done (9s total)
 ...
 3:55 PM - RAMP execution begins
-3:55 PM - Fetch 500 symbols × 1 bar via API = 150s ❌ Now instant
+3:55 PM - Fetch 500 symbols × 1 bar via API = 150s [-] Now instant
 3:57:30 PM - Generate signals (1s)
 3:57:31 PM - Execute orders (2s)
 3:57:33 PM - RAMP done (158s total)
@@ -266,16 +266,16 @@ if __name__ == "__main__":
 9:25 AM - Bot starts
 9:25 AM - Start WebSocket, subscribe to 515 symbols (instant)
 9:30 AM - Market opens, WebSocket starts receiving data
-9:30 AM - Preload historical data (2-3 min) ✅ Still happens
+9:30 AM - Preload historical data (2-3 min) [+] Still happens
 ...
 3:50 PM - OMR execution begins
-3:50 PM - Read 15 symbols from BarBuffer = 0.15s ✅ 50x faster
+3:50 PM - Read 15 symbols from BarBuffer = 0.15s [+] 50x faster
 3:50 PM - Generate signals (0.5s)
 3:50 PM - Execute orders (1s)
 3:50 PM - OMR done (1.65s total)
 ...
 3:55 PM - RAMP execution begins
-3:55 PM - Read 500 symbols from BarBuffer = 0.5s ✅ 300x faster
+3:55 PM - Read 500 symbols from BarBuffer = 0.5s [+] 300x faster
 3:55 PM - Generate signals (1s)
 3:55 PM - Execute orders (2s)
 3:55 PM - RAMP done (3.5s total)
@@ -283,7 +283,7 @@ if __name__ == "__main__":
 
 **Total execution time**: 1.65s (OMR) + 3.5s (RAMP) = **5.15 seconds**
 
-**Improvement**: 167s → 5.15s = **32x faster**
+**Improvement**: 167s -> 5.15s = **32x faster**
 
 ---
 
@@ -335,18 +335,18 @@ This is fine because:
 ## Summary
 
 ### What Changed
-- ✅ OMR intraday data → Streaming
-- ✅ RAMP today's closes → Streaming
-- ✅ Both adapters support LiveDataProvider
-- ✅ Backward compatible with polling
+- [+] OMR intraday data -> Streaming
+- [+] RAMP today's closes -> Streaming
+- [+] Both adapters support LiveDataProvider
+- [+] Backward compatible with polling
 
 ### What Didn't Change
-- ⚠️ Historical data (400 days) → Still polling (one-time at startup)
-- ⚠️ VIX data → Still polling (not on Alpaca)
-- ⚠️ SPY historical → Still polling (for training)
+- [!]️ Historical data (400 days) -> Still polling (one-time at startup)
+- [!]️ VIX data -> Still polling (not on Alpaca)
+- [!]️ SPY historical -> Still polling (for training)
 
 ### Net Result
-- **32x faster** at execution time (167s → 5s)
+- **32x faster** at execution time (167s -> 5s)
 - **1 WebSocket** serves all strategies
 - **Zero code changes** required in strategy logic
 - **Zero breaking changes** to existing deployments
