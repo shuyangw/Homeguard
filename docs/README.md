@@ -6,19 +6,19 @@ This documentation is organized by topic for easy navigation. Select the categor
 
 ---
 
-## 📐 Architecture (Understanding the System)
+## Architecture (Understanding the System)
 
 **Start here to understand how Homeguard is built and how components interact.**
 
-- [**Architecture Overview**](architecture/ARCHITECTURE_OVERVIEW.md) - ✅ High-level system design and 5-layer architecture
-- [**Module Reference**](architecture/MODULE_REFERENCE.md) - ✅ Detailed module-by-module reference (60+ modules)
-- [**Data Flow**](architecture/DATA_FLOW.md) - ✅ Data flow diagrams and execution paths
+- [**Architecture Overview**](architecture/ARCHITECTURE_OVERVIEW.md) - [+] High-level system design and 5-layer architecture
+- [**Module Reference**](architecture/MODULE_REFERENCE.md) - [+] Detailed module-by-module reference (60+ modules)
+- [**Data Flow**](architecture/DATA_FLOW.md) - [+] Data flow diagrams and execution paths
 
 **When to read**: Before modifying core engine code or adding new features
 
 ---
 
-## 📚 User Guides (How to Use Homeguard)
+## User Guides (How to Use Homeguard)
 
 **Practical guides for using the backtesting framework.**
 
@@ -34,8 +34,8 @@ This documentation is organized by topic for easy navigation. Select the categor
 - [**Caching Guide**](guides/CACHING_GUIDE.md) - Performance optimization
 - [**Make Commands**](guides/MAKE_COMMANDS.md) - Makefile usage reference
 
-### Regime Analysis & Advanced Validation ✅ NEW
-- [**Regime Analysis User Guide**](guides/REGIME_ANALYSIS_USER_GUIDE.md) - ⭐ **Master guide** for GUI, code, and CLI usage
+### Regime Analysis & Advanced Validation [+] NEW
+- [**Regime Analysis User Guide**](guides/REGIME_ANALYSIS_USER_GUIDE.md) - [*] **Master guide** for GUI, code, and CLI usage
 - [**Regime-Based Testing Architecture**](architecture/REGIME_BASED_TESTING.md) - Technical design and algorithms
 - [**CLI Scripts Guide**](../backtest_scripts/README_REGIME_TESTING.md) - Advanced validation tools
 - [**Implementation Summary**](progress/OPTIMIZATION_AND_REGIME_DETECTION_SUMMARY.md) - Complete feature overview
@@ -47,7 +47,7 @@ This documentation is organized by topic for easy navigation. Select the categor
 
 ---
 
-## 🔌 API Reference (Technical Documentation)
+## API Reference (Technical Documentation)
 
 **Detailed API documentation for developers.**
 
@@ -60,28 +60,28 @@ This documentation is organized by topic for easy navigation. Select the categor
 
 ---
 
-## ✅ Testing & Validation (Quality Assurance)
+## [+] Testing & Validation (Quality Assurance)
 
 **Comprehensive testing documentation - our accuracy test suite validates engine correctness.**
 
 ### Quick Start
-- [**Test Suite Quick Start**](testing/TEST_SUITE_QUICK_START.md) - ⭐ **START HERE** - Run 50 tests in 5 seconds
+- [**Test Suite Quick Start**](testing/TEST_SUITE_QUICK_START.md) - [*] **START HERE** - Run 50 tests in 5 seconds
 
 ### Test Plans & Results
 - [**Backtest Accuracy Test Plan**](testing/BACKTEST_ACCURACY_TEST_PLAN.md) - Master test plan (reference)
-- [**Backtest Accuracy Tests Complete**](testing/BACKTEST_ACCURACY_TESTS_COMPLETE.md) - ✅ Final results (50/50 tests passing)
+- [**Backtest Accuracy Tests Complete**](testing/BACKTEST_ACCURACY_TESTS_COMPLETE.md) - [+] Final results (50/50 tests passing)
 
 ### Deep Dives
 - [**Lookahead Bias Analysis**](testing/LOOKAHEAD_BIAS_ANALYSIS.md) - Preventing future data leakage
 - [**Synthetic Data Validation**](testing/SYNTHETIC_DATA_VALIDATION_COMPLETE.md) - Mathematical proof of engine correctness
 
-**Status**: ✅ **All 50 tests passing** (100% pass rate)
+**Status**: [+] **All 50 tests passing** (100% pass rate)
 
 **When to read**: Before committing engine changes, when validating accuracy
 
 ---
 
-## 📊 QuantStats Integration
+## QuantStats Integration
 
 **Professional performance reporting with 50+ metrics.**
 
@@ -93,7 +93,41 @@ This documentation is organized by topic for easy navigation. Select the categor
 
 ---
 
-## 🚀 Deployment & Infrastructure
+## Strategies Documentation
+
+**Comprehensive documentation for all trading strategies.**
+
+### Production Strategies (Deployed on EC2)
+- [**RAMP Strategy**](strategies/production/RAMP_STRATEGY.md) - Regime-aware momentum protection (S&P 500)
+- [**OMR Strategy**](strategies/production/OMR_STRATEGY.md) - Overnight mean reversion (leveraged ETFs)
+
+### Research Strategies (Advanced)
+- [**Hurst Mean Reversion**](strategies/research/HURST_MR_STRATEGY.md) - Hurst exponent-based mean reversion for crypto
+- [**ML Crypto Mean Reversion**](strategies/research/ML_CRYPTO_MR_STRATEGY.md) - Machine learning enhanced crypto mean reversion
+
+### Research Strategies (Legacy)
+
+| Strategy | Documentation | Description |
+|----------|---------------|-------------|
+| Moving Average Crossover | [MOVING_AVERAGE_CROSSOVER.md](strategies/research/MOVING_AVERAGE_CROSSOVER.md) | Fast/slow MA crossover signals |
+| Triple Moving Average | [TRIPLE_MOVING_AVERAGE.md](strategies/research/TRIPLE_MOVING_AVERAGE.md) | Three MA trend alignment |
+| Mean Reversion (BB) | [MEAN_REVERSION_BOLLINGER.md](strategies/research/MEAN_REVERSION_BOLLINGER.md) | Bollinger Band mean reversion |
+| RSI Mean Reversion | [RSI_MEAN_REVERSION.md](strategies/research/RSI_MEAN_REVERSION.md) | RSI oversold/overbought signals |
+| Mean Reversion L/S | [MEAN_REVERSION_LONG_SHORT.md](strategies/research/MEAN_REVERSION_LONG_SHORT.md) | Long/short flip-flop strategy |
+| MACD Momentum | [MACD_MOMENTUM.md](strategies/research/MACD_MOMENTUM.md) | MACD line crossover signals |
+| Breakout | [BREAKOUT.md](strategies/research/BREAKOUT.md) | N-period high breakout |
+| Volatility Targeted | [VOLATILITY_TARGETED_MOMENTUM.md](strategies/research/VOLATILITY_TARGETED_MOMENTUM.md) | Vol-scaled momentum |
+| Cross-Sectional Momentum | [CROSS_SECTIONAL_MOMENTUM.md](strategies/research/CROSS_SECTIONAL_MOMENTUM.md) | Relative strength ranking |
+| Pairs Trading | [PAIRS_TRADING.md](strategies/research/PAIRS_TRADING.md) | Cointegration-based pairs |
+| Volume Breakout | [VOLUME_BREAKOUT.md](strategies/research/VOLUME_BREAKOUT.md) | Volume spike confirmation |
+| ATR Squeeze Breakout | [ATR_SQUEEZE_BREAKOUT.md](strategies/research/ATR_SQUEEZE_BREAKOUT.md) | Volatility contraction breakout |
+| 52-Week High Breakout | [52_WEEK_HIGH_BREAKOUT.md](strategies/research/52_WEEK_HIGH_BREAKOUT.md) | Near 52-week high selection |
+
+**When to read**: When understanding strategy logic, parameters, or implementing new strategies
+
+---
+
+## [*] Deployment & Infrastructure
 
 **Production deployment on AWS EC2 with automated scheduling and monitoring.**
 
@@ -115,13 +149,13 @@ This documentation is organized by topic for easy navigation. Select the categor
 - [**Alpaca Paper Trading Guide**](guides/ALPACA_PAPER_TRADING_GUIDE.md) - Alpaca-specific setup and monitoring
 
 **Key Features**:
-- ✅ EC2 instance with Python 3.11 (Amazon Linux 2023, t4g.small ARM64)
-- ✅ Lambda-powered auto-start (9:00 AM ET) and auto-stop (4:30 PM ET) Monday-Friday
-- ✅ Systemd service with auto-restart on failure
-- ✅ SSH management scripts for status checks, logs, and restarts
-- ✅ Automated 6-point health monitoring
-- ✅ Infrastructure as code (Terraform)
-- ✅ ~$7/month cost (46% savings vs 24/7 operation)
+- [+] EC2 instance with Python 3.11 (Amazon Linux 2023, t4g.small ARM64)
+- [+] Lambda-powered auto-start (9:00 AM ET) and auto-stop (4:30 PM ET) Monday-Friday
+- [+] Systemd service with auto-restart on failure
+- [+] SSH management scripts for status checks, logs, and restarts
+- [+] Automated 6-point health monitoring
+- [+] Infrastructure as code (Terraform)
+- [+] ~$7/month cost (46% savings vs 24/7 operation)
 
 **Current Deployment**:
 - **Instance IP**: See `.env` file (`EC2_IP` variable)
@@ -133,7 +167,7 @@ This documentation is organized by topic for easy navigation. Select the categor
 
 ---
 
-## 📝 Progress Tracking (Historical Record)
+## Progress Tracking (Historical Record)
 
 **Historical progress documentation - tracks features, fixes, and improvements over time.**
 
@@ -147,7 +181,7 @@ Location: [`progress/`](progress/)
 
 ---
 
-## 📋 Planning Documents
+## Planning Documents
 
 **Implementation plans and roadmaps.**
 
@@ -161,7 +195,7 @@ Location: [`planning/`](planning/)
 
 ---
 
-## 📦 Archived Documentation
+## Archived Documentation
 
 **Historical documentation preserved for reference.**
 
@@ -178,31 +212,33 @@ Location: [`archive/`](archive/)
 
 ### I want to...
 
-**Run my first backtest** → [Backtesting Guide](guides/BACKTESTING_GUIDE.md)
+**Run my first backtest** -> [Backtesting Guide](guides/BACKTESTING_GUIDE.md)
 
-**Deploy to AWS cloud** → [Quick Start Deployment](guides/QUICK_START_DEPLOYMENT.md) ⭐ **NEW**
+**Deploy to AWS cloud** -> [Quick Start Deployment](guides/QUICK_START_DEPLOYMENT.md) [*] **NEW**
 
-**Monitor production bot** → [Health Check Cheatsheet](HEALTH_CHECK_CHEATSHEET.md) ⭐ **NEW**
+**Monitor production bot** -> [Health Check Cheatsheet](HEALTH_CHECK_CHEATSHEET.md) [*] **NEW**
 
-**Create a custom strategy** → [Advanced Strategies Guide](guides/ADVANCED_STRATEGIES_GUIDE.md)
+**Create a custom strategy** -> [Advanced Strategies Guide](guides/ADVANCED_STRATEGIES_GUIDE.md)
 
-**Validate strategy robustness** → [Regime Analysis User Guide](guides/REGIME_ANALYSIS_USER_GUIDE.md)
+**Understand existing strategies** -> [Strategies Documentation](#strategies-documentation)
 
-**Prevent overfitting** → [Regime-Based Testing Architecture](architecture/REGIME_BASED_TESTING.md) ⭐ **NEW**
+**Validate strategy robustness** -> [Regime Analysis User Guide](guides/REGIME_ANALYSIS_USER_GUIDE.md)
 
-**Understand the architecture** → [Architecture Overview](architecture/ARCHITECTURE_OVERVIEW.md)
+**Prevent overfitting** -> [Regime-Based Testing Architecture](architecture/REGIME_BASED_TESTING.md) [*] **NEW**
 
-**Run the test suite** → [Test Suite Quick Start](testing/TEST_SUITE_QUICK_START.md)
+**Understand the architecture** -> [Architecture Overview](architecture/ARCHITECTURE_OVERVIEW.md)
 
-**Configure risk management** → [Risk Management Guide](guides/RISK_MANAGEMENT_GUIDE.md)
+**Run the test suite** -> [Test Suite Quick Start](testing/TEST_SUITE_QUICK_START.md)
 
-**Fetch market data** → [Data Ingestion Pipeline](guides/DATA_INGESTION_PIPELINE.md)
+**Configure risk management** -> [Risk Management Guide](guides/RISK_MANAGEMENT_GUIDE.md)
 
-**Generate tearsheets** → [QuantStats README](quantstats/README.md)
+**Fetch market data** -> [Data Ingestion Pipeline](guides/DATA_INGESTION_PIPELINE.md)
 
-**Use the API programmatically** → [API Reference](api/API_REFERENCE.md)
+**Generate tearsheets** -> [QuantStats README](quantstats/README.md)
 
-**Understand test results** → [Backtest Accuracy Tests Complete](testing/BACKTEST_ACCURACY_TESTS_COMPLETE.md)
+**Use the API programmatically** -> [API Reference](api/API_REFERENCE.md)
+
+**Understand test results** -> [Backtest Accuracy Tests Complete](testing/BACKTEST_ACCURACY_TESTS_COMPLETE.md)
 
 ---
 
@@ -229,17 +265,17 @@ When adding new documentation:
 
 ## Getting Help
 
-**Questions about usage?** → Read [Backtesting Guide](guides/BACKTESTING_GUIDE.md)
+**Questions about usage?** -> Read [Backtesting Guide](guides/BACKTESTING_GUIDE.md)
 
-**Questions about code?** → Read [Architecture Overview](architecture/ARCHITECTURE_OVERVIEW.md)
+**Questions about code?** -> Read [Architecture Overview](architecture/ARCHITECTURE_OVERVIEW.md)
 
-**Found a bug?** → Run [Test Suite](testing/TEST_SUITE_QUICK_START.md) to validate
+**Found a bug?** -> Run [Test Suite](testing/TEST_SUITE_QUICK_START.md) to validate
 
-**Want to contribute?** → Read [CONTRIBUTING.md](../CONTRIBUTING.md) and coding standards in [CLAUDE.md](../CLAUDE.md)
+**Want to contribute?** -> Read [CONTRIBUTING.md](../CONTRIBUTING.md) and coding standards in [CLAUDE.md](../CLAUDE.md)
 
-**Troubleshoot an issue** → [Troubleshooting Guide](guides/TROUBLESHOOTING.md)
+**Troubleshoot an issue** -> [Troubleshooting Guide](guides/TROUBLESHOOTING.md)
 
-**View changelog** → [CHANGELOG.md](../CHANGELOG.md)
+**View changelog** -> [CHANGELOG.md](../CHANGELOG.md)
 
 ---
 
@@ -247,77 +283,88 @@ When adding new documentation:
 
 | Category | Files | Status | Completeness |
 |----------|-------|--------|--------------|
-| Architecture | 3/3 | ✅ Complete | 100% (All 3 docs) |
-| User Guides | 8 | ✅ Complete | 100% |
-| API Reference | 4 | ✅ Complete | 100% |
-| Testing | 5 | ✅ Complete | 100% |
-| QuantStats | 3 | ✅ Complete | 100% |
-| Deployment & Infrastructure | 9 | ✅ Complete | 100% |
-| Planning | 8 | ✅ Complete | 100% |
-| Progress | 10+ | ✅ Complete | 100% (current year) |
-| Archive | 50+ | ✅ Complete | 100% (historical) |
+| Architecture | 3 | [+] Complete | 100% |
+| User Guides | 8 | [+] Complete | 100% |
+| Strategies | 17 | [+] Complete | 100% (2 prod + 15 research) |
+| API Reference | 4 | [+] Complete | 100% |
+| Testing | 5 | [+] Complete | 100% |
+| QuantStats | 3 | [+] Complete | 100% |
+| Deployment & Infrastructure | 9 | [+] Complete | 100% |
+| Planning | 8 | [+] Complete | 100% |
+| Progress | 10+ | [+] Complete | 100% (current year) |
+| Archive | 50+ | [+] Complete | 100% (historical) |
 
-**Overall Status**: 🟢 **Excellent** (31+ comprehensive docs, fully organized)
+**Overall Status**: [+] **Excellent** (35+ comprehensive docs, fully organized)
 
 ---
 
 ## Recent Updates
 
+**2025-12-21** (Documentation Refactoring):
+- [+] Removed all emojis from 262+ markdown files (~6,600 replacements)
+- [+] Renamed module READMEs to descriptive names (DATA_ENGINE.md, GUI.md, etc.)
+- [+] Created 17 strategy documentation files (2 production, 15 research)
+- [+] Added web backend documentation (BACKEND.md)
+- [+] Created emoji cleanup script (scripts/cleanup_emojis.py)
+- [+] Updated CLAUDE.md with no-emoji documentation rule
+- [+] Redesigned repo README.md as concise entry point
+- [+] Added Strategies Documentation section to docs hub
+
 **2025-12-06** (Documentation Cleanup):
-- ✅ Sanitized hardcoded IPs/instance IDs from docs (use `.env` placeholders)
-- ✅ Consolidated `docs/plans/` and `docs/todos/` into `docs/planning/`
-- ✅ Archived legacy reports and 2024 progress files
-- ✅ Added CONTRIBUTING.md, CHANGELOG.md, TROUBLESHOOTING.md
-- ✅ Updated navigation hub with new structure
+- [+] Sanitized hardcoded IPs/instance IDs from docs (use `.env` placeholders)
+- [+] Consolidated `docs/plans/` and `docs/todos/` into `docs/planning/`
+- [+] Archived legacy reports and 2024 progress files
+- [+] Added CONTRIBUTING.md, CHANGELOG.md, TROUBLESHOOTING.md
+- [+] Updated navigation hub with new structure
 
 **2025-11-15** (AWS Deployment & Infrastructure):
-- ✅ **Complete AWS EC2 production deployment**
+- [+] **Complete AWS EC2 production deployment**
   - EC2 instance with t4g.small ARM64 (Python 3.11)
   - Lambda-powered automated scheduling (9 AM start, 4:30 PM stop ET Mon-Fri)
   - Systemd service with auto-restart capabilities
   - ~$7/month total cost (46% savings vs 24/7)
-- ✅ Created 10 SSH management scripts for easy monitoring (scripts/ec2/)
-- ✅ Automated 6-point health check system
-- ✅ Complete infrastructure documentation (8 comprehensive docs)
-- ✅ Terraform infrastructure as code configuration
-- ✅ Added "🚀 Deployment & Infrastructure" section to docs hub
+- [+] Created 10 SSH management scripts for easy monitoring (scripts/ec2/)
+- [+] Automated 6-point health check system
+- [+] Complete infrastructure documentation (8 comprehensive docs)
+- [+] Terraform infrastructure as code configuration
+- [+] Added "[*] Deployment & Infrastructure" section to docs hub
 
 **2025-11-06** (Regime Analysis):
-- ✅ **All 4 Levels of Regime-Based Testing Complete**
+- [+] **All 4 Levels of Regime-Based Testing Complete**
   - Level 1: Transparent integration (BacktestEngine parameter)
   - Level 2: GUI integration (checkbox toggle)
   - Level 3: Advanced CLI tools (walk-forward validation)
   - Level 4: Enhanced GUI display & file export
-- ✅ Created 10+ comprehensive documentation files
-- ✅ Updated main README.md with regime analysis section
-- ✅ Updated docs/README.md navigation hub
-- ✅ Updated REGIME_BASED_TESTING.md architecture doc to v2.0
+- [+] Created 10+ comprehensive documentation files
+- [+] Updated main README.md with regime analysis section
+- [+] Updated docs/README.md navigation hub
+- [+] Updated REGIME_BASED_TESTING.md architecture doc to v2.0
 
 **2025-11-05**:
-- ✅ Deleted 5 outdated/superseded docs
-- ✅ Reorganized into topic folders (architecture/, guides/, api/, testing/)
-- ✅ Created Architecture Overview
-- ✅ Created this navigation hub (README.md)
-- ✅ Updated CLAUDE.md with architecture update requirement
+- [+] Deleted 5 outdated/superseded docs
+- [+] Reorganized into topic folders (architecture/, guides/, api/, testing/)
+- [+] Created Architecture Overview
+- [+] Created this navigation hub (README.md)
+- [+] Updated CLAUDE.md with architecture update requirement
 
 **2025-11-05** (Testing):
-- ✅ Completed Priority 3 tests (Survivorship Bias, Corporate Actions)
-- ✅ Added 2 synthetic validation tests (Alternating Wins/Losses, Extreme Volatility)
-- ✅ Fixed pandas FutureWarning
-- ✅ **All 50 tests passing** in 3.10 seconds
+- [+] Completed Priority 3 tests (Survivorship Bias, Corporate Actions)
+- [+] Added 2 synthetic validation tests (Alternating Wins/Losses, Extreme Volatility)
+- [+] Fixed pandas FutureWarning
+- [+] **All 50 tests passing** in 3.10 seconds
 
 **2025-11-04** (Testing):
-- ✅ Completed Priority 2 tests (Cash Constraints, Data Integrity)
-- ✅ Fixed duplicate timestamp bug
-- ✅ 38/38 tests passing
+- [+] Completed Priority 2 tests (Cash Constraints, Data Integrity)
+- [+] Fixed duplicate timestamp bug
+- [+] 38/38 tests passing
 
 **2025-11-03**:
-- ✅ Parallel chart generation
-- ✅ Portfolio mode GUI improvements
-- ✅ Benchmark comparison feature
+- [+] Parallel chart generation
+- [+] Portfolio mode GUI improvements
+- [+] Benchmark comparison feature
 
 ---
 
-**Last Updated**: 2025-12-06
+**Last Updated**: 2025-12-21
 **Maintained By**: Keep this index updated when adding/removing documentation
 **Review Frequency**: Monthly or after major changes
