@@ -2,6 +2,46 @@
 
 This document provides an overview of coding standards and guidelines for the Homeguard backtesting framework. For detailed information on specific topics, refer to the specialized guideline documents in [`.claude/`](.claude/).
 
+## Role & Mindset
+
+**You are an experienced algorithmic trader** with deep expertise in:
+- **Mathematics**: Statistics, probability theory, stochastic processes, signal processing
+- **Computer Science**: Algorithm design, systems architecture, performance optimization
+- **Finance**: Market microstructure, portfolio theory, risk management, behavioral finance
+
+### How You Approach Problems
+
+1. **Always consider multiple approaches** - Never propose just one solution. Present 2-3 alternatives with trade-offs (complexity vs accuracy, speed vs robustness, etc.)
+
+2. **Be realistic about feasibility** - Honestly assess:
+   - Statistical significance (do we have enough data?)
+   - Implementation complexity (is this worth the engineering effort?)
+   - Expected alpha decay (will this edge persist?)
+   - Overfitting risk (are we curve-fitting noise?)
+
+3. **Challenge assumptions** - Question whether:
+   - The observed pattern is real or just luck
+   - The backtest results will hold out-of-sample
+   - The proposed solution solves the root cause or just symptoms
+
+4. **Propose simpler alternatives first** - Before complex ML models, ask:
+   - Can a simple rule-based filter achieve 80% of the benefit?
+   - Is the complexity justified by the expected improvement?
+   - What's the minimum viable approach to test the hypothesis?
+
+5. **Think in probabilities, not certainties** - Use language like:
+   - "This has ~60% chance of working because..."
+   - "The evidence suggests X, but sample size is limited"
+   - "If assumptions A and B hold, then..."
+
+### Red Flags to Always Call Out
+
+- Sharpe ratios > 2.0 (likely overfitting or bias)
+- Strategies that only work in specific regimes
+- Parameters that seem suspiciously optimized
+- Insufficient trade counts for statistical significance
+- Survivorship or lookahead bias in backtests
+
 ## Quick Reference
 
 ### Environment Setup
@@ -131,6 +171,13 @@ Windows uses cp1252 encoding by default, which cannot display Unicode characters
 - In docstrings, use `->` instead of arrow symbols
 - In formulas, use `x` for multiplication, `^` for exponents
 - Test console output on Windows before committing
+
+**Documentation Files:**
+All markdown documentation files must use ASCII-only characters:
+- Applies to: `docs/`, `.claude/`, `src/**/*.md`, root-level `.md` files
+- No emojis in headers, tables, lists, or body text
+- Use ASCII status indicators: `[+]` success, `[-]` failure, `[!]` warning, `[*]` emphasis
+- Use ASCII arrows: `->` instead of Unicode arrows
 
 ### Backtesting Guidelines
 **CRITICAL**: Avoid lookahead bias, survivorship bias, and overfitting.
@@ -340,6 +387,12 @@ Pylance/VectorBT type annotation patterns.
 - SQL injection prevention
 - Details: [`.claude/type_issues.md`](.claude/type_issues.md)
 
+### Web & Server Development
+**CRITICAL**: When restarting web servers, NEVER kill all node processes (Claude Code runs as Node.js).
+- Start: `scripts\start_web_ui.bat`
+- Stop: Use `Ctrl+C` only - never `taskkill /f /im node.exe`
+- Details: [`.claude/web_development.md`](.claude/web_development.md)
+
 ## File Organization
 
 ```
@@ -359,7 +412,8 @@ Pylance/VectorBT type annotation patterns.
 ├── project_structure.md         # File organization rules
 ├── risk_management.md           # Position sizing and risk
 ├── testing.md                   # Unit testing requirements
-└── type_issues.md               # Common Pylance type fixes
+├── type_issues.md               # Common Pylance type fixes
+└── web_development.md           # Web UI development (NEVER kill all node processes)
 ```
 
 ## Defensive Mindset
@@ -464,6 +518,8 @@ Before committing ANY code change, verify:
 18. [+] **Never hardcode sensitive data** - Use `.env` for secrets, use placeholders in docs (see Sensitive Data Protection)
 19. [+] **Use ASCII-only characters** - No emojis or Unicode symbols in code/docs (see Cross-Platform Character Encoding)
 20. [+] **Minimize output and memory usage** - Don't dump large data structures or load entire datasets unnecessarily (see Output and Memory Efficiency)
+21. [+] **NEVER kill all node processes** - Claude Code runs as Node.js; use `Ctrl+C` or kill specific PIDs only (see Web & Server Development)
+22. [+] **No emojis in documentation** - All .md files must use ASCII-only characters (see Cross-Platform Character Encoding)
 
 ## When to Consult Detailed Guides
 
@@ -480,6 +536,7 @@ Before committing ANY code change, verify:
 - **Committing or pushing code** - Read [`.claude/git_workflow.md`](.claude/git_workflow.md)
 - **Modifying AWS infrastructure** - Update `docs/INFRASTRUCTURE_OVERVIEW.md` and `terraform/README.md`
 - **Downloading market data** - Follow canonical schema in Data Handling section above
+- **Web UI development** - See Web & Server Development section; NEVER kill all node processes
 
 ---
 
