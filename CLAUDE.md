@@ -364,6 +364,10 @@ Update docs when modifying user-facing functionality.
 
 ### Git Workflow
 **CRITICAL**: Never push to remote without explicit user permission.
+- **Commit incrementally** - One logical unit per commit, not everything at once
+  - Separate commits for: core module, tests, documentation, config changes
+  - Example: Adding a new module should be 3-5 commits, not 1 giant commit
+  - Commit after completing each distinct piece of work
 - Create commits for completed work
 - Stage files with `git add`
 - Write clear, descriptive commit messages
@@ -560,6 +564,7 @@ Before committing ANY code change, verify:
 20. [+] **Minimize output and memory usage** - Don't dump large data structures or load entire datasets unnecessarily (see Output and Memory Efficiency)
 21. [+] **NEVER kill all node processes** - Claude Code runs as Node.js; use `Ctrl+C` or kill specific PIDs only (see Web & Server Development)
 22. [+] **No emojis in documentation** - All .md files must use ASCII-only characters (see Cross-Platform Character Encoding)
+23. [+] **Commit incrementally** - One logical unit per commit; separate core module, tests, and docs into distinct commits (see Git Workflow)
 
 ## When to Consult Detailed Guides
 
