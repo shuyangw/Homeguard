@@ -209,6 +209,46 @@ All markdown documentation files must use ASCII-only characters:
 - Document in this table
 - Prefer extending `StandardReportGenerator` for new report types
 
+### Existing Data & Screening Tools
+
+| Tool | Location | Purpose |
+|------|----------|---------|
+| **Stock Screener** | `src/screening/` | Finviz-like stock screener using Alpaca APIs |
+| **YFinance Fundamentals** | `src/data/yfinance/` | Market cap, P/E, sector, dividend data |
+| **Alpaca Downloader** | `src/data/downloader.py` | Download OHLCV data from Alpaca |
+
+**Stock Screener** (`src/screening/`):
+- Fetches ALL tradable US equities from Alpaca, then applies filters
+- Price, volume, technical, and fundamental filters
+- IEX feed (paper) or SIP feed (live)
+- Usage:
+  ```python
+  from src.screening import StockScreener, ScreenerConfig, PriceFilter
+
+  screener = StockScreener(paper=True)
+  config = ScreenerConfig(
+      universe=None,  # Screen all Alpaca tradable symbols
+      price=PriceFilter(min_price=10, max_price=500),
+      max_results=50,
+  )
+  symbols = screener.screen(config)
+  ```
+- Docs: [`src/screening/README.md`](src/screening/README.md)
+
+**YFinance Fundamentals** (`src/data/yfinance/`):
+- Provides fundamental data not available from Alpaca
+- Market cap, P/E, PEG, ROE, sector, dividends, beta
+- 24-hour persistent cache (parquet)
+- Usage:
+  ```python
+  from src.data.yfinance import YFinanceFundamentalsProvider
+
+  provider = YFinanceFundamentalsProvider()
+  data = provider.get_single("AAPL")
+  print(f"Market Cap: ${data.market_cap:.1f}B")
+  ```
+- Docs: [`src/data/yfinance/README.md`](src/data/yfinance/README.md)
+
 ### Risk Management
 **CRITICAL**: All backtests MUST use proper position sizing.
 - Default: 10% per trade (moderate risk profile)
@@ -536,6 +576,8 @@ Before committing ANY code change, verify:
 - **Committing or pushing code** - Read [`.claude/git_workflow.md`](.claude/git_workflow.md)
 - **Modifying AWS infrastructure** - Update `docs/INFRASTRUCTURE_OVERVIEW.md` and `terraform/README.md`
 - **Downloading market data** - Follow canonical schema in Data Handling section above
+- **Stock screening** - See [`src/screening/README.md`](src/screening/README.md)
+- **Fundamental data** - See [`src/data/yfinance/README.md`](src/data/yfinance/README.md)
 - **Web UI development** - See Web & Server Development section; NEVER kill all node processes
 
 ---

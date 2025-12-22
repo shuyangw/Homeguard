@@ -1,7 +1,7 @@
 # Homeguard Backtesting Framework - Architecture Overview
 
-**Version**: 1.5
-**Last Updated**: 2025-12-15
+**Version**: 1.6
+**Last Updated**: 2025-12-22
 **Status**: Current
 
 ---
@@ -136,6 +136,40 @@ Homeguard is a professional-grade backtesting framework for algorithmic trading 
   - Score range: -1 (negative) to +1 (positive)
 
 - **SentimentCache** - Caches computed sentiment scores
+
+#### Stock Screening (src/screening/)
+
+- **StockScreener** ([src/screening/screener.py](../../src/screening/screener.py))
+  - Finviz-like stock screening using Alpaca APIs
+  - Filters: price, volume, technical indicators, fundamentals
+  - Fetches all ~10,000 tradable US equities by default
+  - IEX feed (paper) or SIP feed (live)
+
+- **ScreenerConfig** ([src/screening/filters.py](../../src/screening/filters.py))
+  - Pydantic models: PriceFilter, VolumeFilter, TechnicalFilter, FundamentalFilter
+  - Type-safe configuration with validation
+
+- **ScreenerCache** ([src/screening/cache.py](../../src/screening/cache.py))
+  - In-memory TTL cache (60s snapshots, 1hr historical)
+  - Thread-safe multi-tier caching
+
+- **TechnicalIndicators** ([src/screening/indicators.py](../../src/screening/indicators.py))
+  - RSI, SMA, EMA, MACD, Bollinger Bands, ATR
+
+**Usage**: Strategies call screener to dynamically select trading universe
+
+#### YFinance Fundamentals (src/data/yfinance/)
+
+- **YFinanceFundamentalsProvider** ([src/data/yfinance/provider.py](../../src/data/yfinance/provider.py))
+  - Fundamental data not available from Alpaca
+  - Market cap, P/E, PEG, ROE, dividends, sector, beta
+  - 40+ fundamental fields
+
+- **FundamentalsCache** ([src/data/yfinance/cache.py](../../src/data/yfinance/cache.py))
+  - Persistent parquet cache (24-hour TTL)
+  - Survives restarts
+
+**Integration**: Pass provider to StockScreener for fundamental filters
 
 ---
 

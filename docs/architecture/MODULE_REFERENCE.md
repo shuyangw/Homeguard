@@ -31,13 +31,16 @@ Each major module in `src/` now has comprehensive architecture documentation at 
 
 1. [Root Level Modules](#root-level-modules)
 2. [Data Engine Layer](#data-engine-layer)
-3. [Streaming Layer](#streaming-layer) (NEW)
-4. [Web API Layer](#web-api-layer) (NEW)
-5. [Backtesting Engine Layer](#backtesting-engine-layer)
-6. [Strategy Layer](#strategy-layer)
-7. [Visualization Layer](#visualization-layer)
-8. [GUI Layer](#gui-layer)
-9. [Utility Layer](#utility-layer)
+3. [Stock Screening Layer](#stock-screening-layer) (NEW)
+4. [YFinance Fundamentals Layer](#yfinance-fundamentals-layer) (NEW)
+5. [News and Sentiment Layer](#news-and-sentiment-layer)
+6. [Streaming Layer](#streaming-layer)
+7. [Web API Layer](#web-api-layer)
+8. [Backtesting Engine Layer](#backtesting-engine-layer)
+9. [Strategy Layer](#strategy-layer)
+10. [Visualization Layer](#visualization-layer)
+11. [GUI Layer](#gui-layer)
+12. [Utility Layer](#utility-layer)
 
 ---
 
@@ -334,6 +337,185 @@ pipeline.run(
     workers=4
 )
 ```
+
+---
+
+## Stock Screening Layer
+
+### Overview
+
+The stock screening layer provides Finviz-like stock screening capabilities using Alpaca's market data APIs. It can screen all ~10,000 tradable US equities and filter by price, volume, technical indicators, and fundamentals.
+
+**Location**: `src/screening/`
+
+---
+
+### `src/screening/screener.py`
+**Purpose**: Main stock screener class
+
+**Key Classes**:
+- `StockScreener`: Main screener with caching and filtering
+- `ScreenerResult`: Dataclass with symbol metrics
+
+**Key Methods**:
+- `screen(config)`: Screen symbols, return matching list
+- `screen_with_details(config)`: Screen with full metrics
+- `clear_cache()`: Clear cached data
+- `get_cache_stats()`: Get cache statistics
+
+**Dependencies**: `alpaca_client`, `cache`, `indicators`, `filters`
+
+**Usage Example**:
+```python
+from src.screening import StockScreener, ScreenerConfig, PriceFilter
+
+screener = StockScreener(paper=True)
+config = ScreenerConfig(
+    universe=None,  # Screen all Alpaca symbols
+    price=PriceFilter(min_price=10, max_price=500),
+    max_results=50,
+)
+symbols = screener.screen(config)
+```
+
+---
+
+### `src/screening/filters.py`
+**Purpose**: Pydantic filter models for type-safe configuration
+
+**Key Classes**:
+- `PriceFilter`: min/max price, change %, gap %
+- `VolumeFilter`: min/max volume, relative volume
+- `TechnicalFilter`: RSI, SMA crossover, MACD, Bollinger, ATR
+- `FundamentalFilter`: market cap, P/E, ROE, sector
+- `ScreenerConfig`: Combined configuration
+
+**Validation**:
+- Pydantic validators for range checks
+- SMA crossover direction validation
+- Comparison operator validation
+
+---
+
+### `src/screening/cache.py`
+**Purpose**: Thread-safe in-memory TTL cache
+
+**Key Classes**:
+- `CacheEntry`: Entry with timestamp and TTL
+- `ScreenerCache`: Multi-tier cache manager
+
+**Cache Tiers**:
+| Type | TTL | Description |
+|------|-----|-------------|
+| Snapshots | 60s | Current price/volume |
+| Historical | 1hr | Daily bars for technicals |
+| Results | 30s | Cached screen results |
+| Assets | 1hr | Tradable asset list |
+
+---
+
+### `src/screening/alpaca_client.py`
+**Purpose**: Alpaca API wrapper for screening
+
+**Key Classes**:
+- `SnapshotData`: Dataclass for snapshot data
+- `AlpacaScreenerClient`: API client with batching
+
+**Key Methods**:
+- `get_all_tradable_assets()`: Fetch all tradable symbols
+- `get_snapshots(symbols)`: Batch fetch current data
+- `get_historical_bars(symbols, days)`: Fetch OHLCV
+
+**Features**:
+- Batch requests (200 symbols max)
+- Retry with exponential backoff
+- IEX/SIP feed selection
+
+---
+
+### `src/screening/indicators.py`
+**Purpose**: Technical indicator calculations
+
+**Key Classes**:
+- `TechnicalIndicators`: Indicator calculator
+- `IndicatorResult`: Computed indicators dataclass
+
+**Key Methods**:
+- `rsi(period)`: RSI calculation
+- `sma(period)`, `ema(period)`: Moving averages
+- `macd()`: MACD line, signal, histogram
+- `bollinger_bands()`: Upper, middle, lower bands
+- `atr(period)`: Average true range
+
+---
+
+## YFinance Fundamentals Layer
+
+### Overview
+
+The YFinance fundamentals layer provides stock fundamental data that Alpaca doesn't offer, including market cap, P/E ratios, dividends, and sector classification.
+
+**Location**: `src/data/yfinance/`
+
+---
+
+### `src/data/yfinance/provider.py`
+**Purpose**: Main fundamentals provider
+
+**Key Classes**:
+- `YFinanceFundamentalsProvider`: Provider with caching
+
+**Key Methods**:
+- `get_fundamentals(symbols)`: Batch fetch fundamentals
+- `get_single(symbol)`: Get single symbol data
+- `get_market_cap(symbol)`: Market cap in billions
+- `get_sector(symbol)`: Sector string
+- `filter_by_market_cap(symbols, min, max)`: Filter by cap
+- `filter_by_sector(symbols, include, exclude)`: Filter by sector
+
+**Features**:
+- Rate limiting (0.25s default)
+- Persistent parquet cache (24-hour TTL)
+- Progress logging for batch operations
+
+**Usage Example**:
+```python
+from src.data.yfinance import YFinanceFundamentalsProvider
+
+provider = YFinanceFundamentalsProvider()
+data = provider.get_single("AAPL")
+print(f"Market Cap: ${data.market_cap:.1f}B")
+```
+
+---
+
+### `src/data/yfinance/fundamentals.py`
+**Purpose**: Fundamental data dataclass
+
+**Key Classes**:
+- `FundamentalData`: 40+ field dataclass
+
+**Key Fields**:
+- Market: `market_cap`, `enterprise_value`
+- Valuation: `pe_ratio`, `peg_ratio`, `pb_ratio`
+- Profitability: `profit_margin`, `roe`, `roa`
+- Dividends: `dividend_yield`, `payout_ratio`
+- Classification: `sector`, `industry`
+- Risk: `beta`, `short_ratio`
+
+---
+
+### `src/data/yfinance/cache.py`
+**Purpose**: Persistent parquet cache for fundamentals
+
+**Key Classes**:
+- `FundamentalsCache`: Persistent cache with TTL
+
+**Features**:
+- Parquet storage (survives restarts)
+- 24-hour default TTL
+- Hit/miss statistics
+- Automatic expiration
 
 ---
 
