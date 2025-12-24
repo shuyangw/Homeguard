@@ -302,6 +302,7 @@ class RAMPLiveAdapter(StrategyAdapter):
         self,
         broker: BrokerInterface,
         symbols: Optional[List[str]] = None,
+        initial_capital: Optional[float] = None,
         max_capital_allocation: float = 1.0,
         reduced_exposure: float = 0.5,
         vix_threshold: float = 25.0,
@@ -315,10 +316,15 @@ class RAMPLiveAdapter(StrategyAdapter):
         Args:
             broker: Broker interface
             symbols: List of symbols to trade (default: S&P 500)
-            max_capital_allocation: Maximum fraction of portfolio to allocate (default: 1.0 = 100%)
-                                   Each position gets (max_capital_allocation / top_n) of portfolio.
-                                   Example: 1.0 with top_n=10 -> 10% per position
-                                   Example: 1.0 with top_n=20 -> 5% per position
+            initial_capital: Base capital for position sizing. If None, fetches current
+                            portfolio value from broker. Position sizes are calculated
+                            as fraction of this amount, NOT intraday portfolio value.
+                            This prevents leverage creep from unrealized gains.
+                            Call refresh_initial_capital() daily to update.
+            max_capital_allocation: Maximum fraction of initial_capital to allocate (default: 1.0 = 100%)
+                                   Each position gets (max_capital_allocation / top_n) of initial_capital.
+                                   Example: 1.0 with top_n=10 -> 10% of $100k = $10k per position
+                                   Max value is 2.0 for 2:1 leverage (equities margin limit).
             reduced_exposure: Exposure when risk signals trigger (0-1)
             vix_threshold: VIX level that triggers protection
             spy_dd_threshold: SPY drawdown threshold (negative)
@@ -361,6 +367,18 @@ class RAMPLiveAdapter(StrategyAdapter):
         )
 
         # Store configuration
+        # Validate max_capital_allocation (max 2.0 for equities 2:1 margin limit)
+        if max_capital_allocation > 2.0:
+            logger.warning(f"[RAMP] max_capital_allocation={max_capital_allocation} exceeds 2:1 margin limit, capping at 2.0")
+            max_capital_allocation = 2.0
+
+        # Fetch initial capital from broker if not provided
+        if initial_capital is None:
+            initial_capital = self._fetch_portfolio_value()
+            logger.info(f"[RAMP] Fetched initial capital from broker: ${initial_capital:,.2f}")
+
+        self.initial_capital = initial_capital
+        self._initial_capital_date = tz.now().date()  # Track when capital was set
         self.max_capital_allocation = max_capital_allocation
         self.reduced_exposure = reduced_exposure
         self.vix_threshold = vix_threshold
@@ -388,8 +406,9 @@ class RAMPLiveAdapter(StrategyAdapter):
 
         logger.info("[RAMP] Regime-Aware Momentum Protection Configuration:")
         logger.info(f"[RAMP]   Universe: {len(symbols)} S&P 500 stocks")
-        logger.info(f"[RAMP]   Max capital allocation: {max_capital_allocation:.0%}")
-        logger.info(f"[RAMP]   Position sizing: Dynamic 1/N (allocation / top_n)")
+        logger.info(f"[RAMP]   Initial capital: ${initial_capital:,.0f}")
+        logger.info(f"[RAMP]   Max capital allocation: {max_capital_allocation:.0%} (${initial_capital * max_capital_allocation:,.0f})")
+        logger.info(f"[RAMP]   Position sizing: Dynamic 1/N based on initial_capital (floor rounding)")
         logger.info(f"[RAMP]   Reduced exposure: {reduced_exposure:.0%}")
         logger.info(f"[RAMP]   VIX threshold: {vix_threshold}")
         logger.info(f"[RAMP]   Rebalance time: 3:55 PM EST")
@@ -421,6 +440,54 @@ class RAMPLiveAdapter(StrategyAdapter):
             logger.error(f"[RAMP] Failed to load S&P 500 symbols: {e}")
             # Return a minimal default list (no leveraged ETFs)
             return ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'META', 'NVDA', 'TSLA']
+
+    def _fetch_portfolio_value(self) -> float:
+        """
+        Fetch current portfolio value from broker.
+
+        Returns:
+            Portfolio value in dollars. Falls back to $100,000 if fetch fails.
+        """
+        try:
+            account = self.broker.get_account()
+            if account:
+                portfolio_value = float(account.get('portfolio_value', 0))
+                if portfolio_value > 0:
+                    return portfolio_value
+            logger.warning("[RAMP] Could not fetch portfolio value, using default $100,000")
+            return 100000.0
+        except Exception as e:
+            logger.error(f"[RAMP] Error fetching portfolio value: {e}")
+            return 100000.0
+
+    def refresh_initial_capital(self) -> float:
+        """
+        Refresh initial capital from broker for a new trading day.
+
+        Call this at the start of each trading day (e.g., 9:30 AM) to update
+        the capital base for position sizing. This captures the portfolio
+        value at market open before any intraday P&L.
+
+        Returns:
+            Updated initial capital value.
+        """
+        today = tz.now().date()
+
+        # Only refresh if it's a new day
+        if hasattr(self, '_initial_capital_date') and self._initial_capital_date == today:
+            logger.info(f"[RAMP] Initial capital already set for today: ${self.initial_capital:,.2f}")
+            return self.initial_capital
+
+        old_capital = self.initial_capital
+        self.initial_capital = self._fetch_portfolio_value()
+        self._initial_capital_date = today
+
+        change_pct = (self.initial_capital - old_capital) / old_capital * 100 if old_capital > 0 else 0
+        logger.info(f"[RAMP] Refreshed initial capital for {today}:")
+        logger.info(f"[RAMP]   Previous: ${old_capital:,.2f}")
+        logger.info(f"[RAMP]   Current:  ${self.initial_capital:,.2f} ({change_pct:+.2f}%)")
+
+        return self.initial_capital
 
     def preload_historical_data(self) -> None:
         """
@@ -1108,17 +1175,24 @@ class RAMPLiveAdapter(StrategyAdapter):
                         logger.error(f"[RAMP] Error selling {symbol}: {e}")
 
             # Execute buys
-            # Dynamic 1/N position sizing: each position gets (max_capital_allocation / top_n)
-            # Example: 100% allocation with top_n=10 -> 10% per position
-            # Example: 100% allocation with top_n=20 -> 5% per position
+            # Dynamic 1/N position sizing based on INITIAL CAPITAL (not portfolio value)
+            # This prevents leverage creep when portfolio grows with unrealized gains
+            # Example: $100k capital, 100% allocation, top_n=10 -> $10k per position
+            # Uses FLOOR rounding to ensure we never exceed max_capital_allocation
             position_pct = self.max_capital_allocation / current_top_n
-            logger.info(f"[RAMP] Position sizing: {position_pct:.1%} per position ({self.max_capital_allocation:.0%} / {current_top_n})")
+            target_value_per_position = self.initial_capital * position_pct
+            max_total_allocation = self.initial_capital * self.max_capital_allocation
+
+            logger.info(f"[RAMP] Position sizing (based on initial capital):")
+            logger.info(f"[RAMP]   Initial capital: ${self.initial_capital:,.0f}")
+            logger.info(f"[RAMP]   Max allocation: {self.max_capital_allocation:.0%} = ${max_total_allocation:,.0f}")
+            logger.info(f"[RAMP]   Per position: {position_pct:.1%} = ${target_value_per_position:,.0f} ({current_top_n} positions)")
 
             for signal in buy_signals:
                 symbol = signal.symbol
-                # Target value is simply portfolio * (allocation / top_n)
-                # This ensures total allocation = max_capital_allocation when all positions filled
-                target_value = portfolio_value * position_pct
+                # Target value based on initial capital, NOT current portfolio value
+                # This ensures consistent position sizes regardless of P&L
+                target_value = target_value_per_position
 
                 # Skip if already at target
                 current_value = current_positions.get(symbol, 0)
@@ -1136,8 +1210,9 @@ class RAMPLiveAdapter(StrategyAdapter):
                     if current_price <= 0:
                         continue
 
-                    # Calculate shares to buy
-                    target_shares = int(target_value / current_price)
+                    # Calculate shares to buy using FLOOR to never exceed target
+                    # int() truncates toward zero, which is floor for positive numbers
+                    target_shares = int(target_value / current_price)  # Floor division
                     current_shares = int(current_value / current_price) if current_value > 0 else 0
                     shares_to_buy = target_shares - current_shares
 

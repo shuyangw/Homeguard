@@ -50,6 +50,7 @@ class MultiStrategyRunner:
     Runs multiple strategies in a single process with shared streaming.
 
     Schedules:
+    - Capital Refresh: 9:30 AM (daily)
     - OMR: 3:50 PM (entry), 9:31 AM (exit)
     - RAMP: 3:55 PM (rebalance)
     """
@@ -76,6 +77,7 @@ class MultiStrategyRunner:
         self.omr_last_entry = None
         self.omr_last_exit = None
         self.ramp_last_execution = None
+        self.capital_last_refresh = None  # Track daily capital refresh
 
         self.running = True
         signal.signal(signal.SIGINT, self._handle_shutdown)
@@ -85,6 +87,43 @@ class MultiStrategyRunner:
         """Handle graceful shutdown."""
         logger.info("Received shutdown signal")
         self.running = False
+
+    def should_refresh_capital(self) -> bool:
+        """Check if daily capital refresh should run (9:30 AM ET)."""
+        now = tz.now()
+        current_time = now.time()
+
+        # Capital refresh window: 9:30-9:31 AM (market open)
+        refresh_time = dt_time(9, 30)
+        refresh_end = dt_time(9, 31)
+
+        is_refresh_time = refresh_time <= current_time < refresh_end
+
+        if is_refresh_time:
+            # Check if already refreshed today
+            if self.capital_last_refresh is not None:
+                if self.capital_last_refresh.date() == now.date():
+                    return False  # Already refreshed today
+            return True
+
+        return False
+
+    def refresh_capital(self):
+        """Refresh initial capital for RAMP at market open."""
+        logger.info("=" * 80)
+        logger.info(f"[{tz.timestamp()}] DAILY CAPITAL REFRESH")
+        logger.info("=" * 80)
+
+        try:
+            self.ramp_adapter.refresh_initial_capital()
+            self.capital_last_refresh = tz.now()
+            logger.success("Daily capital refresh complete")
+        except Exception as e:
+            logger.error(f"Capital refresh failed: {e}")
+            import traceback
+            traceback.print_exc()
+
+        logger.info("")
 
     def should_run_omr_entry(self) -> bool:
         """Check if OMR entry should run (3:50 PM ET)."""
@@ -207,6 +246,7 @@ class MultiStrategyRunner:
         logger.info("=" * 80)
         logger.info(f"Check interval: {self.check_interval}s")
         logger.info("Schedules:")
+        logger.info("  Capital:    9:30 AM ET (daily refresh)")
         logger.info("  OMR Entry:  3:50 PM ET")
         logger.info("  RAMP:       3:55 PM ET")
         logger.info("  OMR Exit:   9:31 AM ET (next day)")
@@ -215,6 +255,10 @@ class MultiStrategyRunner:
 
         while self.running:
             now = tz.now()
+
+            # Check daily capital refresh schedule (9:30 AM)
+            if self.should_refresh_capital():
+                self.refresh_capital()
 
             # Check OMR entry schedule
             if self.should_run_omr_entry():
@@ -348,11 +392,17 @@ def main():
         logger.success("OMR adapter created")
 
         # Create RAMP adapter
+        # Position sizing based on initial capital (fetched from broker), NOT intraday portfolio value
+        # max_capital_allocation=1.0 means 100% of initial capital (no leverage)
+        # With top_n=10, each position = capital * 10% (floor rounded)
+        # Capital is refreshed daily at market open via refresh_initial_capital()
         logger.info("Creating RAMP adapter...")
         ramp_adapter = RAMPLiveAdapter(
             broker=broker,
             symbols=ramp_symbols,
-            data_provider=data_provider  # Shared streaming provider
+            data_provider=data_provider,  # Shared streaming provider
+            # initial_capital=None -> fetches from broker at init
+            max_capital_allocation=1.0  # 100% of initial capital (no leverage)
         )
         logger.success("RAMP adapter created")
 
