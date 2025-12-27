@@ -60,6 +60,20 @@ def get_local_storage_dir() -> Path:
     return Path(storage_dir)
 
 
+def get_options_data_dir() -> Path:
+    """
+    Get the options data directory for the current OS environment.
+
+    Returns:
+        Path: Configured options data directory
+
+    Raises:
+        configparser.NoOptionError: If options_data_dir is not configured
+    """
+    options_dir = settings.get(OS_ENVIRONMENT, 'options_data_dir')
+    return Path(options_dir)
+
+
 def get_output_dir() -> Path:
     """
     Get the base output directory for the current OS environment.

@@ -38,6 +38,7 @@ from src.settings.settings import (
     # Directory getters
     get_os_environment,
     get_local_storage_dir,
+    get_options_data_dir,
     get_output_dir,
     get_log_output_dir,
     get_backtest_results_dir,
@@ -92,6 +93,7 @@ __all__ = [
     "SETTINGS_FILE",
     "get_os_environment",
     "get_local_storage_dir",
+    "get_options_data_dir",
     "get_output_dir",
     "get_log_output_dir",
     "get_backtest_results_dir",
