@@ -50,7 +50,8 @@ class Portfolio(BasePortfolio):
         risk_config: Optional[RiskConfig] = None,
         price_data: Optional[pd.DataFrame] = None,
         allow_shorts: bool = False,
-        use_numba: bool = True
+        use_numba: bool = True,
+        fractional_shares: bool = False
     ):
         """
         Initialize portfolio.
@@ -68,6 +69,7 @@ class Portfolio(BasePortfolio):
             price_data: Full OHLCV data for indicators
             allow_shorts: If True, enable short selling (default: False)
             use_numba: If True, use Numba JIT compilation for performance (default: True)
+            fractional_shares: If True, allow fractional share quantities (for crypto)
         """
         # Initialize base class (handles init_cash, fees, slippage, freq, market_hours_only,
         # market hours constants, and equity_curve/_stats)
@@ -87,6 +89,7 @@ class Portfolio(BasePortfolio):
         self.price_data = price_data
         self.allow_shorts = allow_shorts
         self.use_numba = use_numba
+        self.fractional_shares = fractional_shares
         self.borrow_cost = 0.0030  # 30 bps/year for short positions
 
         self.trades: List[Dict[str, Any]] = []
@@ -351,7 +354,8 @@ class Portfolio(BasePortfolio):
             profit_target_pct=profit_target_pct,
             use_time_stop=use_time_stop,
             max_bars_in_position=max_bars_in_position,
-            allow_shorts=self.allow_shorts
+            allow_shorts=self.allow_shorts,
+            fractional_shares=self.fractional_shares
         )
 
         # Unpack results
@@ -877,6 +881,7 @@ def from_signals(
     price_data: Optional[pd.DataFrame] = None,
     allow_shorts: bool = False,
     use_numba: bool = True,
+    fractional_shares: bool = False,
     **kwargs
 ) -> Portfolio:
     """
@@ -895,6 +900,7 @@ def from_signals(
         price_data: Historical OHLC data for ATR-based position sizing (optional)
         allow_shorts: If True, enable short selling (default: False)
         use_numba: If True, use Numba JIT compilation for performance (default: True)
+        fractional_shares: If True, allow fractional share quantities (for crypto)
         **kwargs: Additional arguments (for compatibility)
 
     Returns:
@@ -912,5 +918,6 @@ def from_signals(
         risk_config=risk_config,
         price_data=price_data,
         allow_shorts=allow_shorts,
-        use_numba=use_numba
+        use_numba=use_numba,
+        fractional_shares=fractional_shares
     )

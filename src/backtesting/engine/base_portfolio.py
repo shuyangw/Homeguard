@@ -33,12 +33,19 @@ class BasePortfolio(ABC):
 
     # Frequency to periods-per-year mapping
     FREQ_TO_PERIODS = {
+        # Stock/ETF timeframes (252 trading days)
         '1min': 252 * 6.5 * 60,   # 252 days * 6.5 hours * 60 minutes
         '1h': 252 * 6.5,          # 252 days * 6.5 hours
+        '1hour': 252 * 6.5,
         '1d': 252,
         'D': 252,
         'daily': 252,
         '1D': 252,
+        '1day': 252,
+        # Crypto timeframes (365 days, 24/7 trading)
+        'crypto_1min': 365 * 24 * 60,  # 365 days * 24 hours * 60 minutes
+        'crypto_1hour': 365 * 24,      # 365 days * 24 hours
+        'crypto_1day': 365,            # 365 days
     }
 
     def __init__(

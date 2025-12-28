@@ -30,6 +30,14 @@ from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
+# Optional Hurst exponent import
+try:
+    from hurst import compute_Hc
+    HAS_HURST = True
+except ImportError:
+    HAS_HURST = False
+    logger.info("hurst package not installed - Hurst exponent will use fallback")
+
 # Optional sklearn import with fallback
 try:
     from sklearn.ensemble import GradientBoostingClassifier, RandomForestClassifier, VotingClassifier
@@ -57,6 +65,7 @@ class RegimeFeatures:
     bollinger_width: float
     zscore_abs: float
     volatility_ratio: float
+    hurst_exponent: float = 0.5  # Default to random walk
 
     def to_array(self) -> np.ndarray:
         """Convert to numpy array for ML model input."""
@@ -66,7 +75,8 @@ class RegimeFeatures:
             self.efficiency_ratio,
             self.bollinger_width,
             self.zscore_abs,
-            self.volatility_ratio
+            self.volatility_ratio,
+            self.hurst_exponent
         ])
 
 
@@ -315,6 +325,56 @@ class MLCryptoMRIndicators:
         return width
 
     @staticmethod
+    def calculate_hurst(series: pd.Series, window: int = 100) -> pd.Series:
+        """
+        Calculate rolling Hurst exponent using R/S analysis.
+
+        The Hurst exponent measures long-term memory/persistence in time series:
+        - H < 0.5: Anti-persistent (mean-reverting) - GOOD for mean reversion trades
+        - H = 0.5: Random walk (geometric Brownian motion)
+        - H > 0.5: Persistent (trending) - AVOID mean reversion trades
+
+        Args:
+            series: Price series (will be converted to returns internally)
+            window: Rolling window size (default 100 bars)
+
+        Returns:
+            Series of Hurst exponent values (0-1 range)
+        """
+        if not HAS_HURST:
+            # Fallback: return 0.5 (random walk assumption)
+            logger.warning("Hurst package not available, using 0.5 fallback")
+            return pd.Series(0.5, index=series.index)
+
+        # Calculate returns (Hurst is computed on returns, not prices)
+        returns = series.pct_change().dropna()
+
+        def calc_hurst_single(x: np.ndarray) -> float:
+            """Calculate Hurst for a single window."""
+            if len(x) < 20:  # Minimum for reliable estimate
+                return 0.5
+            try:
+                # compute_Hc returns (H, c, data) tuple
+                # kind='change' for returns, 'price' for cumulative series
+                H, _, _ = compute_Hc(x, kind='change', simplified=True)
+                # Clamp to valid range
+                return max(0.0, min(1.0, H))
+            except Exception:
+                return 0.5
+
+        # Rolling Hurst calculation
+        hurst_values = returns.rolling(
+            window=window,
+            min_periods=max(20, window // 2)
+        ).apply(calc_hurst_single, raw=True)
+
+        # Reindex to match original series (first value is NaN due to pct_change)
+        result = pd.Series(0.5, index=series.index)
+        result.loc[hurst_values.index] = hurst_values
+
+        return result
+
+    @staticmethod
     def calculate_all_features(df: pd.DataFrame, config: Dict[str, Any]) -> pd.DataFrame:
         """
         Calculate all indicators and features needed for the strategy.
@@ -366,6 +426,11 @@ class MLCryptoMRIndicators:
         avg_vol = current_vol.rolling(window=vol_window, min_periods=vol_window).mean()
         features['volatility_ratio'] = current_vol / (avg_vol + 1e-10)
 
+        # Hurst exponent for mean reversion detection
+        features['hurst_exponent'] = MLCryptoMRIndicators.calculate_hurst(
+            close, config.get('hurst_window', 100)
+        )
+
         return features
 
 
@@ -381,10 +446,11 @@ class MLRegimeFilter:
     to avoid lookahead bias.
     """
 
-    # Feature columns for ML model
+    # Feature columns for ML model (7 features including Hurst)
     FEATURE_COLS = [
         'adx', 'choppiness', 'efficiency_ratio',
-        'bollinger_width', 'zscore_abs', 'volatility_ratio'
+        'bollinger_width', 'zscore_abs', 'volatility_ratio',
+        'hurst_exponent'
     ]
 
     # Supported model types

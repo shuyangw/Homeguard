@@ -51,6 +51,7 @@ _STRATEGY_REGISTRY: Dict[str, Tuple[str, str]] = {
     "HVORBStrategy": ("src.strategies.advanced.hv_orb_strategy", "HVORBStrategy"),
     "BMSBStrategy": ("src.strategies.advanced.bmsb_strategy", "BMSBStrategy"),
     "MLCryptoMRStrategy": ("src.strategies.advanced.ml_crypto_mr_strategy", "MLCryptoMRStrategy"),
+    "HurstMRStrategy": ("src.strategies.advanced.hurst_mr_strategy", "HurstMRStrategy"),
 }
 
 # Display name -> class name mapping for user-friendly config files
@@ -102,6 +103,10 @@ _DISPLAY_NAME_MAP: Dict[str, str] = {
     "MLMR": "MLCryptoMRStrategy",
     "ML Mean Reversion": "MLCryptoMRStrategy",
     "Crypto Mean Reversion": "MLCryptoMRStrategy",
+    "Hurst Mean Reversion": "HurstMRStrategy",
+    "Hurst MR": "HurstMRStrategy",
+    "HurstMR": "HurstMRStrategy",
+    "Hurst Strategy": "HurstMRStrategy",
 }
 
 # Cache for loaded strategy classes

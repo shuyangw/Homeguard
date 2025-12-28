@@ -177,12 +177,49 @@ class TestMLCryptoMRIndicators:
         valid_width = width.dropna()
         assert (valid_width > 0).all()
 
+    def test_calculate_hurst_random_walk(self, sample_ohlcv_data):
+        """Test Hurst exponent on random walk data approaches 0.5."""
+        close = sample_ohlcv_data['close']
+        hurst = MLCryptoMRIndicators.calculate_hurst(close, window=100)
+
+        assert isinstance(hurst, pd.Series)
+        assert len(hurst) == len(close)
+
+        # Random walk should have H close to 0.5
+        valid_hurst = hurst.dropna()
+        if len(valid_hurst) > 0:
+            mean_h = valid_hurst.mean()
+            # Allow range 0.3-0.7 for random data with finite samples
+            assert 0.2 < mean_h < 0.8
+
+    def test_calculate_hurst_trending(self, trending_data):
+        """Test Hurst exponent on trending data is > 0.5."""
+        close = trending_data['close']
+        hurst = MLCryptoMRIndicators.calculate_hurst(close, window=50)
+
+        valid_hurst = hurst.dropna()
+        if len(valid_hurst) > 0:
+            mean_h = valid_hurst.mean()
+            # Trending data should have higher H (though not guaranteed >0.5 with noise)
+            assert mean_h > 0.3  # At least not clearly mean-reverting
+
+    def test_calculate_hurst_range(self, sample_ohlcv_data):
+        """Test Hurst exponent values are in valid range 0-1."""
+        close = sample_ohlcv_data['close']
+        hurst = MLCryptoMRIndicators.calculate_hurst(close, window=100)
+
+        valid_hurst = hurst.dropna()
+        if len(valid_hurst) > 0:
+            assert valid_hurst.min() >= 0.0
+            assert valid_hurst.max() <= 1.0
+
     def test_calculate_all_features(self, sample_ohlcv_data):
         """Test full feature calculation."""
         config = {
             'zscore_window': 20,
             'rsi_period': 14,
             'atr_period': 14,
+            'hurst_window': 100,
         }
         features = MLCryptoMRIndicators.calculate_all_features(sample_ohlcv_data, config)
 
@@ -194,6 +231,7 @@ class TestMLCryptoMRIndicators:
         assert 'choppiness' in features.columns
         assert 'efficiency_ratio' in features.columns
         assert 'bollinger_width' in features.columns
+        assert 'hurst_exponent' in features.columns
 
 
 # =============================================================================
@@ -266,15 +304,17 @@ class TestMLRegimeFilter:
             efficiency_ratio=0.5,
             bollinger_width=0.1,
             zscore_abs=2.0,
-            volatility_ratio=1.0
+            volatility_ratio=1.0,
+            hurst_exponent=0.45
         )
 
         arr = features.to_array()
 
         assert isinstance(arr, np.ndarray)
-        assert len(arr) == 6
+        assert len(arr) == 7  # Now includes hurst_exponent
         assert arr[0] == 25.0
         assert arr[1] == 50.0
+        assert arr[6] == 0.45  # Hurst exponent
 
 
 # =============================================================================

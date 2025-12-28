@@ -21,8 +21,9 @@ Best Instruments:
 """
 
 from datetime import datetime, time, timedelta
-from typing import Tuple, Dict, Optional, List
+from typing import Tuple, Dict, Optional, List, Set
 from dataclasses import dataclass
+from pathlib import Path
 import pandas as pd
 import numpy as np
 
@@ -110,6 +111,10 @@ class ORBStrategy(LongShortStrategy):
         use_volume_confirmation: bool = False,
         volume_breakout_mult: float = 1.5,
         use_trailing_stop: bool = False,
+        # Phase 4: Earnings Filter
+        use_earnings_filter: bool = False,
+        earnings_buffer_days: int = 2,
+        earnings_calendar_path: Optional[str] = None,
         **kwargs
     ):
         # Set attributes BEFORE calling super().__init__()
@@ -138,6 +143,16 @@ class ORBStrategy(LongShortStrategy):
         self.use_volume_confirmation = use_volume_confirmation
         self.volume_breakout_mult = volume_breakout_mult
         self.use_trailing_stop = use_trailing_stop
+
+        # Phase 4: Earnings Filter
+        self.use_earnings_filter = use_earnings_filter
+        self.earnings_buffer_days = earnings_buffer_days
+        self.earnings_calendar_path = earnings_calendar_path
+        self.earnings_blackout_dates: Set[datetime] = set()
+
+        # Load earnings calendar if filter is enabled
+        if use_earnings_filter:
+            self._load_earnings_calendar()
 
         # Calculate OR end time based on minutes
         or_end_minutes = 30 + opening_range_minutes
@@ -173,6 +188,9 @@ class ORBStrategy(LongShortStrategy):
             use_volume_confirmation=use_volume_confirmation,
             volume_breakout_mult=volume_breakout_mult,
             use_trailing_stop=use_trailing_stop,
+            use_earnings_filter=use_earnings_filter,
+            earnings_buffer_days=earnings_buffer_days,
+            earnings_calendar_path=earnings_calendar_path,
             **kwargs
         )
 
@@ -201,6 +219,45 @@ class ORBStrategy(LongShortStrategy):
             raise ValueError(
                 f"min_or_width_pct must be >= 0. Got {self.min_or_width_pct}"
             )
+
+    def _load_earnings_calendar(self) -> None:
+        """Load earnings calendar and build blackout date set."""
+        if not self.earnings_calendar_path:
+            # Use default path
+            project_root = Path(__file__).parent.parent.parent.parent
+            default_path = project_root / "backtest_lists" / "earnings_calendar_sp500_highvol.csv"
+            if default_path.exists():
+                self.earnings_calendar_path = str(default_path)
+            else:
+                logger.warning("Earnings calendar not found, disabling filter")
+                self.use_earnings_filter = False
+                return
+
+        try:
+            earnings_df = pd.read_csv(self.earnings_calendar_path)
+            earnings_df['earnings_date'] = pd.to_datetime(earnings_df['earnings_date'])
+
+            # Build blackout dates: earnings_date +/- buffer_days
+            for _, row in earnings_df.iterrows():
+                earnings_date = row['earnings_date'].date()
+                for offset in range(-self.earnings_buffer_days, self.earnings_buffer_days + 1):
+                    blackout_date = earnings_date + timedelta(days=offset)
+                    self.earnings_blackout_dates.add(blackout_date)
+
+            logger.info(
+                f"Loaded earnings calendar: {len(earnings_df)} earnings dates, "
+                f"{len(self.earnings_blackout_dates)} blackout dates "
+                f"(+/- {self.earnings_buffer_days} days)"
+            )
+        except Exception as e:
+            logger.error(f"Failed to load earnings calendar: {e}")
+            self.use_earnings_filter = False
+
+    def _is_earnings_blackout(self, date: datetime) -> bool:
+        """Check if a date falls within earnings blackout period."""
+        if not self.use_earnings_filter:
+            return False
+        return date.date() in self.earnings_blackout_dates
 
     def generate_long_short_signals(
         self,
@@ -322,6 +379,27 @@ class ORBStrategy(LongShortStrategy):
         long_exits = pd.Series(long_exit_arr, index=data.index)
         short_entries = pd.Series(short_entry_arr, index=data.index)
         short_exits = pd.Series(short_exit_arr, index=data.index)
+
+        # Phase 4: Apply earnings blackout filter (post-filter entry signals)
+        if self.use_earnings_filter and len(self.earnings_blackout_dates) > 0:
+            # Create mask for non-blackout dates
+            blackout_mask = pd.Series(
+                [d in self.earnings_blackout_dates for d in data.index.date],
+                index=data.index
+            )
+            n_entries_before = long_entries.sum() + short_entries.sum()
+
+            # Zero out entries on blackout dates (keep exits - we still want to exit)
+            long_entries = long_entries & ~blackout_mask
+            short_entries = short_entries & ~blackout_mask
+
+            n_entries_after = long_entries.sum() + short_entries.sum()
+            n_filtered = n_entries_before - n_entries_after
+            if n_filtered > 0:
+                logger.debug(
+                    f"Earnings filter: blocked {n_filtered} entries "
+                    f"({n_entries_after} remaining)"
+                )
 
         return long_entries, long_exits, short_entries, short_exits
 
@@ -637,5 +715,9 @@ class ORBStrategy(LongShortStrategy):
             'atr_stop_multiplier': self.atr_stop_multiplier,
             'use_volume_confirmation': self.use_volume_confirmation,
             'volume_breakout_mult': self.volume_breakout_mult,
-            'use_trailing_stop': self.use_trailing_stop
+            'use_trailing_stop': self.use_trailing_stop,
+            # Phase 4: Earnings Filter
+            'use_earnings_filter': self.use_earnings_filter,
+            'earnings_buffer_days': self.earnings_buffer_days,
+            'earnings_calendar_path': self.earnings_calendar_path
         }

@@ -1,0 +1,80 @@
+# Hurst Mean Reversion Strategy - Moderate Config
+# Balanced approach: improved returns with controlled risk
+#
+# Expected Performance (2023-2024 out-of-sample):
+#   - Return: ~20% annually
+#   - Sharpe: ~1.5
+#   - Max Drawdown: ~36%
+#   - Trades: ~290
+#
+# Key Changes from Baseline:
+#   - Position size: 30% (vs 20%) - 1.5x exposure
+#   - Keeps strict Hurst filter (0.40)
+#   - Total exposure: 150% (5 symbols x 30%)
+
+mode: single
+
+strategy:
+  name: HurstMRStrategy
+  parameters:
+    # Hurst parameters - strict filter
+    hurst_window: 100
+    hurst_threshold: 0.40       # Strict mean-reversion filter
+
+    # Z-score parameters
+    zscore_window: 20
+    zscore_entry_threshold: 2.0
+    zscore_exit_threshold: 0.3
+
+    # Risk management
+    atr_period: 14
+    atr_stop_multiplier: 1.5
+    atr_target_multiplier: 4.5
+
+    # Trade management
+    long_only: false
+    max_hold_bars: 5
+
+    # Fixed percentage exits
+    use_fixed_pct_exits: true
+    fixed_stop_pct: 0.10        # 10% stop loss
+    fixed_target_pct: 0.318     # 31.8% take profit (3:1 R:R)
+
+symbols:
+  # Top 5 performers from training optimization (2021-2022)
+  list:
+    - YFI_USD   # Yearn Finance - Sharpe 0.89
+    - BCH_USD   # Bitcoin Cash - Sharpe 0.86
+    - LINK_USD  # Chainlink - Sharpe 0.78
+    - MKR_USD   # Maker - Sharpe 0.69
+    - ETH_USD   # Ethereum - Sharpe 0.66
+
+dates:
+  start: '2023-01-01'
+  end: '2024-12-31'
+
+backtest:
+  initial_capital: 100000
+  fees: 0.001
+  slippage: 0.0005
+  benchmark: BTC_USD
+  market_hours_only: false
+  allow_shorts: true
+  portfolio_mode: single
+  timeframe: crypto_1hour
+  fractional_shares: true
+
+risk:
+  enabled: true
+  position_sizing_method: fixed_percentage
+  position_size_pct: 0.30       # 30% per symbol (150% total exposure)
+  max_positions: 5
+  use_stop_loss: true
+  stop_loss_pct: 0.10
+
+output:
+  save_trades: true
+  save_reports: true
+  quantstats: true
+  visualize: false
+  verbosity: 1

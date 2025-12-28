@@ -68,6 +68,7 @@ def simulate_portfolio_numba(
     use_time_stop: bool,
     max_bars_in_position: int,
     allow_shorts: bool,
+    fractional_shares: bool = False,
     max_trades: int = 10000
 ) -> tuple:
     """
@@ -93,6 +94,7 @@ def simulate_portfolio_numba(
         use_time_stop: Whether to use time-based stop
         max_bars_in_position: Maximum bars before forced exit
         allow_shorts: Whether short selling is enabled
+        fractional_shares: If True, allow fractional share quantities (for crypto)
         max_trades: Maximum number of trades to track (pre-allocation)
 
     Returns:
@@ -294,7 +296,10 @@ def simulate_portfolio_numba(
                 # Calculate shares based on position sizing (matches Python FixedPercentageSizer)
                 # Note: Position sizing is done with raw price, slippage applied to cost
                 target_value = portfolio_value * position_size_pct
-                shares = np.floor(target_value / price)  # Round down like Python's int()
+                if fractional_shares:
+                    shares = target_value / price  # Allow fractional shares for crypto
+                else:
+                    shares = np.floor(target_value / price)  # Round down for stocks
 
                 # Apply slippage and fees to cost (same as Python)
                 slippage_adj = price * (1 + slippage)
@@ -361,7 +366,10 @@ def simulate_portfolio_numba(
                 # Calculate shares based on position sizing (matches Python FixedPercentageSizer)
                 # Note: Position sizing is done with raw price, slippage applied to proceeds
                 target_value = portfolio_value * position_size_pct
-                shares = np.floor(target_value / price)  # Round down like Python's int()
+                if fractional_shares:
+                    shares = target_value / price  # Allow fractional shares for crypto
+                else:
+                    shares = np.floor(target_value / price)  # Round down for stocks
 
                 # Apply slippage and fees to proceeds (same as Python)
                 slippage_adj = price * (1 - slippage)

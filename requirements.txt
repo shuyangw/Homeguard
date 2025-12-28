@@ -47,6 +47,7 @@ vectorbt==0.28.1
 # Market data and trading
 yfinance==0.2.66
 pandas-datareader==0.10.0  # FRED API fallback for VIX data
+httpx>=0.27.0  # Modern HTTP client for ThetaData options API
 
 # Visualization
 rich==14.2.0
@@ -59,6 +60,7 @@ mplfinance==0.12.10b0
 pandas-market-calendars==4.4.1
 statsmodels>=0.14.0
 numba==0.61.0
+hurst>=0.0.5  # Hurst exponent calculation for mean reversion detection
 
 # Web Interface
 fastapi>=0.111.0

@@ -51,87 +51,12 @@ This document provides an overview of coding standards and guidelines for the Ho
 - Details: [`.claude/environment.md`](.claude/environment.md)
 
 ### Data Handling
-**CRITICAL**: All market data must follow the canonical schema and storage conventions.
-
-#### Storage Location
-- Use `from src.settings import get_local_storage_dir` to get the path
-- **NEVER** hardcode data paths - always use the settings module
-- Windows: `F:\Stock_Data`
-- macOS: `/Users/shuyangw/Library/CloudStorage/Dropbox/cs/stonk/data`
-- Linux/EC2: `/home/ec2-user/stock_data`
-
-#### Directory Structure (Hive Partitioned)
-Data is stored in timeframe-specific directories:
-```
-{local_storage_dir}/equities_1min/symbol={SYMBOL}/year={YYYY}/month={MM}/data.parquet   # Minute
-{local_storage_dir}/equities_1hour/symbol={SYMBOL}/year={YYYY}/month={MM}/data.parquet  # Hourly
-{local_storage_dir}/equities_1day/symbol={SYMBOL}/year={YYYY}/month={MM}/data.parquet   # Daily
-```
-Example: `F:\Stock_Data\equities_1min\symbol=AAPL\year=2024\month=1\data.parquet`
-
-#### Canonical Parquet Schema (MUST FOLLOW)
-**CRITICAL**: All downloaded OHLCV data MUST match the existing S&P 500 schema exactly:
-
-| Column | Type | Description |
-|--------|------|-------------|
-| `timestamp` | `datetime64[us, UTC]` | Bar timestamp (microsecond precision, UTC) |
-| `open` | `float64` | Opening price |
-| `high` | `float64` | High price |
-| `low` | `float64` | Low price |
-| `close` | `float64` | Closing price |
-| `volume` | `float64` | Volume traded |
-| `trade_count` | `float64` | Number of trades |
-| `vwap` | `float64` | Volume-weighted average price |
-
-**Schema Rules:**
-- Column names MUST be **lowercase** (`open`, not `Open`)
-- Include ALL columns from Alpaca API (`trade_count`, `vwap`)
-- Do NOT rename or drop columns
-- Do NOT change dtypes (keep `volume` as `float64`, not `int64`)
-
-#### Symbol Lists
-- `backtest_lists/sp500-2025.csv` - S&P 500 symbols
-- `backtest_lists/russell1000-2025.csv` - Russell 1000 symbols
-- `backtest_lists/russell1000_non_sp500-2025.csv` - Russell 1000 minus S&P 500
-- `backtest_lists/russell2000-2025.csv` - Russell 2000 symbols
-- `backtest_lists/russell2000_non_r1000_sp500-2025.csv` - Russell 2000 minus R1000 minus S&P 500
-
-#### Download Framework
-**Preferred method:** Use the generic download script for all data downloads:
-```bash
-# Download from CSV (recommended)
-python scripts/download_symbols.py --csv backtest_lists/sp500-2025.csv --skip-existing
-
-# Download specific symbols
-python scripts/download_symbols.py --symbols AAPL,MSFT,GOOGL
-
-# Download hourly/daily data
-python scripts/download_symbols.py --csv etfs.csv --timeframe hour
-python scripts/download_symbols.py --csv etfs.csv --timeframe day
-
-# Custom date range
-python scripts/download_symbols.py --symbols SPY --start 2020-01-01 --end 2024-12-31
-```
-
-**Features guaranteed:**
-- Canonical 8-column schema enforcement
-- 6 parallel download threads
-- 3 retries per symbol with exponential backoff
-- 3 end-of-run retry rounds for all failures
-- `--skip-existing` to avoid re-downloading
-- Hive partitioned parquet output
-
-**Programmatic usage:**
-```python
-from src.data import AlpacaDownloader, Timeframe
-
-downloader = AlpacaDownloader(start_date='2020-01-01')
-result = downloader.download_symbols(['AAPL', 'MSFT'], timeframe=Timeframe.MINUTE, skip_existing=True)
-```
-
-#### Other Data Scripts
-- `scripts/download_russell_lists.py` - Download Russell index constituent lists from web sources
-- `backtest_scripts/download_leveraged_etfs.py` - Download daily leveraged ETF data via yfinance
+**CRITICAL**: Follow canonical schema. Use `get_local_storage_dir()` for paths.
+- **Storage**: `from src.settings import get_local_storage_dir` - NEVER hardcode paths
+- **Schema**: 8 columns (timestamp, open, high, low, close, volume, trade_count, vwap) - lowercase, float64
+- **Download**: `python scripts/download_symbols.py --csv <file> --skip-existing`
+- **Symbol lists**: `backtest_lists/sp500-2025.csv`, `russell1000-2025.csv`, `russell2000-2025.csv`
+- Details: [`.claude/data_handling.md`](.claude/data_handling.md)
 
 ### Project Organization
 Maintain clean project structure with proper separation of concerns.
@@ -437,29 +362,6 @@ Pylance/VectorBT type annotation patterns.
 - Stop: Use `Ctrl+C` only - never `taskkill /f /im node.exe`
 - Details: [`.claude/web_development.md`](.claude/web_development.md)
 
-## File Organization
-
-```
-.claude/
-├── agents/                      # Claude Code agent definitions
-│   ├── backtest-driver.md       # Autonomous backtest execution agent
-│   ├── backtest-optimizer.md    # Strategy optimization agent
-│   └── trade-log-analyzer.md    # Live trading log analysis agent
-├── backtesting.md               # Backtesting best practices
-├── code_standards.md            # Python code quality standards
-├── documentation.md             # Documentation requirements
-├── environment.md               # Python environment setup
-├── git_workflow.md              # Git commit and push guidelines
-├── gui_design.md                # GUI design standards
-├── live_trading.md              # Live trading issues and pitfalls
-├── logging.md                   # Logging requirements
-├── project_structure.md         # File organization rules
-├── risk_management.md           # Position sizing and risk
-├── testing.md                   # Unit testing requirements
-├── type_issues.md               # Common Pylance type fixes
-└── web_development.md           # Web UI development (NEVER kill all node processes)
-```
-
 ## Defensive Mindset
 
 **CRITICAL**: Always assume something can go wrong. Be realistic, not optimistic.
@@ -491,46 +393,18 @@ Pylance/VectorBT type annotation patterns.
 - Silent failures that return None instead of raising
 
 ### Type Safety (CRITICAL)
-**CHECK FOR TYPE ERRORS WITH EVERY CODE ADDITION AND MODIFICATION!**
+**CHECK TYPES WITH EVERY CODE CHANGE!** Verify return types, parameter types, dict vs attribute access, mock types.
 
-Before committing ANY code change, verify:
-1. Return types match what callers expect
-2. Parameter types match what callees expect
-3. Dict access vs attribute access is correct
-4. Test mocks match production types
+| Pattern | Issue | Fix |
+|---------|-------|-----|
+| API returns | `broker.get_account()` returns dict | Use `account['key']` not `account.key` |
+| DataFrame cols | yfinance: `'Close'`, Alpaca: `'close'` | Normalize: `df.columns = [c.lower() for c in df.columns]` |
+| Test mocks | Types must match production | Dict returns -> mock returns dict |
+| State tracking | `add_position()` overwrites, `add_or_update_position()` accumulates | Verify which method to use |
+| Signal interface | `StrategyAdapter` expects `Signal` objects | Wrap dicts with converter class |
 
-**Common type error patterns:**
-
-1. **Accessing API/broker return values**:
-   - `broker.get_account()` returns a **dict**, not an object with attributes
-   - Use `account['buying_power']` not `account.buying_power`
-   - Check return type annotations AND actual implementation
-
-2. **Strategy signal interfaces**:
-   - Base `StrategyAdapter` expects `Signal` objects with `.symbol`, `.direction`, `.price`
-   - If underlying strategy returns dicts, create a wrapper class to convert
-   - Example: `OMRSignalWrapper` converts `OvernightReversionSignals` dicts to `Signal` objects
-
-3. **DataFrame column names**:
-   - yfinance returns `'Close'` (capitalized)
-   - Alpaca returns `'close'` (lowercase)
-   - Always normalize: `df.columns = [c.lower() for c in df.columns]`
-
-4. **Test mocks must match production types**:
-   - If production returns a dict, mock should return a dict
-   - If production returns an object with attributes, mock should too
-   - Tests passing ≠ production working if types don't match
-
-5. **State tracking methods**:
-   - `add_position()` OVERWRITES existing positions (use for new only)
-   - `add_or_update_position()` ACCUMULATES qty (use for top-ups)
-   - Always verify which method is appropriate for the use case
-
-### Error Handling Philosophy
-- Fail fast and loud - don't hide errors
-- Log all exceptions with full context
-- Return explicit error states, not silent None
-- Test error paths, not just success paths
+### Error Handling
+Fail fast and loud. Log all exceptions. Return explicit error states, not silent None. Test error paths.
 
 ## Getting Started
 
@@ -542,29 +416,17 @@ Before committing ANY code change, verify:
 
 ## Critical Rules (Always Follow)
 
-1. [+] Use `fintech` conda environment for all Python operations
-2. [+] Keep root directory clean - no script files
-3. [+] Run unit tests before committing code changes
-4. [+] Use proper risk management in backtests
-5. [+] Use centralized logger - never `print()`
-6. [+] **ALWAYS log exceptions with `logger.error()` - never silently swallow errors**
-7. [+] Bright text on dark backgrounds in GUI
-8. [+] Update documentation when modifying features
-9. [+] **Update architecture docs when changing system structure**
-10. [+] **Update infrastructure docs when modifying AWS deployment**
-11. [+] Consult `backtest_guidelines/guidelines.md` before backtesting changes
-12. [+] **Timestamp all documentation files (YYYYMMDD_filename.md format)**
-13. [+] **NEVER push to remote without explicit user permission**
-14. [+] **Use config-driven backtesting system** - don't write ad-hoc backtest scripts
-15. [+] **Verify before claiming success** - run tests, don't assume code works
-16. [+] **Check existing backtest tools first** - see "Existing Backtest Tools" table before creating new ones
-17. [+] **Follow canonical data schema** - all downloaded data must match S&P 500 schema (see Data Handling section)
-18. [+] **Never hardcode sensitive data** - Use `.env` for secrets, use placeholders in docs (see Sensitive Data Protection)
-19. [+] **Use ASCII-only characters** - No emojis or Unicode symbols in code/docs (see Cross-Platform Character Encoding)
-20. [+] **Minimize output and memory usage** - Don't dump large data structures or load entire datasets unnecessarily (see Output and Memory Efficiency)
-21. [+] **NEVER kill all node processes** - Claude Code runs as Node.js; use `Ctrl+C` or kill specific PIDs only (see Web & Server Development)
-22. [+] **No emojis in documentation** - All .md files must use ASCII-only characters (see Cross-Platform Character Encoding)
-23. [+] **Commit incrementally** - One logical unit per commit; separate core module, tests, and docs into distinct commits (see Git Workflow)
+1. [+] Keep root directory clean - no script files
+2. [+] **NEVER push to remote without explicit user permission**
+3. [+] **Commit incrementally** - one logical unit per commit (see Git Workflow)
+4. [+] **Verify before claiming success** - run tests, don't assume code works
+5. [+] **Use config-driven backtesting** - no ad-hoc scripts; check existing tools first
+6. [+] **Update docs when changing**: features, architecture, infrastructure
+7. [+] **Timestamp documentation files** (YYYYMMDD_filename.md format)
+8. [+] **Minimize output/memory** - don't dump large structures or load full datasets
+9. [+] **NEVER kill all node processes** - Claude Code runs as Node.js
+
+Note: Environment, logging, data schema, ASCII-only, and GUI rules are in their respective sections above.
 
 ## When to Consult Detailed Guides
 

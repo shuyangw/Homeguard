@@ -71,14 +71,17 @@ class BacktestEngine:
         self.initial_capital = initial_capital
         self.fees = fees
         self.slippage = slippage
-        self.freq = freq
+        # Use timeframe as freq for Sharpe annualization (overrides legacy freq param)
+        self.freq = timeframe if timeframe else freq
         self.market_hours_only = market_hours_only
         self.risk_config = risk_config or RiskConfig.moderate()
         self.enable_regime_analysis = enable_regime_analysis
         self.allow_shorts = allow_shorts
         self.timeframe = timeframe
-        # For crypto data, disable market day filtering (24/7 trading)
-        filter_market_days = not timeframe.startswith('crypto_')
+        # For crypto data, disable market day filtering (24/7 trading) and enable fractional shares
+        is_crypto = timeframe.startswith('crypto_')
+        filter_market_days = not is_crypto
+        self.fractional_shares = is_crypto  # Crypto requires fractional share support
         self.data_loader = StreamingDataLoader(timeframe=timeframe, filter_market_days=filter_market_days)
         self.reporter = QuantStatsReporter(benchmark=benchmark)
 
@@ -425,7 +428,8 @@ class BacktestEngine:
                 market_hours_only=self.market_hours_only,
                 risk_config=self.risk_config,
                 price_data=symbol_data,
-                allow_shorts=self.allow_shorts
+                allow_shorts=self.allow_shorts,
+                fractional_shares=self.fractional_shares
             )
         else:
             # Standard strategy (long-only, returns 2 signals)
@@ -445,7 +449,8 @@ class BacktestEngine:
                 market_hours_only=self.market_hours_only,
                 risk_config=self.risk_config,
                 price_data=symbol_data,
-                allow_shorts=self.allow_shorts
+                allow_shorts=self.allow_shorts,
+                fractional_shares=self.fractional_shares
             )
 
         return portfolio
@@ -784,7 +789,8 @@ class BacktestEngine:
                 market_hours_only=self.market_hours_only,
                 risk_config=self.risk_config,
                 price_data=data_dict[first_symbol],
-                allow_shorts=self.allow_shorts
+                allow_shorts=self.allow_shorts,
+                fractional_shares=self.fractional_shares
             )
 
             return portfolio
@@ -844,7 +850,8 @@ class BacktestEngine:
             freq=self.freq,
             market_hours_only=self.market_hours_only,
             risk_config=self.risk_config,
-            price_data=data  # Pass OHLC data for ATR-based position sizing
+            price_data=data,  # Pass OHLC data for ATR-based position sizing
+            fractional_shares=self.fractional_shares
         )
 
         self._print_summary(portfolio)
@@ -1217,7 +1224,8 @@ class BacktestEngine:
                 market_hours_only=self.market_hours_only,
                 risk_config=self.risk_config,
                 price_data=data,
-                allow_shorts=self.allow_shorts
+                allow_shorts=self.allow_shorts,
+                fractional_shares=self.fractional_shares
             )
 
         # Multi-symbol: use MultiAssetPortfolio
