@@ -1,0 +1,64 @@
+# Opening Range Breakout - Crypto (9:30 AM ET Opening)
+# Test ORB on crypto using US market open as the "opening range" period
+# Hypothesis: Crypto volatility spikes at US market open may create tradeable breakouts
+
+mode: sweep
+
+strategy:
+  name: ORBStrategy
+  parameters:
+    opening_range_minutes: 15
+    min_or_width_pct: 0.0
+    rvol_threshold: 1.0  # Lower threshold for crypto (different volume patterns)
+    rvol_lookback: 20
+    fast_ema: 9
+    slow_ema: 21
+    use_regime: false
+    use_gap_filter: false
+    breakout_buffer_pct: 0.0
+    entry_cutoff_hour: 15
+    entry_cutoff_minute: 30
+    use_atr_stops: false
+    use_trailing_stop: false
+    target_multiplier: 1.0
+    one_trade_per_day: false
+    long_only: false
+    # No earnings filter for crypto
+    use_earnings_filter: false
+
+symbols:
+  file: backtest_lists/crypto_major.csv
+
+dates:
+  start: "2022-01-01"
+  end: "2024-12-31"
+
+backtest:
+  initial_capital: 100000
+  fees: 0.001
+  slippage: 0.001  # Higher slippage for crypto
+  benchmark: SPY
+  market_hours_only: true  # Use 9:30-4:00 ET window
+  allow_shorts: true
+  portfolio_mode: multi
+  timeframe: crypto_1min
+
+risk:
+  enabled: true
+  position_sizing_method: fixed_percent
+  position_size_pct: 0.05
+  max_positions: 5
+
+sweep:
+  sort_by: "Total Return"
+  top_n: 12
+  parallel: true
+  max_workers: 6
+  export_csv: true
+
+output:
+  save_trades: true
+  save_reports: true
+  quantstats: false
+  visualize: false
+  verbosity: 0

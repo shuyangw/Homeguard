@@ -1,0 +1,50 @@
+Earnings Calendar Validation Report
+Generated: 2025-12-20 00:28:22
+============================================================
+
+Total records: 740
+Symbols with data: 38/39
+Date range: 2019-12-20 to 2024-12-20
+Avg earnings per symbol: 19.0
+Data valid: True
+
+Coverage by symbol:
+  CCL: 21
+  TSLA: 20
+  NVDA: 20
+  AMD: 20
+  META: 20
+  CRWD: 20
+  FTNT: 20
+  PANW: 20
+  DELL: 20
+  QCOM: 20
+  NCLH: 20
+  UAL: 20
+  DAL: 20
+  LUV: 20
+  ALB: 20
+  EL: 20
+  HAL: 20
+  DVN: 20
+  SLB: 20
+  VST: 20
+  WBD: 20
+  T: 20
+  BA: 20
+  CRM: 20
+  CMG: 20
+  MCD: 20
+  LLY: 20
+  AVGO: 20
+  NFLX: 20
+  GOOGL: 20
+  AMZN: 20
+  AAPL: 20
+  MSFT: 20
+  SMCI: 19
+  PLTR: 17
+  ABNB: 16
+  COIN: 15
+  CEG: 12
+  WBA: 0
