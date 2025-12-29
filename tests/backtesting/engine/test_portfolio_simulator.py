@@ -545,7 +545,10 @@ class TestFromSignalsFactory:
             market_hours_only=False
         )
 
-        assert isinstance(portfolio, Portfolio)
+        # from_signals now returns PortfolioV2 (V2 is the default implementation)
+        # Both Portfolio and PortfolioV2 inherit from BasePortfolio
+        from src.backtesting.engine.base_portfolio import BasePortfolio
+        assert isinstance(portfolio, BasePortfolio)
         assert portfolio.init_cash == 10000
         assert portfolio.fees == 0.001
 
