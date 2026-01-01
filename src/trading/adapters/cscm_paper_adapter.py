@@ -111,6 +111,9 @@ class CSCMPaperAdapter(CSCMLiveAdapter):
             go_to_cash_in_bear: Exit all in bearish regime (default True)
             **kwargs: Additional arguments passed to parent
         """
+        # Set paper-specific cache file BEFORE parent init (parent calls _load_state)
+        self._cache_file = PAPER_CACHE_FILE
+
         # Create Alpaca paper trading broker
         broker = AlpacaCryptoBroker(paper=True)
 
@@ -134,9 +137,6 @@ class CSCMPaperAdapter(CSCMLiveAdapter):
 
         # Override data provider with Binance+fallback
         self._data_provider = CryptoDataProviderWithFallback()
-
-        # Use paper-specific cache file
-        self._cache_file = PAPER_CACHE_FILE
 
         # Portfolio tracker (lazy init)
         self._portfolio_tracker = None
