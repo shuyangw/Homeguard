@@ -59,10 +59,11 @@ class CSCMLiveAdapter:
     """
 
     # Default parameters (optimized from backtest)
+    # Universe: All Alpaca-tradeable alts (BTC kept for regime filter)
     DEFAULT_UNIVERSE = [
         'BTC/USD', 'ETH/USD', 'SOL/USD', 'AVAX/USD', 'LINK/USD',
         'DOGE/USD', 'DOT/USD', 'LTC/USD', 'BCH/USD', 'UNI/USD',
-        'AAVE/USD', 'SUSHI/USD'  # MKR/USD removed - not traded on Alpaca
+        'AAVE/USD', 'SUSHI/USD', 'XRP/USD', 'CRV/USD', 'GRT/USD'
     ]
     DEFAULT_TOP_N = 7
     DEFAULT_MOMENTUM_PERIOD = 28
