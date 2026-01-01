@@ -24,8 +24,10 @@ from src.data.providers.base import (
 from src.data.providers.alpaca import AlpacaDataProvider
 from src.data.providers.yfinance import YFinanceDataProvider
 from src.data.providers.composite import CompositeDataProvider
+from src.data.providers.crypto import CryptoDataProvider
+from src.data.providers.binance import BinanceDataProvider, CryptoDataProviderWithFallback
 from src.data.providers.cache import DataCache
-from src.data.providers.factory import create_data_provider
+from src.data.providers.factory import create_data_provider, create_crypto_data_provider
 
 
 __all__ = [
@@ -38,8 +40,12 @@ __all__ = [
     'AlpacaDataProvider',
     'YFinanceDataProvider',
     'CompositeDataProvider',
+    'CryptoDataProvider',
+    'BinanceDataProvider',
+    'CryptoDataProviderWithFallback',
     # Cache
     'DataCache',
     # Factory
     'create_data_provider',
+    'create_crypto_data_provider',
 ]

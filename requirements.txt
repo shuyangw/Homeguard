@@ -48,6 +48,7 @@ vectorbt==0.28.1
 yfinance==0.2.66
 pandas-datareader==0.10.0  # FRED API fallback for VIX data
 httpx>=0.27.0  # Modern HTTP client for ThetaData options API
+coinbase-advanced-py>=1.2.0  # Coinbase Advanced Trade API for CSCM crypto strategy
 
 # Visualization
 rich==14.2.0
@@ -91,3 +92,12 @@ pytest==8.3.5
 # Uncomment to enable Discord monitoring bot
 # discord.py>=2.3.0
 # anthropic>=0.39.0
+
+# ============================================================================
+# CSCM Paper Trading (Crypto Paper Trading Module)
+# ============================================================================
+# Discord bot for CSCM status monitoring
+discord.py>=2.3.0
+
+# Binance data provider (no API key required for public endpoints)
+# Uses requests (already included) - no additional package needed

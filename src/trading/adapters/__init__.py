@@ -46,6 +46,8 @@ from src.trading.adapters.ma_live_adapter import (
 from src.trading.adapters.omr_live_adapter import OMRLiveAdapter
 from src.trading.adapters.momentum_live_adapter import MomentumLiveAdapter
 from src.trading.adapters.ramp_live_adapter import RAMPLiveAdapter
+from src.trading.adapters.cscm_live_adapter import CSCMLiveAdapter
+from src.trading.adapters.cscm_paper_adapter import CSCMPaperAdapter
 
 __all__ = [
     'StrategyAdapter',
@@ -53,5 +55,7 @@ __all__ = [
     'TripleMACrossoverLiveAdapter',
     'OMRLiveAdapter',
     'MomentumLiveAdapter',
-    'RAMPLiveAdapter'
+    'RAMPLiveAdapter',
+    'CSCMLiveAdapter',
+    'CSCMPaperAdapter',
 ]
