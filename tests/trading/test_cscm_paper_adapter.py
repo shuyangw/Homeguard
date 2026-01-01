@@ -164,7 +164,7 @@ class TestCSCMPaperAdapterStatus:
         status = adapter.get_status()
 
         assert status['mode'] == 'paper'
-        assert status['data_source'] == 'Binance (Alpaca fallback)'
+        assert status['data_source'] == 'Alpaca (Binance fallback)'
         assert status['execution'] == 'Alpaca Paper'
 
 

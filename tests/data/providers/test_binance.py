@@ -164,38 +164,39 @@ class TestBinanceDataProvider:
 
 
 class TestCryptoDataProviderWithFallback:
-    """Test composite provider with fallback."""
+    """Test composite provider with fallback (Alpaca primary, Binance fallback)."""
 
     @pytest.fixture
     def provider(self):
         """Create composite provider with mocked components."""
-        from src.data.providers.binance import CryptoDataProviderWithFallback
+        with patch('src.data.providers.crypto.CryptoDataProvider'), \
+             patch('src.trading.brokers.alpaca_crypto_broker.AlpacaCryptoBroker'):
+            from src.data.providers.binance import CryptoDataProviderWithFallback
 
-        provider = CryptoDataProviderWithFallback()
-        provider._binance = Mock()
-        provider._alpaca = Mock()
-        return provider
+            provider = CryptoDataProviderWithFallback()
+            provider._alpaca_data = Mock()
+            provider._alpaca_broker = Mock()
+            provider._binance = Mock()
+            return provider
 
     def test_provider_name(self, provider):
         """Test composite provider name."""
-        assert provider.name == "Binance+Alpaca"
+        assert provider.name == "Alpaca+Binance"
 
-    def test_uses_binance_by_default(self, provider):
-        """Test that Binance is used by default."""
-        provider._binance.get_current_price.return_value = 50000.0
+    def test_uses_alpaca_by_default(self, provider):
+        """Test that Alpaca is used by default."""
+        provider._alpaca_broker.get_crypto_quote.return_value = {'last': 50000.0}
 
         price = provider.get_current_price('BTC/USD')
 
         assert price == 50000.0
-        provider._binance.get_current_price.assert_called_once()
-        provider._alpaca.get_historical_bars.assert_not_called()
+        provider._alpaca_broker.get_crypto_quote.assert_called_once()
+        provider._binance.get_current_price.assert_not_called()
 
-    def test_records_failure_on_binance_error(self, provider):
+    def test_records_failure_on_alpaca_error(self, provider):
         """Test that failures are recorded."""
-        provider._binance.get_current_price.side_effect = Exception("API Error")
-        provider._alpaca.get_historical_bars.return_value = pd.DataFrame({
-            'close': [49000.0]
-        })
+        provider._alpaca_broker.get_crypto_quote.side_effect = Exception("API Error")
+        provider._binance.get_current_price.return_value = 49000.0
 
         provider.get_current_price('BTC/USD')
 
@@ -203,9 +204,9 @@ class TestCryptoDataProviderWithFallback:
 
     def test_switches_to_fallback_after_threshold(self, provider):
         """Test fallback after 3 failures."""
-        # Mock the singular get_current_price to throw an exception
-        provider._binance.get_current_price.side_effect = Exception("Error")
-        provider._alpaca.get_historical_bars.return_value = pd.DataFrame({'close': [50000.0]})
+        # Mock Alpaca to throw an exception
+        provider._alpaca_broker.get_crypto_quote.side_effect = Exception("Error")
+        provider._binance.get_current_price.return_value = 50000.0
 
         # Trigger 3 failures by calling get_current_price
         for _ in range(3):
@@ -221,19 +222,19 @@ class TestCryptoDataProviderWithFallback:
         provider._failure_count = 5
         provider._using_fallback = True
 
-        provider._binance.get_current_price.return_value = 50000.0
+        provider._alpaca_broker.get_crypto_quote.return_value = {'last': 50000.0}
 
         price = provider.get_current_price('BTC/USD')
 
-        # Should use Binance again
+        # Should use Alpaca again
         assert price == 50000.0
         assert provider._failure_count == 0
         assert provider._using_fallback is False
 
     def test_get_historical_bars_with_fallback(self, provider):
         """Test historical bars fetch with fallback."""
-        provider._binance.get_historical_bars.return_value = None
-        provider._alpaca.get_historical_bars.return_value = pd.DataFrame({
+        provider._alpaca_data.get_historical_bars.return_value = None
+        provider._binance.get_historical_bars.return_value = pd.DataFrame({
             'open': [49000],
             'high': [50000],
             'low': [48000],
@@ -246,8 +247,8 @@ class TestCryptoDataProviderWithFallback:
         df = provider.get_historical_bars('BTC/USD', start, end, '1D')
 
         assert df is not None
-        # Should have fallen back to Alpaca
-        provider._alpaca.get_historical_bars.assert_called_once()
+        # Should have fallen back to Binance
+        provider._binance.get_historical_bars.assert_called_once()
 
 
 class TestBinanceRateLimiting:

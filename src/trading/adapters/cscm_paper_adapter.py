@@ -4,7 +4,7 @@ CSCM Paper Trading Adapter.
 Paper trading variant of the CSCM strategy for testing and validation.
 
 Key Differences from CSCMLiveAdapter:
-- Uses Binance for live price data (with Alpaca fallback)
+- Uses Alpaca for live price data (with Binance fallback)
 - Uses Alpaca paper trading for order execution
 - Rebalances on Monday (not Sunday)
 - Integrates with PortfolioTracker for value monitoring
@@ -50,19 +50,18 @@ class CSCMPaperAdapter(CSCMLiveAdapter):
     Paper trading adapter for CSCM strategy.
 
     Extends CSCMLiveAdapter with:
-    - Binance data provider for live prices
+    - Alpaca data provider for live prices (Binance fallback)
     - Alpaca paper trading for execution
     - Monday rebalancing schedule
     - Portfolio tracking during equity hours
 
-    The adapter uses Binance for momentum signal calculation and price data,
-    but executes trades through Alpaca's paper trading system.
+    The adapter uses Alpaca for momentum signal calculation and price data,
+    with Binance as a fallback. Executes trades through Alpaca's paper trading.
 
-    Note on Price Reconciliation:
-    - Binance quotes are in USDT (BTCUSDT)
-    - Alpaca quotes are in USD (BTCUSD)
-    - Small price differences (0.1-1%) are expected
-    - Execution uses Alpaca quotes for accurate paper fills
+    Note on Price Sources:
+    - Primary: Alpaca crypto API (BTCUSD)
+    - Fallback: Binance (BTCUSDT converted to USD)
+    - Small price differences (0.1-1%) may occur between sources
 
     Usage:
         adapter = CSCMPaperAdapter(
@@ -132,13 +131,13 @@ class CSCMPaperAdapter(CSCMLiveAdapter):
         self._portfolio_tracker = None
 
         logger.info(f"[CSCM Paper] Initialized paper trading adapter")
-        logger.info(f"[CSCM Paper]   Data Source: Binance (Alpaca fallback)")
+        logger.info(f"[CSCM Paper]   Data Source: Alpaca (Binance fallback)")
         logger.info(f"[CSCM Paper]   Execution: Alpaca Paper Trading")
         logger.info(f"[CSCM Paper]   Rebalance Day: {rebalance_day}")
 
     def _fetch_historical_data(self) -> Dict[str, pd.DataFrame]:
         """
-        Fetch historical data using Binance with Alpaca fallback.
+        Fetch historical data using Alpaca with Binance fallback.
 
         Overrides parent to use our composite data provider.
         """
@@ -161,7 +160,7 @@ class CSCMPaperAdapter(CSCMLiveAdapter):
 
     def _get_current_prices(self) -> Dict[str, float]:
         """
-        Get current prices from Binance with Alpaca fallback.
+        Get current prices from Alpaca with Binance fallback.
 
         Returns:
             Dict mapping symbol -> current price
@@ -259,7 +258,7 @@ class CSCMPaperAdapter(CSCMLiveAdapter):
 
         # Add paper trading info
         status['mode'] = 'paper'
-        status['data_source'] = 'Binance (Alpaca fallback)'
+        status['data_source'] = 'Alpaca (Binance fallback)'
         status['execution'] = 'Alpaca Paper'
 
         # Add price comparison (for debugging)

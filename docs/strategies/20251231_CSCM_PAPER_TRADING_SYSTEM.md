@@ -5,8 +5,8 @@ Paper trading implementation for the Cross-Sectional Crypto Momentum (CSCM) stra
 ## Overview
 
 This system enables paper trading of the CSCM strategy with:
-- **Binance** for live price data (primary)
-- **Alpaca** as fallback data source
+- **Alpaca** for live price data (primary)
+- **Binance** as fallback data source
 - **Alpaca paper trading** for order execution
 - **Monday weekly rebalancing** (instead of Sunday for live)
 - Portfolio tracking during equity hours + on-demand refresh
@@ -16,12 +16,12 @@ This system enables paper trading of the CSCM strategy with:
 ## Architecture
 
 ```
-[Binance API] -----> [BinanceDataProvider] ----+
+[Alpaca API] -----> [AlpacaCryptoBroker] ------+
      |                                          |
      | (fallback after 3 failures)              v
      |                              [CryptoDataProviderWithFallback]
      v                                          |
-[Alpaca Data] -----> [AlpacaCryptoData] -------+
+[Binance API] ----> [BinanceDataProvider] -----+
                                                 |
                                                 v
                                     [CSCMPaperAdapter]
@@ -66,12 +66,12 @@ Provides live crypto price data from Binance REST API.
 
 **Location**: `src/data/providers/binance.py` (CryptoDataProviderWithFallback)
 
-Provides automatic failover from Binance to Alpaca.
+Provides automatic failover from Alpaca to Binance.
 
 **Behavior**:
-- Uses Binance by default
-- After 3 consecutive failures, switches to Alpaca for 5 minutes
-- Automatically retries Binance after fallback window expires
+- Uses Alpaca by default (live prices via broker API, historical via local parquet)
+- After 3 consecutive failures, switches to Binance for 5 minutes
+- Automatically retries Alpaca after fallback window expires
 - Logs all failover events
 
 ### 3. CSCM Paper Adapter
@@ -81,7 +81,7 @@ Provides automatic failover from Binance to Alpaca.
 Paper trading variant of the CSCM strategy.
 
 **Differences from Live Adapter**:
-- Uses Binance for price data (instead of Coinbase)
+- Uses Alpaca for price data (with Binance fallback)
 - Uses Alpaca paper trading for execution
 - Rebalances on Monday (instead of Sunday)
 - Separate state file (`cscm_paper_state.pkl`)
@@ -280,9 +280,9 @@ tests/
 
 ## Risk Considerations
 
-1. **Binance Rate Limits**: 1200 requests/minute - exponential backoff handles this
-2. **Price Divergence**: Binance (USDT) vs Alpaca (USD) may differ 0.1-1%
-3. **Failover Latency**: 5-minute fallback window on Binance failures
+1. **Alpaca Rate Limits**: Standard API rate limits apply
+2. **Price Divergence**: Alpaca (USD) vs Binance (USDT) may differ 0.1-1%
+3. **Failover Latency**: 5-minute fallback window on Alpaca failures
 4. **Paper vs Live**: Paper trading results may differ from live due to:
    - No slippage simulation
    - Perfect fills at quoted prices

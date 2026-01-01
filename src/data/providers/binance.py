@@ -401,10 +401,11 @@ class BinanceDataProvider(DataProviderInterface):
 
 class CryptoDataProviderWithFallback:
     """
-    Composite crypto data provider with Binance primary and Alpaca fallback.
+    Composite crypto data provider with Alpaca primary and Binance fallback.
 
-    Automatically switches to Alpaca after 3 consecutive Binance failures,
-    with a 5-minute fallback window before retrying Binance.
+    Uses Alpaca for live prices (via broker API) and historical data (local parquet).
+    Automatically switches to Binance after 3 consecutive Alpaca failures,
+    with a 5-minute fallback window before retrying Alpaca.
 
     Usage:
         provider = CryptoDataProviderWithFallback()
@@ -416,32 +417,34 @@ class CryptoDataProviderWithFallback:
     FALLBACK_DURATION_MINUTES = 5
 
     def __init__(self):
-        """Initialize with Binance primary and Alpaca fallback."""
+        """Initialize with Alpaca primary and Binance fallback."""
         from src.data.providers.crypto import CryptoDataProvider
+        from src.trading.brokers.alpaca_crypto_broker import AlpacaCryptoBroker
 
+        self._alpaca_data = CryptoDataProvider()  # Local parquet storage
+        self._alpaca_broker = AlpacaCryptoBroker(paper=True)  # Live prices
         self._binance = BinanceDataProvider()
-        self._alpaca = CryptoDataProvider()  # Local parquet storage
         self._failure_count = 0
         self._fallback_until: Optional[datetime] = None
         self._using_fallback = False
 
     @property
     def name(self) -> str:
-        return "Binance+Alpaca"
+        return "Alpaca+Binance"
 
     def _should_use_fallback(self) -> bool:
-        """Check if we should use Alpaca fallback."""
+        """Check if we should use Binance fallback."""
         if self._fallback_until and datetime.now() < self._fallback_until:
             return True
         if self._fallback_until and datetime.now() >= self._fallback_until:
-            # Fallback window expired, reset and try Binance again
+            # Fallback window expired, reset and try Alpaca again
             self._fallback_until = None
             self._failure_count = 0
             self._using_fallback = False
         return False
 
     def _record_failure(self) -> None:
-        """Record a Binance failure and trigger fallback if threshold reached."""
+        """Record an Alpaca failure and trigger fallback if threshold reached."""
         self._failure_count += 1
         if self._failure_count >= self.FAILURE_THRESHOLD:
             self._fallback_until = datetime.now() + timedelta(
@@ -449,76 +452,79 @@ class CryptoDataProviderWithFallback:
             )
             self._using_fallback = True
             logger.warning(
-                f"[CryptoFallback] Switching to Alpaca for {self.FALLBACK_DURATION_MINUTES} minutes "
-                f"after {self._failure_count} Binance failures"
+                f"[CryptoFallback] Switching to Binance for {self.FALLBACK_DURATION_MINUTES} minutes "
+                f"after {self._failure_count} Alpaca failures"
             )
 
     def _record_success(self) -> None:
-        """Record a successful Binance request."""
+        """Record a successful Alpaca request."""
         self._failure_count = 0
+
+    def _get_alpaca_current_price(self, symbol: str) -> Optional[float]:
+        """Get current price from Alpaca broker API."""
+        try:
+            quote = self._alpaca_broker.get_crypto_quote(symbol)
+            if quote and 'last' in quote:
+                return float(quote['last'])
+            # Try mid price if no last
+            if quote and 'bid' in quote and 'ask' in quote:
+                return (float(quote['bid']) + float(quote['ask'])) / 2
+        except Exception as e:
+            logger.debug(f"[Alpaca] Quote error for {symbol}: {e}")
+        return None
 
     def get_current_price(self, symbol: str) -> Optional[float]:
         """Get current price with fallback."""
         if self._should_use_fallback():
-            # Alpaca local storage doesn't have real-time prices
-            # Fall back to last known price from historical data
-            df = self._alpaca.get_historical_bars(
-                symbol,
-                datetime.now() - timedelta(days=7),
-                datetime.now(),
-                '1D'
-            )
-            if df is not None and not df.empty:
-                return float(df['close'].iloc[-1])
+            # Use Binance as fallback
+            price = self._binance.get_current_price(symbol)
+            if price is not None:
+                return price
             return None
 
         try:
-            price = self._binance.get_current_price(symbol)
+            price = self._get_alpaca_current_price(symbol)
             if price is not None:
                 self._record_success()
                 return price
             self._record_failure()
         except Exception as e:
-            logger.error(f"[CryptoFallback] Binance error: {e}")
+            logger.error(f"[CryptoFallback] Alpaca error: {e}")
             self._record_failure()
 
-        # Try Alpaca as immediate fallback
-        df = self._alpaca.get_historical_bars(
-            symbol,
-            datetime.now() - timedelta(days=7),
-            datetime.now(),
-            '1D'
-        )
-        if df is not None and not df.empty:
-            return float(df['close'].iloc[-1])
-        return None
+        # Try Binance as immediate fallback
+        return self._binance.get_current_price(symbol)
 
     def get_current_prices(self, symbols: List[str]) -> Dict[str, float]:
         """Get current prices for multiple symbols with fallback."""
         if self._should_use_fallback():
-            results = {}
-            for symbol in symbols:
-                price = self.get_current_price(symbol)
+            return self._binance.get_current_prices(symbols)
+
+        results = {}
+        failures = 0
+
+        for symbol in symbols:
+            try:
+                price = self._get_alpaca_current_price(symbol)
                 if price is not None:
                     results[symbol] = price
-            return results
+                else:
+                    failures += 1
+            except Exception as e:
+                logger.debug(f"[Alpaca] Error for {symbol}: {e}")
+                failures += 1
 
-        try:
-            prices = self._binance.get_current_prices(symbols)
-            if prices:
-                self._record_success()
-                return prices
+        # If too many failures, record and try Binance for missing symbols
+        if failures > len(symbols) // 2:
             self._record_failure()
-        except Exception as e:
-            logger.error(f"[CryptoFallback] Binance error: {e}")
-            self._record_failure()
+            # Get missing symbols from Binance
+            missing = [s for s in symbols if s not in results]
+            if missing:
+                binance_prices = self._binance.get_current_prices(missing)
+                results.update(binance_prices)
+        else:
+            self._record_success()
 
-        # Fallback to Alpaca
-        results = {}
-        for symbol in symbols:
-            price = self.get_current_price(symbol)
-            if price is not None:
-                results[symbol] = price
         return results
 
     def get_historical_bars(
@@ -531,12 +537,12 @@ class CryptoDataProviderWithFallback:
     ) -> Optional[pd.DataFrame]:
         """Get historical bars with fallback."""
         if self._should_use_fallback():
-            return self._alpaca.get_historical_bars(
+            return self._binance.get_historical_bars(
                 symbol, start, end, timeframe, force_refresh
             )
 
         try:
-            df = self._binance.get_historical_bars(
+            df = self._alpaca_data.get_historical_bars(
                 symbol, start, end, timeframe, force_refresh
             )
             if df is not None:
@@ -544,11 +550,11 @@ class CryptoDataProviderWithFallback:
                 return df
             self._record_failure()
         except Exception as e:
-            logger.error(f"[CryptoFallback] Binance error: {e}")
+            logger.error(f"[CryptoFallback] Alpaca error: {e}")
             self._record_failure()
 
-        # Fallback to Alpaca
-        return self._alpaca.get_historical_bars(
+        # Fallback to Binance
+        return self._binance.get_historical_bars(
             symbol, start, end, timeframe, force_refresh
         )
 
@@ -562,12 +568,12 @@ class CryptoDataProviderWithFallback:
     ) -> Dict[str, pd.DataFrame]:
         """Get historical bars for multiple symbols with fallback."""
         if self._should_use_fallback():
-            return self._alpaca.get_historical_bars_batch(
+            return self._binance.get_historical_bars_batch(
                 symbols, start, end, timeframe, force_refresh
             )
 
         try:
-            data = self._binance.get_historical_bars_batch(
+            data = self._alpaca_data.get_historical_bars_batch(
                 symbols, start, end, timeframe, force_refresh
             )
             if data:
@@ -575,14 +581,14 @@ class CryptoDataProviderWithFallback:
                 return data
             self._record_failure()
         except Exception as e:
-            logger.error(f"[CryptoFallback] Binance error: {e}")
+            logger.error(f"[CryptoFallback] Alpaca error: {e}")
             self._record_failure()
 
-        # Fallback to Alpaca
-        return self._alpaca.get_historical_bars_batch(
+        # Fallback to Binance
+        return self._binance.get_historical_bars_batch(
             symbols, start, end, timeframe, force_refresh
         )
 
     def is_available(self) -> bool:
         """Check if at least one provider is available."""
-        return self._binance.is_available() or self._alpaca.is_available()
+        return self._alpaca_data.is_available() or self._binance.is_available()
