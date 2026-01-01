@@ -20,7 +20,7 @@ Usage:
     status = adapter.get_status()
 """
 
-from datetime import datetime, time, timedelta
+from datetime import datetime, time, timedelta, timezone
 from decimal import Decimal
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -78,8 +78,10 @@ class CSCMPaperAdapter(CSCMLiveAdapter):
             adapter.rebalance()
     """
 
-    # Override default rebalance day
+    # Override default rebalance day and time
     DEFAULT_REBALANCE_DAY = 'monday'
+    DEFAULT_REBALANCE_HOUR_UTC = 21  # 21:30 UTC
+    DEFAULT_REBALANCE_MINUTE_UTC = 30
 
     def __init__(
         self,
@@ -89,6 +91,8 @@ class CSCMPaperAdapter(CSCMLiveAdapter):
         btc_sma_period: int = CSCMLiveAdapter.DEFAULT_BTC_SMA_PERIOD,
         trailing_stop_pct: float = CSCMLiveAdapter.DEFAULT_TRAILING_STOP,
         rebalance_day: str = DEFAULT_REBALANCE_DAY,
+        rebalance_hour_utc: int = DEFAULT_REBALANCE_HOUR_UTC,
+        rebalance_minute_utc: int = DEFAULT_REBALANCE_MINUTE_UTC,
         go_to_cash_in_bear: bool = True,
         **kwargs
     ):
@@ -102,6 +106,8 @@ class CSCMPaperAdapter(CSCMLiveAdapter):
             btc_sma_period: BTC SMA period for regime (default 40)
             trailing_stop_pct: Trailing stop percentage (default 0.25 = 25%)
             rebalance_day: Day of week to rebalance (default 'monday')
+            rebalance_hour_utc: Hour in UTC to rebalance (default 21)
+            rebalance_minute_utc: Minute in UTC to rebalance (default 30)
             go_to_cash_in_bear: Exit all in bearish regime (default True)
             **kwargs: Additional arguments passed to parent
         """
@@ -121,6 +127,11 @@ class CSCMPaperAdapter(CSCMLiveAdapter):
             paper=True
         )
 
+        # Store rebalance time (UTC)
+        self.rebalance_hour_utc = rebalance_hour_utc
+        self.rebalance_minute_utc = rebalance_minute_utc
+        self.rebalance_time_utc = time(rebalance_hour_utc, rebalance_minute_utc)
+
         # Override data provider with Binance+fallback
         self._data_provider = CryptoDataProviderWithFallback()
 
@@ -133,7 +144,7 @@ class CSCMPaperAdapter(CSCMLiveAdapter):
         logger.info(f"[CSCM Paper] Initialized paper trading adapter")
         logger.info(f"[CSCM Paper]   Data Source: Alpaca (Binance fallback)")
         logger.info(f"[CSCM Paper]   Execution: Alpaca Paper Trading")
-        logger.info(f"[CSCM Paper]   Rebalance Day: {rebalance_day}")
+        logger.info(f"[CSCM Paper]   Rebalance: {rebalance_day} at {rebalance_hour_utc:02d}:{rebalance_minute_utc:02d} UTC")
 
     def _fetch_historical_data(self) -> Dict[str, pd.DataFrame]:
         """
@@ -187,6 +198,49 @@ class CSCMPaperAdapter(CSCMLiveAdapter):
             logger.warning(f"[CSCM Paper] Failed to get Alpaca quote for {symbol}: {e}")
             # Fall back to Binance price
             return self._data_provider.get_current_price(symbol) or 0.0
+
+    def _should_rebalance(self) -> bool:
+        """
+        Check if we should rebalance now.
+
+        Overrides parent to check specific time (21:30 UTC on Monday).
+        """
+        # Get current time in UTC
+        now_utc = datetime.now(timezone.utc)
+
+        # Check if it's the right day
+        day_map = {
+            'monday': 0, 'tuesday': 1, 'wednesday': 2, 'thursday': 3,
+            'friday': 4, 'saturday': 5, 'sunday': 6
+        }
+        target_day = day_map.get(self.rebalance_day.lower(), 0)
+
+        if now_utc.weekday() != target_day:
+            return False
+
+        # Check if we're at or past the rebalance time
+        current_time = now_utc.time()
+        if current_time < self.rebalance_time_utc:
+            logger.debug(
+                f"[CSCM Paper] Waiting for rebalance time "
+                f"(current: {current_time.strftime('%H:%M')} UTC, "
+                f"target: {self.rebalance_time_utc.strftime('%H:%M')} UTC)"
+            )
+            return False
+
+        # Check if we already rebalanced today
+        if self._last_rebalance:
+            last_date = self._last_rebalance.date() if hasattr(self._last_rebalance, 'date') else self._last_rebalance
+            today = now_utc.date()
+            if last_date == today:
+                logger.debug("[CSCM Paper] Already rebalanced today")
+                return False
+
+        logger.info(
+            f"[CSCM Paper] Rebalance window: {self.rebalance_day} "
+            f"{self.rebalance_hour_utc:02d}:{self.rebalance_minute_utc:02d} UTC"
+        )
+        return True
 
     def _load_state(self) -> None:
         """Load saved state from paper-specific cache file."""

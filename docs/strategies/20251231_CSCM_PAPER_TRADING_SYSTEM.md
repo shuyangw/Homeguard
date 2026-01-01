@@ -8,7 +8,7 @@ This system enables paper trading of the CSCM strategy with:
 - **Alpaca** for live price data (primary)
 - **Binance** as fallback data source
 - **Alpaca paper trading** for order execution
-- **Monday weekly rebalancing** (instead of Sunday for live)
+- **Monday weekly rebalancing at 21:30 UTC** (instead of Sunday for live)
 - Portfolio tracking during equity hours + on-demand refresh
 - EC2 shell commands for quick status queries
 - Discord slash commands for remote monitoring
@@ -92,6 +92,8 @@ adapter = CSCMPaperAdapter(
     universe=['BTC/USD', 'ETH/USD', 'SOL/USD', ...],  # Default: top 20 cryptos
     top_n=5,                                           # Positions to hold
     rebalance_day='monday',                            # Weekly rebalance day
+    rebalance_hour_utc=21,                             # Rebalance at 21:30 UTC
+    rebalance_minute_utc=30,
     trailing_stop_pct=0.25,                            # 25% trailing stop
 )
 ```
