@@ -288,19 +288,38 @@ class AlpacaCryptoBroker(CryptoTradingInterface, AccountInterface):
         symbol: str,
         quantity: Optional[Decimal] = None
     ) -> Dict:
-        """Close a crypto position."""
+        """Close a crypto position.
+
+        Uses Alpaca's close_position API which handles fractional quantities
+        (needed because fees can result in non-integer positions).
+        """
         position = self.get_crypto_position(symbol)
         if position is None:
             raise NoPositionError(f"No position for {symbol}")
 
-        close_qty = quantity if quantity else position['quantity']
+        try:
+            # Use trading client's close_position API (handles fractional qty)
+            alpaca_symbol = symbol.replace('/', '')  # BTC/USD -> BTCUSD
+            order = self._trading_client.close_position(alpaca_symbol)
 
-        return self.place_crypto_order(
-            symbol=symbol,
-            quantity=close_qty,
-            side=OrderSide.SELL,
-            order_type=OrderType.MARKET
-        )
+            logger.info(f"[Alpaca Crypto] Closing position: {symbol}")
+
+            return {
+                'order_id': str(order.id),
+                'client_order_id': order.client_order_id,
+                'symbol': symbol,
+                'quantity': Decimal(str(order.qty)),
+                'side': 'sell',
+                'order_type': 'market',
+                'status': self._convert_order_status(order.status).value,
+                'created_at': order.created_at,
+                'filled_qty': Decimal(str(order.filled_qty or 0)),
+                'avg_fill_price': float(order.filled_avg_price or 0),
+                'fees': 0.0,
+            }
+        except Exception as e:
+            logger.error(f"[Alpaca Crypto] Failed to close {symbol}: {e}")
+            raise BrokerConnectionError(f"Failed to close position: {e}")
 
     def close_all_crypto_positions(self) -> List[Dict]:
         """Close all crypto positions."""
