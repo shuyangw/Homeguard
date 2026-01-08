@@ -52,6 +52,8 @@ _STRATEGY_REGISTRY: Dict[str, Tuple[str, str]] = {
     "BMSBStrategy": ("src.strategies.advanced.bmsb_strategy", "BMSBStrategy"),
     "MLCryptoMRStrategy": ("src.strategies.advanced.ml_crypto_mr_strategy", "MLCryptoMRStrategy"),
     "HurstMRStrategy": ("src.strategies.advanced.hurst_mr_strategy", "HurstMRStrategy"),
+    "OpExPinningStrategy": ("src.strategies.advanced.opex_pinning_strategy", "OpExPinningStrategy"),
+    "CSCMStrategy": ("src.strategies.advanced.cscm_strategy", "CSCMStrategy"),
 }
 
 # Display name -> class name mapping for user-friendly config files
@@ -107,6 +109,16 @@ _DISPLAY_NAME_MAP: Dict[str, str] = {
     "Hurst MR": "HurstMRStrategy",
     "HurstMR": "HurstMRStrategy",
     "Hurst Strategy": "HurstMRStrategy",
+    "OpEx Pinning": "OpExPinningStrategy",
+    "OpEx Pinning Strategy": "OpExPinningStrategy",
+    "OpEx": "OpExPinningStrategy",
+    "Gamma Pinning": "OpExPinningStrategy",
+    "GEX Strategy": "OpExPinningStrategy",
+    "CSCM": "CSCMStrategy",
+    "CSCM Strategy": "CSCMStrategy",
+    "Cross-Sectional Crypto Momentum": "CSCMStrategy",
+    "Cross Sectional Crypto Momentum": "CSCMStrategy",
+    "Crypto Momentum": "CSCMStrategy",
 }
 
 # Cache for loaded strategy classes
