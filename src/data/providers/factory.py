@@ -10,6 +10,7 @@ from src.data.providers.base import DataProviderInterface
 from src.data.providers.alpaca import AlpacaDataProvider
 from src.data.providers.yfinance import YFinanceDataProvider
 from src.data.providers.composite import CompositeDataProvider
+from src.data.providers.crypto import CryptoDataProvider
 from src.utils.logger import logger
 
 if TYPE_CHECKING:
@@ -101,3 +102,30 @@ def _load_yaml_config(path: str) -> Dict:
     except Exception as e:
         logger.error(f"Failed to load config from {path}: {e}")
         return {}
+
+
+def create_crypto_data_provider(
+    base_dir: Optional[Path] = None
+) -> CryptoDataProvider:
+    """
+    Create a crypto data provider.
+
+    Reads from local parquet storage (crypto_1day, crypto_1hour, crypto_1min).
+    Data must be downloaded first using CryptoDownloader.
+
+    Args:
+        base_dir: Base storage directory. Defaults to settings.ini LOCAL_STORAGE_DIR.
+
+    Returns:
+        CryptoDataProvider instance
+
+    Usage:
+        from src.data.providers import create_crypto_data_provider
+
+        provider = create_crypto_data_provider()
+        df = provider.get_historical_bars('BTC/USD', start, end, '1D')
+
+        # Check available symbols
+        symbols = provider.get_available_symbols('1D')
+    """
+    return CryptoDataProvider(base_dir=base_dir)
