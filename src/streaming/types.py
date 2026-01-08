@@ -47,6 +47,65 @@ class Bar:
             exchange=getattr(alpaca_bar, "exchange", None),
         )
 
+    @classmethod
+    def from_binance(cls, kline_data: dict, symbol_override: Optional[str] = None) -> "Bar":
+        """
+        Convert Binance kline WebSocket message to Bar.
+
+        Binance kline format:
+        {
+            "e": "kline",
+            "s": "BTCUSDT",
+            "k": {
+                "t": 1704700800000,  # Kline start time (ms)
+                "o": "50000.00",     # Open price
+                "h": "50100.00",     # High price
+                "l": "49900.00",     # Low price
+                "c": "50050.00",     # Close price
+                "v": "100.5",        # Base asset volume
+                "n": 1234            # Number of trades
+            }
+        }
+
+        Args:
+            kline_data: Binance kline message dict
+            symbol_override: Optional symbol in our format (e.g., 'BTC/USD')
+                           If not provided, converts from Binance format (BTCUSDT -> BTC/USD)
+
+        Returns:
+            Bar object with normalized data
+        """
+        k = kline_data.get("k", kline_data)  # Handle both full message and just 'k' dict
+
+        # Convert symbol: BTCUSDT -> BTC/USD
+        binance_symbol = kline_data.get("s", k.get("s", "UNKNOWN"))
+        if symbol_override:
+            symbol = symbol_override
+        else:
+            # Convert BTCUSDT -> BTC/USD (remove USDT suffix, add /USD)
+            if binance_symbol.endswith("USDT"):
+                base = binance_symbol[:-4]
+                symbol = f"{base}/USD"
+            else:
+                symbol = binance_symbol
+
+        # Convert timestamp from milliseconds to datetime
+        timestamp_ms = k.get("t", 0)
+        timestamp = datetime.fromtimestamp(timestamp_ms / 1000.0)
+
+        return cls(
+            symbol=symbol,
+            timestamp=timestamp,
+            open=float(k.get("o", 0)),
+            high=float(k.get("h", 0)),
+            low=float(k.get("l", 0)),
+            close=float(k.get("c", 0)),
+            volume=float(k.get("v", 0)),
+            trade_count=float(k.get("n", 0)) if k.get("n") else None,
+            vwap=None,  # Binance klines don't include VWAP
+            exchange="binance",
+        )
+
 
 @dataclass
 class Quote:

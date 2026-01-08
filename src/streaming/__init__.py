@@ -49,5 +49,14 @@ Reference:
 
 from src.streaming.live_data_provider import LiveDataProvider
 from src.streaming.types import Bar, Quote, Trade
+from src.streaming.binance_stream import BinanceStreamManager
+from src.streaming.crypto_buffer import CryptoBarBuffer
 
-__all__ = ["LiveDataProvider", "Bar", "Quote", "Trade"]
+__all__ = [
+    "LiveDataProvider",
+    "Bar",
+    "Quote",
+    "Trade",
+    "BinanceStreamManager",
+    "CryptoBarBuffer",
+]
