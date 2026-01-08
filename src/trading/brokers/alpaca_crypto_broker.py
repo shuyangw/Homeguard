@@ -1,14 +1,15 @@
 """
 Alpaca Crypto Broker Adapter.
 
-Implements CryptoTradingInterface using Alpaca's Crypto Trading API.
-Used as secondary/failover broker for CSCM strategy.
+DEPRECATED: Alpaca crypto trading has significant limitations:
+- Integer-only quantities (no fractional trading)
+- Limited symbol universe
+- Unreliable quote availability
 
-Alpaca Crypto Trading:
-- 24/7 trading
-- Fractional quantities supported
-- Market and limit orders
-- Symbol format: BTC/USD
+Use DemoBroker with Binance streaming for paper trading instead.
+This module is kept for potential future live trading needs.
+
+Implements CryptoTradingInterface using Alpaca's Crypto Trading API.
 
 Documentation:
     https://docs.alpaca.markets/docs/crypto-trading
@@ -232,10 +233,14 @@ class AlpacaCryptoBroker(CryptoTradingInterface, AccountInterface):
             alpaca_side = AlpacaOrderSide.BUY if side == OrderSide.BUY else AlpacaOrderSide.SELL
             alpaca_tif = self._convert_time_in_force(time_in_force)
 
+            # Alpaca Crypto API limits precision (usually max 9 decimals).
+            # Sending more (e.g., 0.1234567891) causes a 400 Validation Error.
+            clean_qty = float(round(quantity, 9))
+
             if order_type == OrderType.MARKET:
                 order_request = MarketOrderRequest(
                     symbol=alpaca_symbol,
-                    qty=float(quantity),
+                    qty=clean_qty,
                     side=alpaca_side,
                     time_in_force=alpaca_tif
                 )
@@ -244,7 +249,7 @@ class AlpacaCryptoBroker(CryptoTradingInterface, AccountInterface):
                     raise InvalidOrderError("Limit price required for limit orders")
                 order_request = LimitOrderRequest(
                     symbol=alpaca_symbol,
-                    qty=float(quantity),
+                    qty=clean_qty,
                     side=alpaca_side,
                     time_in_force=alpaca_tif,
                     limit_price=limit_price

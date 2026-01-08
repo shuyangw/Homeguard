@@ -1,8 +1,11 @@
 """
 CSCM (Cross-Sectional Crypto Momentum) Live Trading Adapter.
 
-Weekly rebalancing of crypto positions based on momentum ranking.
-Uses BTC regime filter to go to cash in bear markets.
+DEPRECATED for paper trading: Uses Alpaca which has significant limitations
+for crypto paper trading (integer-only quantities, limited universe).
+
+For paper trading, use CSCMDemoAdapter with DemoBroker instead.
+This module is retained for potential future live trading with real money.
 
 Key Features:
 - Weekly rebalance (Sunday 0:00 UTC)
@@ -11,7 +14,7 @@ Key Features:
 - Top N coins by 28-day momentum
 - Equal weight allocation
 
-Deployment:
+Deployment (live trading only):
     systemctl start homeguard-cscm
 """
 

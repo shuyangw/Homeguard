@@ -1,23 +1,25 @@
 """
-CSCM Paper Trading Adapter.
+CSCM Paper Trading Adapter (Alpaca).
 
-Paper trading variant of the CSCM strategy for testing and validation.
+DEPRECATED: This adapter uses Alpaca for paper trading which has limitations:
+- Integer-only crypto quantities
+- Limited symbol universe
+- Unreliable quote availability
+
+Use CSCMDemoAdapter with DemoBroker instead for paper trading.
+This module is kept for potential future live trading needs.
 
 Key Differences from CSCMLiveAdapter:
 - Uses Alpaca for live price data (with Binance fallback)
 - Uses Alpaca paper trading for order execution
 - Rebalances on Monday (not Sunday)
-- Integrates with PortfolioTracker for value monitoring
 
 Usage:
-    adapter = CSCMPaperAdapter()
-    adapter.run()  # Main loop with hourly checks
-
-    # Or run once for testing
-    adapter.run_once()
-
-    # Get current status
-    status = adapter.get_status()
+    # Use CSCMDemoAdapter instead:
+    from src.trading.adapters import CSCMDemoAdapter
+    adapter = CSCMDemoAdapter(initial_cash=10000.0)
+    adapter.start_streaming()
+    adapter.rebalance()
 """
 
 from datetime import datetime, time, timedelta, timezone
