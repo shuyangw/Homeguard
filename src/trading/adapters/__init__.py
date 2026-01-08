@@ -48,6 +48,7 @@ from src.trading.adapters.momentum_live_adapter import MomentumLiveAdapter
 from src.trading.adapters.ramp_live_adapter import RAMPLiveAdapter
 from src.trading.adapters.cscm_live_adapter import CSCMLiveAdapter
 from src.trading.adapters.cscm_paper_adapter import CSCMPaperAdapter
+from src.trading.adapters.cscm_demo_adapter import CSCMDemoAdapter
 
 __all__ = [
     'StrategyAdapter',
@@ -58,4 +59,5 @@ __all__ = [
     'RAMPLiveAdapter',
     'CSCMLiveAdapter',
     'CSCMPaperAdapter',
+    'CSCMDemoAdapter',
 ]
