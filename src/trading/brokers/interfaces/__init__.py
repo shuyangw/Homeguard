@@ -62,6 +62,7 @@ from .market_data import MarketDataInterface
 from .order_management import OrderManagementInterface
 from .stock_trading import StockTradingInterface
 from .options_trading import OptionsTradingInterface, OptionLeg
+from .crypto_trading import CryptoTradingInterface
 
 
 __all__ = [
@@ -91,4 +92,5 @@ __all__ = [
     'StockTradingInterface',
     'OptionsTradingInterface',
     'OptionLeg',
+    'CryptoTradingInterface',
 ]
