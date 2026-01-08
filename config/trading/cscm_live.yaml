@@ -1,0 +1,54 @@
+# CSCM (Cross-Sectional Crypto Momentum) Live Trading Configuration
+#
+# Strategy: Weekly rebalancing of crypto positions based on momentum ranking
+# Broker: Coinbase (primary) with Alpaca Crypto failover
+# Schedule: Weekly rebalance on Sunday 0:00 UTC (24/7 crypto trading)
+#
+# Backtest Results (2021-2024):
+#   Sharpe Ratio: 1.41
+#   Total Return: 1566%
+#   Max Drawdown: 19%
+#   Win Rate: ~52%
+
+# Symbol Universe
+# Major crypto assets tradeable on Coinbase and Alpaca
+universe:
+  - BTC/USD
+  - ETH/USD
+  - SOL/USD
+  - AVAX/USD
+  - LINK/USD
+  - DOGE/USD
+  - DOT/USD
+  - LTC/USD
+  - BCH/USD
+  - UNI/USD
+  - AAVE/USD
+  - MKR/USD
+  - SUSHI/USD
+
+# Strategy Parameters (optimized from backtest)
+top_n: 7                    # Number of top momentum coins to hold
+momentum_period: 28         # Days for momentum calculation
+btc_sma_period: 40          # BTC SMA period for regime detection (optimized from 50)
+
+# Rebalancing
+rebalance_day: sunday       # Day of week to rebalance
+check_interval_hours: 1     # Hours between rebalance checks
+
+# Risk Management
+go_to_cash_in_bear: true    # Exit all positions when BTC < SMA (bearish regime)
+trailing_stop_pct: 0.25     # 25% trailing stop - exit if portfolio drops 25% from peak
+
+# Weighting
+weighting: equal            # 'equal' = 1/N, 'momentum' = momentum-weighted
+
+# Broker Settings
+broker:
+  primary: coinbase         # Primary broker
+  secondary: alpaca         # Failover broker
+  auto_failover: true       # Enable automatic failover
+
+# Logging
+log_level: INFO
+trade_log_enabled: true

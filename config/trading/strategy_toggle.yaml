@@ -10,3 +10,6 @@ strategies:
   ramp:
     enabled: true
     shutdown_requested: false
+  cscm:
+    enabled: false
+    shutdown_requested: false
