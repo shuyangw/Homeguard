@@ -141,10 +141,10 @@ homeguard_banner() {
     echo -e " ${YELLOW}Per-Strategy Commands:${NC}"
     echo -e "  ${GREEN}omr-start/stop/restart/status/logs${NC}"
     echo -e "  ${GREEN}mp-start/stop/restart/status/logs${NC}"
-    echo -e "  ${CYAN}cscm-start/stop/restart/status/logs${NC}"
-    echo -e "  ${CYAN}cscm-positions${NC}    -> Show CSCM positions"
-    echo -e "  ${CYAN}cscm-reset${NC}        -> Reset CSCM portfolio"
-    echo -e "  ${CYAN}cscm-refresh${NC}      -> Force CSCM rebalance"
+    echo -e "  ${GREEN}cscm-start/stop/restart/status/logs${NC}"
+    echo -e "  ${GREEN}cscm-positions${NC}    -> Show CSCM positions"
+    echo -e "  ${GREEN}cscm-reset${NC}        -> Reset CSCM portfolio"
+    echo -e "  ${GREEN}cscm-refresh${NC}      -> Force CSCM rebalance"
     echo ""
 
     # Config Commands
