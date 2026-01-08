@@ -136,7 +136,33 @@ resource "aws_cloudwatch_event_rule" "stop_instance" {
   }
 }
 
-# EventBridge Target: Start instance
+# EventBridge Rule: Start instance at 11 PM UTC Saturday for CSCM Sunday rebalance
+resource "aws_cloudwatch_event_rule" "start_instance_sunday" {
+  count = var.enable_scheduled_start_stop ? 1 : 0
+
+  name                = "homeguard-start-instance-sunday"
+  description         = "Start instance 1 hour before CSCM Sunday rebalance"
+  schedule_expression = "cron(0 23 ? * SAT *)"  # 23:00 UTC Saturday = 1 hour before Sunday midnight
+
+  tags = {
+    Name = "homeguard-start-instance-sunday-rule"
+  }
+}
+
+# EventBridge Rule: Stop instance at 00:10 UTC Sunday (10 min after CSCM rebalance)
+resource "aws_cloudwatch_event_rule" "stop_instance_sunday" {
+  count = var.enable_scheduled_start_stop ? 1 : 0
+
+  name                = "homeguard-stop-instance-sunday"
+  description         = "Stop instance 10 min after CSCM Sunday rebalance"
+  schedule_expression = "cron(10 0 ? * SUN *)"  # 00:10 UTC Sunday = 10 min after midnight
+
+  tags = {
+    Name = "homeguard-stop-instance-sunday-rule"
+  }
+}
+
+# EventBridge Target: Start instance (weekdays)
 resource "aws_cloudwatch_event_target" "start_instance" {
   count = var.enable_scheduled_start_stop ? 1 : 0
 
@@ -145,7 +171,7 @@ resource "aws_cloudwatch_event_target" "start_instance" {
   arn       = aws_lambda_function.start_instance[0].arn
 }
 
-# EventBridge Target: Stop instance
+# EventBridge Target: Stop instance (weekdays)
 resource "aws_cloudwatch_event_target" "stop_instance" {
   count = var.enable_scheduled_start_stop ? 1 : 0
 
@@ -154,7 +180,25 @@ resource "aws_cloudwatch_event_target" "stop_instance" {
   arn       = aws_lambda_function.stop_instance[0].arn
 }
 
-# Lambda Permission: Allow EventBridge to invoke START function
+# EventBridge Target: Start instance (Sunday - CSCM rebalance)
+resource "aws_cloudwatch_event_target" "start_instance_sunday" {
+  count = var.enable_scheduled_start_stop ? 1 : 0
+
+  rule      = aws_cloudwatch_event_rule.start_instance_sunday[0].name
+  target_id = "StartInstanceLambdaSunday"
+  arn       = aws_lambda_function.start_instance[0].arn
+}
+
+# EventBridge Target: Stop instance (Sunday - CSCM rebalance)
+resource "aws_cloudwatch_event_target" "stop_instance_sunday" {
+  count = var.enable_scheduled_start_stop ? 1 : 0
+
+  rule      = aws_cloudwatch_event_rule.stop_instance_sunday[0].name
+  target_id = "StopInstanceLambdaSunday"
+  arn       = aws_lambda_function.stop_instance[0].arn
+}
+
+# Lambda Permission: Allow EventBridge to invoke START function (weekdays)
 resource "aws_lambda_permission" "allow_eventbridge_start" {
   count = var.enable_scheduled_start_stop ? 1 : 0
 
@@ -165,7 +209,7 @@ resource "aws_lambda_permission" "allow_eventbridge_start" {
   source_arn    = aws_cloudwatch_event_rule.start_instance[0].arn
 }
 
-# Lambda Permission: Allow EventBridge to invoke STOP function
+# Lambda Permission: Allow EventBridge to invoke STOP function (weekdays)
 resource "aws_lambda_permission" "allow_eventbridge_stop" {
   count = var.enable_scheduled_start_stop ? 1 : 0
 
@@ -174,6 +218,28 @@ resource "aws_lambda_permission" "allow_eventbridge_stop" {
   function_name = aws_lambda_function.stop_instance[0].function_name
   principal     = "events.amazonaws.com"
   source_arn    = aws_cloudwatch_event_rule.stop_instance[0].arn
+}
+
+# Lambda Permission: Allow EventBridge to invoke START function (Sunday)
+resource "aws_lambda_permission" "allow_eventbridge_start_sunday" {
+  count = var.enable_scheduled_start_stop ? 1 : 0
+
+  statement_id  = "AllowExecutionFromEventBridgeSunday"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.start_instance[0].function_name
+  principal     = "events.amazonaws.com"
+  source_arn    = aws_cloudwatch_event_rule.start_instance_sunday[0].arn
+}
+
+# Lambda Permission: Allow EventBridge to invoke STOP function (Sunday)
+resource "aws_lambda_permission" "allow_eventbridge_stop_sunday" {
+  count = var.enable_scheduled_start_stop ? 1 : 0
+
+  statement_id  = "AllowExecutionFromEventBridgeSunday"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.stop_instance[0].function_name
+  principal     = "events.amazonaws.com"
+  source_arn    = aws_cloudwatch_event_rule.stop_instance_sunday[0].arn
 }
 
 # CloudWatch Log Group for START Lambda
