@@ -44,7 +44,7 @@ alias bot-update='echo "[*] Updating..."; (cd ~/Homeguard && git pull && echo "[
 alias bot-restart='echo "[*] Restarting..."; sudo systemctl restart homeguard-omr homeguard-mp homeguard-cscm-demo 2>/dev/null; echo "[+] Restarted!"'
 alias bot-start='sudo systemctl start homeguard-omr homeguard-mp homeguard-cscm-demo 2>/dev/null'
 alias bot-stop='sudo systemctl stop homeguard-omr homeguard-mp homeguard-cscm-demo 2>/dev/null'
-alias bot-status='echo ""; echo "Strategy Services:"; SYSTEMD_COLORS=1 systemctl is-active homeguard-omr homeguard-mp homeguard-cscm-demo 2>/dev/null | paste - - - <(echo -e "homeguard-omr\nhomeguard-mp\nhomeguard-cscm-demo") | awk "{print \"  \" \$2 \": \" \$1}"'
+alias bot-status='echo ""; echo "Strategy Services:"; for svc in homeguard-omr homeguard-mp homeguard-cscm-demo; do status=$(systemctl is-active $svc 2>/dev/null || echo "unknown"); if [ "$status" = "active" ]; then echo -e "  \033[32m$svc: $status\033[0m"; else echo -e "  \033[31m$svc: $status\033[0m"; fi; done'
 alias bot-logs='sudo journalctl -u homeguard-omr -u homeguard-mp -u homeguard-cscm-demo -f --output=cat --no-hostname'
 alias bot-logs-recent='sudo journalctl -u homeguard-omr -u homeguard-mp -u homeguard-cscm-demo -n 100 --no-pager --output=cat --no-hostname'
 
@@ -108,22 +108,20 @@ homeguard_banner() {
     done
     echo ""
 
-    # Strategy Config (if toggle script exists)
+    # Strategy Config (if toggle file exists)
     if [ -f ~/Homeguard/config/trading/strategy_toggle.yaml ]; then
         echo -e " ${YELLOW}Strategy Config:${NC}"
-        if grep -q "enabled: true" ~/Homeguard/config/trading/strategy_toggle.yaml 2>/dev/null | head -1; then
-            local omr_status=$(grep -A1 "omr:" ~/Homeguard/config/trading/strategy_toggle.yaml | grep "enabled:" | awk '{print $2}')
-            local mp_status=$(grep -A1 "mp:" ~/Homeguard/config/trading/strategy_toggle.yaml | grep "enabled:" | awk '{print $2}')
-            if [ "$omr_status" == "true" ]; then
-                echo -e "  ${GREEN}[+] OMR${NC}    enabled in config"
-            else
-                echo -e "  ${RED}[-] OMR${NC}    disabled in config"
-            fi
-            if [ "$mp_status" == "true" ]; then
-                echo -e "  ${GREEN}[+] MP${NC}     enabled in config"
-            else
-                echo -e "  ${RED}[-] MP${NC}     disabled in config"
-            fi
+        local omr_enabled=$(grep -A2 "^omr:" ~/Homeguard/config/trading/strategy_toggle.yaml 2>/dev/null | grep "enabled:" | awk '{print $2}')
+        local mp_enabled=$(grep -A2 "^mp:" ~/Homeguard/config/trading/strategy_toggle.yaml 2>/dev/null | grep "enabled:" | awk '{print $2}')
+        if [ "$omr_enabled" = "true" ]; then
+            echo -e "  ${GREEN}[+] OMR${NC}    enabled in config"
+        else
+            echo -e "  ${RED}[-] OMR${NC}    disabled in config"
+        fi
+        if [ "$mp_enabled" = "true" ]; then
+            echo -e "  ${GREEN}[+] MP${NC}     enabled in config"
+        else
+            echo -e "  ${RED}[-] MP${NC}     disabled in config"
         fi
         echo ""
     fi

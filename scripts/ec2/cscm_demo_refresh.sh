@@ -36,17 +36,15 @@ import sys
 sys.path.insert(0, '.')
 
 try:
-    from src.trading.adapters.cscm_demo_adapter import CSCMDemoAdapter
+    from src.trading.adapters.cscm_demo_adapter import CSCMDemoAdapter, DEFAULT_DEMO_UNIVERSE
 
-    # Demo universe
-    DEMO_UNIVERSE = [
-        'BTC/USD', 'ETH/USD', 'SOL/USD', 'AVAX/USD', 'LINK/USD',
-        'DOGE/USD', 'DOT/USD', 'LTC/USD', 'BCH/USD', 'UNI/USD',
-        'AAVE/USD', 'SUSHI/USD', 'XRP/USD', 'CRV/USD', 'GRT/USD',
-        'MKR/USD',
-    ]
+    # Show optimal config from class defaults
+    A = CSCMDemoAdapter
+    print(f'Config: Top {A.DEFAULT_TOP_N}, {A.DEFAULT_ALLOCATION*100:.0f}% alloc, {A.DEFAULT_TRAILING_STOP*100:.0f}% stop, {A.DEFAULT_PROFIT_TARGET*100:.0f}% target')
+    print(f'Universe: {len(DEFAULT_DEMO_UNIVERSE)} coins')
+    print()
 
-    adapter = CSCMDemoAdapter(universe=DEMO_UNIVERSE, top_n=7)
+    adapter = CSCMDemoAdapter()  # Uses optimal defaults
 
     # Start streaming for fresh data
     print('[*] Starting data stream...')
