@@ -12,21 +12,52 @@
 #   - Profit Target: 20%
 #
 # Usage:
-#   ./cscm_demo_reset.sh           # Reset and restart service
-#   ./cscm_demo_reset.sh --no-start  # Reset only, don't restart
-#   cscm-demo-reset                # (alias)
+#   ./cscm_demo_reset.sh              # Reset with confirmation prompt
+#   ./cscm_demo_reset.sh --force      # Reset without confirmation
+#   ./cscm_demo_reset.sh --no-start   # Reset only, don't restart service
+#   cscm-reset                        # (alias)
 
 set -e
 
 NO_START=false
-if [[ "$1" == "--no-start" ]]; then
-    NO_START=true
-fi
+FORCE=false
+
+for arg in "$@"; do
+    case $arg in
+        --no-start)
+            NO_START=true
+            ;;
+        --force|-f)
+            FORCE=true
+            ;;
+    esac
+done
 
 echo "=========================================="
 echo "CSCM Demo Portfolio Reset"
 echo "=========================================="
 echo ""
+echo -e "\033[1;31m[!] WARNING: This will permanently delete:\033[0m"
+echo "    - All current positions"
+echo "    - All unrealized P&L"
+echo "    - Realized P&L history"
+echo "    - Entry price tracking"
+echo "    - Adapter state (regime, trailing stops)"
+echo ""
+echo "    Portfolio will be reset to \$100,000 cash."
+echo ""
+
+# Confirm unless --force flag
+if [[ "$FORCE" == false ]]; then
+    read -p "Are you sure you want to reset? (y/N) " -n 1 -r
+    echo ""
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        echo ""
+        echo "Reset cancelled."
+        exit 0
+    fi
+    echo ""
+fi
 
 # Stop service if running
 if systemctl is-active --quiet homeguard-cscm-demo 2>/dev/null; then
