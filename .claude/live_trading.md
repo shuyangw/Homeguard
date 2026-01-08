@@ -211,9 +211,83 @@ When the system generates 0 signals, check:
    - Missing intraday data for symbols
    - Stale cache from previous session
 
+## CSCM (Cross-Sectional Crypto Momentum) Strategy
+
+### Overview
+CSCM is a weekly crypto momentum strategy that:
+- Rebalances on Sunday 0:00 UTC
+- Trades 24/7 (crypto markets never close)
+- Uses BTC regime filter (BTC > 40-day SMA = bullish)
+- Holds top 7 coins by 28-day momentum
+- Goes to cash in bearish regime
+- **25% trailing stop** for drawdown protection
+
+### Backtest Results (2021-2024)
+| Metric | Value |
+|--------|-------|
+| Sharpe Ratio | 1.41 |
+| Total Return | 1566% |
+| Max Drawdown | 19% |
+| Win Rate | ~52% |
+
+### Trailing Stop
+The strategy uses a 25% trailing stop to protect gains:
+- Tracks peak portfolio value
+- If portfolio drops 25% from peak, exits all positions
+- Resets on next rebalance day (allows re-entry)
+- Reduces max drawdown from 57% to 19%
+
+### Market Hours
+Unlike stock strategies, CSCM runs continuously:
+- **No market hours check** - Crypto trades 24/7
+- **Weekly rebalance** - Sunday 0:00 UTC
+- **Check interval** - 1 hour (configurable)
+
+### Broker Architecture
+CSCM uses a different broker stack than stock strategies:
+- **Primary**: Coinbase Advanced Trade API
+- **Secondary**: Alpaca Crypto API (failover)
+- **Router**: `CryptoBrokerRouter` handles automatic failover
+
+### Deployment
+Separate systemd service for independent operation:
+```bash
+# Start CSCM strategy
+sudo systemctl start homeguard-cscm
+
+# Check status
+sudo systemctl status homeguard-cscm
+
+# View logs
+journalctl -u homeguard-cscm -f
+```
+
+### Key Files
+- Entry point: `scripts/trading/run_cscm_live.py`
+- Live adapter: `src/trading/adapters/cscm_live_adapter.py`
+- Signals: `src/strategies/advanced/cscm_signals.py`
+- Config: `config/trading/cscm_live.yaml`
+- Service: `scripts/ec2/services/homeguard-cscm.service`
+
+### Common Issues
+
+1. **Coinbase API Credentials**
+   - Set `COINBASE_API_KEY` and `COINBASE_API_SECRET` in `.env`
+   - Get from https://www.coinbase.com/settings/api
+
+2. **Failover to Alpaca**
+   - If Coinbase fails, router switches to Alpaca Crypto
+   - Alpaca uses same credentials as stock trading
+
+3. **No Rebalance on Sunday**
+   - Check if `_last_rebalance` date matches today
+   - Verify UTC timezone handling
+
 ## Related Documentation
 
 - Infrastructure: `docs/INFRASTRUCTURE_OVERVIEW.md`
 - Health Checks: `docs/HEALTH_CHECK_CHEATSHEET.md`
 - Trading Script: `scripts/trading/run_live_paper_trading.py`
 - OMR Adapter: `src/trading/adapters/omr_live_adapter.py`
+- CSCM Script: `scripts/trading/run_cscm_live.py`
+- CSCM Adapter: `src/trading/adapters/cscm_live_adapter.py`

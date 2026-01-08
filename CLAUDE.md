@@ -316,6 +316,7 @@ Update docs when modifying user-facing functionality.
 |----------|---------|----------|-------------|
 | **OMR** | `homeguard-omr` | Entry 3:50 PM, Exit 9:31 AM | Overnight mean reversion on leveraged ETFs |
 | **RAMP** | `homeguard-ramp` | Rebalance 3:55 PM | Regime-aware momentum protection on S&P 500 |
+| **CSCM** | `homeguard-cscm` | Weekly (Sunday 0:00 UTC) | Cross-sectional crypto momentum with BTC regime filter |
 
 **RAMP Strategy Details** (Deployed 2025-12-08):
 - Universe: S&P 500 stocks
