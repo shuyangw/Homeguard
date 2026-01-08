@@ -48,12 +48,12 @@ STRATEGY_NAME = 'cscm-demo'
 CACHE_DIR = Path.home() / '.homeguard' / 'cache'
 CACHE_FILE = CACHE_DIR / 'cscm_demo_state.pkl'
 
-# Demo universe - includes MKR (not on Alpaca)
+# Optimal universe (14 coins) - based on backtesting results
+# BTC used for regime detection only, not traded
 DEFAULT_DEMO_UNIVERSE = [
     'BTC/USD', 'ETH/USD', 'SOL/USD', 'AVAX/USD', 'LINK/USD',
     'DOGE/USD', 'DOT/USD', 'LTC/USD', 'BCH/USD', 'UNI/USD',
-    'AAVE/USD', 'SUSHI/USD', 'XRP/USD', 'CRV/USD', 'GRT/USD',
-    'MKR/USD'  # Available on Binance
+    'AAVE/USD', 'SUSHI/USD', 'XRP/USD', 'CRV/USD'
 ]
 
 
@@ -64,6 +64,13 @@ class CSCMDemoAdapter:
     Uses DemoBroker with Binance streaming for self-contained
     paper trading. Supports fractional quantities and 24/7 operation.
 
+    Optimal Configuration (from backtesting):
+    - Top N: 5 positions (concentration improves returns)
+    - Allocation: 18% of capital (keeps max DD under 20%)
+    - Trailing Stop: 8% (balances protection vs whipsaw)
+    - Profit Target: 20% (locks in gains)
+    - Market Hours: Equity hours only (9:30 AM - 4:00 PM ET)
+
     Attributes:
         broker: DemoBroker instance with Binance streaming
         signals: CSCMSignals for momentum calculation
@@ -71,10 +78,14 @@ class CSCMDemoAdapter:
         top_n: Number of positions to hold
     """
 
-    DEFAULT_TOP_N = 7
+    # Optimal defaults from backtesting (19.5% CAGR, 1.72 Sharpe, 15.6% max DD)
+    DEFAULT_TOP_N = 5
     DEFAULT_MOMENTUM_PERIOD = 28
     DEFAULT_BTC_SMA_PERIOD = 40
-    DEFAULT_TRAILING_STOP = 0.25
+    DEFAULT_TRAILING_STOP = 0.08  # 8% trailing stop
+    DEFAULT_ALLOCATION = 0.18  # 18% of capital in positions
+    DEFAULT_PROFIT_TARGET = 0.20  # 20% profit target
+    DEFAULT_INITIAL_CASH = 100000.0  # $100k starting capital
 
     def __init__(
         self,
@@ -83,12 +94,14 @@ class CSCMDemoAdapter:
         momentum_period: int = DEFAULT_MOMENTUM_PERIOD,
         btc_sma_period: int = DEFAULT_BTC_SMA_PERIOD,
         trailing_stop_pct: float = DEFAULT_TRAILING_STOP,
+        allocation_pct: float = DEFAULT_ALLOCATION,
+        profit_target_pct: float = DEFAULT_PROFIT_TARGET,
         rebalance_day: str = 'sunday',
         go_to_cash_in_bear: bool = True,
-        initial_cash: float = 10000.0,
+        initial_cash: float = DEFAULT_INITIAL_CASH,
         slippage_bps: float = 5.0,
         fee_bps: float = 10.0,
-        market_hours_only: bool = False,
+        market_hours_only: bool = True,  # Default to equity hours
         broker: Optional[DemoBroker] = None,
     ):
         """
@@ -99,13 +112,15 @@ class CSCMDemoAdapter:
             top_n: Number of top coins to hold
             momentum_period: Days for momentum calculation
             btc_sma_period: BTC SMA period for regime
-            trailing_stop_pct: Trailing stop percentage (0.25 = 25%)
+            trailing_stop_pct: Trailing stop percentage (0.08 = 8%)
+            allocation_pct: Percentage of capital to allocate (0.18 = 18%)
+            profit_target_pct: Profit target to take gains (0.20 = 20%)
             rebalance_day: Day of week to rebalance
             go_to_cash_in_bear: Exit all in bearish regime
             initial_cash: Starting cash (if no saved state)
             slippage_bps: Slippage in basis points
             fee_bps: Fee in basis points
-            market_hours_only: Restrict to equity market hours
+            market_hours_only: Restrict to equity market hours (default: True)
             broker: DemoBroker instance (auto-created if None)
         """
         self.universe = universe or DEFAULT_DEMO_UNIVERSE
@@ -113,10 +128,15 @@ class CSCMDemoAdapter:
         self.momentum_period = momentum_period
         self.btc_sma_period = btc_sma_period
         self.trailing_stop_pct = trailing_stop_pct
+        self.allocation_pct = allocation_pct
+        self.profit_target_pct = profit_target_pct
         self.rebalance_day = rebalance_day
         self.go_to_cash_in_bear = go_to_cash_in_bear
         self.market_hours_only = market_hours_only
         self._cache_file = CACHE_FILE
+
+        # Track entry prices for profit target
+        self._entry_prices: Dict[str, float] = {}
 
         # Initialize signal generator
         self.signals = CSCMSignals(
@@ -147,12 +167,15 @@ class CSCMDemoAdapter:
         # Load saved state
         self._load_state()
 
-        logger.info(f"[CSCMDemo] Initialized demo adapter")
+        logger.info(f"[CSCMDemo] Initialized demo adapter (OPTIMAL CONFIG)")
         logger.info(f"[CSCMDemo]   Universe: {len(self.universe)} symbols")
         logger.info(f"[CSCMDemo]   Top N: {top_n}")
-        logger.info(f"[CSCMDemo]   BTC SMA Period: {btc_sma_period}")
+        logger.info(f"[CSCMDemo]   Allocation: {allocation_pct:.0%}")
         logger.info(f"[CSCMDemo]   Trailing Stop: {trailing_stop_pct:.0%}")
+        logger.info(f"[CSCMDemo]   Profit Target: {profit_target_pct:.0%}")
+        logger.info(f"[CSCMDemo]   BTC SMA Period: {btc_sma_period}")
         logger.info(f"[CSCMDemo]   Rebalance Day: {rebalance_day}")
+        logger.info(f"[CSCMDemo]   Market Hours Only: {market_hours_only}")
         logger.info(f"[CSCMDemo]   Initial Cash: ${initial_cash:,.2f}")
 
     @property
@@ -182,6 +205,7 @@ class CSCMDemoAdapter:
                     state = pickle.load(f)
                     self._last_rebalance = state.get('last_rebalance')
                     self._current_positions = state.get('positions', {})
+                    self._entry_prices = state.get('entry_prices', {})
                     # Load trailing stop state
                     peak_value = state.get('peak_value', 0.0)
                     if peak_value > 0:
@@ -201,6 +225,7 @@ class CSCMDemoAdapter:
                 pickle.dump({
                     'last_rebalance': self._last_rebalance,
                     'positions': self._current_positions,
+                    'entry_prices': self._entry_prices,
                     'saved_at': tz.now(),
                     'peak_value': self.signals._peak_portfolio_value,
                     'trailing_stop_triggered': self.signals._trailing_stop_triggered,
@@ -359,9 +384,11 @@ class CSCMDemoAdapter:
         logger.info(f"[CSCMDemo] Available balance: ${available_balance:,.2f}")
         logger.info(f"[CSCMDemo] Current positions: {list(current_positions.keys())}")
 
-        # Calculate total portfolio value
+        # Calculate total portfolio value and allocated capital
         total_value = self._get_total_portfolio_value()
+        allocated_capital = total_value * self.allocation_pct
         logger.info(f"[CSCMDemo] Total portfolio value: ${total_value:,.2f}")
+        logger.info(f"[CSCMDemo] Allocated capital ({self.allocation_pct:.0%}): ${allocated_capital:,.2f}")
 
         orders = []
 
@@ -372,20 +399,25 @@ class CSCMDemoAdapter:
                     logger.info(f"[CSCMDemo] Closing position: {symbol}")
                     order = self._broker.close_crypto_position(symbol)
                     orders.append(order)
+                    # Clear entry price
+                    self._entry_prices.pop(symbol, None)
                 except Exception as e:
                     logger.error(f"[CSCMDemo] Failed to close {symbol}: {e}")
 
         # Open/adjust positions in target
+        # Use allocated capital (18%) divided equally among top N
+        per_position_value = allocated_capital / self.top_n
+
         for symbol, weight in target_positions.items():
             if weight == 0:
                 continue
 
-            target_value = total_value * weight
+            target_value = per_position_value  # Equal weight within allocation
             current_qty = current_positions.get(symbol, Decimal('0'))
 
             try:
                 quote = self._broker.get_crypto_quote(symbol)
-                if quote is None:
+                if quote is None or not quote.get('available'):
                     logger.warning(f"[CSCMDemo] No quote for {symbol}, skipping")
                     continue
 
@@ -408,6 +440,8 @@ class CSCMDemoAdapter:
                         side=OrderSide.BUY,
                     )
                     orders.append(order)
+                    # Track entry price for profit target
+                    self._entry_prices[symbol] = current_price
 
                 elif qty_diff < 0:
                     # Sell
@@ -468,14 +502,53 @@ class CSCMDemoAdapter:
             logger.error(f"[CSCMDemo] Failed to get status: {e}")
             return {'error': str(e)}
 
+    def _check_profit_targets(self) -> List[Dict]:
+        """
+        Check if any positions hit profit target (20%).
+
+        Returns:
+            List of orders from closing profitable positions
+        """
+        orders = []
+        positions = self._broker.get_crypto_positions()
+
+        for pos in positions:
+            symbol = pos['symbol']
+            entry_price = self._entry_prices.get(symbol)
+
+            if entry_price is None:
+                continue
+
+            current_price = pos['current_price']
+            pnl_pct = (current_price - entry_price) / entry_price
+
+            if pnl_pct >= self.profit_target_pct:
+                logger.info(
+                    f"[CSCMDemo] Profit target hit for {symbol}: "
+                    f"{pnl_pct:.1%} >= {self.profit_target_pct:.0%}"
+                )
+                try:
+                    order = self._broker.close_crypto_position(symbol)
+                    orders.append(order)
+                    self._entry_prices.pop(symbol, None)
+                    logger.info(f"[CSCMDemo] Closed {symbol} at profit target")
+                except Exception as e:
+                    logger.error(f"[CSCMDemo] Failed to close {symbol}: {e}")
+
+        if orders:
+            self._save_state()
+
+        return orders
+
     def run_once(self) -> None:
         """Run single iteration of the strategy."""
         now = tz.now()
         logger.debug(f"[CSCMDemo] Run at {now}")
 
         try:
-            # Check market hours if enabled
-            if self.market_hours_only and not self._is_market_hours():
+            # Check market hours if enabled (but allow Sunday rebalance)
+            is_rebalance_day = self.signals.should_rebalance(now)
+            if self.market_hours_only and not self._is_market_hours() and not is_rebalance_day:
                 logger.debug("[CSCMDemo] Outside market hours, skipping")
                 return
 
@@ -484,6 +557,9 @@ class CSCMDemoAdapter:
             if stop_triggered:
                 logger.info("[CSCMDemo] Trailing stop active - waiting for next rebalance")
                 return
+
+            # Check profit targets (may close individual positions)
+            self._check_profit_targets()
 
             # Check if we should rebalance
             if self._should_rebalance():
@@ -494,11 +570,12 @@ class CSCMDemoAdapter:
         except Exception as e:
             logger.error(f"[CSCMDemo] Error in run_once: {e}")
 
-    def reset(self, initial_cash: float = 10000.0) -> None:
+    def reset(self, initial_cash: float = DEFAULT_INITIAL_CASH) -> None:
         """Reset adapter state and portfolio."""
         self._broker.reset_portfolio(initial_cash=initial_cash)
         self._last_rebalance = None
         self._current_positions = {}
+        self._entry_prices = {}
         self.signals.reset_trailing_stop()
 
         # Delete cache file

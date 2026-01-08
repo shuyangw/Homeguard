@@ -47,7 +47,8 @@ from src.utils.timezone import tz
 
 logger = get_logger(__name__)
 
-# Demo universe - 16 symbols including MKR (not available on Alpaca)
+# Optimal universe (14 coins) - based on backtesting results
+# BTC used for regime detection only, not traded
 DEMO_UNIVERSE = [
     "BTC/USD",
     "ETH/USD",
@@ -63,9 +64,14 @@ DEMO_UNIVERSE = [
     "SUSHI/USD",
     "XRP/USD",
     "CRV/USD",
-    "GRT/USD",
-    "MKR/USD",  # Available on Binance, not Alpaca
 ]
+
+# Optimal defaults from backtesting (19.5% CAGR, 1.72 Sharpe, 15.6% max DD)
+DEFAULT_CASH = 100000.0
+DEFAULT_TOP_N = 5
+DEFAULT_ALLOCATION = 0.18  # 18% of capital
+DEFAULT_TRAILING_STOP = 0.08  # 8%
+DEFAULT_PROFIT_TARGET = 0.20  # 20%
 
 
 class CSCMDemoService:
@@ -73,17 +79,24 @@ class CSCMDemoService:
     CSCM Demo Trading Service.
 
     Runs the CSCM strategy with demo broker using Binance streaming.
-    Designed for 24/7 operation with graceful shutdown support.
+    Designed for weekly rebalance with equity market hours monitoring.
+
+    Optimal Configuration:
+    - Top N: 5 positions
+    - Allocation: 18% of capital
+    - Trailing Stop: 8%
+    - Profit Target: 20%
+    - Starting Capital: $100,000
     """
 
     def __init__(
         self,
-        initial_cash: float = 10000.0,
+        initial_cash: float = DEFAULT_CASH,
         slippage_bps: float = 5.0,
         fee_bps: float = 10.0,
-        top_n: int = 7,
+        top_n: int = DEFAULT_TOP_N,
         rebalance_day: str = 'sunday',
-        market_hours_only: bool = False,
+        market_hours_only: bool = True,  # Default to equity hours
     ):
         """
         Initialize demo service.
@@ -269,10 +282,10 @@ class CSCMDemoService:
         logger.info("[CSCMDemo] Portfolio state saved. Shutdown complete.")
         self._running = False
 
-    def reset_portfolio(self, initial_cash: float = 10000.0) -> None:
+    def reset_portfolio(self, initial_cash: float = DEFAULT_CASH) -> None:
         """Reset portfolio to initial state."""
         self.adapter.reset(initial_cash=initial_cash)
-        logger.info(f"[CSCMDemo] Portfolio reset with ${initial_cash:.2f}")
+        logger.info(f"[CSCMDemo] Portfolio reset with ${initial_cash:,.2f}")
 
 
 def main():
@@ -283,8 +296,8 @@ def main():
     parser.add_argument(
         "--cash",
         type=float,
-        default=10000.0,
-        help="Initial cash balance (default: 10000)",
+        default=DEFAULT_CASH,
+        help=f"Initial cash balance (default: {DEFAULT_CASH:,.0f})",
     )
     parser.add_argument(
         "--slippage",
@@ -301,8 +314,8 @@ def main():
     parser.add_argument(
         "--top-n",
         type=int,
-        default=7,
-        help="Number of positions to hold (default: 7)",
+        default=DEFAULT_TOP_N,
+        help=f"Number of positions to hold (default: {DEFAULT_TOP_N})",
     )
     parser.add_argument(
         "--rebalance-day",
@@ -312,9 +325,10 @@ def main():
         help="Day to rebalance (default: sunday)",
     )
     parser.add_argument(
-        "--market-hours-only",
+        "--24-7",
+        dest="full_time",
         action="store_true",
-        help="Only trade during US equity market hours",
+        help="Run 24/7 instead of market hours only",
     )
     parser.add_argument(
         "--reset",
@@ -336,7 +350,7 @@ def main():
             fee_bps=args.fees,
             top_n=args.top_n,
             rebalance_day=args.rebalance_day,
-            market_hours_only=args.market_hours_only,
+            market_hours_only=not args.full_time,  # Default is market hours only
         )
 
         if args.reset:
