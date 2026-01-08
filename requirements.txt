@@ -101,3 +101,6 @@ discord.py>=2.3.0
 
 # Binance data provider (no API key required for public endpoints)
 # Uses requests (already included) - no additional package needed
+
+# Binance WebSocket streaming for demo trading
+websocket-client>=1.6.0
