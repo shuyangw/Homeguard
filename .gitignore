@@ -146,8 +146,9 @@ claude.md
 # Backtest lists - tracked for deployment (required by MP strategy)
 # backtest_lists/  # REMOVED: sp500-2025.csv needed on EC2
 
-# Backtest scripts - optimization/research scripts (not production code)
-backtest_scripts/
+# Scratch/experimental scripts - not tracked
+scripts/backtest_scripts/
+scripts/scratch/
 
 # ============================================================================
 # DOCUMENTATION (Discouraged per CLAUDE.md)

@@ -61,7 +61,8 @@ This document provides an overview of coding standards and guidelines for the Ho
 ### Project Organization
 Maintain clean project structure with proper separation of concerns.
 - No script files in root directory
-- Scripts go in `src/`, `tests/`, `scripts/`, `backtest_scripts/`
+- Production scripts go in `src/`, `tests/`, `scripts/`
+- **Experimental/one-off scripts** go in `scripts/backtest_scripts/` or `scripts/scratch/` (gitignored)
 - Documentation co-located with modules
 - Details: [`.claude/project_structure.md`](.claude/project_structure.md)
 
@@ -133,6 +134,11 @@ All markdown documentation files must use ASCII-only characters:
 - Register in appropriate `__init__.py`
 - Document in this table
 - Prefer extending `StandardReportGenerator` for new report types
+
+**One-off/experimental backtest scripts**:
+- Put in `scripts/backtest_scripts/` (gitignored) - for parameter sweeps, quick analyses, research
+- These are NOT production code and won't be committed
+- If a script proves useful, refactor into `src/backtesting/` with proper tests
 
 ### Existing Data & Screening Tools
 
