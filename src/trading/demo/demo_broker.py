@@ -17,6 +17,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Dict, List, Optional
 
+from src.data.providers.binance import BinanceDataProvider
 from src.streaming.binance_stream import BinanceStreamManager
 from src.streaming.crypto_buffer import CryptoBarBuffer
 from src.trading.brokers.interfaces.base import (
@@ -102,6 +103,9 @@ class DemoBroker(CryptoTradingInterface):
         self._symbols: List[str] = symbols or []
         self._streaming = False
 
+        # REST API fallback for quotes when streaming isn't available
+        self._rest_provider = BinanceDataProvider()
+
         # Order tracking
         self._orders: Dict[str, Dict] = {}
         self._order_counter = 0
@@ -159,7 +163,7 @@ class DemoBroker(CryptoTradingInterface):
     def get_crypto_positions(self) -> List[Dict]:
         """Get all current crypto positions."""
         positions = []
-        prices = self._bar_buffer.get_all_prices()
+        prices = self._get_prices()
 
         for pos in self._portfolio.get_all_positions():
             current_price = prices.get(pos.symbol, pos.avg_entry_price)
@@ -184,7 +188,9 @@ class DemoBroker(CryptoTradingInterface):
         if pos is None:
             return None
 
-        current_price = self._bar_buffer.get_latest_price(symbol) or pos.avg_entry_price
+        # Get price from streaming or REST fallback
+        prices = self._get_prices([symbol])
+        current_price = prices.get(symbol, pos.avg_entry_price)
 
         return {
             "symbol": pos.symbol,
@@ -373,6 +379,8 @@ class DemoBroker(CryptoTradingInterface):
         """
         Get current quote for a crypto symbol.
 
+        Uses streaming data if available, falls back to REST API.
+
         Args:
             symbol: Crypto symbol (e.g., 'BTC/USD')
 
@@ -382,31 +390,56 @@ class DemoBroker(CryptoTradingInterface):
         symbol = self.normalize_symbol(symbol)
         bar = self._bar_buffer.get_latest(symbol)
 
-        if bar is None:
+        # Try streaming data first
+        if bar is not None:
+            # Simulate bid/ask spread (0.1%)
+            spread_pct = 0.001
+            mid = bar.close
+            bid = mid * (1 - spread_pct / 2)
+            ask = mid * (1 + spread_pct / 2)
+
             return {
                 "symbol": symbol,
-                "bid": 0.0,
-                "ask": 0.0,
-                "last": 0.0,
-                "volume_24h": 0.0,
-                "timestamp": tz.now(),
-                "available": False,
+                "bid": bid,
+                "ask": ask,
+                "last": bar.close,
+                "volume_24h": bar.volume,
+                "timestamp": bar.timestamp,
+                "available": True,
+                "source": "streaming",
             }
 
-        # Simulate bid/ask spread (0.1%)
-        spread_pct = 0.001
-        mid = bar.close
-        bid = mid * (1 - spread_pct / 2)
-        ask = mid * (1 + spread_pct / 2)
+        # Fall back to REST API
+        try:
+            price = self._rest_provider.get_current_price(symbol)
+            if price is not None:
+                spread_pct = 0.001
+                bid = price * (1 - spread_pct / 2)
+                ask = price * (1 + spread_pct / 2)
 
+                return {
+                    "symbol": symbol,
+                    "bid": bid,
+                    "ask": ask,
+                    "last": price,
+                    "volume_24h": 0.0,  # Not available from ticker endpoint
+                    "timestamp": tz.now(),
+                    "available": True,
+                    "source": "rest",
+                }
+        except Exception as e:
+            logger.debug(f"[DemoBroker] REST quote failed for {symbol}: {e}")
+
+        # No data available
         return {
             "symbol": symbol,
-            "bid": bid,
-            "ask": ask,
-            "last": bar.close,
-            "volume_24h": bar.volume,
-            "timestamp": bar.timestamp,
-            "available": True,
+            "bid": 0.0,
+            "ask": 0.0,
+            "last": 0.0,
+            "volume_24h": 0.0,
+            "timestamp": tz.now(),
+            "available": False,
+            "source": None,
         }
 
     def get_crypto_balance(self, currency: str = 'USD') -> Dict:
@@ -469,19 +502,49 @@ class DemoBroker(CryptoTradingInterface):
         self._order_counter += 1
         return f"DEMO-{datetime.now().strftime('%Y%m%d')}-{self._order_counter:06d}"
 
+    def _get_prices(self, symbols: Optional[List[str]] = None) -> Dict[str, float]:
+        """
+        Get current prices from streaming buffer or REST fallback.
+
+        Args:
+            symbols: Symbols to get prices for (defaults to all positions)
+
+        Returns:
+            Dict mapping symbol -> price
+        """
+        # First try streaming prices
+        prices = self._bar_buffer.get_all_prices()
+
+        # Get symbols we need prices for
+        if symbols is None:
+            symbols = list(self._portfolio._positions.keys())
+
+        # Check which symbols are missing
+        missing = [s for s in symbols if s not in prices or prices.get(s, 0) == 0]
+
+        # Fetch missing from REST
+        if missing:
+            try:
+                rest_prices = self._rest_provider.get_current_prices(missing)
+                prices.update(rest_prices)
+            except Exception as e:
+                logger.debug(f"[DemoBroker] REST price fetch failed: {e}")
+
+        return prices
+
     def get_portfolio_value(self) -> float:
         """Get total portfolio value."""
-        prices = self._bar_buffer.get_all_prices()
+        prices = self._get_prices()
         return self._portfolio.get_total_value(prices)
 
     def get_portfolio_snapshot(self) -> Dict:
         """Get complete portfolio snapshot."""
-        prices = self._bar_buffer.get_all_prices()
+        prices = self._get_prices()
         return self._portfolio.get_portfolio_snapshot(prices)
 
     def get_account_summary(self) -> Dict:
         """Get comprehensive account summary."""
-        prices = self._bar_buffer.get_all_prices()
+        prices = self._get_prices()
         snapshot = self._portfolio.get_portfolio_snapshot(prices)
 
         return {

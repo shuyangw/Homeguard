@@ -76,7 +76,8 @@ class BinanceDataProvider(DataProviderInterface):
     """
     Binance data provider for live crypto prices.
 
-    Uses Binance public REST API (no authentication required).
+    Uses Binance.US public REST API (no authentication required).
+    Binance.US is accessible from US-based servers (binance.com is geo-blocked).
 
     Rate Limits:
     - 1200 requests per minute for raw requests
@@ -93,7 +94,7 @@ class BinanceDataProvider(DataProviderInterface):
     - Returns: pd.DataFrame or None on failure
     """
 
-    BASE_URL = "https://api.binance.com"
+    BASE_URL = "https://api.binance.us"
 
     # Rate limiting
     MAX_RETRIES = 3

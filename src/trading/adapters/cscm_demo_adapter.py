@@ -33,6 +33,7 @@ import pickle
 
 import pandas as pd
 
+from src.data.providers.binance import BinanceDataProvider
 from src.strategies.advanced.cscm_signals import CSCMSignals
 from src.trading.demo import DemoBroker
 from src.trading.brokers.interfaces import OrderSide
@@ -164,6 +165,9 @@ class CSCMDemoAdapter:
         self._current_positions: Dict[str, Decimal] = {}
         self._streaming_started = False
 
+        # REST API provider for historical data (40-day SMA needs more than streaming buffer)
+        self._data_provider = BinanceDataProvider()
+
         # Load saved state
         self._load_state()
 
@@ -177,6 +181,8 @@ class CSCMDemoAdapter:
         logger.info(f"[CSCMDemo]   Rebalance Day: {rebalance_day}")
         logger.info(f"[CSCMDemo]   Market Hours Only: {market_hours_only}")
         logger.info(f"[CSCMDemo]   Initial Cash: ${initial_cash:,.2f}")
+        logger.info(f"[CSCMDemo]   Historical Data: Binance.US REST API")
+        logger.info(f"[CSCMDemo]   Real-time Quotes: Binance.US WebSocket (optional)")
 
     @property
     def broker(self) -> DemoBroker:
@@ -236,30 +242,38 @@ class CSCMDemoAdapter:
 
     def _fetch_historical_data(self) -> Dict[str, pd.DataFrame]:
         """
-        Fetch historical data from streaming buffer.
+        Fetch historical daily data from Binance REST API.
 
-        Uses the bar buffer from DemoBroker which contains
-        up to 1440 1-minute bars per symbol (24 hours).
+        Uses BinanceDataProvider to fetch 60 days of daily klines for
+        momentum calculation (28 days) and BTC SMA (40 days).
 
         Returns:
-            Dict mapping symbol to DataFrame with OHLCV data
+            Dict mapping symbol to DataFrame with daily OHLCV data
         """
-        data_dict = {}
+        end = datetime.now()
+        start = end - timedelta(days=60)  # Need 60 days for momentum + SMA
 
-        for symbol in self.universe:
-            try:
-                df = self._broker._bar_buffer.get_ohlcv_dataframe(symbol)
-                if df is not None and not df.empty:
-                    # Resample to daily if needed for momentum calculation
-                    # The buffer has 1-minute bars, we need daily
-                    if len(df) > 0:
-                        # Use the raw minute data - signals will handle aggregation
-                        data_dict[symbol] = df
-            except Exception as e:
-                logger.warning(f"[CSCMDemo] Failed to get data for {symbol}: {e}")
+        try:
+            data_dict = self._data_provider.get_historical_bars_batch(
+                self.universe,
+                start,
+                end,
+                '1D'
+            )
 
-        logger.info(f"[CSCMDemo] Fetched data for {len(data_dict)} symbols from buffer")
-        return data_dict
+            if data_dict:
+                logger.info(
+                    f"[CSCMDemo] Fetched {len(data_dict)}/{len(self.universe)} "
+                    f"symbols from Binance REST API"
+                )
+            else:
+                logger.warning("[CSCMDemo] No data returned from Binance REST API")
+
+            return data_dict
+
+        except Exception as e:
+            logger.error(f"[CSCMDemo] Failed to fetch historical data: {e}")
+            return {}
 
     def _get_current_positions(self) -> Dict[str, Decimal]:
         """Get current positions from demo broker."""
