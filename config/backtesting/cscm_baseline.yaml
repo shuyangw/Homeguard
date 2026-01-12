@@ -1,0 +1,79 @@
+# Cross-Sectional Crypto Momentum (CSCM) - Baseline Backtest
+# Usage: python -m src.backtest_runner --config config/backtesting/cscm_baseline.yaml
+#
+# Strategy Logic:
+# - Weekly rebalance (Sunday 0:00 UTC)
+# - 14-day momentum lookback
+# - BTC regime filter: BTC > 20-day SMA = bullish, else go to cash
+# - Top N coins by cross-sectional momentum ranking
+# - Equal weight allocation: 100% / top_n
+#
+# NOTE: This is a multi-symbol strategy that requires custom backtest runner.
+# Use: python scripts/backtest/run_cscm_backtest.py
+
+mode: single
+
+strategy:
+  name: CSCMStrategy
+  parameters:
+    universe:
+      - BTC/USD
+      - ETH/USD
+      - SOL/USD
+      - AVAX/USD
+      - LINK/USD
+      - DOGE/USD
+      - DOT/USD
+      - LTC/USD
+      - BCH/USD
+      - UNI/USD
+      - AAVE/USD
+      - MKR/USD
+      - SUSHI/USD
+      - XRP/USD
+    # Optimized parameters (Sharpe 1.35 full cycle, 2.33 in bull)
+    top_n: 7
+    momentum_period: 28
+    btc_sma_period: 50
+    rebalance_day: sunday
+    go_to_cash_in_bear: true
+    btc_symbol: BTC/USD
+
+# Crypto symbols - all in universe
+symbols:
+  list:
+    - BTC/USD
+    - ETH/USD
+    - SOL/USD
+    - AVAX/USD
+    - LINK/USD
+    - DOGE/USD
+    - DOT/USD
+    - LTC/USD
+    - BCH/USD
+    - UNI/USD
+
+dates:
+  start: "2021-01-01"
+  end: "2024-12-31"
+
+backtest:
+  initial_capital: 100000
+  fees: 0.001          # 0.1% per trade (typical crypto exchange)
+  slippage: 0.0005     # 0.05% slippage
+  benchmark: BTC/USD
+  market_hours_only: false  # Crypto trades 24/7
+  allow_shorts: false       # Long only
+
+risk:
+  enabled: true
+  position_sizing_method: fixed_percent
+  position_size_pct: 0.33  # ~33% per position (top_n=3)
+  max_positions: 3
+
+output:
+  save_trades: true
+  save_reports: true
+  quantstats: true
+  visualize: false
+  verbosity: 1
