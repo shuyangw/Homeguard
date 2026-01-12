@@ -1,0 +1,92 @@
+# OpEx Pinning & Release Strategy Configuration
+#
+# Exploits gamma hedging dynamics near monthly options expiration.
+# Requires ThetaData options data for GEX calculation.
+#
+# Strategy Logic:
+# - PINNING phase (T-2 to T-1): Fade moves away from pin strike
+# - POST_OPEX phase (T+1 to T+2): Follow momentum after gamma release
+#
+# Requirements:
+# - Pre-computed GEX data from ThetaData
+# - Positive GEX environment (stabilizing)
+# - Price distance from pin within 0.5% to 3%
+
+strategy:
+  name: OpExPinningStrategy
+  parameters:
+    # Distance thresholds (as decimal, not percentage)
+    min_distance_pct: 0.005  # 0.5% minimum distance from pin
+    max_distance_pct: 0.03   # 3% maximum distance from pin
+
+    # Active phases for trading
+    active_phases:
+      - PINNING    # T-2 to T-1: Fade moves (mean reversion)
+      - POST_OPEX  # T+1 to T+2: Follow momentum
+
+    # Holding period
+    holding_period: overnight  # 'overnight' or 'eod'
+
+    # Position sizing
+    position_size_pct: 0.10   # 10% of capital per trade
+
+# Symbol universe - highly liquid index ETFs
+symbols:
+  # Core index ETFs (highest options liquidity)
+  list:
+    - SPY
+    - QQQ
+    - IWM
+
+dates:
+  start: "2020-01-01"
+  end: "2024-12-31"
+
+backtest:
+  # Capital and position sizing
+  initial_capital: 100000
+  position_size_pct: 0.10
+  max_positions: 3
+
+  # Commission and slippage
+  commission_pct: 0.001     # 0.1% (10 bps round trip)
+  slippage_pct: 0.0005      # 0.05% (5 bps)
+
+  # Risk management
+  stop_loss_pct: null       # No stop loss (hold overnight)
+  take_profit_pct: null     # No take profit
+
+  # Data requirements
+  data_frequency: daily     # Daily OHLCV data
+
+# Validation settings
+validation:
+  # Walk-forward parameters
+  train_months: 24          # 2 years training
+  test_months: 6            # 6 months out-of-sample
+
+  # Success criteria
+  min_sharpe: 0.6           # Minimum Sharpe ratio
+  min_win_rate: 0.52        # Minimum win rate
+  max_drawdown: 0.20        # Maximum drawdown (20%)
+
+# Notes
+notes: |
+  OpEx Pinning Strategy exploits dealer gamma hedging dynamics.
+
+  Key concepts:
+  - GEX (Gamma Exposure): Measures dealer hedging pressure
+  - Pin Strike: Strike with highest GEX near current price
+  - Positive GEX: Stabilizing (dealers absorb moves)
+  - Negative GEX: Destabilizing (dealers amplify moves)
+
+  OpEx Phases:
+  - NORMAL: >5 trading days from OpEx
+  - PRE_OPEX: T-5 to T-3 (early gamma effects)
+  - PINNING: T-2 to T-1 (strongest pinning)
+  - OPEX_DAY: Expiration day (high uncertainty, skip)
+  - POST_OPEX: T+1 to T+2 (gamma release, momentum)
+
+  Data requirements:
+  - ThetaData subscription for options chains
+  - Run scripts/download_options_data.py first
