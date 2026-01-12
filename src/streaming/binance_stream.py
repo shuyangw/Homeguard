@@ -4,7 +4,8 @@ Binance WebSocket streaming for real-time crypto klines.
 Provides real-time 1-minute kline data for multiple symbols via
 Binance's combined stream WebSocket endpoint.
 
-Reference: https://binance-docs.github.io/apidocs/spot/en/#websocket-market-streams
+Reference: https://docs.binance.us/#websocket-streams
+Note: Uses Binance.US endpoint (accessible from US-based servers)
 """
 
 import json
@@ -40,7 +41,7 @@ class BinanceStreamManager:
         manager.stop()
     """
 
-    WS_BASE_URL = "wss://stream.binance.com:9443/stream"
+    WS_BASE_URL = "wss://stream.binance.us:9443/stream"
 
     # Reconnection settings
     INITIAL_RECONNECT_DELAY = 1.0  # seconds
