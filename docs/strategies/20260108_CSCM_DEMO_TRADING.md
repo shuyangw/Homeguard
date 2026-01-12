@@ -22,33 +22,52 @@ The CSCM (Cross-Sectional Crypto Momentum) Demo Trading System is a self-contain
 ## Architecture
 
 ```
+Historical Data (Primary):
++------------------+     +---------------------+     +------------------+
+|  Binance.US REST | --> | BinanceDataProvider | --> | CSCMDemoAdapter  |
+| (60-day klines)  |     | (api.binance.us)    |     | (Strategy Logic) |
++------------------+     +---------------------+     +------------------+
+                                                             |
+                                                             v
+                                                     +------------------+
+                                                     |   CSCMSignals    |
+                                                     | (Momentum Calc)  |
+                                                     +------------------+
+
+Real-time Quotes (Optional - with REST fallback):
 +------------------+     +-------------------+     +------------------+
-|   Binance WS     | --> | BinanceStreamMgr  | --> |   DemoBroker     |
-|   (Live Data)    |     | (1-min bars)      |     | (Simulated Exec) |
+|  Binance.US WS   | --> | BinanceStreamMgr  | --> |   DemoBroker     |
+|  (1-min bars)    |     | (stream.binance.us)|    | (Simulated Exec) |
 +------------------+     +-------------------+     +------------------+
-                                                          |
-                                                          v
-                         +-------------------+     +------------------+
-                         | CSCMDemoAdapter   | <-- |  CSCMSignals     |
-                         | (Strategy Logic)  |     | (Momentum Calc)  |
-                         +-------------------+     +------------------+
-                                  |
-                                  v
-                         +-------------------+
-                         | run_cscm_demo.py  |
-                         | (Service Runner)  |
-                         +-------------------+
 ```
+
+### Data Flow
+
+| Data Type | Primary Source | Fallback | Used For |
+|-----------|----------------|----------|----------|
+| Historical (40-day SMA, 28-day momentum) | REST API | None | Regime detection, momentum ranking |
+| Real-time quotes | Streaming buffer | REST API | Order execution prices |
+| Portfolio values | Streaming buffer | REST API | P&L calculation |
 
 ### Components
 
 | Component | Location | Purpose |
 |-----------|----------|---------|
-| `DemoBroker` | `src/trading/demo/demo_broker.py` | Simulated crypto execution with Binance streaming |
-| `BinanceStreamManager` | `src/trading/demo/binance_stream.py` | WebSocket connection to Binance for real-time 1-min bars |
+| `BinanceDataProvider` | `src/data/providers/binance.py` | REST API client for historical klines (api.binance.us) |
+| `DemoBroker` | `src/trading/demo/demo_broker.py` | Simulated crypto execution with REST/streaming quotes |
+| `BinanceStreamManager` | `src/streaming/binance_stream.py` | WebSocket connection for real-time 1-min bars (optional) |
 | `CSCMDemoAdapter` | `src/trading/adapters/cscm_demo_adapter.py` | Strategy logic: momentum ranking, regime filter, rebalancing |
 | `CSCMSignals` | `src/strategies/advanced/cscm_signals.py` | Momentum calculation and signal generation |
 | `run_cscm_demo.py` | `scripts/trading/run_cscm_demo.py` | Service entry point for EC2 deployment |
+
+### Binance.US Endpoints
+
+| Endpoint | URL | Purpose |
+|----------|-----|---------|
+| REST API | `https://api.binance.us` | Historical klines, current prices |
+| WebSocket | `wss://stream.binance.us:9443` | Real-time 1-minute bars (optional) |
+
+Note: Binance.com is geo-blocked from US-based EC2 instances. All endpoints use Binance.US.
 
 ---
 
@@ -354,6 +373,14 @@ cat ~/.homeguard/demo/cscm_adapter_state.json | python -m json.tool
 ---
 
 ## Changelog
+
+- **2026-01-12:** REST API refactor for reliable regime detection
+  - Switch from streaming-only to REST-primary for historical data
+  - BinanceDataProvider now fetches 60-day daily klines via REST API
+  - DemoBroker adds REST fallback for quotes when streaming unavailable
+  - Changed endpoints from binance.com to binance.us (geo-blocking fix)
+  - Streaming remains optional for real-time quotes
+  - Fixes issue where 40-day SMA calculation failed due to insufficient streaming buffer data
 
 - **2026-01-08:** Initial deployment with optimal configuration
   - DemoBroker with Binance streaming
