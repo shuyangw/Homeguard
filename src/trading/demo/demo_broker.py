@@ -238,12 +238,13 @@ class DemoBroker(CryptoTradingInterface):
         if order_type != OrderType.MARKET:
             raise InvalidOrderError("Only MARKET orders supported in demo mode")
 
-        # Get current price
-        current_price = self._bar_buffer.get_latest_price(symbol)
-        if current_price is None:
+        # Get current price (streaming or REST fallback)
+        prices = self._get_prices([symbol])
+        current_price = prices.get(symbol)
+        if current_price is None or current_price == 0:
             raise InvalidOrderError(
                 f"No price available for {symbol}. "
-                f"Ensure streaming is active and symbol is subscribed."
+                f"Check Binance.US API connectivity."
             )
 
         notional = float(quantity) * current_price
