@@ -66,10 +66,10 @@ DEMO_UNIVERSE = [
     "CRV/USD",
 ]
 
-# Optimal defaults from backtesting (19.5% CAGR, 1.72 Sharpe, 15.6% max DD)
+# Optimal defaults from backtesting (35% CAGR with agreement filter, 16.6% max DD)
 DEFAULT_CASH = 100000.0
 DEFAULT_TOP_N = 5
-DEFAULT_ALLOCATION = 0.18  # 18% of capital
+DEFAULT_ALLOCATION = 0.40  # 40% of capital
 DEFAULT_TRAILING_STOP = 0.08  # 8%
 DEFAULT_PROFIT_TARGET = 0.20  # 20%
 
@@ -83,7 +83,7 @@ class CSCMDemoService:
 
     Optimal Configuration:
     - Top N: 5 positions
-    - Allocation: 18% of capital
+    - Allocation: 40% of capital
     - Trailing Stop: 8%
     - Profit Target: 20%
     - Starting Capital: $100,000
@@ -95,6 +95,7 @@ class CSCMDemoService:
         slippage_bps: float = 5.0,
         fee_bps: float = 10.0,
         top_n: int = DEFAULT_TOP_N,
+        allocation_pct: float = DEFAULT_ALLOCATION,
         rebalance_day: str = 'sunday',
         market_hours_only: bool = True,  # Default to equity hours
     ):
@@ -106,6 +107,7 @@ class CSCMDemoService:
             slippage_bps: Slippage in basis points
             fee_bps: Fee in basis points
             top_n: Number of positions to hold
+            allocation_pct: Percentage of capital to allocate (0.40 = 40%)
             rebalance_day: Day to rebalance
             market_hours_only: Restrict to equity market hours
         """
@@ -113,6 +115,7 @@ class CSCMDemoService:
         self.adapter = CSCMDemoAdapter(
             universe=DEMO_UNIVERSE,
             top_n=top_n,
+            allocation_pct=allocation_pct,
             rebalance_day=rebalance_day,
             initial_cash=initial_cash,
             slippage_bps=slippage_bps,
@@ -318,6 +321,12 @@ def main():
         help=f"Number of positions to hold (default: {DEFAULT_TOP_N})",
     )
     parser.add_argument(
+        "--allocation",
+        type=float,
+        default=DEFAULT_ALLOCATION,
+        help=f"Allocation percentage as decimal (default: {DEFAULT_ALLOCATION})",
+    )
+    parser.add_argument(
         "--rebalance-day",
         type=str,
         default="sunday",
@@ -349,6 +358,7 @@ def main():
             slippage_bps=args.slippage,
             fee_bps=args.fees,
             top_n=args.top_n,
+            allocation_pct=args.allocation,
             rebalance_day=args.rebalance_day,
             market_hours_only=not args.full_time,  # Default is market hours only
         )

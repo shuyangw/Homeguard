@@ -67,7 +67,7 @@ class CSCMDemoAdapter:
 
     Optimal Configuration (from backtesting):
     - Top N: 5 positions (concentration improves returns)
-    - Allocation: 18% of capital (keeps max DD under 20%)
+    - Allocation: 40% of capital (35% CAGR with agreement filter)
     - Trailing Stop: 8% (balances protection vs whipsaw)
     - Profit Target: 20% (locks in gains)
     - Market Hours: Equity hours only (9:30 AM - 4:00 PM ET)
@@ -79,12 +79,12 @@ class CSCMDemoAdapter:
         top_n: Number of positions to hold
     """
 
-    # Optimal defaults from backtesting (19.5% CAGR, 1.72 Sharpe, 15.6% max DD)
+    # Optimal defaults from backtesting (35% CAGR with agreement filter, 16.6% max DD)
     DEFAULT_TOP_N = 5
     DEFAULT_MOMENTUM_PERIOD = 28
     DEFAULT_BTC_SMA_PERIOD = 40
     DEFAULT_TRAILING_STOP = 0.08  # 8% trailing stop
-    DEFAULT_ALLOCATION = 0.18  # 18% of capital in positions
+    DEFAULT_ALLOCATION = 0.40  # 40% of capital in positions
     DEFAULT_PROFIT_TARGET = 0.20  # 20% profit target
     DEFAULT_INITIAL_CASH = 100000.0  # $100k starting capital
 
