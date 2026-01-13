@@ -315,3 +315,4 @@ scripts/debug/*.tmp
 scripts/debug/check_all_orders_today.py
 scripts/debug/check_omr_orders.py
 scripts/debug/check_recent_activity.py
+tmpclaude-*
