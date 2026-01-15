@@ -943,7 +943,7 @@ class QuantStatsReporter:
 </style>
 
 <button class="theme-toggle" onclick="toggleTheme()" id="themeToggle">
-    <span class="theme-icon" id="themeIcon">🌙</span>
+    <span class="theme-icon" id="themeIcon">[*]</span>
     <span id="themeText">Dark Mode</span>
 </button>
 
@@ -960,10 +960,10 @@ class QuantStatsReporter:
         const icon = document.getElementById('themeIcon');
         const text = document.getElementById('themeText');
         if (newTheme === 'dark') {{
-            icon.textContent = '☀️';
+            icon.textContent = '[+]';
             text.textContent = 'Light Mode';
         }} else {{
-            icon.textContent = '🌙';
+            icon.textContent = '[*]';
             text.textContent = 'Dark Mode';
         }}
     }}
@@ -1063,7 +1063,7 @@ class QuantStatsReporter:
     </div>
 
     <div class="summary-card" style="background: var(--bg-secondary); border: 2px dashed var(--border-color);">
-        <h2 class="section-header" style="border-color: #9b59b6;">📊 Chart Descriptions Below</h2>
+        <h2 class="section-header" style="border-color: #9b59b6;">Chart Descriptions Below</h2>
         <p class="analysis-text" style="margin-bottom: 10px;">
             The QuantStats charts below provide detailed visual analysis of the strategy performance:
         </p>
