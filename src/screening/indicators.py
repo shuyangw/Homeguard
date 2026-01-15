@@ -490,5 +490,5 @@ def compute_indicators_for_screening(
     try:
         indicators = TechnicalIndicators(df)
         return indicators.compute_all()
-    except Exception:
+    except (ValueError, IndexError, AttributeError):
         return IndicatorResult()

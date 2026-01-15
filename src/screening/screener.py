@@ -404,7 +404,7 @@ class StockScreener:
         """Check if symbol passes all technical filters."""
         try:
             indicators = TechnicalIndicators(bars)
-        except Exception:
+        except (ValueError, IndexError, AttributeError):
             return False
 
         # Volume filters that need historical
@@ -546,7 +546,7 @@ class StockScreener:
                 if avg_volume_20d and avg_volume_20d > 0:
                     current_vol = snap.daily_bar_volume or 0
                     relative_volume = current_vol / avg_volume_20d
-            except Exception:
+            except (ValueError, ZeroDivisionError, TypeError):
                 pass
 
         # Get fundamentals if available
@@ -560,7 +560,7 @@ class StockScreener:
                     market_cap = fund.market_cap
                     pe_ratio = fund.pe_ratio
                     sector = fund.sector
-            except Exception:
+            except (AttributeError, KeyError, TypeError):
                 pass
 
         return ScreenerResult(
