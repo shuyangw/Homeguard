@@ -18,7 +18,10 @@ Classes:
 import numpy as np
 import pandas as pd
 from abc import ABC, abstractmethod
-from typing import Dict, Optional, Tuple
+from typing import Dict, Optional, Tuple, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .risk_config import RiskConfig
 from dataclasses import dataclass
 
 
@@ -453,7 +456,7 @@ class RiskManager:
         )
     """
 
-    def __init__(self, config):
+    def __init__(self, config: 'RiskConfig') -> None:
         """
         Args:
             config: RiskConfig instance
