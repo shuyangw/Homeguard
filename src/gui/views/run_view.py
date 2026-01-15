@@ -353,10 +353,10 @@ Execution:
             if remaining_seconds < 0:
                 remaining_seconds = 0
 
-            self.time_remaining_text.value = f"⏳ Remaining: ~{timedelta(seconds=int(remaining_seconds))}"
+            self.time_remaining_text.value = f"Remaining: ~{timedelta(seconds=int(remaining_seconds))}"
 
             eta = datetime.now() + timedelta(seconds=remaining_seconds)
-            self.eta_text.value = f"🎯 ETA: {eta.strftime('%H:%M:%S')}"
+            self.eta_text.value = f"ETA: {eta.strftime('%H:%M:%S')}"
         else:
             self.time_remaining_text.value = ""
             self.eta_text.value = ""

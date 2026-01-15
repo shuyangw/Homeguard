@@ -187,7 +187,7 @@ class SetupView(ft.Container):
                 ft.dropdown.Option("Conservative", "Conservative (5% per trade, 1% stop loss)"),
                 ft.dropdown.Option("Moderate", "Moderate (10% per trade, 2% stop loss)"),
                 ft.dropdown.Option("Aggressive", "Aggressive (20% per trade, 3% stop loss)"),
-                ft.dropdown.Option("Disabled", "⚠️ Disabled (99% per trade - unrealistic)")
+                ft.dropdown.Option("Disabled", "[!] Disabled (99% per trade - unrealistic)")
             ],
             width=400,
             tooltip="Risk management profile controls position sizing and stop losses. Moderate is recommended for realistic results."
@@ -252,7 +252,7 @@ class SetupView(ft.Container):
                 self.rebalancing_frequency_dropdown,
                 self.rebalancing_threshold_input,
                 ft.Text(
-                    "ℹ️ These settings apply when holding multiple positions in a single portfolio.",
+                    "Note: These settings apply when holding multiple positions in a single portfolio.",
                     size=11,
                     color=ft.Colors.GREY_400,
                     italic=True
@@ -1102,16 +1102,16 @@ class SetupView(ft.Container):
             self.start_date_picker.value = start_str
             try:
                 self.start_date_value = datetime.strptime(start_str, "%Y-%m-%d")
-            except:
-                pass
+            except ValueError:
+                pass  # Invalid date format - keep default
 
         if 'end_date' in config:
             end_str = config['end_date']
             self.end_date_picker.value = end_str
             try:
                 self.end_date_value = datetime.strptime(end_str, "%Y-%m-%d")
-            except:
-                pass
+            except ValueError:
+                pass  # Invalid date format - keep default
 
         # Set backtest parameters
         if 'initial_capital' in config:
