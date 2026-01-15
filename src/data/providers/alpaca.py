@@ -85,5 +85,5 @@ class AlpacaDataProvider(DataProviderInterface):
         """Check Alpaca connection."""
         try:
             return self._broker.test_connection()
-        except Exception:
+        except (ConnectionError, TimeoutError, OSError):
             return False

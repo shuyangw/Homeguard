@@ -15,6 +15,7 @@ import time
 from datetime import date, datetime, timedelta
 from typing import Dict, List, Optional, Tuple, Any
 import requests
+from requests.exceptions import RequestException
 import pandas as pd
 from dataclasses import asdict
 
@@ -173,7 +174,7 @@ class ThetaDataClient:
                 timeout=5,
             )
             return response.status_code in [200, 404]  # 404 OK, just means no endpoint
-        except Exception:
+        except (ConnectionError, TimeoutError, RequestException):
             return False
 
     def list_expirations(

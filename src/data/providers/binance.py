@@ -22,6 +22,7 @@ from typing import Dict, List, Optional, Set
 
 import pandas as pd
 import requests
+from requests.exceptions import RequestException
 
 from src.data.providers.base import DataProviderInterface
 from src.utils.logger import logger
@@ -392,7 +393,7 @@ class BinanceDataProvider(DataProviderInterface):
         try:
             data = self._request_with_retry('/api/v3/ping', max_retries=1)
             return data is not None
-        except Exception:
+        except (ConnectionError, TimeoutError, RequestException):
             return False
 
     def supports_timeframe(self, timeframe: str) -> bool:

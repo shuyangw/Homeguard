@@ -122,7 +122,7 @@ class DataCache:
             try:
                 with open(self.metadata_file, 'r') as f:
                     return json.load(f)
-            except Exception:
+            except (IOError, json.JSONDecodeError, FileNotFoundError):
                 pass
         return {}
 
