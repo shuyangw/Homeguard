@@ -235,7 +235,7 @@ class CSCMLiveAdapter:
                 try:
                     quote = self.broker.get_crypto_quote(symbol)
                     total += float(qty) * quote['last']
-                except Exception:
+                except (KeyError, ValueError, ConnectionError):
                     pass
 
             return total
@@ -333,7 +333,7 @@ class CSCMLiveAdapter:
             try:
                 quote = self.broker.get_crypto_quote(symbol)
                 total_value += float(qty) * quote['last']
-            except Exception:
+            except (KeyError, ValueError, ConnectionError):
                 pass
 
         logger.info(f"[CSCM] Total portfolio value: ${total_value:,.2f}")

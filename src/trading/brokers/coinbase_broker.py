@@ -186,7 +186,7 @@ class CoinbaseBroker(CryptoTradingInterface, AccountInterface):
                 try:
                     product = self._client.get_product(symbol)
                     current_price = float(product.get('price', 0))
-                except Exception:
+                except (KeyError, ValueError, TypeError):
                     current_price = 0
 
                 market_value = balance * current_price

@@ -34,7 +34,7 @@ def _decimal_decoder(dct):
         if key in dct and isinstance(dct[key], str):
             try:
                 dct[key] = Decimal(dct[key])
-            except Exception:
+            except (ValueError, TypeError):
                 pass
     return dct
 

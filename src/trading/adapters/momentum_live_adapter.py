@@ -481,7 +481,7 @@ class MomentumLiveAdapter(StrategyAdapter):
                         if 'close' in df.columns:
                             # Get the last (most recent) close price
                             todays_prices[symbol] = df['close'].iloc[-1]
-                except Exception:
+                except (ValueError, IndexError, KeyError):
                     failed += 1
                     continue
 

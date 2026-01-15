@@ -328,14 +328,14 @@ class CryptoBrokerRouter(CryptoTradingInterface, AccountInterface):
             try:
                 self._primary.test_connection()
                 status['brokers']['primary'] = {'name': 'Coinbase', 'status': 'connected'}
-            except Exception:
+            except (ConnectionError, TimeoutError, AttributeError):
                 status['brokers']['primary'] = {'name': 'Coinbase', 'status': 'disconnected'}
 
         if self._secondary:
             try:
                 self._secondary.test_connection()
                 status['brokers']['secondary'] = {'name': 'Alpaca', 'status': 'connected'}
-            except Exception:
+            except (ConnectionError, TimeoutError, AttributeError):
                 status['brokers']['secondary'] = {'name': 'Alpaca', 'status': 'disconnected'}
 
         return status

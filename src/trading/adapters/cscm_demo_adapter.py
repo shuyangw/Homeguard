@@ -596,7 +596,7 @@ class CSCMDemoAdapter:
         try:
             if self._cache_file.exists():
                 self._cache_file.unlink()
-        except Exception:
+        except (OSError, FileNotFoundError, PermissionError):
             pass
 
         logger.info(f"[CSCMDemo] Reset complete with ${initial_cash:,.2f}")

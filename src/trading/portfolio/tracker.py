@@ -231,7 +231,7 @@ class PortfolioTracker:
             try:
                 status = self._adapter.get_status()
                 regime = status.get('regime', 'unknown')
-            except Exception:
+            except (AttributeError, KeyError, ValueError):
                 pass
 
             return {
