@@ -175,7 +175,7 @@ class RAMPStrategyAdapter(BaseStrategyV2):
             if self.regime_detector is not None:
                 try:
                     regime = self.regime_detector.detect_regime(ts.date(), data)
-                except Exception:
+                except (ValueError, AttributeError, KeyError):
                     pass
 
             # Get regime-specific parameters

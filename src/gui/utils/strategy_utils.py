@@ -55,7 +55,7 @@ def get_strategy_parameters(strategy_class: Type[BaseStrategy]) -> Dict[str, Any
         params = strategy_instance.params.copy()
 
         return params
-    except Exception:
+    except (AttributeError, KeyError, ImportError):
         # Fallback to signature inspection if instantiation fails
         sig = inspect.signature(strategy_class.__init__)
         params = {}

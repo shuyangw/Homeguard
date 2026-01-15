@@ -137,7 +137,7 @@ class OMRStrategyAdapter(BaseStrategyV2):
             if self.regime_detector is not None:
                 try:
                     regime = self.regime_detector.detect_regime(ts.date(), data)
-                except Exception:
+                except (ValueError, AttributeError, KeyError):
                     regime = "UNKNOWN"
 
             # Get Bayesian probability if model available
@@ -154,7 +154,7 @@ class OMRStrategyAdapter(BaseStrategyV2):
                     probability = prob_data.get("probability", 0.5)
                     expected_return = prob_data.get("expected_return", 0.0)
                     sample_size = prob_data.get("sample_size", 0)
-                except Exception:
+                except (KeyError, ValueError, TypeError):
                     pass
 
             self._context_cache[ts] = {

@@ -284,7 +284,7 @@ def _get_strategy_parameters(strategy_cls: Type[BaseStrategy]) -> Dict[str, Any]
         # Try to instantiate with defaults and get params
         strategy_instance = strategy_cls()
         return strategy_instance.params.copy()
-    except Exception:
+    except (ImportError, AttributeError, TypeError):
         # Fallback to signature inspection
         sig = inspect.signature(strategy_cls.__init__)
         params = {}
