@@ -38,7 +38,7 @@ class TradeInspector:
 
             return None
 
-        except Exception:
+        except (AttributeError, KeyError, ValueError):
             return None
 
     @staticmethod

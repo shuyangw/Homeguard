@@ -294,7 +294,7 @@ def estimate_dataframe_memory(df: Any) -> float:
         # pandas DataFrame
         if hasattr(df, 'memory_usage'):
             return df.memory_usage(deep=True).sum() / (1024 * 1024)
-    except Exception:
+    except (AttributeError, TypeError, MemoryError):
         pass
     return 0.0
 

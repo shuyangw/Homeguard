@@ -229,7 +229,7 @@ class ConfigManager:
         try:
             with open(self.symbol_lists_file, 'r') as f:
                 return json.load(f)
-        except Exception:
+        except (IOError, json.JSONDecodeError, FileNotFoundError):
             return {}
 
     def _save_symbol_lists(self, symbol_lists: Dict[str, Any]) -> None:
@@ -271,7 +271,7 @@ class ConfigManager:
             with open(self.last_run_file, 'r') as f:
                 data = json.load(f)
                 return data.get('config')
-        except Exception:
+        except (IOError, json.JSONDecodeError, FileNotFoundError):
             return None
 
     def has_last_run(self) -> bool:
