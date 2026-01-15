@@ -209,7 +209,7 @@ class TradeLogger:
                         equity_curve = value_attr()
                     else:
                         equity_curve = value_attr
-                except Exception:
+                except (AttributeError, TypeError):
                     pass
 
             # Method 2: Try .total_value
@@ -220,7 +220,7 @@ class TradeLogger:
                         equity_curve = total_value()
                     else:
                         equity_curve = total_value
-                except Exception:
+                except (AttributeError, TypeError):
                     pass
 
             # Method 3: Try raw .equity_curve attribute (convert to Series if needed)
@@ -298,7 +298,7 @@ class TradeLogger:
                         value = value_attr()
                     else:
                         value = value_attr
-                except Exception:
+                except (AttributeError, TypeError):
                     pass
 
             # Method 2: Try .total_value
@@ -309,7 +309,7 @@ class TradeLogger:
                         value = total_value()
                     else:
                         value = total_value
-                except Exception:
+                except (AttributeError, TypeError):
                     pass
 
             # Method 3: Try raw .equity_curve attribute (convert to Series if needed)
@@ -344,7 +344,7 @@ class TradeLogger:
                             cash = cash_val
                         if cash is not None:
                             break
-                    except:
+                    except (AttributeError, TypeError):
                         continue
 
             # Create comprehensive DataFrame
@@ -387,7 +387,7 @@ class TradeLogger:
                         # Reindex to match state_df timestamps
                         state_df['Position Count'] = count_series.reindex(state_df['Timestamp'], method='ffill').fillna(0).astype(int).values
                         position = 'handled'  # Mark as handled
-                except Exception:
+                except (ValueError, KeyError, AttributeError):
                     pass
 
             # If not handled yet, try standard position attributes
@@ -415,7 +415,7 @@ class TradeLogger:
                                     # Scalar value - use directly
                                     state_df['Position Size'] = position
                                 break
-                        except:
+                        except (AttributeError, TypeError):
                             continue
 
             # Calculate metrics (use .values to ensure positional alignment)
@@ -437,7 +437,7 @@ class TradeLogger:
                         if drawdown is not None:
                             state_df['Drawdown %'] = (drawdown * 100).round(2)
                             break
-                    except:
+                    except (AttributeError, TypeError):
                         continue
 
             # Save to CSV

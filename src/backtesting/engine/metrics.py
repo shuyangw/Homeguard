@@ -109,7 +109,7 @@ class PerformanceMetrics:
                 return float('inf') if wins > 0 else 0.0
 
             return float(wins / losses)
-        except Exception:
+        except (ValueError, ZeroDivisionError, TypeError):
             return 0.0
 
     @staticmethod
@@ -121,7 +121,7 @@ class PerformanceMetrics:
             pnl_values = PerformanceMetrics._get_pnl_values(portfolio)
             wins = [p for p in pnl_values if p > 0]
             return float(np.mean(wins)) if len(wins) > 0 else 0.0
-        except Exception:
+        except (ValueError, IndexError, TypeError):
             return 0.0
 
     @staticmethod
@@ -133,7 +133,7 @@ class PerformanceMetrics:
             pnl_values = PerformanceMetrics._get_pnl_values(portfolio)
             losses = [p for p in pnl_values if p < 0]
             return float(np.mean(losses)) if len(losses) > 0 else 0.0
-        except Exception:
+        except (ValueError, IndexError, TypeError):
             return 0.0
 
     @staticmethod
@@ -145,7 +145,7 @@ class PerformanceMetrics:
             pnl_values = PerformanceMetrics._get_pnl_values(portfolio)
             wins = [p for p in pnl_values if p > 0]
             return float(max(wins)) if len(wins) > 0 else 0.0
-        except Exception:
+        except (ValueError, IndexError, TypeError):
             return 0.0
 
     @staticmethod
@@ -157,7 +157,7 @@ class PerformanceMetrics:
             pnl_values = PerformanceMetrics._get_pnl_values(portfolio)
             losses = [p for p in pnl_values if p < 0]
             return float(min(losses)) if len(losses) > 0 else 0.0
-        except Exception:
+        except (ValueError, IndexError, TypeError):
             return 0.0
 
     @staticmethod
