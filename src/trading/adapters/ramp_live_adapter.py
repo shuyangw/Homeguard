@@ -1206,8 +1206,16 @@ class RAMPLiveAdapter(StrategyAdapter):
                         logger.warning(f"[RAMP] No quote available for {symbol}")
                         continue
 
-                    current_price = float(quote.get('ask', quote.get('bid', 0)))
+                    # Try ask price first, fall back to bid if ask is 0 or missing
+                    ask_price = float(quote.get('ask', 0))
+                    bid_price = float(quote.get('bid', 0))
+                    current_price = ask_price if ask_price > 0 else bid_price
+
                     if current_price <= 0:
+                        logger.warning(
+                            f"[RAMP] Skipping {symbol} - invalid quote "
+                            f"(ask={ask_price}, bid={bid_price})"
+                        )
                         continue
 
                     # Calculate shares to buy using FLOOR to never exceed target
