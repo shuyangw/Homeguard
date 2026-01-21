@@ -157,14 +157,13 @@ class CryptoBrokerRouter(CryptoTradingInterface, AccountInterface):
         else:
             raise ValueError(f"Unknown broker: {name}")
 
-    def _try_with_failover(self, operation_name: str, operation, *args, **kwargs):
+    def _try_with_failover(self, operation_name: str, *args, **kwargs):
         """
         Execute operation with automatic failover.
 
         Args:
-            operation_name: Name for logging
-            operation: Callable to execute
-            *args, **kwargs: Arguments to pass
+            operation_name: Method name to call on broker
+            *args, **kwargs: Arguments to pass to the method
 
         Returns:
             Operation result

@@ -554,6 +554,56 @@ class CSCMDemoAdapter:
 
         return orders
 
+    def _check_regime_and_liquidate(self) -> List[Dict]:
+        """
+        Check if regime is bearish and liquidate all positions if so.
+
+        This ensures we go to cash immediately when regime turns bearish,
+        rather than waiting for the next rebalance day.
+
+        Returns:
+            List of orders from closing positions
+        """
+        # Skip if no positions
+        current_positions = self._get_current_positions()
+        if not current_positions:
+            return []
+
+        # Fetch latest data and check regime
+        data_dict = self._fetch_historical_data()
+        if not data_dict or 'BTC/USD' not in data_dict:
+            logger.debug("[CSCMDemo] No data available for regime check")
+            return []
+
+        self.signals.update_historical_data(data_dict)
+        risk_signals = self.signals.get_risk_signals()
+
+        # If bullish, keep positions
+        if risk_signals.regime == 'bullish':
+            return []
+
+        # Bearish regime - liquidate all positions
+        logger.warning(
+            f"[CSCMDemo] Bearish regime detected (BTC ${risk_signals.btc_price:,.2f} < "
+            f"SMA ${risk_signals.btc_sma:,.2f}) - liquidating {len(current_positions)} positions"
+        )
+
+        orders = []
+        for symbol in list(current_positions.keys()):
+            try:
+                logger.info(f"[CSCMDemo] Closing {symbol} due to bearish regime")
+                order = self._broker.close_crypto_position(symbol)
+                orders.append(order)
+                self._entry_prices.pop(symbol, None)
+            except Exception as e:
+                logger.error(f"[CSCMDemo] Failed to close {symbol}: {e}")
+
+        if orders:
+            self._save_state()
+            logger.info(f"[CSCMDemo] Liquidated {len(orders)} positions due to bearish regime")
+
+        return orders
+
     def run_once(self) -> None:
         """Run single iteration of the strategy."""
         now = tz.now()
@@ -574,6 +624,10 @@ class CSCMDemoAdapter:
 
             # Check profit targets (may close individual positions)
             self._check_profit_targets()
+
+            # Check regime and liquidate if bearish (don't wait for rebalance day)
+            if self.go_to_cash_in_bear:
+                self._check_regime_and_liquidate()
 
             # Check if we should rebalance
             if self._should_rebalance():
