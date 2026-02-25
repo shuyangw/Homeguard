@@ -17,31 +17,57 @@ class TestGEXCalculatorContractGEX:
     """Tests for single contract GEX calculation."""
 
     def test_calculate_contract_gex_short_dealer(self):
-        """Test GEX calculation with short dealer position (default)."""
+        """Test GEX calculation with short dealer position (default).
+
+        Standard SpotGamma convention:
+        - Call GEX = gamma * OI * 100 * spot * (+1)
+        - Put GEX = gamma * OI * 100 * spot * (-1)
+        """
         calc = GEXCalculator(dealer_position="short")
 
-        # gamma=0.05, OI=1000, spot=$100
-        # GEX = 0.05 * 1000 * 100 * 100 * (-1) = -500,000
-        result = calc.calculate_contract_gex(
-            gamma=0.05,
-            open_interest=1000,
-            spot_price=100.0,
-        )
-
-        assert result == -500_000.0
-
-    def test_calculate_contract_gex_long_dealer(self):
-        """Test GEX calculation with long dealer position."""
-        calc = GEXCalculator(dealer_position="long")
-
-        # gamma=0.05, OI=1000, spot=$100
+        # Call: gamma=0.05, OI=1000, spot=$100
         # GEX = 0.05 * 1000 * 100 * 100 * (+1) = +500,000
         result = calc.calculate_contract_gex(
             gamma=0.05,
             open_interest=1000,
             spot_price=100.0,
+            is_call=True,
         )
+        assert result == 500_000.0
 
+        # Put: gamma=0.05, OI=1000, spot=$100
+        # GEX = 0.05 * 1000 * 100 * 100 * (-1) = -500,000
+        result = calc.calculate_contract_gex(
+            gamma=0.05,
+            open_interest=1000,
+            spot_price=100.0,
+            is_call=False,
+        )
+        assert result == -500_000.0
+
+    def test_calculate_contract_gex_long_dealer(self):
+        """Test GEX calculation with long dealer position (signs flipped)."""
+        calc = GEXCalculator(dealer_position="long")
+
+        # Long dealer flips signs
+        # Call: gamma=0.05, OI=1000, spot=$100
+        # GEX = 0.05 * 1000 * 100 * 100 * (+1) * (-1) = -500,000
+        result = calc.calculate_contract_gex(
+            gamma=0.05,
+            open_interest=1000,
+            spot_price=100.0,
+            is_call=True,
+        )
+        assert result == -500_000.0
+
+        # Put: gamma=0.05, OI=1000, spot=$100
+        # GEX = 0.05 * 1000 * 100 * 100 * (-1) * (-1) = +500,000
+        result = calc.calculate_contract_gex(
+            gamma=0.05,
+            open_interest=1000,
+            spot_price=100.0,
+            is_call=False,
+        )
         assert result == 500_000.0
 
     def test_calculate_contract_gex_zero_oi(self):
@@ -103,7 +129,10 @@ class TestGEXCalculatorStrikeGEX:
         )
 
     def test_calculate_strike_gex_single_call(self):
-        """Test strike GEX with single call."""
+        """Test strike GEX with single call.
+
+        Standard convention: Calls have positive GEX contribution.
+        """
         chain = self._create_chain([
             {"strike": 475.0, "type": OptionRight.CALL, "oi": 1000, "gamma": 0.02},
         ])
@@ -112,12 +141,15 @@ class TestGEXCalculatorStrikeGEX:
         result = calc.calculate_strike_gex(chain)
 
         assert 475.0 in result
-        assert result[475.0].call_gex < 0  # Short dealer = negative
+        assert result[475.0].call_gex > 0  # Calls = positive contribution
         assert result[475.0].put_gex == 0.0
         assert result[475.0].net_gex == result[475.0].call_gex
 
     def test_calculate_strike_gex_single_put(self):
-        """Test strike GEX with single put."""
+        """Test strike GEX with single put.
+
+        Standard convention: Puts have negative GEX contribution.
+        """
         chain = self._create_chain([
             {"strike": 475.0, "type": OptionRight.PUT, "oi": 1000, "gamma": 0.02},
         ])
@@ -127,11 +159,15 @@ class TestGEXCalculatorStrikeGEX:
 
         assert 475.0 in result
         assert result[475.0].call_gex == 0.0
-        assert result[475.0].put_gex < 0  # Short dealer = negative
+        assert result[475.0].put_gex < 0  # Puts = negative contribution
         assert result[475.0].net_gex == result[475.0].put_gex
 
     def test_calculate_strike_gex_call_and_put_same_strike(self):
-        """Test strike GEX with call and put at same strike."""
+        """Test strike GEX with call and put at same strike.
+
+        Net GEX = Call GEX (positive) + Put GEX (negative)
+        With more call OI, net should be positive.
+        """
         chain = self._create_chain([
             {"strike": 475.0, "type": OptionRight.CALL, "oi": 1000, "gamma": 0.02},
             {"strike": 475.0, "type": OptionRight.PUT, "oi": 800, "gamma": 0.02},
@@ -141,9 +177,10 @@ class TestGEXCalculatorStrikeGEX:
         result = calc.calculate_strike_gex(chain)
 
         assert 475.0 in result
-        assert result[475.0].call_gex < 0
-        assert result[475.0].put_gex < 0
+        assert result[475.0].call_gex > 0  # Calls positive
+        assert result[475.0].put_gex < 0   # Puts negative
         assert result[475.0].net_gex == result[475.0].call_gex + result[475.0].put_gex
+        assert result[475.0].net_gex > 0  # Net positive (more calls)
         assert result[475.0].call_oi == 1000
         assert result[475.0].put_oi == 800
 
@@ -231,16 +268,20 @@ class TestGEXCalculatorTotalGEX:
 
         assert total == expected
 
-    def test_calculate_total_gex_short_dealer_negative(self):
-        """Test total GEX is negative for short dealer."""
+    def test_calculate_total_gex_put_heavy_negative(self):
+        """Test total GEX is negative when puts dominate.
+
+        Standard convention: Calls +, Puts -
+        Put-heavy chain should have negative net GEX.
+        """
         chain = self._create_chain([
-            {"strike": 475.0, "type": OptionRight.CALL, "oi": 1000, "gamma": 0.02},
+            {"strike": 475.0, "type": OptionRight.PUT, "oi": 2000, "gamma": 0.02},
         ])
         calc = GEXCalculator(dealer_position="short")
 
         total = calc.calculate_total_gex(chain)
 
-        assert total < 0
+        assert total < 0  # Puts = negative GEX
 
 
 class TestGEXCalculatorPinStrike:

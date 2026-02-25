@@ -8,14 +8,17 @@ Calculates dealer gamma exposure from options chain data to identify:
 
 Key Assumptions:
 - Dealers are NET SHORT options (sold to retail/institutions)
-- Short calls = negative gamma exposure (buy on rally, sell on dip)
-- Short puts = negative gamma exposure (same effect)
-- Positive net GEX = stabilizing (dealers absorb moves)
-- Negative net GEX = destabilizing (dealers amplify moves)
+- Net GEX > 0: Stabilizing environment (dealers absorb moves)
+- Net GEX < 0: Destabilizing environment (dealers amplify moves)
 
-Formula:
-    GEX_contract = gamma * open_interest * 100 * spot_price * direction
-    where direction = -1 for dealer short positions
+Formula (Standard SpotGamma Convention):
+    Call GEX = gamma * OI * 100 * spot * (+1)
+    Put GEX  = gamma * OI * 100 * spot * (-1)
+    Net GEX  = Call GEX + Put GEX
+
+The opposite signs reflect how dealer hedging flows differ:
+- Short calls: Dealers buy on rallies (positive gamma contribution)
+- Short puts: Dealers sell on rallies (negative gamma contribution)
 """
 
 from dataclasses import dataclass
@@ -104,36 +107,43 @@ class GEXCalculator:
         self.dealer_position = dealer_position
         self.near_strike_pct = near_strike_pct
 
-        # Direction multiplier based on dealer position
-        # Short gamma = -1 (dealers hedge opposite to gamma)
-        self._direction = -1 if dealer_position == "short" else 1
+        # Direction multiplier sign flip for long dealer position
+        # Standard: short = normal convention, long = flip signs
+        self._position_multiplier = 1 if dealer_position == "short" else -1
 
     def calculate_contract_gex(
         self,
         gamma: float,
         open_interest: int,
         spot_price: float,
+        is_call: bool = True,
     ) -> float:
         """
         Calculate GEX for a single contract.
 
-        Formula:
-            GEX = gamma * OI * 100 * spot * direction
+        Formula (Standard SpotGamma Convention):
+            Call GEX = gamma * OI * 100 * spot * (+1)
+            Put GEX  = gamma * OI * 100 * spot * (-1)
 
         Args:
             gamma: Option gamma
             open_interest: Number of contracts
             spot_price: Current underlying price
+            is_call: True for calls, False for puts
 
         Returns:
             GEX in dollars (notional delta change per $1 move)
         """
+        # Standard convention: calls +1, puts -1
+        option_direction = 1 if is_call else -1
+
         return (
             gamma *
             open_interest *
             self.CONTRACT_MULTIPLIER *
             spot_price *
-            self._direction
+            option_direction *
+            self._position_multiplier
         )
 
     def calculate_strike_gex(
@@ -170,6 +180,7 @@ class GEXCalculator:
                 gamma=contract.gamma,
                 open_interest=contract.open_interest,
                 spot_price=spot,
+                is_call=contract.is_call,
             )
 
             if contract.is_call:
@@ -313,6 +324,7 @@ class GEXCalculator:
                     gamma=contract.gamma,
                     open_interest=contract.open_interest,
                     spot_price=price,  # Use hypothetical price
+                    is_call=contract.is_call,
                 )
 
                 if contract.is_call:

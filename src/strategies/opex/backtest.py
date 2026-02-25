@@ -313,13 +313,13 @@ class OpExBacktestRunner:
                     # Calculate component GEX
                     call_gex = sum(
                         self.gex_calc.calculate_contract_gex(
-                            c.gamma, c.open_interest, chain.underlying_price
+                            c.gamma, c.open_interest, chain.underlying_price, is_call=True
                         )
                         for c in chain.get_calls()
                     )
                     put_gex = sum(
                         self.gex_calc.calculate_contract_gex(
-                            c.gamma, c.open_interest, chain.underlying_price
+                            c.gamma, c.open_interest, chain.underlying_price, is_call=False
                         )
                         for c in chain.get_puts()
                     )
