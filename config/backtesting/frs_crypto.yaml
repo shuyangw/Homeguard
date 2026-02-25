@@ -1,0 +1,69 @@
+# Fractal Regime Switching (FRS) Strategy - Crypto Configuration
+#
+# A meta-strategy that uses the Hurst Exponent to detect market regimes
+# and routes to the appropriate sub-strategy:
+#
+# - H > 0.60 (Trending): Deploy Donchian Breakout
+# - H < 0.40 (Mean-Reverting): Deploy Bollinger + RSI Mean Reversion
+# - 0.40 <= H <= 0.60 (Noise): Go to cash, do not trade
+#
+# The Hurst Exponent measures long-term memory in a time series:
+# - H < 0.5: Anti-persistent (mean-reverting)
+# - H = 0.5: Random walk (Brownian motion)
+# - H > 0.5: Persistent (trending)
+#
+# Run with: python -m src.backtest_runner --config config/backtesting/frs_crypto.yaml
+
+mode: single
+
+strategy:
+  name: FRSStrategy
+  parameters:
+    # Hurst Exponent Parameters
+    hurst_window: 100        # Rolling window for Hurst calculation
+    hurst_smooth_span: 10    # EMA span to smooth Hurst (prevents flickering)
+
+    # Regime Thresholds
+    trend_threshold: 0.60    # Hurst > this = TRENDING regime
+    mr_threshold: 0.40       # Hurst < this = MEAN_REVERTING regime
+
+    # Trend-Following Parameters (Donchian Breakout)
+    donchian_period: 20      # Period for Donchian channel
+
+    # Mean-Reversion Parameters (Bollinger + RSI)
+    bollinger_period: 20     # Period for Bollinger Bands
+    bollinger_std: 2.0       # Standard deviations for bands
+    rsi_period: 14           # Period for RSI
+    rsi_overbought: 70       # RSI level for overbought
+    rsi_oversold: 30         # RSI level for oversold
+
+symbols:
+  list:
+    - BTC_USD
+
+dates:
+  start: '2021-01-01'
+  end: '2025-12-31'
+
+backtest:
+  initial_capital: 100000
+  fees: 0.005              # 0.5% for slippage/spreads
+  slippage: 0.0            # Included in fees
+  benchmark: BTC_USD
+  market_hours_only: false # Crypto 24/7
+  allow_shorts: true       # FRS can go short in mean-reverting regime
+  portfolio_mode: single
+  timeframe: crypto_1day
+
+risk:
+  enabled: true
+  position_sizing_method: fixed_percent
+  position_size_pct: 1.0   # 100% position size
+  max_positions: 1
+
+output:
+  save_trades: true
+  save_reports: true
+  quantstats: false
+  visualize: false
+  verbosity: 1

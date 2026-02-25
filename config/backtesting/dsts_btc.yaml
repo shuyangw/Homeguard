@@ -1,0 +1,61 @@
+# Dual Signal Trend Sentinel (DSTS) Strategy - BTC/USD Configuration
+#
+# Volatility-normalized trend following for Bitcoin using Z-score deviation from EMA.
+#
+# Strategy Logic:
+# - Baseline: EMA(65)
+# - Volatility: StdDev(65)
+# - Signal: Z-Score = (Close - EMA) / StdDev
+# - Entry: Z-Score > bull_threshold (0.75)
+# - Exit: Z-Score < bear_threshold (0.0)
+# - Position: 100% long or 100% cash
+#
+# Target Performance (from original research):
+# - CAGR: ~66%
+# - Max DD: ~27%
+# - Win Rate: ~47%
+# - Win/Loss Ratio: >8:1
+# - Trades/Year: ~4-5
+#
+# Key Insight: Complexity hurts. Simple thresholds outperform optimized parameters.
+
+mode: single
+
+strategy:
+  name: DSTSStrategy
+  parameters:
+    # Core DSTS parameters
+    period: 65           # Period for EMA and StdDev
+    bull_threshold: 0.75 # Z-score to enter long
+    bear_threshold: 0.0  # Z-score to exit long
+
+symbols:
+  list:
+    - BTC_USD
+
+dates:
+  start: '2021-01-01'
+  end: '2025-12-31'
+
+backtest:
+  initial_capital: 100000
+  fees: 0.005            # 0.5% for slippage/spreads
+  slippage: 0.0          # Included in fees
+  benchmark: BTC_USD
+  market_hours_only: false  # Crypto 24/7
+  allow_shorts: false       # Long only
+  portfolio_mode: single
+  timeframe: crypto_1day
+
+risk:
+  enabled: true
+  position_sizing_method: fixed_percent
+  position_size_pct: 1.0   # 100% when long
+  max_positions: 1
+
+output:
+  save_trades: true
+  save_reports: true
+  quantstats: false
+  visualize: false
+  verbosity: 1

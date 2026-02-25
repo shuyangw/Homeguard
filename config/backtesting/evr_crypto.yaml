@@ -1,0 +1,66 @@
+# EVR (Effort vs. Result) Strategy - Crypto Configuration
+#
+# A Volume Spread Analysis (VSA) based mean reversion strategy that
+# detects absorption candles - when massive volume produces minimal
+# price movement, indicating smart money absorption at trend exhaustion.
+#
+# Core Logic:
+# - Effort (Volume) = Volume / SMA(Volume, 20)
+# - Result (Spread) = (High - Low) / SMA(High - Low, 20)
+# - Absorption = High Effort (>2.0) + Low Result (<0.8)
+# - Context: Only trade when oversold (longs) or overbought (shorts)
+# - Confirmation: Next bar must confirm reversal
+#
+# Run with: python -m src.backtest_runner --config config/backtesting/evr_crypto.yaml
+
+mode: single
+
+strategy:
+  name: EVRStrategy
+  parameters:
+    # Volume/Spread Detection
+    vol_lookback: 20          # Lookback for volume SMA
+    spread_lookback: 20       # Lookback for spread SMA
+    vol_threshold: 2.0        # Min relative volume (200% = absorption)
+    spread_threshold: 0.8     # Max relative spread (80% = squat candle)
+
+    # Context Filters
+    rsi_period: 14            # RSI period
+    rsi_oversold: 30          # RSI level for oversold context
+    rsi_overbought: 70        # RSI level for overbought context
+    bb_period: 20             # Bollinger Band period
+    bb_std: 2.0               # Bollinger Band standard deviations
+
+    # Entry Confirmation
+    require_confirmation: true  # Require next bar confirmation
+
+symbols:
+  list:
+    - BTC_USD
+
+dates:
+  start: '2021-01-01'
+  end: '2025-12-31'
+
+backtest:
+  initial_capital: 100000
+  fees: 0.005              # 0.5% for slippage/spreads
+  slippage: 0.0            # Included in fees
+  benchmark: BTC_USD
+  market_hours_only: false # Crypto 24/7
+  allow_shorts: true       # EVR can go short on overbought absorption
+  portfolio_mode: single
+  timeframe: crypto_1day
+
+risk:
+  enabled: true
+  position_sizing_method: fixed_percent
+  position_size_pct: 1.0   # 100% position size
+  max_positions: 1
+
+output:
+  save_trades: true
+  save_reports: true
+  quantstats: false
+  visualize: false
+  verbosity: 1
