@@ -4,6 +4,10 @@ import argparse
 import sys
 from pathlib import Path
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
 from src.data.acquisition.manager import DataAcquisitionManager
 from src.utils.logger import get_logger
 

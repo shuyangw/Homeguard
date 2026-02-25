@@ -1,6 +1,7 @@
-"""Databento GLBX.MDP3 futures plugin - downloads trade data and reconstructs OHLCV-1m."""
+"""Databento GLBX.MDP3 futures plugin - downloads OHLCV-1m bars (or raw trades)."""
 
 import os
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, List, Optional
 
@@ -25,14 +26,23 @@ DEFAULT_START = "2020-01-01"
 
 
 class DatabentoFuturesPlugin(BaseDownloader):
-    """Downloads raw trade data from Databento and reconstructs OHLCV-1m bars.
+    """Downloads futures data from Databento GLBX.MDP3.
 
-    Two-stage storage:
-    - futures_trades/symbol=ES/year=Y/month=M/data.parquet (raw trades)
-    - futures_1min/symbol=ES/year=Y/month=M/data.parquet (reconstructed OHLCV)
+    Supports two modes:
+    - schema="ohlcv-1m" (default): Downloads pre-aggregated 1-minute bars directly.
+      Much cheaper ($51 vs $2,270 for 9 symbols over 5 years).
+    - schema="trades": Downloads raw trades, stores them, then reconstructs OHLCV-1m.
+      Two-stage storage for trades mode:
+        futures_trades/symbol=ES/year=Y/month=M/data.parquet (raw trades)
+        futures_1min/symbol=ES/year=Y/month=M/data.parquet (reconstructed OHLCV)
     """
 
-    def __init__(self, output_dir: Optional[Path] = None, **kwargs):
+    def __init__(
+        self,
+        output_dir: Optional[Path] = None,
+        schema: str = "ohlcv-1m",
+        **kwargs,
+    ):
         self._api_key = os.getenv("DATABENTO_API_KEY")
         if not self._api_key:
             raise ValueError(
@@ -43,6 +53,10 @@ class DatabentoFuturesPlugin(BaseDownloader):
             raise ImportError(
                 "databento package not installed. Run: pip install databento"
             )
+        if schema not in ("ohlcv-1m", "trades"):
+            raise ValueError(f"schema must be 'ohlcv-1m' or 'trades', got '{schema}'")
+        # Set _schema before super().__init__ because it calls _get_storage_subdir()
+        self._schema = schema
         super().__init__(output_dir=output_dir, **kwargs)
 
     def _create_client(self) -> Any:
@@ -52,11 +66,13 @@ class DatabentoFuturesPlugin(BaseDownloader):
         self, client: Any, symbol: str, start: str, end: str
     ) -> pd.DataFrame:
         api_symbol = self._to_api_symbol(symbol)
-        logger.info(f"Fetching trades for {api_symbol} from {start} to {end}")
+        logger.info(
+            f"Fetching {self._schema} for {api_symbol} from {start} to {end}"
+        )
 
         data = client.timeseries.get_range(
             dataset=DATASET,
-            schema="trades",
+            schema=self._schema,
             stype_in="continuous",
             symbols=[api_symbol],
             start=start,
@@ -65,16 +81,47 @@ class DatabentoFuturesPlugin(BaseDownloader):
         df = data.to_df()
 
         if df.empty:
-            return pd.DataFrame(columns=FUTURES_TRADES_SCHEMA)
+            schema_cols = self._get_schema()
+            return pd.DataFrame(columns=schema_cols)
 
-        # Normalize Databento DataFrame to our trades schema
+        if self._schema == "ohlcv-1m":
+            return self._normalize_ohlcv(df)
+        else:
+            return self._normalize_trades(df)
+
+    def _normalize_ohlcv(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Convert Databento ohlcv-1m DataFrame to canonical schema."""
         # Databento sets ts_event as the index by default
         ts_series = (
-            df.index
-            if df.index.name == "ts_event"
-            else df["ts_event"]
+            df.index if df.index.name == "ts_event" else df["ts_event"]
         )
-        result = pd.DataFrame(
+        return pd.DataFrame(
+            {
+                "timestamp": pd.to_datetime(ts_series, utc=True),
+                "open": df["open"].astype(float),
+                "high": df["high"].astype(float),
+                "low": df["low"].astype(float),
+                "close": df["close"].astype(float),
+                "volume": df["volume"].astype(float),
+                "trade_count": (
+                    df["trade_count"].astype(float)
+                    if "trade_count" in df.columns
+                    else 0.0
+                ),
+                "vwap": (
+                    df["vwap"].astype(float)
+                    if "vwap" in df.columns
+                    else float("nan")
+                ),
+            }
+        )
+
+    def _normalize_trades(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Convert Databento trades DataFrame to our trades schema."""
+        ts_series = (
+            df.index if df.index.name == "ts_event" else df["ts_event"]
+        )
+        return pd.DataFrame(
             {
                 "timestamp": pd.to_datetime(ts_series, utc=True),
                 "price": df["price"].astype(float),
@@ -82,12 +129,14 @@ class DatabentoFuturesPlugin(BaseDownloader):
             }
         )
 
-        return result
-
     def _get_schema(self) -> list[str]:
+        if self._schema == "ohlcv-1m":
+            return CANONICAL_OHLCV_SCHEMA
         return FUTURES_TRADES_SCHEMA
 
     def _get_storage_subdir(self) -> str:
+        if self._schema == "ohlcv-1m":
+            return "futures_1min"
         return "futures_trades"
 
     def _normalize_symbol(self, symbol: str) -> str:
@@ -106,13 +155,18 @@ class DatabentoFuturesPlugin(BaseDownloader):
         end_date: Optional[str] = None,
         skip_existing: bool = False,
     ) -> DownloadResult:
-        """Download trades and reconstruct OHLCV-1m bars.
+        """Download futures data.
 
-        Overrides base to add OHLCV reconstruction after raw trade storage.
+        For trades schema: downloads raw trades, then reconstructs OHLCV-1m.
+        For ohlcv-1m schema: downloads pre-aggregated bars directly.
+
+        Databento free tier has ~24h data delay, so default end date is T-2
+        to avoid dataset_unavailable_range errors.
         """
         symbols = symbols or DEFAULT_FUTURES_UNIVERSE
+        if end_date is None:
+            end_date = (datetime.now() - timedelta(days=2)).strftime("%Y-%m-%d")
 
-        # Step 1: Download raw trades using base infrastructure
         result = super().download(
             symbols=symbols,
             start_date=start_date,
@@ -120,8 +174,9 @@ class DatabentoFuturesPlugin(BaseDownloader):
             skip_existing=skip_existing,
         )
 
-        # Step 2: Reconstruct OHLCV-1m from raw trades
-        self._reconstruct_ohlcv(symbols)
+        # For trades mode, reconstruct OHLCV-1m after raw trade storage
+        if self._schema == "trades":
+            self._reconstruct_ohlcv(symbols)
 
         return result
 

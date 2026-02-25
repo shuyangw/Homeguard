@@ -8,7 +8,7 @@ from unittest.mock import MagicMock, patch
 import pandas as pd
 import pytest
 
-from src.data.acquisition.schemas import CANONICAL_OHLCV_SCHEMA
+from src.data.acquisition.schemas import CANONICAL_OHLCV_SCHEMA, FUTURES_TRADES_SCHEMA
 
 
 class TestSymbolNormalization:
@@ -39,24 +39,55 @@ class TestSymbolNormalization:
         assert plugin._normalize_symbol("ES") == "ES"
         assert plugin._normalize_symbol("6E") == "6E"
 
-    def test_storage_subdir(self):
+    @patch("src.data.acquisition.plugins.databento_futures.db")
+    @patch.dict(os.environ, {"DATABENTO_API_KEY": "test-key"})
+    def test_storage_subdir_default_ohlcv(self, mock_db):
         from src.data.acquisition.plugins.databento_futures import (
             DatabentoFuturesPlugin,
         )
 
-        plugin = DatabentoFuturesPlugin.__new__(DatabentoFuturesPlugin)
-        assert plugin._get_storage_subdir() == "futures_trades"
+        with tempfile.TemporaryDirectory() as tmpdir:
+            plugin = DatabentoFuturesPlugin(output_dir=Path(tmpdir))
+            assert plugin._get_storage_subdir() == "futures_1min"
 
-    def test_schema(self):
+    @patch("src.data.acquisition.plugins.databento_futures.db")
+    @patch.dict(os.environ, {"DATABENTO_API_KEY": "test-key"})
+    def test_storage_subdir_trades(self, mock_db):
         from src.data.acquisition.plugins.databento_futures import (
             DatabentoFuturesPlugin,
         )
 
-        plugin = DatabentoFuturesPlugin.__new__(DatabentoFuturesPlugin)
-        schema = plugin._get_schema()
-        assert "timestamp" in schema
-        assert "price" in schema
-        assert "size" in schema
+        with tempfile.TemporaryDirectory() as tmpdir:
+            plugin = DatabentoFuturesPlugin(
+                output_dir=Path(tmpdir), schema="trades"
+            )
+            assert plugin._get_storage_subdir() == "futures_trades"
+
+    @patch("src.data.acquisition.plugins.databento_futures.db")
+    @patch.dict(os.environ, {"DATABENTO_API_KEY": "test-key"})
+    def test_schema_default_ohlcv(self, mock_db):
+        from src.data.acquisition.plugins.databento_futures import (
+            DatabentoFuturesPlugin,
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            plugin = DatabentoFuturesPlugin(output_dir=Path(tmpdir))
+            schema = plugin._get_schema()
+            assert schema == CANONICAL_OHLCV_SCHEMA
+
+    @patch("src.data.acquisition.plugins.databento_futures.db")
+    @patch.dict(os.environ, {"DATABENTO_API_KEY": "test-key"})
+    def test_schema_trades(self, mock_db):
+        from src.data.acquisition.plugins.databento_futures import (
+            DatabentoFuturesPlugin,
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            plugin = DatabentoFuturesPlugin(
+                output_dir=Path(tmpdir), schema="trades"
+            )
+            schema = plugin._get_schema()
+            assert schema == FUTURES_TRADES_SCHEMA
 
 
 class TestMissingApiKey:
@@ -70,8 +101,122 @@ class TestMissingApiKey:
             with pytest.raises(ValueError, match="DATABENTO_API_KEY"):
                 DatabentoFuturesPlugin(output_dir=Path(tmpdir))
 
+    @patch("src.data.acquisition.plugins.databento_futures.db")
+    @patch.dict(os.environ, {"DATABENTO_API_KEY": "test-key"})
+    def test_invalid_schema_raises(self, mock_db):
+        from src.data.acquisition.plugins.databento_futures import (
+            DatabentoFuturesPlugin,
+        )
 
-class TestFetchAndReconstruct:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with pytest.raises(ValueError, match="schema must be"):
+                DatabentoFuturesPlugin(
+                    output_dir=Path(tmpdir), schema="invalid"
+                )
+
+
+class TestFetchOhlcv:
+    @patch("src.data.acquisition.plugins.databento_futures.db")
+    @patch.dict(os.environ, {"DATABENTO_API_KEY": "test-key"})
+    def test_fetch_returns_ohlcv_dataframe(self, mock_db):
+        from src.data.acquisition.plugins.databento_futures import (
+            DatabentoFuturesPlugin,
+        )
+
+        mock_client = MagicMock()
+        mock_db.Historical.return_value = mock_client
+
+        mock_data = MagicMock()
+        mock_df = pd.DataFrame(
+            {
+                "ts_event": pd.to_datetime(
+                    [
+                        "2024-01-02 09:30:00",
+                        "2024-01-02 09:31:00",
+                        "2024-01-02 09:32:00",
+                    ],
+                    utc=True,
+                ),
+                "open": [5000.0, 5001.0, 5002.0],
+                "high": [5001.0, 5002.0, 5003.0],
+                "low": [4999.0, 5000.0, 5001.0],
+                "close": [5001.0, 5002.0, 5003.0],
+                "volume": [100, 200, 150],
+            }
+        )
+        mock_df.index = mock_df["ts_event"]
+        mock_df.index.name = "ts_event"
+        mock_data.to_df.return_value = mock_df
+        mock_client.timeseries.get_range.return_value = mock_data
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            plugin = DatabentoFuturesPlugin(output_dir=Path(tmpdir))
+            client = plugin._create_client()
+            df = plugin._fetch_symbol_data(
+                client, "ES", "2024-01-01", "2024-01-31"
+            )
+
+            assert list(df.columns) == CANONICAL_OHLCV_SCHEMA
+            assert len(df) == 3
+            assert df["open"].iloc[0] == 5000.0
+
+    @patch("src.data.acquisition.plugins.databento_futures.db")
+    @patch.dict(os.environ, {"DATABENTO_API_KEY": "test-key"})
+    def test_download_ohlcv_stores_to_futures_1min(self, mock_db):
+        from src.data.acquisition.plugins.databento_futures import (
+            DatabentoFuturesPlugin,
+        )
+
+        mock_client = MagicMock()
+        mock_db.Historical.return_value = mock_client
+
+        mock_data = MagicMock()
+        mock_df = pd.DataFrame(
+            {
+                "ts_event": pd.to_datetime(
+                    [
+                        "2024-01-02 09:30:00",
+                        "2024-01-02 09:31:00",
+                    ],
+                    utc=True,
+                ),
+                "open": [5000.0, 5001.0],
+                "high": [5001.0, 5002.0],
+                "low": [4999.0, 5000.0],
+                "close": [5001.0, 5002.0],
+                "volume": [100, 200],
+            }
+        )
+        mock_df.index = mock_df["ts_event"]
+        mock_df.index.name = "ts_event"
+        mock_data.to_df.return_value = mock_df
+        mock_client.timeseries.get_range.return_value = mock_data
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            plugin = DatabentoFuturesPlugin(output_dir=Path(tmpdir))
+            result = plugin.download(
+                symbols=["ES"],
+                start_date="2024-01-01",
+                end_date="2024-01-31",
+            )
+            assert result.succeeded == 1
+
+            # Verify stored in futures_1min (not futures_trades)
+            ohlcv_parquet = (
+                Path(tmpdir)
+                / "futures_1min"
+                / "symbol=ES"
+                / "year=2024"
+                / "month=1"
+                / "data.parquet"
+            )
+            assert ohlcv_parquet.exists()
+
+            ohlcv_df = pd.read_parquet(ohlcv_parquet)
+            assert list(ohlcv_df.columns) == CANONICAL_OHLCV_SCHEMA
+
+
+class TestFetchTrades:
     @patch("src.data.acquisition.plugins.databento_futures.db")
     @patch.dict(os.environ, {"DATABENTO_API_KEY": "test-key"})
     def test_fetch_returns_trades_dataframe(self, mock_db):
@@ -106,7 +251,9 @@ class TestFetchAndReconstruct:
         mock_client.timeseries.get_range.return_value = mock_data
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            plugin = DatabentoFuturesPlugin(output_dir=Path(tmpdir))
+            plugin = DatabentoFuturesPlugin(
+                output_dir=Path(tmpdir), schema="trades"
+            )
             client = plugin._create_client()
             df = plugin._fetch_symbol_data(
                 client, "ES", "2024-01-01", "2024-01-31"
@@ -119,7 +266,7 @@ class TestFetchAndReconstruct:
 
     @patch("src.data.acquisition.plugins.databento_futures.db")
     @patch.dict(os.environ, {"DATABENTO_API_KEY": "test-key"})
-    def test_reconstruct_ohlcv_after_download(self, mock_db):
+    def test_reconstruct_ohlcv_after_trades_download(self, mock_db):
         from src.data.acquisition.plugins.databento_futures import (
             DatabentoFuturesPlugin,
         )
@@ -152,7 +299,9 @@ class TestFetchAndReconstruct:
         mock_client.timeseries.get_range.return_value = mock_data
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            plugin = DatabentoFuturesPlugin(output_dir=Path(tmpdir))
+            plugin = DatabentoFuturesPlugin(
+                output_dir=Path(tmpdir), schema="trades"
+            )
             result = plugin.download(
                 symbols=["ES"],
                 start_date="2024-01-01",
