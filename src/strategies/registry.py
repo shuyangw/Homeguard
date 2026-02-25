@@ -54,6 +54,9 @@ _STRATEGY_REGISTRY: Dict[str, Tuple[str, str]] = {
     "HurstMRStrategy": ("src.strategies.advanced.hurst_mr_strategy", "HurstMRStrategy"),
     "OpExPinningStrategy": ("src.strategies.advanced.opex_pinning_strategy", "OpExPinningStrategy"),
     "CSCMStrategy": ("src.strategies.advanced.cscm_strategy", "CSCMStrategy"),
+    "DSTSStrategy": ("src.strategies.advanced.dsts_strategy", "DSTSStrategy"),
+    "FRSStrategy": ("src.strategies.advanced.frs_strategy", "FRSStrategy"),
+    "EVRStrategy": ("src.strategies.advanced.evr_strategy", "EVRStrategy"),
 }
 
 # Display name -> class name mapping for user-friendly config files
@@ -119,6 +122,23 @@ _DISPLAY_NAME_MAP: Dict[str, str] = {
     "Cross-Sectional Crypto Momentum": "CSCMStrategy",
     "Cross Sectional Crypto Momentum": "CSCMStrategy",
     "Crypto Momentum": "CSCMStrategy",
+    "DSTS": "DSTSStrategy",
+    "DSTS Strategy": "DSTSStrategy",
+    "Dual Signal Trend Sentinel": "DSTSStrategy",
+    "Trend Sentinel": "DSTSStrategy",
+    "Z-Score Trend": "DSTSStrategy",
+    "FRS": "FRSStrategy",
+    "FRS Strategy": "FRSStrategy",
+    "Fractal Regime Switching": "FRSStrategy",
+    "Hurst Regime": "FRSStrategy",
+    "Regime Switching": "FRSStrategy",
+    "EVR": "EVRStrategy",
+    "EVR Strategy": "EVRStrategy",
+    "Effort vs Result": "EVRStrategy",
+    "Volume Spread Analysis": "EVRStrategy",
+    "VSA": "EVRStrategy",
+    "VSA Strategy": "EVRStrategy",
+    "Absorption": "EVRStrategy",
 }
 
 # Cache for loaded strategy classes
