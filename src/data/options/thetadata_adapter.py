@@ -4,11 +4,17 @@ ThetaData Parquet Adapter.
 Reads options data from ThetaData's partitioned parquet format
 and converts to the OpEx strategy schema (OptionsChain, OptionSnapshot).
 
-The ThetaData format stores 1-minute options data partitioned by:
-  options_1min/root={symbol}/year={YYYY}/month={MM}/day_{DD}.parquet
+Supports two data formats:
+1. options_combined/ - Monthly files with EOD gamma and open_interest (preferred)
+   Partitioned: root={symbol}/year={YYYY}/month={MM}/data.parquet
+   Columns: gamma_eod, open_interest_eod (actual values from ThetaData EOD API)
+
+2. options_1min/ - Legacy daily files (fallback)
+   Partitioned: root={symbol}/year={YYYY}/month={MM}/day_{DD}.parquet
+   Gamma/OI estimated if missing
 
 This adapter:
-1. Loads daily parquet files
+1. Loads parquet files (prefers combined format with actual Greeks)
 2. Extracts EOD snapshots (last bar of each contract per day)
 3. Converts to OptionsChain for GEX calculations
 """
@@ -37,31 +43,51 @@ class ThetaDataAdapter:
     """
     Adapter to read ThetaData parquet files and convert to OpEx schema.
 
-    The adapter extracts EOD (end-of-day) snapshots from 1-minute data
+    The adapter extracts EOD (end-of-day) snapshots from options data
     for use in daily GEX calculations.
 
-    Note: ThetaData 1-min data may not include gamma and open_interest.
-    When missing, gamma is estimated from Black-Scholes and OI is approximated
-    from cumulative volume (rough proxy for testing purposes).
+    Supports two data sources:
+    1. options_combined/ - Monthly files with actual EOD gamma and OI (preferred)
+    2. options_1min/ - Legacy daily files with estimated gamma/OI (fallback)
+
+    When using options_combined format, gamma_eod and open_interest_eod columns
+    are used directly. For legacy format, gamma is estimated from Black-Scholes
+    and OI is approximated from volume.
     """
 
-    # Risk-free rate assumption for gamma estimation
+    # Risk-free rate assumption for gamma estimation (legacy format only)
     RISK_FREE_RATE = 0.05
 
-    def __init__(self, data_dir: Optional[Path] = None, estimate_gamma: bool = True):
+    def __init__(
+        self,
+        data_dir: Optional[Path] = None,
+        estimate_gamma: bool = True,
+        prefer_combined: bool = True,
+    ):
         """
         Initialize the adapter.
 
         Args:
             data_dir: Root options data directory. Defaults to settings.
             estimate_gamma: If True, estimate gamma when missing from data
+            prefer_combined: If True, prefer options_combined/ format over options_1min/
         """
         self.data_dir = Path(data_dir) if data_dir else Path(get_options_data_dir())
+        self.options_combined_dir = self.data_dir / "options_combined"
         self.options_1min_dir = self.data_dir / "options_1min"
         self.estimate_gamma = estimate_gamma
+        self.prefer_combined = prefer_combined
 
-        if not self.options_1min_dir.exists():
-            logger.warning(f"Options data directory not found: {self.options_1min_dir}")
+        # Cache for trading dates (avoid re-reading large monthly files)
+        self._trading_dates_cache: Dict[str, List[date]] = {}
+
+        # Log which data source is available
+        if self.options_combined_dir.exists():
+            logger.info(f"Using options_combined data: {self.options_combined_dir}")
+        elif self.options_1min_dir.exists():
+            logger.info(f"Using options_1min data: {self.options_1min_dir}")
+        else:
+            logger.warning(f"No options data found in: {self.data_dir}")
 
     def _estimate_gamma_bs(
         self,
@@ -99,24 +125,34 @@ class ThetaDataAdapter:
             # Gamma formula
             gamma = n_prime_d1 / (spot * implied_vol * sqrt_t)
             return gamma
-        except Exception:
+        except (ZeroDivisionError, ValueError, OverflowError):
+            # Invalid inputs (e.g., zero time to expiry, negative spot/strike)
             return 0.0
 
     def get_available_symbols(self) -> List[str]:
         """
         Get list of symbols with available data.
 
+        Checks options_combined/ first, then falls back to options_1min/.
+
         Returns:
             List of symbol strings (e.g., ['SPY', 'QQQ', 'IWM'])
         """
-        if not self.options_1min_dir.exists():
-            return []
+        symbols = set()
 
-        symbols = []
-        for path in self.options_1min_dir.iterdir():
-            if path.is_dir() and path.name.startswith("root="):
-                symbol = path.name.replace("root=", "")
-                symbols.append(symbol)
+        # Check combined directory first (preferred)
+        if self.prefer_combined and self.options_combined_dir.exists():
+            for path in self.options_combined_dir.iterdir():
+                if path.is_dir() and path.name.startswith("root="):
+                    symbol = path.name.replace("root=", "")
+                    symbols.add(symbol)
+
+        # Check legacy directory
+        if self.options_1min_dir.exists():
+            for path in self.options_1min_dir.iterdir():
+                if path.is_dir() and path.name.startswith("root="):
+                    symbol = path.name.replace("root=", "")
+                    symbols.add(symbol)
 
         return sorted(symbols)
 
@@ -124,18 +160,28 @@ class ThetaDataAdapter:
         """
         Get available date range for a symbol.
 
+        Checks combined format first, then legacy format.
+
         Args:
             symbol: The underlying symbol
 
         Returns:
             Tuple of (min_date, max_date) or (None, None) if no data
         """
-        symbol_dir = self.options_1min_dir / f"root={symbol}"
-        if not symbol_dir.exists():
+        # Try combined format first
+        combined_dir = self.options_combined_dir / f"root={symbol}"
+        if self.prefer_combined and combined_dir.exists():
+            dates = self._get_dates_from_combined(symbol)
+            if dates:
+                return min(dates), max(dates)
+
+        # Fall back to legacy format
+        legacy_dir = self.options_1min_dir / f"root={symbol}"
+        if not legacy_dir.exists():
             return None, None
 
         dates = []
-        for year_dir in symbol_dir.iterdir():
+        for year_dir in legacy_dir.iterdir():
             if not year_dir.is_dir() or not year_dir.name.startswith("year="):
                 continue
             year = int(year_dir.name.replace("year=", ""))
@@ -146,36 +192,85 @@ class ThetaDataAdapter:
                 month = int(month_dir.name.replace("month=", ""))
 
                 for file in month_dir.iterdir():
-                    if file.suffix == ".parquet":
-                        if file.name.startswith("day_"):
-                            day = int(file.stem.replace("day_", ""))
-                            dates.append(date(year, month, day))
-                        elif file.name == "data.parquet":
-                            # Monthly aggregate file - need to read to get dates
-                            pass
+                    if file.suffix == ".parquet" and file.name.startswith("day_"):
+                        day = int(file.stem.replace("day_", ""))
+                        dates.append(date(year, month, day))
 
         if not dates:
             return None, None
 
         return min(dates), max(dates)
 
-    def _get_parquet_path(self, symbol: str, d: date) -> Optional[Path]:
-        """Get path to parquet file for a specific date."""
-        # Try daily file first
+    def _get_dates_from_combined(self, symbol: str) -> List[date]:
+        """
+        Extract unique dates from combined format monthly files.
+
+        Uses caching to avoid re-reading large files.
+        """
+        cache_key = f"combined_{symbol}"
+        if cache_key in self._trading_dates_cache:
+            return self._trading_dates_cache[cache_key]
+
+        dates = set()
+        symbol_dir = self.options_combined_dir / f"root={symbol}"
+
+        if not symbol_dir.exists():
+            return []
+
+        for year_dir in symbol_dir.iterdir():
+            if not year_dir.is_dir() or not year_dir.name.startswith("year="):
+                continue
+
+            for month_dir in year_dir.iterdir():
+                if not month_dir.is_dir() or not month_dir.name.startswith("month="):
+                    continue
+
+                data_file = month_dir / "data.parquet"
+                if data_file.exists():
+                    try:
+                        # Read only timestamp column for efficiency
+                        df = pd.read_parquet(data_file, columns=['timestamp'])
+                        df['date'] = pd.to_datetime(df['timestamp']).dt.date
+                        dates.update(df['date'].unique())
+                    except Exception as e:
+                        logger.debug(f"Error reading dates from {data_file}: {e}")
+
+        result = sorted(dates)
+        self._trading_dates_cache[cache_key] = result
+        return result
+
+    def _get_parquet_path(self, symbol: str, d: date) -> Optional[Tuple[Path, str]]:
+        """
+        Get path to parquet file for a specific date.
+
+        Returns:
+            Tuple of (path, format) where format is 'combined' or 'legacy',
+            or None if no data found.
+        """
+        # Try combined format first (preferred - has actual gamma/OI)
+        if self.prefer_combined:
+            combined_path = (
+                self.options_combined_dir / f"root={symbol}" /
+                f"year={d.year}" / f"month={d.month:02d}" / "data.parquet"
+            )
+            if combined_path.exists():
+                return combined_path, "combined"
+
+        # Try legacy daily file
         daily_path = (
             self.options_1min_dir / f"root={symbol}" /
             f"year={d.year}" / f"month={d.month:02d}" / f"day_{d.day:02d}.parquet"
         )
         if daily_path.exists():
-            return daily_path
+            return daily_path, "legacy"
 
-        # Try monthly aggregate
+        # Try legacy monthly aggregate
         monthly_path = (
             self.options_1min_dir / f"root={symbol}" /
             f"year={d.year}" / f"month={d.month:02d}" / "data.parquet"
         )
         if monthly_path.exists():
-            return monthly_path
+            return monthly_path, "legacy"
 
         return None
 
@@ -214,8 +309,8 @@ class ThetaDataAdapter:
         """
         Load EOD options chain for a symbol and date.
 
-        Extracts the last available snapshot of each contract
-        (approximating EOD data from 1-minute bars).
+        For combined format: Uses actual gamma_eod and open_interest_eod values.
+        For legacy format: Estimates gamma from Black-Scholes, approximates OI from volume.
 
         Args:
             symbol: Underlying symbol (e.g., 'SPY')
@@ -225,10 +320,11 @@ class ThetaDataAdapter:
         Returns:
             OptionsChain object or None if no data
         """
-        path = self._get_parquet_path(symbol, d)
-        if path is None:
+        path_result = self._get_parquet_path(symbol, d)
+        if path_result is None:
             return None
 
+        path, data_format = path_result
         df = self._read_parquet_safe(path)
         if df is None or df.empty:
             return None
@@ -242,7 +338,13 @@ class ThetaDataAdapter:
 
         # Apply expiry filter
         if expiry_filter is not None:
-            df = df[df['expiration'] == expiry_filter]
+            # Handle type mismatch: expiration may be string or date
+            if df['expiration'].dtype == 'object':
+                # String column - convert filter to string format YYYY-MM-DD
+                expiry_str = expiry_filter.strftime('%Y-%m-%d')
+                df = df[df['expiration'] == expiry_str]
+            else:
+                df = df[df['expiration'] == expiry_filter]
             if df.empty:
                 return None
 
@@ -257,6 +359,10 @@ class ThetaDataAdapter:
 
         if eod_df.empty:
             return None
+
+        # Detect if we have actual EOD gamma/OI (combined format)
+        has_eod_gamma = 'gamma_eod' in eod_df.columns
+        has_eod_oi = 'open_interest_eod' in eod_df.columns
 
         # Get underlying price (should be consistent across contracts)
         underlying_price = eod_df['underlying_px'].dropna().iloc[-1] if 'underlying_px' in eod_df.columns else 0.0
@@ -287,26 +393,39 @@ class ThetaDataAdapter:
                 implied_vol = float(row.get('implied_vol', 0) or 0)
                 volume = int(row.get('volume', 0) or 0)
 
-                # Handle gamma - estimate if missing
-                gamma_val = row.get('gamma')
-                if pd.isna(gamma_val) and self.estimate_gamma:
-                    # Estimate gamma from Black-Scholes
-                    days_to_exp = (expiry_date - d).days if hasattr(expiry_date, 'days') else (pd.Timestamp(expiry_date).date() - d).days
-                    time_to_expiry = max(days_to_exp / 365.0, 0.001)  # Avoid zero
-                    gamma_val = self._estimate_gamma_bs(spot, strike, time_to_expiry, implied_vol)
-                elif pd.isna(gamma_val):
-                    gamma_val = 0.0
+                # Handle gamma - use EOD value if available, else estimate
+                if has_eod_gamma:
+                    gamma_val = row.get('gamma_eod')
+                    if pd.isna(gamma_val):
+                        gamma_val = 0.0
+                    else:
+                        gamma_val = float(gamma_val)
                 else:
-                    gamma_val = float(gamma_val)
+                    # Legacy format: estimate or use intraday gamma
+                    gamma_val = row.get('gamma')
+                    if pd.isna(gamma_val) and self.estimate_gamma:
+                        days_to_exp = (expiry_date - d).days if hasattr(expiry_date, 'days') else (pd.Timestamp(expiry_date).date() - d).days
+                        time_to_expiry = max(days_to_exp / 365.0, 0.001)
+                        gamma_val = self._estimate_gamma_bs(spot, strike, time_to_expiry, implied_vol)
+                    elif pd.isna(gamma_val):
+                        gamma_val = 0.0
+                    else:
+                        gamma_val = float(gamma_val)
 
-                # Handle open interest - use volume as proxy if missing
-                oi_val = row.get('open_interest')
-                if pd.isna(oi_val) or oi_val <= 0:
-                    # Use daily volume as rough OI proxy (scaled up)
-                    # Typical OI is 5-10x daily volume for liquid options
-                    oi_val = max(volume * 5, 100)  # Minimum 100 contracts
+                # Handle open interest - use EOD value if available, else estimate
+                if has_eod_oi:
+                    oi_val = row.get('open_interest_eod')
+                    if pd.isna(oi_val) or oi_val <= 0:
+                        oi_val = 0
+                    else:
+                        oi_val = int(oi_val)
                 else:
-                    oi_val = int(oi_val)
+                    # Legacy format: estimate from volume
+                    oi_val = row.get('open_interest')
+                    if pd.isna(oi_val) or oi_val <= 0:
+                        oi_val = max(volume * 5, 100)
+                    else:
+                        oi_val = int(oi_val)
 
                 # Skip if still no meaningful data
                 if gamma_val == 0 and oi_val <= 0:
@@ -367,7 +486,8 @@ class ThetaDataAdapter:
                 # Try converting via pandas
                 try:
                     available_set.add(pd.Timestamp(exp).date())
-                except Exception:
+                except (ValueError, TypeError):
+                    # Unparseable date format - skip
                     pass
 
         for exp in sorted(monthly_exps):
@@ -416,6 +536,8 @@ class ThetaDataAdapter:
         """
         Get list of dates with available data.
 
+        Checks combined format first (uses cache), then legacy format.
+
         Args:
             symbol: Underlying symbol
             start_date: Start of period
@@ -424,12 +546,21 @@ class ThetaDataAdapter:
         Returns:
             Sorted list of dates with data
         """
-        symbol_dir = self.options_1min_dir / f"root={symbol}"
-        if not symbol_dir.exists():
+        # Try combined format first (preferred)
+        combined_dir = self.options_combined_dir / f"root={symbol}"
+        if self.prefer_combined and combined_dir.exists():
+            all_dates = self._get_dates_from_combined(symbol)
+            filtered = [d for d in all_dates if start_date <= d <= end_date]
+            if filtered:
+                return filtered
+
+        # Fall back to legacy format
+        legacy_dir = self.options_1min_dir / f"root={symbol}"
+        if not legacy_dir.exists():
             return []
 
         dates = []
-        for year_dir in symbol_dir.iterdir():
+        for year_dir in legacy_dir.iterdir():
             if not year_dir.is_dir() or not year_dir.name.startswith("year="):
                 continue
             year = int(year_dir.name.replace("year=", ""))
