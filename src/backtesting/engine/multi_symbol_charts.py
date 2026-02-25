@@ -772,7 +772,7 @@ class MultiSymbolChartGenerator:
                         try:
                             from utils.logger import log_warning
                             log_warning(f"Chart '{chart_name}' took {chart_time:.1f}s to generate")
-                        except:
+                        except ImportError:
                             pass
                 except Exception as exc:
                     # Log error but don't fail entire chart generation
@@ -787,7 +787,7 @@ class MultiSymbolChartGenerator:
         try:
             from utils.logger import log_info
             log_info(f"Generated {successful_charts}/{total_charts} charts in {total_time:.1f}s (parallel mode, {max_workers} workers)")
-        except:
+        except ImportError:
             pass
 
         if successful_charts < total_charts:

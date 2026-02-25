@@ -654,7 +654,8 @@ class ResultsAggregator:
                         if stats is not None and 'Start Value' in stats:
                             initial_capital = float(stats['Start Value'])
                             break
-                    except:
+                    except (KeyError, TypeError, AttributeError, ValueError) as e:
+                        logger.debug(f"Could not extract initial capital from portfolio: {e}")
                         pass
 
             aggregate_metrics = PortfolioAggregator.calculate_aggregate_metrics(portfolios, initial_capital)

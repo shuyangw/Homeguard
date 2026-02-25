@@ -55,7 +55,7 @@ class PortfolioAggregator:
                                     equity = equity()
                                 if equity is not None:
                                     break
-                            except:
+                            except (AttributeError, TypeError):
                                 continue
 
                 if equity is not None:

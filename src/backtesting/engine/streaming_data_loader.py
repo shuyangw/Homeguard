@@ -276,7 +276,8 @@ class StreamingDataLoader:
                             pl.col("timestamp").cast(pl.Datetime("us", "UTC"))
                         )
                     dfs.append(df)
-                except Exception:
+                except (pl.exceptions.ComputeError, OSError, ValueError) as e:
+                    logger.debug(f"Skipping file {p}: {e}")
                     continue
             if not dfs:
                 raise FileNotFoundError(f"No data found for symbol {symbol} between {start_date} and {end_date}")

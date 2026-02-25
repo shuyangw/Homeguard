@@ -482,7 +482,8 @@ class PositionManager:
                     if isinstance(value, str) and 'T' in value:
                         try:
                             obj[key] = datetime.fromisoformat(value)
-                        except:
+                        except ValueError:
+                            # String contains 'T' but isn't valid ISO format - keep as-is
                             pass
                     elif isinstance(value, dict):
                         convert_datetime(value)

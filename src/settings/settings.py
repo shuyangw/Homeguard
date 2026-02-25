@@ -84,7 +84,7 @@ def get_output_dir() -> Path:
     # Try new 'output_dir' key first, fall back to 'log_output_dir' for compatibility
     try:
         output_dir = settings.get(OS_ENVIRONMENT, 'output_dir')
-    except:
+    except (configparser.NoSectionError, configparser.NoOptionError):
         output_dir = settings.get(OS_ENVIRONMENT, 'log_output_dir')
     return Path(output_dir)
 

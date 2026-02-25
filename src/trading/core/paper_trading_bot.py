@@ -386,7 +386,8 @@ class PaperTradingBot:
                 try:
                     quote = self.broker.get_latest_quote(position['symbol'])
                     current_prices[position['symbol']] = (quote['bid'] + quote['ask']) / 2
-                except:
+                except (KeyError, TypeError, ConnectionError, TimeoutError) as e:
+                    logger.debug(f"Could not get quote for {position['symbol']}: {e}")
                     pass
 
             # Check stop-losses
