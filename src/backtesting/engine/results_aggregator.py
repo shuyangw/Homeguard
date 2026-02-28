@@ -616,6 +616,42 @@ class ResultsAggregator:
         output_path = Path(output_path)
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
+        ctx = cls._prepare_html_data(
+            df, output_path, title, portfolios, data_loader,
+            start_date, end_date, include_benchmarks
+        )
+
+        html = cls._html_head_and_styles(ctx)
+        html += cls._html_executive_summary(ctx)
+        html += cls._html_download_and_trade_logs(ctx)
+        html += cls._html_metrics_grid(ctx)
+        html += cls._html_visualization_canvases(ctx)
+        html += cls._html_detailed_results_table(ctx)
+        html += cls._html_footer()
+        html += cls._html_javascript(ctx)
+        html += """
+</body>
+</html>
+"""
+
+        with open(output_path, 'w', encoding='utf-8') as f:
+            f.write(html)
+
+        logger.success(f"HTML report exported to: {output_path}")
+
+    @classmethod
+    def _prepare_html_data(
+        cls,
+        df: pd.DataFrame,
+        output_path: Path,
+        title: str,
+        portfolios: Optional[Dict],
+        data_loader,
+        start_date: Optional[str],
+        end_date: Optional[str],
+        include_benchmarks: bool
+    ) -> Dict[str, Any]:
+        """Prepare all data needed by HTML helper methods."""
         # Extract timestamp from filename for CSV links
         # Filename format: YYYYMMDD_HHMMSS_strategy_sweep_results.html
         # CSV files format: YYYYMMDD_HHMMSS_SYMBOL_trades.csv
@@ -779,7 +815,37 @@ class ResultsAggregator:
         # CSV data for download
         csv_data = df.to_csv(index=False)
 
-        html = f"""
+        return {
+            'df': df,
+            'title': title,
+            'portfolios': portfolios,
+            'timestamp': timestamp,
+            'summary': summary,
+            'aggregate_html': aggregate_html,
+            'equity_chart_data': equity_chart_data,
+            'initial_capital': initial_capital,
+            'benchmark_data': benchmark_data,
+            'benchmark_chart_data': benchmark_chart_data,
+            'spy_chart_data': spy_chart_data,
+            'has_benchmarks': has_benchmarks,
+            'symbols_list': symbols_list,
+            'returns_list': returns_list,
+            'sharpe_list': sharpe_list,
+            'drawdown_list': drawdown_list,
+            'win_rate_list': win_rate_list,
+            'median_sharpe': median_sharpe,
+            'median_return': median_return,
+            'score': score,
+            'performance_rating': performance_rating,
+            'performance_color': performance_color,
+            'csv_data': csv_data,
+        }
+
+    @staticmethod
+    def _html_head_and_styles(ctx: Dict[str, Any]) -> str:
+        """Generate HTML head with CSS styles."""
+        title = ctx['title']
+        return f"""
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -1210,7 +1276,19 @@ class ResultsAggregator:
                 <i class="fas fa-moon"></i>
             </button>
         </div>
+"""
 
+    @staticmethod
+    def _html_executive_summary(ctx: Dict[str, Any]) -> str:
+        """Generate executive summary section."""
+        summary = ctx['summary']
+        median_return = ctx['median_return']
+        median_sharpe = ctx['median_sharpe']
+        performance_color = ctx['performance_color']
+        performance_rating = ctx['performance_rating']
+        score = ctx['score']
+
+        return f"""
         <!-- Executive Summary -->
         <div class="executive-summary">
             <h2 style="color: white; border: none; margin: 0 0 10px 0; padding: 0;"><i class="fas fa-star"></i> Executive Summary</h2>
@@ -1249,7 +1327,16 @@ class ResultsAggregator:
                 <i class="fas fa-print"></i> Print Report
             </button>
         </div>
+"""
 
+    @staticmethod
+    def _html_download_and_trade_logs(ctx: Dict[str, Any]) -> str:
+        """Generate combined portfolio section and trade logs."""
+        df = ctx['df']
+        aggregate_html = ctx['aggregate_html']
+        timestamp = ctx['timestamp']
+
+        html = f"""
         <!-- Combined Portfolio Section -->
         {aggregate_html}
 
@@ -1260,7 +1347,7 @@ class ResultsAggregator:
                 Click below to download detailed CSV files for each symbol:
             </p>
 
-            {''.join([f'''
+            {''.join([f"""
             <div style="background: var(--bg-secondary); padding: 15px; border-radius: 8px; margin-bottom: 15px; border-left: 4px solid #6366f1;">
                 <h4 style="color: var(--text-primary); margin: 0 0 12px 0; font-size: 1.1em;">
                     <i class="fas fa-chart-line" style="color: #6366f1;"></i> {symbol}
@@ -1283,7 +1370,7 @@ class ResultsAggregator:
                     </a>
                 </div>
             </div>
-            ''' for symbol in df['Symbol'].unique()])}
+            """ for symbol in df['Symbol'].unique()])}
 
             <div class="advanced-metrics" style="margin-top: 20px;">
                 <div class="metric-item">
@@ -1300,7 +1387,15 @@ class ResultsAggregator:
                 </div>
             </div>
         </div>
+"""
+        return html
 
+    @staticmethod
+    def _html_metrics_grid(ctx: Dict[str, Any]) -> str:
+        """Generate performance overview metrics grid."""
+        summary = ctx['summary']
+
+        return f"""
         <h2><i class="fas fa-chart-bar"></i> Performance Overview</h2>
         <div class="metrics-grid">
             <div class="metric-card">
@@ -1336,11 +1431,25 @@ class ResultsAggregator:
                 <div class="metric-value info">{summary.get('High Quality Count', 0)}</div>
             </div>
         </div>
+"""
 
+    @staticmethod
+    def _html_visualization_canvases(ctx: Dict[str, Any]) -> str:
+        """Generate chart container HTML with canvas elements."""
+        equity_chart_data = ctx['equity_chart_data']
+        initial_capital = ctx['initial_capital']
+        has_benchmarks = ctx['has_benchmarks']
+        benchmark_data = ctx['benchmark_data']
+        spy_chart_data = ctx['spy_chart_data']
+
+        html = """
         <h2><i class="fas fa-chart-pie"></i> Visualizations</h2>
+"""
 
+        # Individual Symbol Performance Comparison
+        if equity_chart_data:
+            html += f"""
         <!-- Individual Symbol Performance Comparison -->
-        {"" if not equity_chart_data else '''
         <div class="chart-container" style="margin-bottom: 30px;">
             <h3 style="margin-bottom: 16px; color: var(--text-primary);"><i class="fas fa-chart-line"></i> Individual Symbol Performance Comparison</h3>
             <div class="chart-wrapper" style="height: 500px;">
@@ -1350,10 +1459,12 @@ class ResultsAggregator:
                 <i class="fas fa-info-circle"></i> Compares portfolio performance across symbols. Each symbol was allocated <strong>${initial_capital:,.0f}</strong> independently and trades on its own equity curve.
             </p>
         </div>
-        '''}
+"""
 
+        # Benchmark Comparison Section
+        if has_benchmarks:
+            html += f"""
         <!-- Benchmark Comparison Section -->
-        {"" if not has_benchmarks else f'''
         <div class="chart-container" style="margin-bottom: 30px; border: 2px solid #10b981; border-radius: 12px;">
             <h3 style="margin-bottom: 16px; color: var(--text-primary);"><i class="fas fa-balance-scale"></i> Strategy vs Buy-and-Hold Comparison</h3>
             <p style="color: var(--text-secondary); margin-bottom: 20px; font-size: 0.95em;">
@@ -1415,10 +1526,12 @@ class ResultsAggregator:
                 <canvas id="benchmarkComparisonChart"></canvas>
             </div>
         </div>
-        '''}
+"""
 
+        # SPY Comparison Section
+        if spy_chart_data:
+            html += f"""
         <!-- SPY Comparison Section -->
-        {"" if not spy_chart_data else f'''
         <div class="chart-container" style="margin-bottom: 30px; border: 2px solid #3b82f6; border-radius: 12px;">
             <h3 style="margin-bottom: 16px; color: var(--text-primary);"><i class="fas fa-chart-line"></i> Aggregate Portfolio vs S&P 500</h3>
             <p style="color: var(--text-secondary); margin-bottom: 15px; font-size: 0.95em;">
@@ -1428,8 +1541,10 @@ class ResultsAggregator:
                 <canvas id="spyComparisonChart"></canvas>
             </div>
         </div>
-        '''}
+"""
 
+        # Standard chart containers
+        html += """
         <div class="charts-row">
             <div class="chart-container">
                 <h3 style="margin-bottom: 16px; color: var(--text-primary);">Returns by Symbol</h3>
@@ -1484,7 +1599,16 @@ class ResultsAggregator:
                 </div>
             </div>
         </div>
+"""
+        return html
 
+    @staticmethod
+    def _html_detailed_results_table(ctx: Dict[str, Any]) -> str:
+        """Generate detailed results table with expandable tearsheets."""
+        df = ctx['df']
+        portfolios = ctx['portfolios']
+
+        html = """
         <h2><i class="fas fa-table"></i> Detailed Results</h2>
 """
 
@@ -1623,14 +1747,36 @@ class ResultsAggregator:
         html += '            </table>\n'
         html += '        </div>\n'
 
+        return html
+
+    @staticmethod
+    def _html_footer() -> str:
+        """Generate HTML footer section."""
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        html += f"""
+        return f"""
         <div class="footer">
             <i class="fas fa-clock"></i> Generated: {timestamp} |
             <i class="fas fa-robot"></i> Powered by Homeguard Backtesting Engine
         </div>
     </div>
+"""
 
+    @staticmethod
+    def _html_javascript(ctx: Dict[str, Any]) -> str:
+        """Generate all JavaScript for charts and interactivity."""
+        symbols_list = ctx['symbols_list']
+        returns_list = ctx['returns_list']
+        sharpe_list = ctx['sharpe_list']
+        drawdown_list = ctx['drawdown_list']
+        win_rate_list = ctx['win_rate_list']
+        csv_data = ctx['csv_data']
+        summary = ctx['summary']
+        equity_chart_data = ctx['equity_chart_data']
+        benchmark_data = ctx['benchmark_data']
+        benchmark_chart_data = ctx['benchmark_chart_data']
+        spy_chart_data = ctx['spy_chart_data']
+
+        return f"""
     <script>
         // Dark mode toggle
         function toggleTheme() {{
@@ -2364,11 +2510,4 @@ class ResultsAggregator:
         // Initialize charts with correct theme
         updateChartsTheme(savedTheme);
     </script>
-</body>
-</html>
 """
-
-        with open(output_path, 'w', encoding='utf-8') as f:
-            f.write(html)
-
-        logger.success(f"HTML report exported to: {output_path}")
