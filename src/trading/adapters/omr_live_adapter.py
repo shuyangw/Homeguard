@@ -315,6 +315,145 @@ class OMRLiveAdapter(StrategyAdapter):
             import traceback
             traceback.print_exc()
 
+    def _fetch_from_cache(
+        self,
+        market_open_today: datetime,
+        end_date: datetime
+    ) -> Optional[Dict[str, pd.DataFrame]]:
+        """
+        Try to fetch intraday data from the pre-fetched intraday cache.
+
+        Args:
+            market_open_today: Market open time today
+            end_date: Current timestamp
+
+        Returns:
+            Dict of symbol -> DataFrame if cache is available, None otherwise
+        """
+        if self._intraday_cache is None or len(self._intraday_cache) == 0:
+            return None
+
+        logger.info("[OMR] Using pre-fetched intraday data cache")
+        market_data = {}
+
+        for symbol in self.symbols:
+            if symbol in self._intraday_cache:
+                market_data[symbol] = self._intraday_cache[symbol]
+            else:
+                logger.warning(f"[OMR] {symbol} not in intraday cache, fetching...")
+                df = self._fetch_intraday_symbol(symbol, market_open_today, end_date)
+                if df is not None and not df.empty:
+                    market_data[symbol] = df
+
+        return market_data
+
+    def _fetch_from_streaming(self) -> Optional[Dict[str, pd.DataFrame]]:
+        """
+        Try to fetch intraday data from the LiveDataProvider streaming buffer.
+
+        Returns:
+            Dict of symbol -> DataFrame if streaming is available, None otherwise
+        """
+        if self._data_provider is None or not hasattr(self._data_provider, 'get_bars'):
+            return None
+
+        logger.info(f"[OMR] Fetching intraday data from LiveDataProvider (streaming)...")
+        market_data = {}
+
+        for symbol in self.symbols:
+            try:
+                bars_df = self._data_provider.get_bars(symbol, n=390)
+
+                if bars_df is not None and not bars_df.empty:
+                    bars_count = len(bars_df)
+                    expected_bars = 390
+                    data_quality = bars_count / expected_bars if expected_bars > 0 else 0
+
+                    if data_quality < 0.9:
+                        logger.warning(
+                            f"[OMR] {symbol} has {bars_count}/{expected_bars} bars ({data_quality:.1%}). "
+                            f"Streaming buffer may be incomplete (recent restart?)."
+                        )
+                    elif data_quality < 1.0:
+                        logger.info(
+                            f"[OMR] {symbol} has {bars_count}/{expected_bars} bars ({data_quality:.1%})"
+                        )
+                    else:
+                        logger.debug(f"[OMR] {symbol} has {bars_count} bars (complete)")
+
+                    market_data[symbol] = bars_df
+                else:
+                    logger.warning(f"[OMR] No bars in buffer for {symbol}")
+            except Exception as e:
+                logger.error(f"[OMR] Error getting bars from provider for {symbol}: {e}")
+                continue
+
+        logger.info(f"[OMR] Retrieved {len(market_data)} symbols from streaming buffer")
+        return market_data
+
+    def _fetch_from_polling(
+        self,
+        market_open_today: datetime,
+        end_date: datetime
+    ) -> Optional[Dict[str, pd.DataFrame]]:
+        """
+        Try to fetch intraday data via DataProviderInterface polling with fallback.
+
+        Args:
+            market_open_today: Market open time today
+            end_date: Current timestamp
+
+        Returns:
+            Dict of symbol -> DataFrame if polling provider is available, None otherwise
+        """
+        if self._data_provider is None or not hasattr(self._data_provider, 'get_historical_bars_batch'):
+            return None
+
+        logger.info(f"[OMR] Fetching intraday data via {self._data_provider.name} provider...")
+        market_data = self._data_provider.get_historical_bars_batch(
+            self.symbols, market_open_today, end_date, timeframe='1Min',
+            force_refresh=True
+        )
+        return market_data
+
+    def _fetch_from_broker(
+        self,
+        market_open_today: datetime,
+        end_date: datetime
+    ) -> Dict[str, pd.DataFrame]:
+        """
+        Fetch intraday data directly from broker (last-resort fallback).
+
+        Args:
+            market_open_today: Market open time today
+            end_date: Current timestamp
+
+        Returns:
+            Dict of symbol -> DataFrame
+        """
+        logger.info("[OMR] No data provider, fetching from broker...")
+        market_data = {}
+
+        for symbol in self.symbols:
+            try:
+                df = self.broker.get_historical_bars(
+                    symbol=symbol,
+                    start=market_open_today,
+                    end=end_date,
+                    timeframe='1Min'
+                )
+
+                if df is not None and not df.empty:
+                    market_data[symbol] = df
+                else:
+                    logger.warning(f"[OMR] No intraday data returned for {symbol}")
+
+            except Exception as e:
+                logger.error(f"[OMR] Error fetching data for {symbol}: {e}")
+                continue
+
+        return market_data
+
     def fetch_market_data(self) -> Dict[str, pd.DataFrame]:
         """
         Fetch intraday market data for OMR strategy.
@@ -328,124 +467,43 @@ class OMRLiveAdapter(StrategyAdapter):
         4. Broker direct (original behavior)
         """
         try:
-            import pandas as pd
-            from datetime import timedelta
-
-            market_data = {}
+            market_data: Dict[str, pd.DataFrame] = {}
             end_date = tz.now()
             start_date = end_date - timedelta(days=self.data_lookback_days)
+            market_open_today = end_date.replace(hour=9, minute=30, second=0, microsecond=0)
 
-            # Check if intraday cache is available
-            intraday_cache_available = (
+            intraday_cache_used = (
                 self._intraday_cache is not None and
                 len(self._intraday_cache) > 0
             )
 
-            # For OMR, we need intraday data (1-minute bars)
-            market_open_today = end_date.replace(hour=9, minute=30, second=0, microsecond=0)
+            # Try each data source in priority order
+            result = self._fetch_from_cache(market_open_today, end_date)
+            if result is None:
+                result = self._fetch_from_streaming()
+            if result is None:
+                result = self._fetch_from_polling(market_open_today, end_date)
+            if result is None:
+                result = self._fetch_from_broker(market_open_today, end_date)
 
-            if intraday_cache_available:
-                logger.info("[OMR] Using pre-fetched intraday data cache")
-
-                # Use cached intraday data for symbols
-                for symbol in self.symbols:
-                    if symbol in self._intraday_cache:
-                        market_data[symbol] = self._intraday_cache[symbol]
-                    else:
-                        logger.warning(f"[OMR] {symbol} not in intraday cache, fetching...")
-                        # Fall back to provider or broker
-                        df = self._fetch_intraday_symbol(symbol, market_open_today, end_date)
-                        if df is not None and not df.empty:
-                            market_data[symbol] = df
-
-            elif self._data_provider is not None and hasattr(self._data_provider, 'get_bars'):
-                # LiveDataProvider (streaming) - instant access from buffer
-                logger.info(f"[OMR] Fetching intraday data from LiveDataProvider (streaming)...")
-
-                for symbol in self.symbols:
-                    try:
-                        # Get today's bars from buffer (no API call)
-                        # Buffer contains last 500 bars, we need ~390 for a full trading day
-                        bars_df = self._data_provider.get_bars(symbol, n=390)
-
-                        if bars_df is not None and not bars_df.empty:
-                            # Validate data quality
-                            bars_count = len(bars_df)
-                            expected_bars = 390
-                            data_quality = bars_count / expected_bars if expected_bars > 0 else 0
-
-                            # Log data quality for monitoring
-                            if data_quality < 0.9:
-                                logger.warning(
-                                    f"[OMR] {symbol} has {bars_count}/{expected_bars} bars ({data_quality:.1%}). "
-                                    f"Streaming buffer may be incomplete (recent restart?)."
-                                )
-                            elif data_quality < 1.0:
-                                logger.info(
-                                    f"[OMR] {symbol} has {bars_count}/{expected_bars} bars ({data_quality:.1%})"
-                                )
-                            else:
-                                logger.debug(f"[OMR] {symbol} has {bars_count} bars (complete)")
-
-                            market_data[symbol] = bars_df
-                        else:
-                            logger.warning(f"[OMR] No bars in buffer for {symbol}")
-                    except Exception as e:
-                        logger.error(f"[OMR] Error getting bars from provider for {symbol}: {e}")
-                        continue
-
-                logger.info(f"[OMR] Retrieved {len(market_data)} symbols from streaming buffer")
-
-            elif self._data_provider is not None and hasattr(self._data_provider, 'get_historical_bars_batch'):
-                # DataProviderInterface (polling with fallback)
-                logger.info(f"[OMR] Fetching intraday data via {self._data_provider.name} provider...")
-                market_data = self._data_provider.get_historical_bars_batch(
-                    self.symbols, market_open_today, end_date, timeframe='1Min',
-                    force_refresh=True
-                )
-
-            else:
-                # Fall back to broker-only fetch (original behavior)
-                logger.info("[OMR] No data provider, fetching from broker...")
-
-                for symbol in self.symbols:
-                    try:
-                        df = self.broker.get_historical_bars(
-                            symbol=symbol,
-                            start=market_open_today,
-                            end=end_date,
-                            timeframe='1Min'
-                        )
-
-                        if df is not None and not df.empty:
-                            market_data[symbol] = df
-                        else:
-                            logger.warning(f"[OMR] No intraday data returned for {symbol}")
-
-                    except Exception as e:
-                        logger.error(f"[OMR] Error fetching data for {symbol}: {e}")
-                        continue
+            market_data = result if result is not None else {}
 
             # Also need historical daily data for regime detection
-            # Use base class cache if available
             if self._data_cache is not None:
                 logger.info("[OMR] Using cached historical data for regime detection")
                 for market_symbol in ['SPY', 'VIX']:
                     if market_symbol in self._data_cache:
                         market_data[market_symbol] = self._data_cache[market_symbol]
             else:
-                # Fetch historical data for SPY and VIX
                 for market_symbol in ['SPY', 'VIX']:
                     if market_symbol not in market_data:
                         try:
                             if market_symbol == 'VIX':
-                                # Use VIX provider with fallback chain (yfinance -> FRED -> cache)
                                 logger.info("[OMR] Fetching VIX data with fallback chain...")
                                 df = self._fetch_vix_data(lookback_days=self.data_lookback_days)
                                 if df is not None and not df.empty:
                                     market_data[market_symbol] = df
                             else:
-                                # Use Alpaca for other symbols (SPY, etc.)
                                 df = self.broker.get_historical_bars(
                                     symbol=market_symbol,
                                     start=start_date,
@@ -457,19 +515,16 @@ class OMRLiveAdapter(StrategyAdapter):
                         except Exception as e:
                             logger.error(f"[OMR] Error fetching {market_symbol}: {e}")
 
-            cache_status = "cached intraday" if intraday_cache_available else "live fetch"
+            cache_status = "cached intraday" if intraday_cache_used else "live fetch"
             logger.info(
                 f"[OMR] Fetched data for {len(market_data)} symbols ({cache_status})"
             )
 
             # Normalize column names to lowercase for consistency
-            # (yfinance returns 'Close', Alpaca returns 'close', etc.)
             normalized_data = {}
             for symbol, df in market_data.items():
                 df_copy = df.copy()
-                # Handle both single-level and multi-level column names
                 if hasattr(df_copy.columns, 'levels'):
-                    # Multi-level columns (e.g., from yfinance with multiple tickers)
                     df_copy.columns = [c[0].lower() if isinstance(c, tuple) else c.lower() for c in df_copy.columns]
                 else:
                     df_copy.columns = [c.lower() if isinstance(c, str) else str(c).lower() for c in df_copy.columns]

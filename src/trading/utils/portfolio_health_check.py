@@ -65,34 +65,23 @@ class PortfolioHealthChecker:
         self.max_position_age_hours = max_position_age_hours
         self.state_manager = state_manager
 
-    def check_before_entry(
+    def _check_account(
         self,
-        required_capital: Optional[float] = None,
-        allow_existing_positions: bool = False,
-        strategy_name: Optional[str] = None
-    ) -> HealthCheckResult:
+        required_capital: Optional[float] = None
+    ) -> Tuple[List[str], List[str], Dict]:
         """
-        Comprehensive check before entering new positions.
+        Check account-level health (buying power, portfolio value, capital).
 
         Args:
             required_capital: Capital required for planned trades
-            allow_existing_positions: If False, error if positions exist
-            strategy_name: If provided, only count positions owned by this strategy
-                          for max_positions check (requires state_manager)
 
         Returns:
-            HealthCheckResult with validation status
+            Tuple of (errors, warnings, info) for account checks
         """
-        warnings = []
         errors = []
+        warnings = []
         info = {}
 
-        strategy_label = f"[{strategy_name.upper()}] " if strategy_name else ""
-        logger.info("=" * 60)
-        logger.info(f"{strategy_label}PRE-ENTRY PORTFOLIO HEALTH CHECK")
-        logger.info("=" * 60)
-
-        # 1. Check account status
         try:
             account = self.broker.get_account()
 
@@ -109,7 +98,6 @@ class PortfolioHealthChecker:
             logger.info(f"  Buying Power:    ${buying_power:,.2f}")
             logger.info(f"  Cash:            ${cash:,.2f}")
 
-            # Check minimum requirements
             if buying_power < self.min_buying_power:
                 errors.append(
                     f"Insufficient buying power: ${buying_power:,.2f} "
@@ -122,7 +110,6 @@ class PortfolioHealthChecker:
                     f"< ${self.min_portfolio_value:,.2f}"
                 )
 
-            # Check if capital is sufficient for planned trades
             if required_capital and buying_power < required_capital:
                 errors.append(
                     f"Insufficient capital for trades: ${buying_power:,.2f} "
@@ -132,13 +119,33 @@ class PortfolioHealthChecker:
         except Exception as e:
             errors.append(f"Failed to fetch account info: {e}")
 
-        # 2. Check existing positions
+        return errors, warnings, info
+
+    def _check_positions(
+        self,
+        allow_existing_positions: bool = False,
+        strategy_name: Optional[str] = None
+    ) -> Tuple[List[str], List[str], Dict]:
+        """
+        Check position-level health (counts, age, staleness, limits).
+
+        Args:
+            allow_existing_positions: If False, warn if positions exist
+            strategy_name: If provided, only count positions owned by this strategy
+
+        Returns:
+            Tuple of (errors, warnings, info) for position checks
+        """
+        errors = []
+        warnings = []
+        info = {}
+        strategy_label = f"[{strategy_name.upper()}] " if strategy_name else ""
+
         try:
             positions = self.broker.get_positions()
             info['broker_position_count'] = len(positions)
 
-            # For multi-strategy: get strategy-specific position count
-            strategy_position_count = len(positions)  # Default to all positions
+            strategy_position_count = len(positions)
             if strategy_name and self.state_manager:
                 strategy_positions = self.state_manager.get_positions(strategy_name)
                 strategy_position_count = len(strategy_positions)
@@ -156,7 +163,6 @@ class PortfolioHealthChecker:
                 total_position_value = 0.0
 
                 for pos in positions:
-                    # Calculate position details
                     qty = float(pos['quantity'])
                     current_price = float(pos['current_price'])
                     avg_entry = float(pos['avg_entry_price'])
@@ -167,14 +173,11 @@ class PortfolioHealthChecker:
 
                     total_position_value += position_value
 
-                    # Check position age
-                    # Note: created_at might not be available for positions
                     position_age = "Unknown"
                     if 'created_at' in pos and pos['created_at']:
                         age_delta = datetime.now() - pos['created_at']
                         position_age = f"{age_delta.total_seconds() / 3600:.1f} hours"
 
-                        # Warn if position is too old
                         if age_delta.total_seconds() / 3600 > self.max_position_age_hours:
                             warnings.append(
                                 f"Position {pos['symbol']} is stale ({position_age})"
@@ -189,15 +192,12 @@ class PortfolioHealthChecker:
                 info['total_position_value'] = total_position_value
                 logger.info(f"  Total Position Value: ${total_position_value:,.2f}")
 
-                # Decide if existing positions are a problem
-                # Only warn if strategy has its own positions (or no strategy specified)
                 if not allow_existing_positions and strategy_position_count > 0:
                     warnings.append(
                         f"Existing {strategy_label}positions detected ({strategy_position_count}). "
                         f"New entry may violate position limits."
                     )
 
-                # Check position count limit - use strategy-specific count
                 if strategy_position_count >= self.max_positions:
                     errors.append(
                         f"Max positions reached ({strategy_position_count}/{self.max_positions})"
@@ -208,7 +208,19 @@ class PortfolioHealthChecker:
         except Exception as e:
             errors.append(f"Failed to fetch positions: {e}")
 
-        # 3. Check pending orders
+        return errors, warnings, info
+
+    def _check_pending_orders(self) -> Tuple[List[str], List[str], Dict]:
+        """
+        Check pending order health (stale orders, count).
+
+        Returns:
+            Tuple of (errors, warnings, info) for order checks
+        """
+        errors = []
+        warnings = []
+        info = {}
+
         try:
             orders = self.broker.get_open_orders()
             info['pending_orders'] = len(orders)
@@ -219,7 +231,6 @@ class PortfolioHealthChecker:
                 for order in orders:
                     logger.info(f"  {order['symbol']}: {order['side']} {order['quantity']} @ {order['order_type']}")
 
-                    # Check order age
                     if 'created_at' in order and order['created_at']:
                         order_age = datetime.now() - order['created_at']
                         if order_age > timedelta(hours=1):
@@ -236,6 +247,57 @@ class PortfolioHealthChecker:
 
         except Exception as e:
             errors.append(f"Failed to fetch orders: {e}")
+
+        return errors, warnings, info
+
+    def check_before_entry(
+        self,
+        required_capital: Optional[float] = None,
+        allow_existing_positions: bool = False,
+        strategy_name: Optional[str] = None
+    ) -> HealthCheckResult:
+        """
+        Comprehensive check before entering new positions.
+
+        Orchestrates account, position, and order checks, then aggregates results.
+
+        Args:
+            required_capital: Capital required for planned trades
+            allow_existing_positions: If False, error if positions exist
+            strategy_name: If provided, only count positions owned by this strategy
+                          for max_positions check (requires state_manager)
+
+        Returns:
+            HealthCheckResult with validation status
+        """
+        warnings: List[str] = []
+        errors: List[str] = []
+        info: Dict = {}
+
+        strategy_label = f"[{strategy_name.upper()}] " if strategy_name else ""
+        logger.info("=" * 60)
+        logger.info(f"{strategy_label}PRE-ENTRY PORTFOLIO HEALTH CHECK")
+        logger.info("=" * 60)
+
+        # 1. Check account status
+        acct_errors, acct_warnings, acct_info = self._check_account(required_capital)
+        errors.extend(acct_errors)
+        warnings.extend(acct_warnings)
+        info.update(acct_info)
+
+        # 2. Check existing positions
+        pos_errors, pos_warnings, pos_info = self._check_positions(
+            allow_existing_positions, strategy_name
+        )
+        errors.extend(pos_errors)
+        warnings.extend(pos_warnings)
+        info.update(pos_info)
+
+        # 3. Check pending orders
+        ord_errors, ord_warnings, ord_info = self._check_pending_orders()
+        errors.extend(ord_errors)
+        warnings.extend(ord_warnings)
+        info.update(ord_info)
 
         # 4. Summary
         logger.info("\n" + "=" * 60)
