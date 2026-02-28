@@ -157,6 +157,7 @@ class TestPortfolioV2:
             fees=0.001,
             slippage=0.0005,
             market_hours_only=False,
+            track_state=True,
         )
 
         state = portfolio.portfolio_state

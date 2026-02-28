@@ -27,15 +27,8 @@ try:
 except ImportError:
     NUMBA_AVAILABLE = False
 
-# Import V2 portfolio simulator (preferred implementation with state tracking support)
-try:
-    from src.backtesting_v2.engine.portfolio_simulator import (
-        from_signals_v2 as _from_signals_v2,
-        PortfolioV2,
-    )
-    V2_AVAILABLE = True
-except ImportError:
-    V2_AVAILABLE = False
+# V2 is imported lazily in from_signals() to avoid circular imports
+# (V2 subclasses V1's Portfolio class)
 
 
 class Portfolio(BasePortfolio):
@@ -383,6 +376,41 @@ class Portfolio(BasePortfolio):
             trade_costs, trade_proceeds
         )
 
+    def _on_bar_start(self, i: int, price: float, cash: float,
+                     position: float, position_price: float):
+        """
+        Hook called at start of each bar in _simulate().
+
+        Subclasses can override to record per-bar state. No-op in base class.
+
+        Args:
+            i: Bar index (0-based)
+            price: Current bar price
+            cash: Current cash balance
+            position: Current position size (negative for short)
+            position_price: Entry price of current position (0 if flat)
+        """
+        pass
+
+    def _on_trade(self, trade_record: dict):
+        """
+        Hook called after each trade execution in _simulate().
+
+        Subclasses can override to process trades. No-op in base class.
+
+        Args:
+            trade_record: Dictionary with trade details (timestamp, type, price, etc.)
+        """
+        pass
+
+    def _on_simulation_end(self):
+        """
+        Hook called after simulation completes in _simulate().
+
+        Subclasses can override for post-simulation processing. No-op in base class.
+        """
+        pass
+
     def _simulate(self):
         """
         Simulate portfolio trades based on entry and exit signals.
@@ -397,7 +425,7 @@ class Portfolio(BasePortfolio):
         bars_in_position = 0
         bar_index = 0
 
-        for timestamp, price in self.price.items():
+        for i, (timestamp, price) in enumerate(self.price.items()):
             bar_index += 1
             entry_signal = self.entries.get(timestamp, False)
             exit_signal = self.exits.get(timestamp, False)
@@ -422,6 +450,9 @@ class Portfolio(BasePortfolio):
             else:
                 # Flat
                 portfolio_value = cash
+
+            # Hook: record state at start of bar
+            self._on_bar_start(i, price, cash, position, position_price)
 
             # Check for stop loss exits if we have an open position
             if position != 0 and self.risk_manager is not None:
@@ -475,7 +506,7 @@ class Portfolio(BasePortfolio):
                         pnl = net_proceeds - (position * position_price)
                         pnl_pct = (pnl / (position * position_price)) * 100 if position_price > 0 else 0
 
-                        trades.append({
+                        trade_record = {
                             'timestamp': timestamp,
                             'type': 'exit',
                             'exit_reason': exit_reason,
@@ -484,7 +515,9 @@ class Portfolio(BasePortfolio):
                             'proceeds': net_proceeds,
                             'pnl': pnl,
                             'pnl_pct': pnl_pct
-                        })
+                        }
+                        trades.append(trade_record)
+                        self._on_trade(trade_record)
                     else:
                         # Close short position (buy to cover)
                         slippage_adj = price * (1 + self.slippage)
@@ -498,7 +531,7 @@ class Portfolio(BasePortfolio):
 
                         cash -= total_cost
 
-                        trades.append({
+                        trade_record = {
                             'timestamp': timestamp,
                             'type': 'cover_short',
                             'exit_reason': exit_reason,
@@ -507,7 +540,9 @@ class Portfolio(BasePortfolio):
                             'cost': total_cost,
                             'pnl': pnl,
                             'pnl_pct': pnl_pct
-                        })
+                        }
+                        trades.append(trade_record)
+                        self._on_trade(trade_record)
 
                     if self.risk_manager is not None:
                         self.risk_manager.remove_position('ASSET')
@@ -548,7 +583,7 @@ class Portfolio(BasePortfolio):
 
                     cash -= total_cost
 
-                    trades.append({
+                    trade_record = {
                         'timestamp': timestamp,
                         'type': 'cover_short',
                         'price': price,
@@ -556,7 +591,9 @@ class Portfolio(BasePortfolio):
                         'cost': total_cost,
                         'pnl': pnl,
                         'pnl_pct': pnl_pct
-                    })
+                    }
+                    trades.append(trade_record)
+                    self._on_trade(trade_record)
 
                     if self.risk_manager is not None:
                         self.risk_manager.remove_position('ASSET')
@@ -607,13 +644,15 @@ class Portfolio(BasePortfolio):
                             cash -= total_cost
                             bars_in_position = 0
 
-                            trades.append({
+                            trade_record = {
                                 'timestamp': timestamp,
                                 'type': 'entry',
                                 'price': price,
                                 'shares': shares,
                                 'cost': total_cost
-                            })
+                            }
+                            trades.append(trade_record)
+                            self._on_trade(trade_record)
 
                             # Register position with risk manager
                             if self.risk_manager is not None:
@@ -655,7 +694,7 @@ class Portfolio(BasePortfolio):
                     pnl = net_proceeds - (position * position_price)
                     pnl_pct = (pnl / (position * position_price)) * 100 if position_price > 0 else 0
 
-                    trades.append({
+                    trade_record = {
                         'timestamp': timestamp,
                         'type': 'exit',
                         'exit_reason': 'strategy_signal',
@@ -664,7 +703,9 @@ class Portfolio(BasePortfolio):
                         'proceeds': net_proceeds,
                         'pnl': pnl,
                         'pnl_pct': pnl_pct
-                    })
+                    }
+                    trades.append(trade_record)
+                    self._on_trade(trade_record)
 
                     if self.risk_manager is not None:
                         self.risk_manager.remove_position('ASSET')
@@ -716,13 +757,15 @@ class Portfolio(BasePortfolio):
                             cash += net_proceeds  # Receive proceeds from short sale
                             bars_in_position = 0
 
-                            trades.append({
+                            trade_record = {
                                 'timestamp': timestamp,
                                 'type': 'short_entry',
                                 'price': price,
                                 'shares': shares,
                                 'proceeds': net_proceeds
-                            })
+                            }
+                            trades.append(trade_record)
+                            self._on_trade(trade_record)
 
                             # Register short position with risk manager
                             if self.risk_manager is not None:
@@ -762,6 +805,7 @@ class Portfolio(BasePortfolio):
 
         self.trades = trades
         self.equity_curve = pd.Series(equity, index=self.price.index)
+        self._on_simulation_end()
 
     def stats(self) -> Optional[Dict[str, Any]]:
         """
@@ -923,8 +967,11 @@ def from_signals(
     Returns:
         PortfolioV2 object (compatible with Portfolio interface)
     """
-    # Use V2 implementation (preferred)
-    if V2_AVAILABLE:
+    # Lazy import V2 to avoid circular imports (V2 subclasses V1's Portfolio)
+    try:
+        from src.backtesting_v2.engine.portfolio_simulator import (
+            from_signals_v2 as _from_signals_v2,
+        )
         return _from_signals_v2(
             close=close,
             entries=entries,
@@ -942,6 +989,8 @@ def from_signals(
             track_state=track_state,
             **kwargs
         )
+    except ImportError:
+        pass
 
     # Fallback to V1 implementation
     return Portfolio(
