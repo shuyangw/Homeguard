@@ -30,6 +30,7 @@ import numpy as np
 from src.backtesting.base.strategy import LongShortStrategy
 from src.backtesting.utils.indicators import Indicators
 from src.strategies.advanced.orb_indicators import ORBIndicators
+from src.strategies.advanced.exit_checker import check_exit
 from src.strategies.advanced.market_regime_detector import MarketRegimeDetector
 from src.strategies.advanced.orb_numba_core import (
     generate_orb_signals_numba,
@@ -645,6 +646,9 @@ class ORBStrategy(LongShortStrategy):
         """
         Check if position should be exited.
 
+        Delegates to shared exit_checker for time exit, stop-loss,
+        and target checks.
+
         Args:
             position: Current position
             current_close: Current bar's close
@@ -655,27 +659,20 @@ class ORBStrategy(LongShortStrategy):
         Returns:
             Tuple of (should_exit, exit_reason)
         """
-        # Time exit (force close before market close)
-        if current_time >= self.exit_time:
-            return True, 'time_exit'
+        pos_dir = 1 if position.direction == 'long' else -1
 
-        if position.direction == 'long':
-            # Stop-loss hit (use low for more accurate stop check)
-            if current_low <= position.stop_loss:
-                return True, 'stop_loss'
+        exit_reason, reason_str = check_exit(
+            position_dir=pos_dir,
+            high=current_high,
+            low=current_low,
+            stop=position.stop_loss,
+            target=position.target,
+            current_time=current_time,
+            exit_time=self.exit_time,
+        )
 
-            # Target hit (use high for more accurate target check)
-            if current_high >= position.target:
-                return True, 'target'
-
-        else:  # short
-            # Stop-loss hit
-            if current_high >= position.stop_loss:
-                return True, 'stop_loss'
-
-            # Target hit
-            if current_low <= position.target:
-                return True, 'target'
+        if exit_reason is not None:
+            return True, reason_str
 
         return False, ''
 

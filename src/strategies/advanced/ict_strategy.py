@@ -37,6 +37,7 @@ from src.strategies.advanced.ict_indicators import (
     LiquiditySweep,
     SwitchCandle
 )
+from src.strategies.advanced.exit_checker import check_exit, ExitReason
 from src.strategies.advanced.market_regime_detector import MarketRegimeDetector
 from src.utils.logger import get_logger
 from src.utils.timezone import tz
@@ -805,6 +806,9 @@ class ICTStrategy(LongShortStrategy):
         """
         Check if position should be exited.
 
+        Uses shared exit_checker for time exit, time stop, max loss, stop-loss,
+        and target checks. Adds ICT-specific trailing stop logic on top.
+
         Exit conditions:
         - Stop loss hit (including trailing stop)
         - Target reached
@@ -815,91 +819,99 @@ class ICTStrategy(LongShortStrategy):
         Returns:
             Tuple of (should_exit, exit_reason)
         """
-        # Time exit (end of day)
-        if current_time >= self.exit_time:
-            return True, 'time_exit'
+        pos_dir = 1 if position.direction == 'long' else -1
 
-        # Time stop (max hold bars) - prevents month-long losing trades
-        if self.max_hold_bars > 0 and position.entry_bar_idx > 0:
-            bars_held = current_bar_idx - position.entry_bar_idx
-            if bars_held >= self.max_hold_bars:
-                return True, 'time_stop'
+        # Update trailing stop BEFORE checking exits so stop level is current
+        if self.use_trailing_stop:
+            self._update_trailing_stop(position, current_high, current_low)
 
-        # Max loss cap - force exit if loss exceeds threshold
-        if self.max_loss_pct > 0:
-            if position.direction == 'long':
-                current_pnl_pct = (current_close - position.entry_price) / position.entry_price
-                if current_pnl_pct <= -self.max_loss_pct:
-                    return True, 'max_loss'
-            else:  # short
-                current_pnl_pct = (position.entry_price - current_close) / position.entry_price
-                if current_pnl_pct <= -self.max_loss_pct:
-                    return True, 'max_loss'
+        # Delegate core exit checks to shared utility
+        exit_reason, reason_str = check_exit(
+            position_dir=pos_dir,
+            high=current_high,
+            low=current_low,
+            stop=position.stop_loss,
+            target=position.target,
+            current_time=current_time,
+            exit_time=self.exit_time,
+            entry_bar=position.entry_bar_idx,
+            current_bar=current_bar_idx,
+            max_bars=self.max_hold_bars,
+            entry_price=position.entry_price,
+            close=current_close,
+            max_loss_pct=self.max_loss_pct,
+        )
 
+        if exit_reason is not None:
+            # Override stop_loss reason with trailing_stop if trailing is active
+            if exit_reason == ExitReason.STOP_LOSS and position.trailing_active:
+                return True, 'trailing_stop'
+            return True, reason_str
+
+        return False, ''
+
+    def _update_trailing_stop(
+        self,
+        position: ICTPosition,
+        current_high: float,
+        current_low: float
+    ) -> None:
+        """Update trailing stop level for ICT position.
+
+        Calculates R (risk) from initial stop and adjusts stop level
+        based on max favorable price movement.
+
+        Args:
+            position: Active ICT position (modified in-place).
+            current_high: Current bar high price.
+            current_low: Current bar low price.
+        """
         # Calculate R (risk) for trailing stop
         if position.initial_stop_loss != 0:
             risk = abs(position.entry_price - position.initial_stop_loss)
         else:
             risk = abs(position.entry_price - position.stop_loss)
 
-        # Update trailing stop if enabled
-        if self.use_trailing_stop and risk > 0:
-            if position.direction == 'long':
-                # Update max favorable price
-                position.max_favorable_price = max(position.max_favorable_price, current_high)
-
-                # Check if trailing should activate (hit trigger R)
-                profit = position.max_favorable_price - position.entry_price
-                profit_r = profit / risk
-                if profit_r >= self.trailing_trigger_r and not position.trailing_active:
-                    position.trailing_active = True
-
-                # Apply trailing stop
-                if position.trailing_active:
-                    # Trail stop at offset_r below max favorable price
-                    new_stop = position.max_favorable_price - (self.trailing_offset_r * risk)
-                    # Only raise stop, never lower it
-                    if new_stop > position.stop_loss:
-                        position.stop_loss = new_stop
-            else:  # short
-                # Update max favorable price (lowest for shorts)
-                if position.max_favorable_price == position.entry_price:
-                    position.max_favorable_price = current_low
-                else:
-                    position.max_favorable_price = min(position.max_favorable_price, current_low)
-
-                # Check if trailing should activate
-                profit = position.entry_price - position.max_favorable_price
-                profit_r = profit / risk
-                if profit_r >= self.trailing_trigger_r and not position.trailing_active:
-                    position.trailing_active = True
-
-                # Apply trailing stop
-                if position.trailing_active:
-                    # Trail stop at offset_r above max favorable price
-                    new_stop = position.max_favorable_price + (self.trailing_offset_r * risk)
-                    # Only lower stop for shorts, never raise it
-                    if new_stop < position.stop_loss:
-                        position.stop_loss = new_stop
+        if risk <= 0:
+            return
 
         if position.direction == 'long':
-            # Stop loss (price touched or went below stop)
-            if current_low <= position.stop_loss:
-                exit_reason = 'trailing_stop' if position.trailing_active else 'stop_loss'
-                return True, exit_reason
-            # Target (price touched or exceeded target)
-            if current_high >= position.target:
-                return True, 'target'
-        else:  # short
-            # Stop loss
-            if current_high >= position.stop_loss:
-                exit_reason = 'trailing_stop' if position.trailing_active else 'stop_loss'
-                return True, exit_reason
-            # Target
-            if current_low <= position.target:
-                return True, 'target'
+            # Update max favorable price
+            position.max_favorable_price = max(position.max_favorable_price, current_high)
 
-        return False, ''
+            # Check if trailing should activate (hit trigger R)
+            profit = position.max_favorable_price - position.entry_price
+            profit_r = profit / risk
+            if profit_r >= self.trailing_trigger_r and not position.trailing_active:
+                position.trailing_active = True
+
+            # Apply trailing stop
+            if position.trailing_active:
+                # Trail stop at offset_r below max favorable price
+                new_stop = position.max_favorable_price - (self.trailing_offset_r * risk)
+                # Only raise stop, never lower it
+                if new_stop > position.stop_loss:
+                    position.stop_loss = new_stop
+        else:  # short
+            # Update max favorable price (lowest for shorts)
+            if position.max_favorable_price == position.entry_price:
+                position.max_favorable_price = current_low
+            else:
+                position.max_favorable_price = min(position.max_favorable_price, current_low)
+
+            # Check if trailing should activate
+            profit = position.entry_price - position.max_favorable_price
+            profit_r = profit / risk
+            if profit_r >= self.trailing_trigger_r and not position.trailing_active:
+                position.trailing_active = True
+
+            # Apply trailing stop
+            if position.trailing_active:
+                # Trail stop at offset_r above max favorable price
+                new_stop = position.max_favorable_price + (self.trailing_offset_r * risk)
+                # Only lower stop for shorts, never raise it
+                if new_stop < position.stop_loss:
+                    position.stop_loss = new_stop
 
     def _passes_regime_filter(self, direction: str) -> bool:
         """Check if trade passes regime filter."""

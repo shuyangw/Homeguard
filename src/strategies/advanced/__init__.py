@@ -10,6 +10,7 @@ This module contains production-deployed strategies:
 - FRS (Fractal Regime Switching): frs_strategy.py
 
 Supporting modules:
+- exit_checker.py: Shared exit logic (stop-loss, target, time exit) for ICT/ORB
 - bayesian_reversion_model.py: ML model for OMR probability estimation
 - overnight_signal_generator.py: Signal generation for OMR
 - market_regime_detector.py: Regime classification for RAMP/ORB
@@ -20,6 +21,7 @@ Supporting modules:
 Research strategies have been moved to src/strategies/research/.
 """
 
+from src.strategies.advanced.exit_checker import ExitReason, check_exit
 from src.strategies.advanced.orb_strategy import ORBStrategy
 from src.strategies.advanced.orb_indicators import ORBIndicators
 from src.strategies.advanced.dsts_strategy import DSTSStrategy
@@ -29,6 +31,8 @@ from src.strategies.advanced.frs_strategy import FRSStrategy
 from src.strategies.advanced.frs_indicators import FRSIndicators, FRSRegime, FRSSignal
 
 __all__ = [
+    'ExitReason',
+    'check_exit',
     'ORBStrategy',
     'ORBIndicators',
     'DSTSStrategy',
