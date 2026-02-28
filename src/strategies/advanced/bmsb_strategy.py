@@ -21,7 +21,7 @@ Original indicator by zkdev on TradingView.
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Tuple, Optional
+from typing import Tuple, Optional, Dict
 import pandas as pd
 import numpy as np
 
@@ -44,6 +44,15 @@ class BMSBPosition:
     # Trailing stop state
     trailing_stop: Optional[float] = None
     max_favorable_price: float = 0.0
+
+
+@dataclass
+class _BMSBState:
+    """Mutable state for per-bar signal generation loop."""
+    position: Optional[str] = None  # 'long', 'short', or None
+    entry_price: float = 0.0
+    trailing_stop: Optional[float] = None
+    max_favorable: float = 0.0
 
 
 class BMSBStrategy(LongShortStrategy):
@@ -184,14 +193,10 @@ class BMSBStrategy(LongShortStrategy):
         self,
         data: pd.DataFrame
     ) -> Tuple[pd.Series, pd.Series, pd.Series, pd.Series]:
-        """
-        Generate long and short entry/exit signals based on BMSB.
+        """Generate long and short entry/exit signals based on BMSB.
 
-        Signal Logic:
-        - Long Entry: Close crosses above band (close > both SMA and EMA)
-        - Long Exit: Close crosses below band OR trailing stop hit
-        - Short Entry: Close crosses below band (close < both SMA and EMA)
-        - Short Exit: Close crosses above band OR trailing stop hit
+        Pre-computes band and filters, then iterates bars checking
+        exit and entry conditions via focused helper methods.
 
         Args:
             data: DataFrame with OHLCV columns and DatetimeIndex
@@ -208,24 +213,13 @@ class BMSBStrategy(LongShortStrategy):
             )
 
         n = len(data)
-
-        # Initialize signal arrays
         long_entries_arr = np.zeros(n, dtype=bool)
         long_exits_arr = np.zeros(n, dtype=bool)
         short_entries_arr = np.zeros(n, dtype=bool)
         short_exits_arr = np.zeros(n, dtype=bool)
 
-        # ==================================================================
-        # PHASE 1: CALCULATE BMSB BAND
-        # ==================================================================
-
-        # Calculate band on specified timeframe
-        band_df = BMSBIndicators.calculate_band_on_original_timeframe(
-            data, self.sma_period, self.ema_period, timeframe=self.timeframe
-        )
-
-        if band_df.empty:
-            logger.warning("Insufficient data for BMSB calculation")
+        ind = self._compute_band_and_filters(data)
+        if ind is None:
             return (
                 pd.Series(long_entries_arr, index=data.index),
                 pd.Series(long_exits_arr, index=data.index),
@@ -233,31 +227,88 @@ class BMSBStrategy(LongShortStrategy):
                 pd.Series(short_exits_arr, index=data.index)
             )
 
-        # Get timeframe closes for signal timing
+        state = _BMSBState()
+
+        if self.timeframe == 'weekly':
+            min_bars = max(self.sma_period, self.ema_period) * 7
+        else:
+            min_bars = max(self.sma_period, self.ema_period)
+
+        for i in range(min_bars, n):
+            if np.isnan(ind['sma'][i]) or np.isnan(ind['ema'][i]):
+                continue
+
+            is_above, is_below = self._band_position(i, ind)
+            timestamp = data.index[i]
+            is_tf_close = timestamp in ind['timeframe_closes']
+            can_signal = (not self.signal_on_close) or is_tf_close
+
+            # Exit logic (check before entries)
+            if state.position == 'long':
+                exited, reason = self._check_long_exit(
+                    i, ind, state, is_below, can_signal
+                )
+                if exited:
+                    long_exits_arr[i] = True
+                    if not self.long_only and reason == 'band_cross':
+                        short_entries_arr[i] = True
+                        state.position = 'short'
+                        state.entry_price = ind['close'][i]
+                        state.max_favorable = ind['low'][i]
+
+            elif state.position == 'short':
+                exited, reason = self._check_short_exit(
+                    i, ind, state, is_above, can_signal
+                )
+                if exited:
+                    short_exits_arr[i] = True
+                    if reason == 'band_cross':
+                        long_entries_arr[i] = True
+                        state.position = 'long'
+                        state.entry_price = ind['close'][i]
+                        state.max_favorable = ind['high'][i]
+
+            # Entry logic (only if no position)
+            if state.position is None and can_signal:
+                entered = self._check_long_entry(i, ind, state, is_above)
+                if entered:
+                    long_entries_arr[i] = True
+                else:
+                    entered = self._check_short_entry(i, ind, state, is_below)
+                    if entered:
+                        short_entries_arr[i] = True
+
+        return (
+            pd.Series(long_entries_arr, index=data.index),
+            pd.Series(long_exits_arr, index=data.index),
+            pd.Series(short_entries_arr, index=data.index),
+            pd.Series(short_exits_arr, index=data.index)
+        )
+
+    def _compute_band_and_filters(self, data: pd.DataFrame) -> Optional[Dict]:
+        """Pre-compute BMSB band values and optional filter arrays.
+
+        Args:
+            data: DataFrame with OHLCV columns and DatetimeIndex.
+
+        Returns:
+            Dict of pre-computed arrays, or None if insufficient data.
+        """
+        band_df = BMSBIndicators.calculate_band_on_original_timeframe(
+            data, self.sma_period, self.ema_period, timeframe=self.timeframe
+        )
+
+        if band_df.empty:
+            logger.warning("Insufficient data for BMSB calculation")
+            return None
+
         if self.timeframe == 'weekly':
             tf_df = BMSBIndicators.resample_to_weekly(data)
         elif self.timeframe == 'daily':
             tf_df = BMSBIndicators.resample_to_daily(data)
         else:
             tf_df = data
-        timeframe_closes = set(tf_df.index)
 
-        # ==================================================================
-        # PHASE 2: CALCULATE FILTERS
-        # ==================================================================
-
-        # Get aligned arrays
-        close = data['close'].values
-        high = data['high'].values
-        low = data['low'].values
-
-        # Get band values (forward-filled from timeframe)
-        sma = band_df['sma'].reindex(data.index, method='ffill').values
-        ema = band_df['ema'].reindex(data.index, method='ffill').values
-        band_upper = band_df['band_upper'].reindex(data.index, method='ffill').values
-        band_lower = band_df['band_lower'].reindex(data.index, method='ffill').values
-
-        # Calculate optional filters
         rsi = None
         if self.use_rsi_filter:
             rsi = BMSBIndicators.calculate_rsi(data['close'], self.rsi_period).values
@@ -272,199 +323,232 @@ class BMSBStrategy(LongShortStrategy):
         if self.use_atr_stop:
             atr = BMSBIndicators.calculate_atr(data, self.atr_period).values
 
+        close = data['close'].values
+        band_upper = band_df['band_upper'].reindex(data.index, method='ffill').values
+        band_lower = band_df['band_lower'].reindex(data.index, method='ffill').values
+
         band_width = None
         if self.min_band_width_pct > 0:
-            band_width = ((band_upper - band_lower) / close)
+            band_width = (band_upper - band_lower) / close
 
-        # ==================================================================
-        # PHASE 3: GENERATE SIGNALS
-        # ==================================================================
+        return {
+            'close': close,
+            'high': data['high'].values,
+            'low': data['low'].values,
+            'sma': band_df['sma'].reindex(data.index, method='ffill').values,
+            'ema': band_df['ema'].reindex(data.index, method='ffill').values,
+            'band_upper': band_upper,
+            'band_lower': band_lower,
+            'timeframe_closes': set(tf_df.index),
+            'rsi': rsi,
+            'htf_trend': htf_trend,
+            'atr': atr,
+            'band_width': band_width,
+        }
 
-        # Track position state for signal generation
-        position = None  # 'long', 'short', or None
-        entry_price = 0.0
-        trailing_stop = None
-        max_favorable = 0.0
+    def _band_position(self, i: int, ind: Dict) -> Tuple[bool, bool]:
+        """Determine if close is above or below the band at bar i.
 
-        # Minimum bars needed for signal (based on MA periods and timeframe)
-        if self.timeframe == 'weekly':
-            min_bars = max(self.sma_period, self.ema_period) * 7  # ~7 days per week
-        elif self.timeframe == 'daily':
-            min_bars = max(self.sma_period, self.ema_period)
+        Args:
+            i: Bar index.
+            ind: Pre-computed indicator arrays.
+
+        Returns:
+            Tuple of (is_above_band, is_below_band).
+        """
+        c = ind['close'][i]
+        if self.require_both_above:
+            is_above = c > ind['band_upper'][i]
         else:
-            min_bars = max(self.sma_period, self.ema_period)
+            is_above = c > min(ind['sma'][i], ind['ema'][i])
 
-        for i in range(min_bars, n):
-            current_close = close[i]
-            current_high = high[i]
-            current_low = low[i]
-            current_sma = sma[i]
-            current_ema = ema[i]
-            current_upper = band_upper[i]
-            current_lower = band_lower[i]
+        if self.require_both_below:
+            is_below = c < ind['band_lower'][i]
+        else:
+            is_below = c < max(ind['sma'][i], ind['ema'][i])
 
-            # Skip if band values are NaN
-            if np.isnan(current_sma) or np.isnan(current_ema):
-                continue
+        return is_above, is_below
 
-            timestamp = data.index[i]
+    def _check_long_exit(
+        self, i: int, ind: Dict, state: '_BMSBState',
+        is_below_band: bool, can_signal: bool,
+    ) -> Tuple[bool, str]:
+        """Check if a long position should be exited.
 
-            # Determine current position relative to band
+        Updates trailing stop, then checks trailing stop hit
+        and band cross conditions.
+
+        Args:
+            i: Bar index.
+            ind: Pre-computed indicator arrays.
+            state: Mutable position state (modified in-place on exit).
+            is_below_band: Whether close is below the band.
+            can_signal: Whether this bar is eligible for signals.
+
+        Returns:
+            Tuple of (exited, exit_reason).
+        """
+        if self.use_trailing_stop:
+            state.max_favorable = max(state.max_favorable, ind['high'][i])
+            atr = ind['atr']
+            if self.use_atr_stop and atr is not None and not np.isnan(atr[i]):
+                state.trailing_stop = state.max_favorable - (atr[i] * self.atr_stop_multiplier)
+            else:
+                state.trailing_stop = state.max_favorable * (1 - self.trailing_stop_pct)
+
+        if state.trailing_stop and ind['low'][i] <= state.trailing_stop:
+            state.position = None
+            state.trailing_stop = None
+            state.max_favorable = 0.0
+            return True, 'trailing_stop'
+
+        if is_below_band and can_signal:
+            state.position = None
+            state.trailing_stop = None
+            state.max_favorable = 0.0
+            return True, 'band_cross'
+
+        return False, ''
+
+    def _check_short_exit(
+        self, i: int, ind: Dict, state: '_BMSBState',
+        is_above_band: bool, can_signal: bool,
+    ) -> Tuple[bool, str]:
+        """Check if a short position should be exited.
+
+        Updates trailing stop, then checks trailing stop hit
+        and band cross conditions.
+
+        Args:
+            i: Bar index.
+            ind: Pre-computed indicator arrays.
+            state: Mutable position state (modified in-place on exit).
+            is_above_band: Whether close is above the band.
+            can_signal: Whether this bar is eligible for signals.
+
+        Returns:
+            Tuple of (exited, exit_reason).
+        """
+        if self.use_trailing_stop:
+            if state.max_favorable > 0:
+                state.max_favorable = min(state.max_favorable, ind['low'][i])
+            else:
+                state.max_favorable = ind['low'][i]
+            atr = ind['atr']
+            if self.use_atr_stop and atr is not None and not np.isnan(atr[i]):
+                state.trailing_stop = state.max_favorable + (atr[i] * self.atr_stop_multiplier)
+            else:
+                state.trailing_stop = state.max_favorable * (1 + self.trailing_stop_pct)
+
+        if state.trailing_stop and ind['high'][i] >= state.trailing_stop:
+            state.position = None
+            state.trailing_stop = None
+            state.max_favorable = 0.0
+            return True, 'trailing_stop'
+
+        if is_above_band and can_signal:
+            state.position = None
+            state.trailing_stop = None
+            state.max_favorable = 0.0
+            return True, 'band_cross'
+
+        return False, ''
+
+    def _check_long_entry(
+        self, i: int, ind: Dict, state: '_BMSBState', is_above_band: bool,
+    ) -> bool:
+        """Check if a long entry should be taken.
+
+        Validates band width, RSI, HTF, and cross-detection filters.
+
+        Args:
+            i: Bar index.
+            ind: Pre-computed indicator arrays.
+            state: Mutable position state (modified in-place on entry).
+            is_above_band: Whether close is above the band.
+
+        Returns:
+            True if entry was taken.
+        """
+        if not is_above_band:
+            return False
+
+        bw = ind['band_width']
+        if bw is not None and bw[i] < self.min_band_width_pct:
+            return False
+
+        rsi = ind['rsi']
+        if rsi is not None and not np.isnan(rsi[i]):
+            if rsi[i] <= self.rsi_long_threshold:
+                return False
+
+        htf = ind['htf_trend']
+        if htf is not None and htf[i] != 'bullish':
+            return False
+
+        if i > 0:
+            prev_close = ind['close'][i - 1]
+            prev_upper = ind['band_upper'][i - 1]
             if self.require_both_above:
-                is_above_band = current_close > current_upper
+                was_above = prev_close > prev_upper
             else:
-                is_above_band = current_close > min(current_sma, current_ema)
+                was_above = prev_close > min(ind['sma'][i - 1], ind['ema'][i - 1])
+            if was_above and state.position is not None:
+                return False
 
+        state.position = 'long'
+        state.entry_price = ind['close'][i]
+        state.max_favorable = ind['high'][i]
+        state.trailing_stop = None
+        return True
+
+    def _check_short_entry(
+        self, i: int, ind: Dict, state: '_BMSBState', is_below_band: bool,
+    ) -> bool:
+        """Check if a short entry should be taken.
+
+        Validates long-only, band width, RSI, HTF, and cross-detection filters.
+
+        Args:
+            i: Bar index.
+            ind: Pre-computed indicator arrays.
+            state: Mutable position state (modified in-place on entry).
+            is_below_band: Whether close is below the band.
+
+        Returns:
+            True if entry was taken.
+        """
+        if not is_below_band or self.long_only:
+            return False
+
+        bw = ind['band_width']
+        if bw is not None and bw[i] < self.min_band_width_pct:
+            return False
+
+        rsi = ind['rsi']
+        if rsi is not None and not np.isnan(rsi[i]):
+            if rsi[i] >= self.rsi_short_threshold:
+                return False
+
+        htf = ind['htf_trend']
+        if htf is not None and htf[i] != 'bearish':
+            return False
+
+        if i > 0:
+            prev_close = ind['close'][i - 1]
+            prev_lower = ind['band_lower'][i - 1]
             if self.require_both_below:
-                is_below_band = current_close < current_lower
+                was_below = prev_close < prev_lower
             else:
-                is_below_band = current_close < max(current_sma, current_ema)
+                was_below = prev_close < max(ind['sma'][i - 1], ind['ema'][i - 1])
+            if was_below and state.position is not None:
+                return False
 
-            # Only generate signals on timeframe close if configured
-            is_timeframe_close = timestamp in timeframe_closes
-            can_signal = (not self.signal_on_close) or is_timeframe_close
-
-            # ============================================================
-            # EXIT LOGIC (check first before entries)
-            # ============================================================
-
-            if position == 'long':
-                # Update trailing stop
-                if self.use_trailing_stop:
-                    max_favorable = max(max_favorable, current_high)
-                    if self.use_atr_stop and atr is not None and not np.isnan(atr[i]):
-                        trailing_stop = max_favorable - (atr[i] * self.atr_stop_multiplier)
-                    else:
-                        trailing_stop = max_favorable * (1 - self.trailing_stop_pct)
-
-                # Check exit conditions
-                exit_signal = False
-                exit_reason = ''
-
-                # Trailing stop hit
-                if trailing_stop and current_low <= trailing_stop:
-                    exit_signal = True
-                    exit_reason = 'trailing_stop'
-
-                # Band exit (price crosses below)
-                elif is_below_band and can_signal:
-                    exit_signal = True
-                    exit_reason = 'band_cross'
-
-                if exit_signal:
-                    long_exits_arr[i] = True
-                    position = None
-                    trailing_stop = None
-                    max_favorable = 0.0
-
-                    # Generate short entry if enabled and band exit
-                    if not self.long_only and exit_reason == 'band_cross':
-                        short_entries_arr[i] = True
-                        position = 'short'
-                        entry_price = current_close
-                        max_favorable = current_low
-
-            elif position == 'short':
-                # Update trailing stop (inverted for short)
-                if self.use_trailing_stop:
-                    max_favorable = min(max_favorable, current_low) if max_favorable > 0 else current_low
-                    if self.use_atr_stop and atr is not None and not np.isnan(atr[i]):
-                        trailing_stop = max_favorable + (atr[i] * self.atr_stop_multiplier)
-                    else:
-                        trailing_stop = max_favorable * (1 + self.trailing_stop_pct)
-
-                # Check exit conditions
-                exit_signal = False
-                exit_reason = ''
-
-                # Trailing stop hit (price goes above)
-                if trailing_stop and current_high >= trailing_stop:
-                    exit_signal = True
-                    exit_reason = 'trailing_stop'
-
-                # Band exit (price crosses above)
-                elif is_above_band and can_signal:
-                    exit_signal = True
-                    exit_reason = 'band_cross'
-
-                if exit_signal:
-                    short_exits_arr[i] = True
-                    position = None
-                    trailing_stop = None
-                    max_favorable = 0.0
-
-                    # Generate long entry on band cross
-                    if exit_reason == 'band_cross':
-                        long_entries_arr[i] = True
-                        position = 'long'
-                        entry_price = current_close
-                        max_favorable = current_high
-
-            # ============================================================
-            # ENTRY LOGIC (only if no position)
-            # ============================================================
-
-            if position is None and can_signal:
-                # Check band width filter
-                passes_band_width = True
-                if band_width is not None and band_width[i] < self.min_band_width_pct:
-                    passes_band_width = False
-
-                # Long entry: price crosses above band
-                if is_above_band and passes_band_width:
-                    # Check filters
-                    passes_rsi = True
-                    if rsi is not None and not np.isnan(rsi[i]):
-                        passes_rsi = rsi[i] > self.rsi_long_threshold
-
-                    passes_htf = True
-                    if htf_trend is not None:
-                        passes_htf = htf_trend[i] == 'bullish'
-
-                    if passes_rsi and passes_htf:
-                        # Check previous bar was not above (cross detection)
-                        if i > 0:
-                            prev_close = close[i - 1]
-                            prev_upper = band_upper[i - 1]
-                            was_above = prev_close > prev_upper if self.require_both_above else prev_close > min(sma[i-1], ema[i-1])
-                            if not was_above or position is None:  # First signal or cross
-                                long_entries_arr[i] = True
-                                position = 'long'
-                                entry_price = current_close
-                                max_favorable = current_high
-                                trailing_stop = None
-
-                # Short entry: price crosses below band
-                elif is_below_band and not self.long_only and passes_band_width:
-                    # Check filters
-                    passes_rsi = True
-                    if rsi is not None and not np.isnan(rsi[i]):
-                        passes_rsi = rsi[i] < self.rsi_short_threshold
-
-                    passes_htf = True
-                    if htf_trend is not None:
-                        passes_htf = htf_trend[i] == 'bearish'
-
-                    if passes_rsi and passes_htf:
-                        # Check previous bar was not below (cross detection)
-                        if i > 0:
-                            prev_close = close[i - 1]
-                            prev_lower = band_lower[i - 1]
-                            was_below = prev_close < prev_lower if self.require_both_below else prev_close < max(sma[i-1], ema[i-1])
-                            if not was_below or position is None:  # First signal or cross
-                                short_entries_arr[i] = True
-                                position = 'short'
-                                entry_price = current_close
-                                max_favorable = current_low
-                                trailing_stop = None
-
-        # Convert to pandas Series
-        return (
-            pd.Series(long_entries_arr, index=data.index),
-            pd.Series(long_exits_arr, index=data.index),
-            pd.Series(short_entries_arr, index=data.index),
-            pd.Series(short_exits_arr, index=data.index)
-        )
+        state.position = 'short'
+        state.entry_price = ind['close'][i]
+        state.max_favorable = ind['low'][i]
+        state.trailing_stop = None
+        return True
 
     def get_current_signal(self, data: pd.DataFrame) -> BMSBSignal:
         """
