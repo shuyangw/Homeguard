@@ -210,57 +210,6 @@ class ExecutionEngine:
         # Should not reach here
         raise BrokerError("Unexpected execution path")
 
-    def execute_batch(
-        self,
-        orders: List[Dict],
-        sequential: bool = False
-    ) -> List[Dict]:
-        """
-        Execute multiple orders.
-
-        Args:
-            orders: List of order dicts with execution parameters
-            sequential: If True, execute orders sequentially; if False, execute in parallel
-
-        Returns:
-            List of execution results
-        """
-        logger.info(f"Executing batch of {len(orders)} orders ({'sequential' if sequential else 'parallel'})")
-
-        results = []
-
-        if sequential:
-            # Execute orders one by one
-            for order_params in orders:
-                try:
-                    result = self.execute_order(**order_params)
-                    results.append(result)
-                except Exception as e:
-                    logger.error(f"Batch order failed: {e}")
-                    results.append({
-                        'status': ExecutionStatus.FAILED,
-                        'error': str(e),
-                        'params': order_params
-                    })
-        else:
-            # Execute orders in parallel (simplified - can use threading/asyncio for true parallelism)
-            for order_params in orders:
-                try:
-                    result = self.execute_order(**order_params)
-                    results.append(result)
-                except Exception as e:
-                    logger.error(f"Batch order failed: {e}")
-                    results.append({
-                        'status': ExecutionStatus.FAILED,
-                        'error': str(e),
-                        'params': order_params
-                    })
-
-        successful = sum(1 for r in results if r.get('status') == ExecutionStatus.SUCCESS)
-        logger.info(f"Batch execution complete: {successful}/{len(orders)} successful")
-
-        return results
-
     # ==================== Order Management ====================
 
     def cancel_order(self, order_id: str) -> Dict:

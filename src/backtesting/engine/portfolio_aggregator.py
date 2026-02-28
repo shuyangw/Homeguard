@@ -38,30 +38,16 @@ class PortfolioAggregator:
                 continue
 
             try:
-                # Try different methods to get portfolio equity curve
+                # Get portfolio equity curve
                 equity = None
 
-                # Method 1: Custom Portfolio .equity_curve attribute
                 if hasattr(portfolio, 'equity_curve'):
                     equity = portfolio.equity_curve
-
-                # Method 2-3: Try VectorBT attributes
-                if equity is None:
-                    for attr in ['value', 'total_value']:
-                        if hasattr(portfolio, attr):
-                            try:
-                                equity = getattr(portfolio, attr)
-                                if callable(equity):
-                                    equity = equity()
-                                if equity is not None:
-                                    break
-                            except (AttributeError, TypeError):
-                                continue
 
                 if equity is not None:
                     equity_data[symbol] = equity
                 else:
-                    logger.warning(f"Could not extract equity for {symbol}: no equity_curve or value attribute found")
+                    logger.warning(f"Could not extract equity for {symbol}: no equity_curve attribute found")
             except Exception as e:
                 logger.warning(f"Could not extract equity for {symbol}: {e}")
 
@@ -105,10 +91,6 @@ class PortfolioAggregator:
             try:
                 if hasattr(portfolio, 'equity_curve'):
                     equity = portfolio.equity_curve
-                elif hasattr(portfolio, 'value'):
-                    equity = getattr(portfolio, 'value')
-                    if callable(equity):
-                        equity = equity()
                 else:
                     continue
 

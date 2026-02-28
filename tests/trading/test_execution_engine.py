@@ -130,41 +130,6 @@ class TestExecutionEngine:
         assert len(engine.execution_history) == 2
         assert len(engine.orders) == 2
 
-    # ==================== Batch Execution Tests ====================
-
-    def test_execute_batch_sequential(self, broker, engine):
-        """Test sequential batch execution."""
-        broker.set_quote('AAPL', bid=150.0, ask=150.05)
-        broker.set_quote('MSFT', bid=300.0, ask=300.05)
-
-        orders = [
-            {'symbol': 'AAPL', 'quantity': 10, 'side': OrderSide.BUY, 'wait_for_fill': False},
-            {'symbol': 'MSFT', 'quantity': 5, 'side': OrderSide.BUY, 'wait_for_fill': False},
-        ]
-
-        results = engine.execute_batch(orders, sequential=True)
-
-        assert len(results) == 2
-        assert all(r['status'] == ExecutionStatus.SUCCESS for r in results)
-        assert engine.total_orders == 2
-
-    def test_execute_batch_parallel(self, broker, engine):
-        """Test parallel batch execution."""
-        broker.set_quote('AAPL', bid=150.0, ask=150.05)
-        broker.set_quote('MSFT', bid=300.0, ask=300.05)
-        broker.set_quote('TSLA', bid=200.0, ask=200.05)
-
-        orders = [
-            {'symbol': 'AAPL', 'quantity': 10, 'side': OrderSide.BUY, 'wait_for_fill': False},
-            {'symbol': 'MSFT', 'quantity': 5, 'side': OrderSide.BUY, 'wait_for_fill': False},
-            {'symbol': 'TSLA', 'quantity': 8, 'side': OrderSide.BUY, 'wait_for_fill': False},
-        ]
-
-        results = engine.execute_batch(orders, sequential=False)
-
-        assert len(results) == 3
-        assert engine.total_orders == 3
-
     # ==================== Position Management Tests ====================
 
     def test_close_position(self, broker, engine):

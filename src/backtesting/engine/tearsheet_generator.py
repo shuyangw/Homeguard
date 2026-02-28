@@ -39,25 +39,11 @@ class TearsheetGenerator:
         Returns:
             Daily returns as pandas Series
         """
-        # Try different methods to get portfolio equity curve
+        # Get portfolio equity curve
         equity = None
 
-        # Method 1: Custom Portfolio .equity_curve attribute
         if hasattr(portfolio, 'equity_curve'):
             equity = portfolio.equity_curve
-
-        # Method 2-3: Try VectorBT attributes
-        if equity is None:
-            for attr in ['value', 'total_value']:
-                if hasattr(portfolio, attr):
-                    try:
-                        equity = getattr(portfolio, attr)
-                        if callable(equity):
-                            equity = equity()
-                        if equity is not None:
-                            break
-                    except (AttributeError, TypeError):
-                        continue
 
         if equity is None:
             # Return empty Series if we can't get equity

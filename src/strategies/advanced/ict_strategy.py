@@ -422,9 +422,6 @@ class ICTStrategy(LongShortStrategy):
         low_values = data['low'].values
         high_values = data['high'].values
 
-        # Build index for order blocks by their bar index
-        ob_by_idx = {ob.index: ob for ob in self._order_blocks}
-
         # =====================================================================
         # PHASE 2: SEQUENTIAL SIGNAL GENERATION (stateful, but now O(1) per bar)
         # =====================================================================
