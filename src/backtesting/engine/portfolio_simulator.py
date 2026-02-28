@@ -411,9 +411,334 @@ class Portfolio(BasePortfolio):
         """
         pass
 
+    @staticmethod
+    def _calc_portfolio_value(cash, position, position_price, price):
+        """Calculate current portfolio value given position state.
+
+        Args:
+            cash: Current cash balance
+            position: Current position size (positive=long, negative=short)
+            position_price: Entry price of current position
+            price: Current market price
+
+        Returns:
+            Portfolio value as float
+        """
+        if position > 0:
+            return cash + (position * price)
+        elif position < 0:
+            short_liability = abs(position) * (position_price - price)
+            return cash + short_liability
+        return cash
+
+    def _get_recent_price_data(self, timestamp):
+        """Get recent price data (last 20 bars) for ATR-based stops.
+
+        Args:
+            timestamp: Current bar timestamp
+
+        Returns:
+            DataFrame with close/high/low columns for recent bars
+        """
+        idx = self.price.index.get_loc(timestamp)
+        start_idx = max(0, idx - 20)
+        recent_prices = self.price.iloc[start_idx:idx+1]
+
+        if self.price_data is not None:
+            return self.price_data.iloc[start_idx:idx+1]
+        return pd.DataFrame({
+            'close': recent_prices,
+            'high': recent_prices,
+            'low': recent_prices
+        })
+
+    def _calculate_position_shares(self, portfolio_value, price):
+        """Calculate number of shares for a new position.
+
+        Uses the configured position sizer. For volatility-based sizing,
+        includes full OHLC price data.
+
+        Args:
+            portfolio_value: Current portfolio value
+            price: Current market price
+
+        Returns:
+            Number of shares to trade
+        """
+        if self.risk_config.position_sizing_method == 'volatility' and self.price_data is not None:
+            return self.position_sizer.calculate_shares(
+                portfolio_value=portfolio_value,
+                price=price,
+                price_data=self.price_data
+            )
+        return self.position_sizer.calculate_shares(
+            portfolio_value=portfolio_value,
+            price=price
+        )
+
+    def _execute_long_exit(self, timestamp, price, cash, position, position_price,
+                           exit_reason, trades):
+        """Execute a long position exit (sell shares).
+
+        Args:
+            timestamp: Current bar timestamp
+            price: Current market price
+            cash: Current cash balance
+            position: Current position size (must be > 0)
+            position_price: Entry price of long position
+            exit_reason: Reason for exit (e.g. 'strategy_signal', stop loss reason)
+            trades: Trade list to append to
+
+        Returns:
+            Tuple of (new_cash, trade_record)
+        """
+        slippage_adj = price * (1 - self.slippage)
+        proceeds = position * slippage_adj
+        fee = proceeds * self.fees
+        net_proceeds = proceeds - fee
+
+        new_cash = cash + net_proceeds
+
+        pnl = net_proceeds - (position * position_price)
+        pnl_pct = (pnl / (position * position_price)) * 100 if position_price > 0 else 0
+
+        trade_record = {
+            'timestamp': timestamp,
+            'type': 'exit',
+            'exit_reason': exit_reason,
+            'price': price,
+            'shares': position,
+            'proceeds': net_proceeds,
+            'pnl': pnl,
+            'pnl_pct': pnl_pct
+        }
+        trades.append(trade_record)
+        self._on_trade(trade_record)
+
+        return new_cash, trade_record
+
+    def _execute_short_cover(self, timestamp, price, cash, position, position_price,
+                             exit_reason, trades):
+        """Execute a short cover (buy to cover).
+
+        Args:
+            timestamp: Current bar timestamp
+            price: Current market price
+            cash: Current cash balance
+            position: Current position size (must be < 0)
+            position_price: Entry price of short position
+            exit_reason: Reason for cover (optional, None for signal-based)
+            trades: Trade list to append to
+
+        Returns:
+            Tuple of (new_cash, trade_record)
+        """
+        slippage_adj = price * (1 + self.slippage)
+        cost_to_cover = abs(position) * slippage_adj
+        fee = cost_to_cover * self.fees
+        total_cost = cost_to_cover + fee
+
+        proceeds_from_short = abs(position) * position_price
+        pnl = proceeds_from_short - cost_to_cover - fee
+        pnl_pct = (pnl / proceeds_from_short) * 100 if proceeds_from_short > 0 else 0
+
+        new_cash = cash - total_cost
+
+        trade_record = {
+            'timestamp': timestamp,
+            'type': 'cover_short',
+            'price': price,
+            'shares': abs(position),
+            'cost': total_cost,
+            'pnl': pnl,
+            'pnl_pct': pnl_pct
+        }
+        if exit_reason is not None:
+            trade_record['exit_reason'] = exit_reason
+        trades.append(trade_record)
+        self._on_trade(trade_record)
+
+        return new_cash, trade_record
+
+    def _execute_long_entry(self, timestamp, price, cash, portfolio_value, bar_index, trades):
+        """Execute a long entry (buy shares).
+
+        Checks portfolio constraints via risk manager, calculates position
+        size, applies slippage/fees, and registers position if risk manager
+        is active.
+
+        Args:
+            timestamp: Current bar timestamp
+            price: Current market price
+            cash: Current cash balance
+            portfolio_value: Current portfolio value
+            bar_index: Current bar index (1-based)
+            trades: Trade list to append to
+
+        Returns:
+            Tuple of (new_cash, new_position, new_position_price, entry_bar)
+            or (cash, 0, 0, 0) if entry was not executed
+        """
+        can_enter = True
+        if self.risk_manager is not None:
+            can_enter = self.risk_manager.can_open_position('ASSET', price, portfolio_value)
+
+        if not can_enter:
+            return cash, 0, 0, 0
+
+        shares = self._calculate_position_shares(portfolio_value, price)
+
+        slippage_adj = price * (1 + self.slippage)
+        cost = shares * slippage_adj
+        fee = cost * self.fees
+        total_cost = cost + fee
+
+        if total_cost > cash or shares <= 0:
+            return cash, 0, 0, 0
+
+        new_cash = cash - total_cost
+
+        trade_record = {
+            'timestamp': timestamp,
+            'type': 'entry',
+            'price': price,
+            'shares': shares,
+            'cost': total_cost
+        }
+        trades.append(trade_record)
+        self._on_trade(trade_record)
+
+        if self.risk_manager is not None:
+            price_df = self._get_recent_price_data(timestamp)
+            self.risk_manager.add_position(
+                symbol='ASSET',
+                entry_price=price,
+                shares=int(shares),
+                entry_bar=bar_index,
+                price_data=price_df
+            )
+
+        return new_cash, shares, price, bar_index
+
+    def _execute_short_entry(self, timestamp, price, cash, portfolio_value, bar_index, trades):
+        """Execute a short entry (sell short).
+
+        Checks portfolio constraints via risk manager, calculates position
+        size, applies slippage/fees, and registers position if risk manager
+        is active.
+
+        Args:
+            timestamp: Current bar timestamp
+            price: Current market price
+            cash: Current cash balance
+            portfolio_value: Current portfolio value
+            bar_index: Current bar index (1-based)
+            trades: Trade list to append to
+
+        Returns:
+            Tuple of (new_cash, new_position, new_position_price, entry_bar)
+            or (cash, 0, 0, 0) if entry was not executed
+        """
+        can_enter = True
+        if self.risk_manager is not None:
+            can_enter = self.risk_manager.can_open_position('ASSET', price, portfolio_value)
+
+        if not can_enter:
+            return cash, 0, 0, 0
+
+        shares = self._calculate_position_shares(portfolio_value, price)
+
+        slippage_adj = price * (1 - self.slippage)
+        proceeds_from_short = shares * slippage_adj
+        fee = proceeds_from_short * self.fees
+        net_proceeds = proceeds_from_short - fee
+
+        if shares <= 0:
+            return cash, 0, 0, 0
+
+        new_cash = cash + net_proceeds
+
+        trade_record = {
+            'timestamp': timestamp,
+            'type': 'short_entry',
+            'price': price,
+            'shares': shares,
+            'proceeds': net_proceeds
+        }
+        trades.append(trade_record)
+        self._on_trade(trade_record)
+
+        if self.risk_manager is not None:
+            price_df = self._get_recent_price_data(timestamp)
+            self.risk_manager.add_position(
+                symbol='ASSET',
+                entry_price=price,
+                shares=-int(shares),
+                entry_bar=bar_index,
+                price_data=price_df
+            )
+
+        return new_cash, -shares, price, bar_index
+
+    def _check_stop_loss(self, timestamp, price, cash, position, position_price,
+                         entry_bar, bar_index, in_market_hours, trades):
+        """Check and execute stop-loss exits for open positions.
+
+        Evaluates whether the risk manager triggers a stop-loss exit
+        (percentage, ATR, time-based, or profit target) and executes
+        the exit if conditions are met.
+
+        Args:
+            timestamp: Current bar timestamp
+            price: Current market price
+            cash: Current cash balance
+            position: Current position size (positive=long, negative=short)
+            position_price: Entry price of current position
+            entry_bar: Bar index when position was entered
+            bar_index: Current bar index (1-based)
+            in_market_hours: Whether current bar is within market hours
+            trades: Trade list to append to
+
+        Returns:
+            Tuple of (new_cash, new_position, new_position_price, was_stopped)
+            If no stop triggered, returns original values with was_stopped=False.
+        """
+        price_df = self._get_recent_price_data(timestamp)
+
+        exit_signals = self.risk_manager.check_exits(
+            current_prices={'ASSET': price},
+            current_bar=bar_index,
+            price_data_dict={'ASSET': price_df} if price_df is not None else None
+        )
+
+        should_exit = 'ASSET' in exit_signals
+        exit_reason = exit_signals.get('ASSET', None) if should_exit else None
+
+        if not (should_exit and in_market_hours):
+            return cash, position, position_price, False
+
+        if position > 0:
+            cash, _ = self._execute_long_exit(
+                timestamp, price, cash, position, position_price,
+                exit_reason, trades
+            )
+        else:
+            cash, _ = self._execute_short_cover(
+                timestamp, price, cash, position, position_price,
+                exit_reason, trades
+            )
+
+        if self.risk_manager is not None:
+            self.risk_manager.remove_position('ASSET')
+
+        return cash, 0, 0, True
+
     def _simulate(self):
         """
         Simulate portfolio trades based on entry and exit signals.
+
+        This is the main simulation loop that orchestrates position management
+        by delegating to focused helper methods for each trade type.
         """
         cash = self.init_cash
         position = 0.0
@@ -430,170 +755,40 @@ class Portfolio(BasePortfolio):
             entry_signal = self.entries.get(timestamp, False)
             exit_signal = self.exits.get(timestamp, False)
 
-            # Check if within market hours before executing any trade
             in_market_hours = self._is_market_hours(timestamp)
 
-            # Calculate current portfolio value
-            # For long: value = cash + (shares * price)
-            # For short: value = cash + (shares * (2*entry_price - price))
-            # Simplified: position can be positive (long) or negative (short)
-            if position > 0:
-                # Long position
-                portfolio_value = cash + (position * price)
-            elif position < 0:
-                # Short position: value = cash + short_liability
-                # Short liability = proceeds_from_short - current_buyback_cost
-                # = abs(position) * entry_price - abs(position) * price
-                # = abs(position) * (entry_price - price)
-                short_liability = abs(position) * (position_price - price)
-                portfolio_value = cash + short_liability
-            else:
-                # Flat
-                portfolio_value = cash
+            portfolio_value = self._calc_portfolio_value(
+                cash, position, position_price, price
+            )
 
             # Hook: record state at start of bar
             self._on_bar_start(i, price, cash, position, position_price)
 
             # Check for stop loss exits if we have an open position
             if position != 0 and self.risk_manager is not None:
-                # Track bars in position for time-based stop
                 bars_in_position += 1
 
-                # Check if stop loss should trigger
-                current_position = Position(
-                    symbol='ASSET',
-                    entry_price=position_price,
-                    shares=int(position),
-                    entry_bar=entry_bar
+                cash, position, position_price, was_stopped = self._check_stop_loss(
+                    timestamp, price, cash, position, position_price,
+                    entry_bar, bar_index, in_market_hours, trades
                 )
-
-                # Build price history for ATR-based stops (last 20 bars)
-                idx = self.price.index.get_loc(timestamp)
-                start_idx = max(0, idx - 20)
-                recent_prices = self.price.iloc[start_idx:idx+1]
-
-                # Prepare price data for check_exits
-                if self.price_data is not None:
-                    price_df = self.price_data.iloc[start_idx:idx+1]
-                else:
-                    price_df = pd.DataFrame({
-                        'close': recent_prices,
-                        'high': recent_prices,
-                        'low': recent_prices
-                    })
-
-                # Check for exits
-                exit_signals = self.risk_manager.check_exits(
-                    current_prices={'ASSET': price},
-                    current_bar=bar_index,
-                    price_data_dict={'ASSET': price_df} if price_df is not None else None
-                )
-
-                should_exit = 'ASSET' in exit_signals
-                exit_reason = exit_signals.get('ASSET', None) if should_exit else None
-
-                if should_exit and in_market_hours:
-                    # Execute stop loss exit
-                    if position > 0:
-                        # Close long position
-                        slippage_adj = price * (1 - self.slippage)
-                        proceeds = position * slippage_adj
-                        fee = proceeds * self.fees
-                        net_proceeds = proceeds - fee
-
-                        cash += net_proceeds
-
-                        pnl = net_proceeds - (position * position_price)
-                        pnl_pct = (pnl / (position * position_price)) * 100 if position_price > 0 else 0
-
-                        trade_record = {
-                            'timestamp': timestamp,
-                            'type': 'exit',
-                            'exit_reason': exit_reason,
-                            'price': price,
-                            'shares': position,
-                            'proceeds': net_proceeds,
-                            'pnl': pnl,
-                            'pnl_pct': pnl_pct
-                        }
-                        trades.append(trade_record)
-                        self._on_trade(trade_record)
-                    else:
-                        # Close short position (buy to cover)
-                        slippage_adj = price * (1 + self.slippage)
-                        cost_to_cover = abs(position) * slippage_adj
-                        fee = cost_to_cover * self.fees
-                        total_cost = cost_to_cover + fee
-
-                        proceeds_from_short = abs(position) * position_price
-                        pnl = proceeds_from_short - cost_to_cover - fee
-                        pnl_pct = (pnl / proceeds_from_short) * 100 if proceeds_from_short > 0 else 0
-
-                        cash -= total_cost
-
-                        trade_record = {
-                            'timestamp': timestamp,
-                            'type': 'cover_short',
-                            'exit_reason': exit_reason,
-                            'price': price,
-                            'shares': abs(position),
-                            'cost': total_cost,
-                            'pnl': pnl,
-                            'pnl_pct': pnl_pct
-                        }
-                        trades.append(trade_record)
-                        self._on_trade(trade_record)
-
-                    if self.risk_manager is not None:
-                        self.risk_manager.remove_position('ASSET')
-
-                    position = 0
-                    position_price = 0
+                if was_stopped:
                     entry_timestamp = None
                     entry_bar = 0
                     bars_in_position = 0
 
             # Handle strategy signals
-            # Entry signal logic:
-            # - If flat (position==0): Open long
-            # - If short (position<0): Close short and open long
-            # Exit signal logic (if allow_shorts):
-            # - If long (position>0): Close long and open short
-            # - If flat (position==0): Open short
-            # Exit signal logic (if not allow_shorts):
-            # - If long (position>0): Close long (go flat)
+            # Entry signal -> want to be LONG
+            # Exit signal -> want to be SHORT (if allow_shorts) or FLAT
 
             # Handle ENTRY signals (want to be LONG)
             if entry_signal and in_market_hours:
                 # Close short position if we have one
                 if position < 0:
-                    # Buy to cover short
-                    slippage_adj = price * (1 + self.slippage)  # Buy at higher price
-                    cost_to_cover = abs(position) * slippage_adj
-                    fee = cost_to_cover * self.fees
-                    total_cost = cost_to_cover + fee
-
-                    # P&L for short: profit when price drops
-                    # Proceeds from short = abs(position) * position_price
-                    # Cost to cover = abs(position) * price
-                    # P&L = proceeds - cost - fees
-                    proceeds_from_short = abs(position) * position_price
-                    pnl = proceeds_from_short - cost_to_cover - fee
-                    pnl_pct = (pnl / proceeds_from_short) * 100 if proceeds_from_short > 0 else 0
-
-                    cash -= total_cost
-
-                    trade_record = {
-                        'timestamp': timestamp,
-                        'type': 'cover_short',
-                        'price': price,
-                        'shares': abs(position),
-                        'cost': total_cost,
-                        'pnl': pnl,
-                        'pnl_pct': pnl_pct
-                    }
-                    trades.append(trade_record)
-                    self._on_trade(trade_record)
+                    cash, _ = self._execute_short_cover(
+                        timestamp, price, cash, position, position_price,
+                        None, trades
+                    )
 
                     if self.risk_manager is not None:
                         self.risk_manager.remove_position('ASSET')
@@ -603,109 +798,30 @@ class Portfolio(BasePortfolio):
                     entry_timestamp = None
                     entry_bar = 0
                     bars_in_position = 0
-                    # Recalculate portfolio value after closing position
                     portfolio_value = cash
 
                 # Open long position if we have cash and no position
                 if position == 0 and cash > 0:
-                    # Check portfolio constraints
-                    can_enter = True
-                    if self.risk_manager is not None:
-                        can_enter = self.risk_manager.can_open_position('ASSET', price, portfolio_value)
-
-                    if can_enter:
-                        # Calculate position size using position sizer
-                        if self.risk_config.position_sizing_method == 'volatility' and self.price_data is not None:
-                            # For volatility-based sizing, we need OHLC data
-                            shares = self.position_sizer.calculate_shares(
-                                portfolio_value=portfolio_value,
-                                price=price,
-                                price_data=self.price_data
-                            )
-                        else:
-                            # For other methods, just portfolio value and price
-                            shares = self.position_sizer.calculate_shares(
-                                portfolio_value=portfolio_value,
-                                price=price
-                            )
-
-                        # Apply slippage and fees
-                        slippage_adj = price * (1 + self.slippage)
-                        cost = shares * slippage_adj
-                        fee = cost * self.fees
-                        total_cost = cost + fee
-
-                        # Ensure we have enough cash
-                        if total_cost <= cash and shares > 0:
-                            position = shares
-                            position_price = price
-                            entry_timestamp = timestamp
-                            entry_bar = bar_index
-                            cash -= total_cost
-                            bars_in_position = 0
-
-                            trade_record = {
-                                'timestamp': timestamp,
-                                'type': 'entry',
-                                'price': price,
-                                'shares': shares,
-                                'cost': total_cost
-                            }
-                            trades.append(trade_record)
-                            self._on_trade(trade_record)
-
-                            # Register position with risk manager
-                            if self.risk_manager is not None:
-                                # Build price data DataFrame for ATR stops (last 20 bars)
-                                idx = self.price.index.get_loc(timestamp)
-                                start_idx = max(0, idx - 20)
-                                recent_price_series = self.price.iloc[start_idx:idx+1]
-
-                                # If we have full OHLCV data, use it; otherwise create from close
-                                if self.price_data is not None:
-                                    price_df = self.price_data.iloc[start_idx:idx+1]
-                                else:
-                                    # Create minimal DataFrame from close prices
-                                    price_df = pd.DataFrame({
-                                        'close': recent_price_series,
-                                        'high': recent_price_series,
-                                        'low': recent_price_series
-                                    })
-
-                                self.risk_manager.add_position(
-                                    symbol='ASSET',
-                                    entry_price=position_price,
-                                    shares=int(position),
-                                    entry_bar=entry_bar,
-                                    price_data=price_df
-                                )
+                    result = self._execute_long_entry(
+                        timestamp, price, cash, portfolio_value, bar_index, trades
+                    )
+                    new_cash, new_pos, new_price, new_bar = result
+                    if new_pos != 0:
+                        cash = new_cash
+                        position = new_pos
+                        position_price = new_price
+                        entry_timestamp = timestamp
+                        entry_bar = new_bar
+                        bars_in_position = 0
 
             # Handle EXIT signals (want to be SHORT or FLAT)
             elif exit_signal and in_market_hours:
                 # Close long position if we have one
                 if position > 0:
-                    slippage_adj = price * (1 - self.slippage)
-                    proceeds = position * slippage_adj
-                    fee = proceeds * self.fees
-                    net_proceeds = proceeds - fee
-
-                    cash += net_proceeds
-
-                    pnl = net_proceeds - (position * position_price)
-                    pnl_pct = (pnl / (position * position_price)) * 100 if position_price > 0 else 0
-
-                    trade_record = {
-                        'timestamp': timestamp,
-                        'type': 'exit',
-                        'exit_reason': 'strategy_signal',
-                        'price': price,
-                        'shares': position,
-                        'proceeds': net_proceeds,
-                        'pnl': pnl,
-                        'pnl_pct': pnl_pct
-                    }
-                    trades.append(trade_record)
-                    self._on_trade(trade_record)
+                    cash, _ = self._execute_long_exit(
+                        timestamp, price, cash, position, position_price,
+                        'strategy_signal', trades
+                    )
 
                     if self.risk_manager is not None:
                         self.risk_manager.remove_position('ASSET')
@@ -715,92 +831,26 @@ class Portfolio(BasePortfolio):
                     entry_timestamp = None
                     entry_bar = 0
                     bars_in_position = 0
-                    # Recalculate portfolio value after closing position
                     portfolio_value = cash
 
                 # Open short position if allow_shorts and we're flat
                 if position == 0 and self.allow_shorts and cash > 0:
-                    # Check portfolio constraints
-                    can_enter = True
-                    if self.risk_manager is not None:
-                        can_enter = self.risk_manager.can_open_position('ASSET', price, portfolio_value)
-
-                    if can_enter:
-                        # Calculate position size using position sizer
-                        if self.risk_config.position_sizing_method == 'volatility' and self.price_data is not None:
-                            shares = self.position_sizer.calculate_shares(
-                                portfolio_value=portfolio_value,
-                                price=price,
-                                price_data=self.price_data
-                            )
-                        else:
-                            shares = self.position_sizer.calculate_shares(
-                                portfolio_value=portfolio_value,
-                                price=price
-                            )
-
-                        # Apply slippage and fees for short entry
-                        # Short: Sell at lower price due to slippage
-                        slippage_adj = price * (1 - self.slippage)
-                        proceeds_from_short = shares * slippage_adj
-                        fee = proceeds_from_short * self.fees
-                        net_proceeds = proceeds_from_short - fee
-
-                        # For short, we receive cash (proceeds)
-                        # But we don't need to have the full amount upfront (margin)
-                        # We'll keep it simple: proceeds added to cash
-                        if shares > 0:
-                            position = -shares  # Negative position for short
-                            position_price = price  # Entry price for short
-                            entry_timestamp = timestamp
-                            entry_bar = bar_index
-                            cash += net_proceeds  # Receive proceeds from short sale
-                            bars_in_position = 0
-
-                            trade_record = {
-                                'timestamp': timestamp,
-                                'type': 'short_entry',
-                                'price': price,
-                                'shares': shares,
-                                'proceeds': net_proceeds
-                            }
-                            trades.append(trade_record)
-                            self._on_trade(trade_record)
-
-                            # Register short position with risk manager
-                            if self.risk_manager is not None:
-                                idx = self.price.index.get_loc(timestamp)
-                                start_idx = max(0, idx - 20)
-                                recent_price_series = self.price.iloc[start_idx:idx+1]
-
-                                if self.price_data is not None:
-                                    price_df = self.price_data.iloc[start_idx:idx+1]
-                                else:
-                                    price_df = pd.DataFrame({
-                                        'close': recent_price_series,
-                                        'high': recent_price_series,
-                                        'low': recent_price_series
-                                    })
-
-                                self.risk_manager.add_position(
-                                    symbol='ASSET',
-                                    entry_price=position_price,
-                                    shares=-int(shares),  # Negative for short
-                                    entry_bar=entry_bar,
-                                    price_data=price_df
-                                )
+                    result = self._execute_short_entry(
+                        timestamp, price, cash, portfolio_value, bar_index, trades
+                    )
+                    new_cash, new_pos, new_price, new_bar = result
+                    if new_pos != 0:
+                        cash = new_cash
+                        position = new_pos
+                        position_price = new_price
+                        entry_timestamp = timestamp
+                        entry_bar = new_bar
+                        bars_in_position = 0
 
             # Recalculate portfolio value after trades
-            if position > 0:
-                # Long position
-                portfolio_value = cash + (position * price)
-            elif position < 0:
-                # Short position
-                short_liability = abs(position) * (position_price - price)
-                portfolio_value = cash + short_liability
-            else:
-                # Flat
-                portfolio_value = cash
+            portfolio_value = self._calc_portfolio_value(
+                cash, position, position_price, price
+            )
             equity.append(portfolio_value)
 
         self.trades = trades
