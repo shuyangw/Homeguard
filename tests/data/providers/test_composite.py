@@ -204,3 +204,41 @@ class TestCompositeWithCache:
 
         assert result is not None
         assert provider.last_source == "cache"
+
+    @patch('src.data.providers.composite.DataCache')
+    def test_clear_cache_for_symbol(self, mock_cache_class, sample_data):
+        """Test clear_cache delegates to DataCache.clear(symbol=symbol)."""
+        mock_cache = Mock()
+        mock_cache_class.return_value = mock_cache
+
+        provider = CompositeDataProvider(
+            [MockProvider("Primary", sample_data)],
+            cache_enabled=True
+        )
+        provider.clear_cache(symbol="AAPL")
+
+        mock_cache.clear.assert_called_once_with(symbol="AAPL")
+
+    @patch('src.data.providers.composite.DataCache')
+    def test_clear_cache_all(self, mock_cache_class, sample_data):
+        """Test clear_cache without symbol clears all cached data."""
+        mock_cache = Mock()
+        mock_cache_class.return_value = mock_cache
+
+        provider = CompositeDataProvider(
+            [MockProvider("Primary", sample_data)],
+            cache_enabled=True
+        )
+        provider.clear_cache()
+
+        mock_cache.clear.assert_called_once_with()
+
+    def test_clear_cache_no_cache(self, sample_data):
+        """Test clear_cache is safe when cache is disabled."""
+        provider = CompositeDataProvider(
+            [MockProvider("Primary", sample_data)],
+            cache_enabled=False
+        )
+        # Should not raise
+        provider.clear_cache()
+        provider.clear_cache(symbol="AAPL")

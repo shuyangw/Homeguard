@@ -267,8 +267,8 @@ class CompositeDataProvider(DataProviderInterface):
         """Clear cache for symbol or all symbols."""
         if self._cache:
             if symbol:
-                self._cache.clear_symbol(symbol)
+                self._cache.clear(symbol=symbol)
                 logger.info(f"[Composite] Cleared cache for {symbol}")
             else:
-                self._cache.clear_all()
+                self._cache.clear()
                 logger.info("[Composite] Cleared all cache")
