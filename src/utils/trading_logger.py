@@ -298,7 +298,8 @@ class TradeLogWriter:
         price: float,
         order_id: Optional[str] = None,
         order_type: str = "market",
-        metadata: Optional[Dict[str, Any]] = None
+        metadata: Optional[Dict[str, Any]] = None,
+        account_snapshot: Optional[Dict[str, Any]] = None
     ) -> None:
         """
         Log a trade entry (buy or short entry).
@@ -311,6 +312,7 @@ class TradeLogWriter:
             order_id: Broker order ID for traceability
             order_type: Order type ('market', 'limit', etc.)
             metadata: Optional additional data (rank, probability, etc.)
+            account_snapshot: Optional portfolio state at time of trade
         """
         record = {
             "timestamp": tz.iso_timestamp(),
@@ -324,6 +326,8 @@ class TradeLogWriter:
             "trade_type": "entry",
             "metadata": metadata or {}
         }
+        if account_snapshot:
+            record["account_snapshot"] = account_snapshot
         self._write_record(record)
 
     def log_exit(
@@ -336,7 +340,8 @@ class TradeLogWriter:
         entry_price: Optional[float] = None,
         entry_time: Optional[str] = None,
         order_type: str = "market",
-        metadata: Optional[Dict[str, Any]] = None
+        metadata: Optional[Dict[str, Any]] = None,
+        account_snapshot: Optional[Dict[str, Any]] = None
     ) -> None:
         """
         Log a trade exit with P&L calculation.
@@ -351,6 +356,7 @@ class TradeLogWriter:
             entry_time: Original entry timestamp
             order_type: Order type ('market', 'limit', etc.)
             metadata: Optional additional data
+            account_snapshot: Optional portfolio state at time of trade
         """
         # Calculate P&L if entry price is available
         pnl_dollars = None
@@ -375,6 +381,8 @@ class TradeLogWriter:
             "pnl_pct": pnl_pct,
             "metadata": metadata or {}
         }
+        if account_snapshot:
+            record["account_snapshot"] = account_snapshot
         self._write_record(record)
 
     def _write_record(self, record: Dict[str, Any]) -> None:
