@@ -15,9 +15,10 @@ if TYPE_CHECKING:
 try:
     from utils.logger import log_error, log_warning
 except ImportError:
-    # Fallback if logger not available
-    def log_error(msg): print(f"ERROR: {msg}")
-    def log_warning(msg): print(f"WARNING: {msg}")
+    import logging as _logging
+    _fallback_logger = _logging.getLogger(__name__)
+    def log_error(msg): _fallback_logger.error(msg)
+    def log_warning(msg): _fallback_logger.warning(msg)
 
 
 class MultiSymbolChartGenerator:

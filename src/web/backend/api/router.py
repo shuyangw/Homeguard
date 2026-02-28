@@ -9,6 +9,9 @@ from src.strategies.registry import list_strategies, list_strategy_display_names
 from src.web.backend.schemas import BacktestRequest, BacktestResponse
 from src.web.backend.core.engine_wrapper import EngineWrapper, ACTIVE_RUNS
 from src.web.backend.core.cache import ConfigCache
+from src.utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 router = APIRouter()
 cache = ConfigCache()
@@ -25,7 +28,7 @@ async def get_strategies():
     try:
         strategies = list_strategies()
     except Exception as e:
-        print(f"Error listing strategies: {e}")
+        logger.error(f"Error listing strategies: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to list strategies: {str(e)}")
 
     # Categorize based on module path from registry
@@ -60,10 +63,10 @@ async def get_strategies():
                 grouped["Research"].append(info)
         except Exception as e:
             # Skip strategies that fail to load but log the error
-            print(f"Warning: Could not load strategy {strat_name}: {e}")
+            logger.warning(f"Could not load strategy {strat_name}: {e}")
             continue
 
-    print(f"Loaded {len(grouped['Production'])} production and {len(grouped['Research'])} research strategies")
+    logger.info(f"Loaded {len(grouped['Production'])} production and {len(grouped['Research'])} research strategies")
     return grouped
 
 # --- Symbols ---
@@ -71,13 +74,13 @@ async def get_strategies():
 @router.get("/symbols/lists")
 async def get_symbol_lists():
     """Get list of available CSV files in backtest_lists."""
-    print(f"Looking for symbol lists in: {BACKTEST_LISTS_DIR}")
+    logger.debug(f"Looking for symbol lists in: {BACKTEST_LISTS_DIR}")
     if not BACKTEST_LISTS_DIR.exists():
-        print(f"Directory does not exist: {BACKTEST_LISTS_DIR}")
+        logger.warning(f"Directory does not exist: {BACKTEST_LISTS_DIR}")
         return []
 
     files = [f.name for f in BACKTEST_LISTS_DIR.glob("*.csv")]
-    print(f"Found {len(files)} symbol list files")
+    logger.debug(f"Found {len(files)} symbol list files")
     return sorted(files)
 
 @router.get("/symbols/lists/{filename}")
@@ -193,4 +196,4 @@ async def websocket_endpoint(websocket: WebSocket, run_id: str):
     except WebSocketDisconnect:
         pass
     except Exception as e:
-        print(f"WebSocket error: {e}")
+        logger.error(f"WebSocket error: {e}")

@@ -320,7 +320,7 @@ class SweepRunner:
             logger.info(f"All results (sorted by {sort_by}):")
 
         logger.blank()
-        print(df_display.to_string(index=False))
+        logger.info(df_display.to_string(index=False))
         logger.blank()
 
         summary = ResultsAggregator.calculate_summary_stats(df)

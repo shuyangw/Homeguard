@@ -342,7 +342,7 @@ class CryptoDownloader:
                     f"OK: {success} | FAIL: {len(failed)} | "
                     f"Elapsed: {_format_time(elapsed)} | ETA: {_format_time(eta)}"
                 )
-                print(progress_line, flush=True)
+                logger.info(progress_line)
 
         return success, failed, total_bars
 

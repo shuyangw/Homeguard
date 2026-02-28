@@ -665,28 +665,28 @@ class OpExBacktestRunner:
 
     def print_results(self, results: OpExBacktestResults) -> None:
         """Print formatted backtest results."""
-        print("\n" + "=" * 60)
-        print("OPEX PINNING STRATEGY BACKTEST RESULTS")
-        print("=" * 60)
+        logger.info("=" * 60)
+        logger.info("OPEX PINNING STRATEGY BACKTEST RESULTS")
+        logger.info("=" * 60)
 
-        print(f"\nTrade Summary:")
-        print(f"  Total Trades: {results.total_trades}")
-        print(f"  Winning: {results.winning_trades} ({results.win_rate:.1%})")
-        print(f"  Losing: {results.losing_trades}")
+        logger.info("Trade Summary:")
+        logger.info(f"  Total Trades: {results.total_trades}")
+        logger.info(f"  Winning: {results.winning_trades} ({results.win_rate:.1%})")
+        logger.info(f"  Losing: {results.losing_trades}")
 
-        print(f"\nPnL Summary:")
-        print(f"  Total PnL: ${results.total_pnl:,.2f}")
-        print(f"  Avg Trade: ${results.avg_pnl:,.2f}")
-        print(f"  Avg Winner: ${results.avg_winner:,.2f}")
-        print(f"  Avg Loser: ${results.avg_loser:,.2f}")
-        print(f"  Profit Factor: {results.profit_factor:.2f}")
+        logger.info("PnL Summary:")
+        logger.info(f"  Total PnL: ${results.total_pnl:,.2f}")
+        logger.info(f"  Avg Trade: ${results.avg_pnl:,.2f}")
+        logger.info(f"  Avg Winner: ${results.avg_winner:,.2f}")
+        logger.info(f"  Avg Loser: ${results.avg_loser:,.2f}")
+        logger.info(f"  Profit Factor: {results.profit_factor:.2f}")
 
-        print(f"\nRisk Metrics:")
-        print(f"  Sharpe Ratio: {results.sharpe_ratio:.2f}")
-        print(f"  Max Drawdown: ${results.max_drawdown:,.2f} ({results.max_drawdown_pct:.1%})")
+        logger.info("Risk Metrics:")
+        logger.info(f"  Sharpe Ratio: {results.sharpe_ratio:.2f}")
+        logger.info(f"  Max Drawdown: ${results.max_drawdown:,.2f} ({results.max_drawdown_pct:.1%})")
 
-        print(f"\nPhase Breakdown:")
-        print(f"  PINNING: {results.pinning_trades} trades, {results.pinning_win_rate:.1%} win rate")
-        print(f"  POST_OPEX: {results.post_opex_trades} trades, {results.post_opex_win_rate:.1%} win rate")
+        logger.info("Phase Breakdown:")
+        logger.info(f"  PINNING: {results.pinning_trades} trades, {results.pinning_win_rate:.1%} win rate")
+        logger.info(f"  POST_OPEX: {results.post_opex_trades} trades, {results.post_opex_win_rate:.1%} win rate")
 
-        print("=" * 60)
+        logger.info("=" * 60)

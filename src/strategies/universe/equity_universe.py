@@ -6,6 +6,10 @@ Organized lists of stock symbols for different categories.
 
 from typing import List
 
+from src.utils.logger import get_logger
+
+logger = get_logger(__name__)
+
 
 class EquityUniverse:
     """
@@ -237,8 +241,8 @@ class EquityUniverse:
 
         except Exception as e:
             # Fallback to a static list if internet is unavailable
-            print(f"Warning: Failed to load S&P 500 from Wikipedia: {e}")
-            print("Using fallback mega cap list")
+            logger.warning(f"Failed to load S&P 500 from Wikipedia: {e}")
+            logger.warning("Using fallback mega cap list")
             return cls.MEGA_CAP
 
     @classmethod
@@ -265,7 +269,7 @@ class EquityUniverse:
             return cls.MEGA_CAP_TECH
 
         except Exception as e:
-            print(f"Warning: Failed to load Nasdaq 100: {e}")
+            logger.warning(f"Failed to load Nasdaq 100: {e}")
             return cls.MEGA_CAP_TECH
 
     @classmethod

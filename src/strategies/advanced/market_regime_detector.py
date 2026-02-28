@@ -414,15 +414,15 @@ class MarketRegimeDetector:
         plt.tight_layout()
         plt.show()
 
-        # Print regime statistics
-        print("\nRegime Distribution:")
-        print("-" * 40)
+        # Log regime statistics
+        logger.info("Regime Distribution:")
+        logger.info("-" * 40)
         regime_counts = regime_history['regime'].value_counts()
         for regime, count in regime_counts.items():
             pct = count / len(regime_history) * 100
-            print(f"{regime:15} {count:5} days ({pct:5.1f}%)")
+            logger.info(f"{regime:15} {count:5} days ({pct:5.1f}%)")
 
-        print(f"\nAverage Confidence: {regime_history['confidence'].mean():.3f}")
+        logger.info(f"Average Confidence: {regime_history['confidence'].mean():.3f}")
 
 
 def test_regime_detector():

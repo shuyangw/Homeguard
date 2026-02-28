@@ -185,9 +185,7 @@ class PaperTradingBot:
             self.stop_trading()
 
         except Exception as e:
-            logger.error(f"\nError in trading loop: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.error(f"Error in trading loop: {e}", exc_info=True)
             self.stop_trading()
 
     def stop_trading(self) -> None:
@@ -323,9 +321,7 @@ class PaperTradingBot:
             return True  # Completed successfully
 
         except Exception as e:
-            logger.error(f"Error executing entry signals: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.error(f"Error executing entry signals: {e}", exc_info=True)
             return False  # Allow retry on error
 
     def _execute_exit_signals(self) -> None:
@@ -370,9 +366,7 @@ class PaperTradingBot:
             logger.success(f"Executed {executed_count}/{len(signals)} exit signals")
 
         except Exception as e:
-            logger.error(f"Error executing exit signals: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.error(f"Error executing exit signals: {e}", exc_info=True)
 
     def _monitor_positions(self) -> None:
         """Monitor open positions and check stop-losses."""
@@ -539,9 +533,7 @@ class PaperTradingBot:
                     logger.error(f"  Failed to fetch minute data: {e}")
 
         except Exception as e:
-            logger.error(f"Error fetching market data: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.error(f"Error fetching market data: {e}", exc_info=True)
 
         logger.info(f"Fetched data for {len(market_data)} symbols")
         return market_data

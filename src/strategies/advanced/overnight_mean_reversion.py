@@ -392,15 +392,15 @@ class OvernightMeanReversionStrategy(BaseStrategy):
         plt.tight_layout()
         plt.show()
 
-        # Print summary
+        # Log summary
         stats = self.get_performance_stats()
-        print("\nPerformance Summary")
-        print("="*50)
-        print(f"Total Trades: {stats['total_trades']}")
-        print(f"Win Rate: {stats['win_rate']:.1%}")
-        print(f"Average Return: {stats['avg_return']:.3%}")
-        print(f"Total Return: {stats['total_return']:.1%}")
-        print(f"Sharpe Ratio: {stats['sharpe_ratio']:.2f}")
+        logger.info("Performance Summary")
+        logger.info("=" * 50)
+        logger.info(f"Total Trades: {stats['total_trades']}")
+        logger.info(f"Win Rate: {stats['win_rate']:.1%}")
+        logger.info(f"Average Return: {stats['avg_return']:.3%}")
+        logger.info(f"Total Return: {stats['total_return']:.1%}")
+        logger.info(f"Sharpe Ratio: {stats['sharpe_ratio']:.2f}")
 
 
 def test_overnight_strategy():

@@ -97,13 +97,11 @@ class OvernightReversionSignals:
         # Clear signal generation start marker
         start_msg = f"=== SIGNAL GENERATION START: {timestamp.strftime('%Y-%m-%d %H:%M:%S')} ==="
         logger.info(start_msg)
-        print(f"\n{start_msg}", flush=True)
 
         # Log model status
         model_symbols = len(self.bayesian_model.regime_probabilities) if self.bayesian_model.trained else 0
         model_status = f"Bayesian model: {'LOADED' if self.bayesian_model.trained else 'NOT TRAINED'} ({model_symbols} symbols)"
         logger.info(model_status)
-        print(f"[MODEL] {model_status}", flush=True)
 
         # Get current market regime
         spy_data = market_data.get('SPY')
@@ -124,8 +122,6 @@ class OvernightReversionSignals:
         # Log regime detection results (INFO level, always visible)
         regime_msg = f"REGIME DETECTION: {regime} (confidence: {regime_confidence:.2f}) | SPY: ${current_spy:.2f} | VIX: {current_vix:.2f}"
         logger.info(regime_msg)
-        # Force immediate console output for regime detection
-        print(f"[REGIME] {regime_msg}", flush=True)
 
         # CRITICAL: Skip trading in BEAR regime (negative edge, causes catastrophic losses)
         if self.skip_bear_regime and regime == 'BEAR':
@@ -134,8 +130,6 @@ class OvernightReversionSignals:
                 f"(BEAR has -1.31 Sharpe, SPY=${current_spy:.2f}, VIX={current_vix:.2f})"
             )
             logger.warning(bear_msg)
-            # Force immediate console output for critical trade blocking
-            print(f"[WARNING] {bear_msg}", flush=True)
             return []
 
         # Get regime-specific parameters
@@ -197,7 +191,6 @@ class OvernightReversionSignals:
             f"({signals_before_limit} candidates -> top {len(signals)} by signal strength)"
         )
         logger.info(summary_msg)
-        print(f"[SIGNALS] {summary_msg}", flush=True)
 
         return signals
 
@@ -557,20 +550,20 @@ def create_signal_dashboard(backtest_results: pd.DataFrame):
     plt.tight_layout()
     plt.show()
 
-    # Print summary statistics
-    print("\nSignal Performance Summary")
-    print("="*60)
-    print(f"Total Signals: {len(backtest_results)}")
-    print(f"Overall Win Rate: {backtest_results['profitable'].mean():.1%}")
-    print(f"Average Return: {backtest_results['actual_return'].mean():.3%}")
-    print(f"Sharpe Ratio: {backtest_results['actual_return'].mean() / backtest_results['actual_return'].std() * np.sqrt(252):.2f}")
+    # Log summary statistics
+    logger.info("Signal Performance Summary")
+    logger.info("=" * 60)
+    logger.info(f"Total Signals: {len(backtest_results)}")
+    logger.info(f"Overall Win Rate: {backtest_results['profitable'].mean():.1%}")
+    logger.info(f"Average Return: {backtest_results['actual_return'].mean():.3%}")
+    logger.info(f"Sharpe Ratio: {backtest_results['actual_return'].mean() / backtest_results['actual_return'].std() * np.sqrt(252):.2f}")
 
-    print("\nTop Performing Symbols:")
+    logger.info("Top Performing Symbols:")
     symbol_perf = backtest_results.groupby('symbol').agg({
         'actual_return': 'mean',
         'profitable': 'mean'
     }).sort_values('actual_return', ascending=False).head(10)
-    print(symbol_perf)
+    logger.info(f"\n{symbol_perf}")
 
 
 if __name__ == "__main__":
