@@ -7,11 +7,11 @@ Out-of-the-box script - just run: python scripts/download_crypto.py
 All 18 USD pairs are hardcoded (no stablecoins). Data is saved to the
 local_storage_dir specified in settings.ini in hive-partitioned format.
 
+Uses the unified data acquisition module (src.data.acquisition).
+
 Usage:
     python scripts/download_crypto.py                    # Download all 18 pairs, minute data
     python scripts/download_crypto.py --skip-existing    # Skip already downloaded
-    python scripts/download_crypto.py --timeframe hour   # Hourly data instead
-    python scripts/download_crypto.py --timeframe day    # Daily data instead
     python scripts/download_crypto.py --start 2022-01-01 # Custom start date
 """
 
@@ -23,7 +23,10 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from src.data.crypto_downloader import CryptoDownloader, Timeframe
+from src.data.acquisition import DataAcquisitionManager
+from src.utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 # All 18 USD pairs (no stablecoins) - runs without any arguments
 DEFAULT_CRYPTO_PAIRS = [
@@ -48,45 +51,16 @@ DEFAULT_CRYPTO_PAIRS = [
 ]
 
 
-def parse_timeframe(value: str) -> Timeframe:
-    """Parse timeframe string to Timeframe enum."""
-    value = value.lower().strip()
-
-    minute_aliases = ['minute', 'min', '1min', '1m', 'm']
-    hour_aliases = ['hour', 'hourly', '1hour', '1h', 'h']
-    day_aliases = ['day', 'daily', '1day', '1d', 'd']
-
-    if value in minute_aliases:
-        return Timeframe.MINUTE
-    elif value in hour_aliases:
-        return Timeframe.HOUR
-    elif value in day_aliases:
-        return Timeframe.DAY
-    else:
-        raise ValueError(
-            f"Invalid timeframe: '{value}'. "
-            f"Use: minute, hour, or day"
-        )
-
-
 def main():
     parser = argparse.ArgumentParser(
         description='Download crypto USD pairs from Alpaca API.',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-    python scripts/download_crypto.py                    # Download all pairs, minute data
+    python scripts/download_crypto.py                    # Download all pairs
     python scripts/download_crypto.py --skip-existing    # Skip already downloaded
-    python scripts/download_crypto.py --timeframe hour   # Hourly data
     python scripts/download_crypto.py --start 2022-01-01 # Custom start date
         """
-    )
-
-    parser.add_argument(
-        '--timeframe', '-t',
-        type=str,
-        default='minute',
-        help='Data timeframe: minute (default), hour, or day'
     )
 
     parser.add_argument(
@@ -98,7 +72,7 @@ Examples:
     parser.add_argument(
         '--start',
         type=str,
-        default=None,
+        default='2020-01-01',
         help='Start date in YYYY-MM-DD format (default: 2020-01-01)'
     )
 
@@ -118,44 +92,35 @@ Examples:
 
     args = parser.parse_args()
 
-    # Parse timeframe
-    try:
-        timeframe = parse_timeframe(args.timeframe)
-    except ValueError as e:
-        print(f"Error: {e}")
-        sys.exit(1)
+    # Download using the unified acquisition module
+    manager = DataAcquisitionManager()
 
-    # Create downloader
-    downloader = CryptoDownloader(
+    logger.info(f"Downloading {len(DEFAULT_CRYPTO_PAIRS)} crypto USD pairs...")
+    logger.info(f"Pairs: {', '.join(DEFAULT_CRYPTO_PAIRS)}")
+
+    result = manager.download(
+        source="crypto",
+        symbols=DEFAULT_CRYPTO_PAIRS,
         start_date=args.start,
         end_date=args.end,
+        skip_existing=args.skip_existing,
         num_threads=args.threads,
     )
 
-    # Download all pairs
-    print(f"\nDownloading {len(DEFAULT_CRYPTO_PAIRS)} crypto USD pairs...")
-    print(f"Pairs: {', '.join(DEFAULT_CRYPTO_PAIRS)}\n")
-
-    result = downloader.download_symbols(
-        symbols=DEFAULT_CRYPTO_PAIRS,
-        timeframe=timeframe,
-        skip_existing=args.skip_existing,
-    )
-
     # Print summary
-    print("\n" + "=" * 60)
-    print("DOWNLOAD COMPLETE")
-    print("=" * 60)
-    print(f"Succeeded: {result.succeeded}/{result.total_symbols}")
-    print(f"Failed: {result.failed}")
-    print(f"Total bars: {result.total_bars:,}")
-    print(f"Success rate: {result.success_rate:.1f}%")
-    print(f"Time elapsed: {result.elapsed_seconds:.1f}s")
+    logger.info("=" * 60)
+    logger.info("DOWNLOAD COMPLETE")
+    logger.info("=" * 60)
+    logger.info(f"Succeeded: {result.succeeded}/{result.total_symbols}")
+    logger.info(f"Failed: {result.failed}")
+    logger.info(f"Total rows: {result.total_rows:,}")
+    logger.info(f"Success rate: {result.success_rate:.1f}%")
+    logger.info(f"Time elapsed: {result.elapsed_seconds:.1f}s")
 
     if result.failed > 0:
-        print("\nFailed symbols:")
+        logger.info("Failed symbols:")
         for sym, err in result.failed_symbols:
-            print(f"  {sym}: {err}")
+            logger.info(f"  {sym}: {err}")
         sys.exit(1)
 
     sys.exit(0)

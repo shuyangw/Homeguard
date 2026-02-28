@@ -1,8 +1,8 @@
 """
 Generic Stock Data Downloader CLI.
 
-Download minute/hourly/daily OHLCV data from Alpaca API for any list of symbols.
-Supports multiple input methods and enforces canonical schema.
+Download minute OHLCV data from Alpaca API for any list of symbols.
+Uses the unified data acquisition module (src.data.acquisition).
 
 Usage:
     # Download specific symbols
@@ -19,12 +19,6 @@ Usage:
 
     # Custom date range
     python scripts/download_symbols.py --symbols SPY,QQQ --start 2020-01-01 --end 2024-12-31
-
-    # Download hourly data
-    python scripts/download_symbols.py --csv etfs.csv --timeframe hour
-
-    # Download daily data
-    python scripts/download_symbols.py --csv sp500.csv --timeframe day --skip-existing
 """
 
 import sys
@@ -37,7 +31,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 import pandas as pd
 
-from src.data.downloader import AlpacaDownloader, Timeframe
+from src.data.acquisition import DataAcquisitionManager
 from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -86,26 +80,6 @@ def load_symbols_from_file(file_path: Path) -> list:
     return symbols
 
 
-def parse_timeframe(timeframe_str: str) -> Timeframe:
-    """Parse timeframe string to Timeframe enum."""
-    timeframe_map = {
-        'minute': Timeframe.MINUTE,
-        'min': Timeframe.MINUTE,
-        '1min': Timeframe.MINUTE,
-        'hour': Timeframe.HOUR,
-        'hourly': Timeframe.HOUR,
-        '1hour': Timeframe.HOUR,
-        'day': Timeframe.DAY,
-        'daily': Timeframe.DAY,
-        '1day': Timeframe.DAY,
-    }
-    key = timeframe_str.lower()
-    if key not in timeframe_map:
-        valid = ', '.join(sorted(set(timeframe_map.keys())))
-        raise ValueError(f"Invalid timeframe '{timeframe_str}'. Valid options: {valid}")
-    return timeframe_map[key]
-
-
 def main():
     parser = argparse.ArgumentParser(
         description='Download historical OHLCV data from Alpaca API',
@@ -114,7 +88,7 @@ def main():
 Examples:
   python scripts/download_symbols.py --symbols AAPL,MSFT,GOOGL
   python scripts/download_symbols.py --csv backtest_lists/sp500-2025.csv --skip-existing
-  python scripts/download_symbols.py --file symbols.txt --timeframe hour
+  python scripts/download_symbols.py --file symbols.txt
   python scripts/download_symbols.py --symbols SPY,QQQ --start 2020-01-01 --end 2024-12-31
         """
     )
@@ -138,12 +112,6 @@ Examples:
     )
 
     # Optional arguments
-    parser.add_argument(
-        '--timeframe', '-t',
-        type=str,
-        default='minute',
-        help='Data timeframe: minute (default), hour, or day'
-    )
     parser.add_argument(
         '--skip-existing',
         action='store_true',
@@ -207,13 +175,6 @@ Examples:
             unique_symbols.append(s)
     symbols = unique_symbols
 
-    # Parse timeframe
-    try:
-        timeframe = parse_timeframe(args.timeframe)
-    except ValueError as e:
-        logger.error(str(e))
-        sys.exit(1)
-
     # Validate dates
     try:
         start_dt = datetime.strptime(args.start, '%Y-%m-%d')
@@ -225,17 +186,15 @@ Examples:
         logger.error(f"Invalid date format: {e}")
         sys.exit(1)
 
-    # Create downloader and run
-    downloader = AlpacaDownloader(
+    # Download using the unified acquisition module
+    manager = DataAcquisitionManager()
+    result = manager.download(
+        source="equities",
+        symbols=symbols,
         start_date=args.start,
         end_date=args.end,
-        num_threads=args.threads,
-    )
-
-    result = downloader.download_symbols(
-        symbols=symbols,
-        timeframe=timeframe,
         skip_existing=args.skip_existing,
+        num_threads=args.threads,
     )
 
     # Exit with error code if there were failures

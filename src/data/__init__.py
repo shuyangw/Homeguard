@@ -2,10 +2,11 @@
 Data Package.
 
 Contains modules for market data acquisition and management.
+
+Data downloading is handled by the unified acquisition module:
+    from src.data.acquisition import DataAcquisitionManager
 """
 
-from src.data.downloader import AlpacaDownloader, DownloadResult, Timeframe
-from src.data.crypto_downloader import CryptoDownloader
 from src.data.news import (
     NewsDownloader,
     NewsDownloadResult,
@@ -17,11 +18,6 @@ from src.data.news import (
 )
 
 __all__ = [
-    # Market Data
-    'AlpacaDownloader',
-    'CryptoDownloader',
-    'DownloadResult',
-    'Timeframe',
     # News
     'NewsDownloader',
     'NewsDownloadResult',

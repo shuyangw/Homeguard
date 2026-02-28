@@ -1,14 +1,14 @@
 """
 Symbol downloader utility for GUI - downloads missing symbols from Alpaca API.
+
+Uses the unified data acquisition module (src.data.acquisition) for downloading
+and storage in canonical hive-partitioned parquet format.
 """
 
 from typing import List, Callable, Optional
 from datetime import datetime, timedelta
-from alpaca.data import TimeFrame
-from alpaca.data.enums import DataFeed
 
-from src.data_engine.api.alpaca_client import AlpacaClient
-from src.data_engine.storage.parquet_storage import ParquetStorage
+from src.data.acquisition import DataAcquisitionManager
 from gui.utils.error_logger import log_info, log_error, log_exception
 
 
@@ -16,19 +16,12 @@ class SymbolDownloader:
     """
     Downloads missing symbols from Alpaca API and stores them in parquet format.
 
-    Uses IEX feed by default for free tier compatibility.
+    Uses the unified DataAcquisitionManager with the 'equities' plugin.
     """
 
-    def __init__(self, feed: DataFeed = DataFeed.IEX):
-        """
-        Initialize symbol downloader.
-
-        Args:
-            feed: Data feed to use (default: DataFeed.IEX for free tier)
-        """
-        self.feed = feed
-        self.api_client = None
-        self.storage = None
+    def __init__(self):
+        """Initialize symbol downloader."""
+        self.manager = DataAcquisitionManager()
 
     def download_symbols(
         self,
@@ -52,62 +45,42 @@ class SymbolDownloader:
         if not symbols:
             return {'successful': [], 'failed': []}
 
-        # Initialize clients
-        try:
-            self.api_client = AlpacaClient(feed=self.feed)
-            self.storage = ParquetStorage()
-        except Exception as e:
-            log_exception(e, "Failed to initialize download clients")
-            return {
-                'successful': [],
-                'failed': [(sym, f"Initialization error: {str(e)}") for sym in symbols]
-            }
-
-        successful = []
-        failed = []
         total = len(symbols)
-
-        log_info(f"Downloading {total} missing symbols from Alpaca IEX feed")
+        log_info(f"Downloading {total} missing symbols via acquisition module")
         log_info(f"Date range: {start_date} to {end_date}")
 
-        for idx, symbol in enumerate(symbols, start=1):
-            try:
-                # Update progress
-                if progress_callback:
-                    progress_callback(symbol, idx, total)
+        try:
+            result = self.manager.download(
+                source="equities",
+                symbols=symbols,
+                start_date=start_date,
+                end_date=end_date,
+            )
+        except Exception as e:
+            log_exception(e, "Failed to download symbols")
+            return {
+                'successful': [],
+                'failed': [(sym, f"Download error: {str(e)}") for sym in symbols]
+            }
 
-                log_info(f"[{idx}/{total}] Downloading {symbol}...")
+        # Convert DownloadResult to the dict format expected by the GUI
+        successful = []
+        failed_list = list(result.failed_symbols)
 
-                # Fetch data from Alpaca
-                data = self.api_client.fetch_bars(
-                    symbol=symbol,
-                    start_date_str=start_date,
-                    end_date_str=end_date,
-                    timeframe=TimeFrame.Minute,
-                    feed=self.feed
-                )
+        # Determine which symbols succeeded (those not in failed list)
+        failed_symbol_names = {sym for sym, _ in failed_list}
+        successful = [s for s in symbols if s not in failed_symbol_names]
 
-                if data.empty:
-                    error_msg = "No data returned from API (symbol may not exist on IEX)"
-                    log_error(f"{symbol}: {error_msg}")
-                    failed.append((symbol, error_msg))
-                    continue
+        # Fire progress callback for each symbol if provided
+        if progress_callback:
+            for idx, symbol in enumerate(symbols, start=1):
+                progress_callback(symbol, idx, total)
 
-                # Store to parquet
-                self.storage.store(data, TimeFrame.Minute)
-                log_info(f"{symbol}: Downloaded {len(data)} bars")
-                successful.append(symbol)
-
-            except Exception as e:
-                error_msg = str(e)
-                log_error(f"{symbol}: Failed - {error_msg}")
-                failed.append((symbol, error_msg))
-
-        log_info(f"Download complete: {len(successful)} successful, {len(failed)} failed")
+        log_info(f"Download complete: {len(successful)} successful, {len(failed_list)} failed")
 
         return {
             'successful': successful,
-            'failed': failed
+            'failed': failed_list
         }
 
     def download_symbol_for_date_range(
