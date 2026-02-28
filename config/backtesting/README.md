@@ -1,45 +1,41 @@
 # Backtesting Configuration Files
 
-This directory contains YAML configuration files for running backtests.
+One canonical YAML config per strategy. Parameter sweeps and research variants go in `scratch/` (gitignored).
 
-## Production Configs (Root Level)
-
-These configs are actively used or referenced in production code:
+## Canonical Configs
 
 | Config | Strategy | Description |
 |--------|----------|-------------|
-| `omr_backtest.yaml` | OMR (Overnight Mean Reversion) | Production config for leveraged ETF overnight strategy |
-| `ma_single.yaml` | Moving Average | Example single-symbol MA crossover config |
-| `ma_sweep.yaml` | Moving Average | Parameter sweep for MA optimization |
-| `orb_baseline.yaml` | ORB (Opening Range Breakout) | Baseline config for ORB strategy |
-| `orb_single.yaml` | ORB | Single-symbol ORB config |
-| `ict_production.yaml` | ICT/SMC | Production config for ICT strategy |
+| `omr_backtest.yaml` | OMR | Overnight Mean Reversion on leveraged ETFs |
+| `orb_baseline.yaml` | ORB | Opening Range Breakout |
+| `hv_orb_baseline.yaml` | HV ORB | High Volatility ORB (Stocks in Play) |
+| `ict_production.yaml` | ICT/SMC | Smart Money Concepts / ICT |
+| `bmsb_crypto.yaml` | BMSB | Bull Market Support Band (crypto) |
+| `ml_crypto_mr_baseline.yaml` | ML Crypto MR | ML-based Crypto Mean Reversion |
+| `hurst_mr_baseline.yaml` | Hurst MR | Hurst Exponent Mean Reversion |
+| `cscm_baseline.yaml` | CSCM | Cross-Sectional Crypto Momentum |
+| `dsts_btc.yaml` | DSTS | Dual Signal Trend Sentinel |
+| `frs_crypto.yaml` | FRS | Fractal Regime Switching |
+| `evr_crypto.yaml` | EVR | Effort vs Result (Volume Spread Analysis) |
+| `opex_pinning.yaml` | OpEx | Options Expiration Pinning |
+| `ma_single.yaml` | MA | Moving Average Crossover (reference/example) |
 
 ## Usage
 
-Run backtests using the config-driven runner:
-
 ```bash
-# Single backtest
 python -m src.backtest_runner --config config/backtesting/omr_backtest.yaml
-
-# Parameter sweep
-python -m src.backtest_runner --config config/backtesting/ma_sweep.yaml --mode sweep
 ```
 
-## Experimental Configs
+## Scratch Configs
 
-The `experimental/` subdirectory contains:
+The `scratch/` subdirectory is **gitignored** and holds:
 - Parameter sweep variants
 - Optimization experiments
-- Test configurations
-- Strategy variants being researched
+- Research configurations
 
-These are NOT referenced in production code and may be incomplete or outdated.
+If a scratch config proves valuable, promote it here as the new canonical config.
 
 ## Config Schema
-
-All configs should follow this structure:
 
 ```yaml
 strategy:
@@ -55,7 +51,7 @@ backtest:
 
 data:
   timeframe: minute | hour | day
-  source: streaming  # Use StreamingDataLoader
+  source: streaming
 
 engine:
   initial_capital: 100000
@@ -72,9 +68,3 @@ optimization:  # Optional - for sweep mode
   param_grid:
     param_name: [val1, val2, val3]
 ```
-
-## Adding New Configs
-
-1. Production configs: Add to root level with clear naming
-2. Experimental configs: Add to `experimental/` subdirectory
-3. Update this README when adding production configs

@@ -373,6 +373,18 @@ Pylance/VectorBT type annotation patterns.
 
 **CRITICAL**: Always assume something can go wrong. Be realistic, not optimistic.
 
+### Read Directory Documentation Before Exploring Code
+**CRITICAL**: When entering any directory to understand or modify code, ALWAYS check for documentation first.
+- Look for `README.md`, `__init__.py` docstrings, or module-level docs in/near the directory
+- Read these BEFORE diving into individual source files
+- Directory-level docs explain the "why" and architecture; source files show the "how"
+- This prevents misunderstanding module purpose, duplicating existing functionality, or breaking conventions
+
+**Order of exploration:**
+1. `README.md` or `*.md` docs in the directory
+2. `__init__.py` (module docstring + public API / exports)
+3. Individual source files as needed
+
 ### Verification Over Assumption
 - **Never assume code works** - always run and verify
 - **Never assume tests pass** - run the full test suite after changes
