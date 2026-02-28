@@ -13,6 +13,7 @@ from typing import Dict, Optional, Tuple, List
 import pandas as pd
 import numpy as np
 
+from src.strategies.advanced.orb_indicators import ORBIndicators
 from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -323,50 +324,25 @@ class HVORBIndicators:
         """
         Calculate opening range (high, low, height) from minute data.
 
+        Delegates to ORBIndicators.opening_range() with timezone conversion
+        and volume inclusion enabled.
+
         Args:
             df: DataFrame with OHLCV data for a SINGLE DAY
             start_time: Opening range start (default 9:30 AM)
             end_time: Opening range end (default 9:35 AM for 5-min OR)
 
         Returns:
-            Dict with keys: 'or_high', 'or_low', 'or_height', 'or_midpoint'
-            Returns empty dict if insufficient data.
+            Dict with keys: 'or_high', 'or_low', 'or_height', 'or_midpoint',
+            'or_volume'. Returns empty dict if insufficient data.
         """
-        if df.empty:
-            return {}
-
-        # Ensure index is datetime
-        if not isinstance(df.index, pd.DatetimeIndex):
-            logger.warning("DataFrame index is not DatetimeIndex")
-            return {}
-
-        # Convert to Eastern Time for proper market hour comparisons
-        if df.index.tz is not None:
-            et_index = df.index.tz_convert('America/New_York')
-        else:
-            et_index = df.index.tz_localize('UTC').tz_convert('America/New_York')
-
-        # Filter to opening range time window (using ET times)
-        idx_time = et_index.time
-        or_mask = (idx_time >= start_time) & (idx_time < end_time)
-        or_data = df[or_mask]
-
-        if or_data.empty:
-            return {}
-
-        or_high = or_data['high'].max()
-        or_low = or_data['low'].min()
-        or_height = or_high - or_low
-        or_midpoint = (or_high + or_low) / 2
-        or_volume = or_data['volume'].sum() if 'volume' in or_data.columns else 0.0
-
-        return {
-            'or_high': or_high,
-            'or_low': or_low,
-            'or_height': or_height,
-            'or_midpoint': or_midpoint,
-            'or_volume': or_volume
-        }
+        return ORBIndicators.opening_range(
+            df,
+            start_time=start_time,
+            end_time=end_time,
+            convert_to_et=True,
+            include_volume=True,
+        )
 
     @staticmethod
     def confidence_score(

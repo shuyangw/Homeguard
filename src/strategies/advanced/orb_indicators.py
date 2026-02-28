@@ -35,18 +35,29 @@ class ORBIndicators:
         df: pd.DataFrame,
         start_time: time = time(9, 30),
         end_time: time = time(9, 45),
+        convert_to_et: bool = False,
+        include_volume: bool = False,
     ) -> Dict[str, float]:
         """
         Calculate opening range (high, low, height) from minute data.
+
+        This is the shared base implementation used by both ORB and HV ORB
+        strategies. HV ORB calls this with convert_to_et=True and
+        include_volume=True.
 
         Args:
             df: DataFrame with OHLCV data for a SINGLE DAY.
                 Must have 'high', 'low' columns and DatetimeIndex.
             start_time: Opening range start (default 9:30 AM)
             end_time: Opening range end (default 9:45 AM)
+            convert_to_et: If True, convert index to Eastern Time before
+                filtering. Use when index may be in UTC or another timezone.
+            include_volume: If True, include 'or_volume' (sum of volume
+                in the opening range) in the returned dict.
 
         Returns:
             Dict with keys: 'or_high', 'or_low', 'or_height', 'or_midpoint'
+            (and 'or_volume' if include_volume=True).
             Returns empty dict if insufficient data.
         """
         if df.empty:
@@ -57,8 +68,18 @@ class ORBIndicators:
             logger.warning("DataFrame index is not DatetimeIndex")
             return {}
 
+        # Optionally convert to Eastern Time for proper market hour comparisons
+        if convert_to_et:
+            if df.index.tz is not None:
+                idx_time = df.index.tz_convert('America/New_York').time
+            else:
+                idx_time = df.index.tz_localize('UTC').tz_convert(
+                    'America/New_York'
+                ).time
+        else:
+            idx_time = df.index.time
+
         # Filter to opening range time window
-        idx_time = df.index.time
         or_mask = (idx_time >= start_time) & (idx_time < end_time)
         or_data = df[or_mask]
 
@@ -70,12 +91,21 @@ class ORBIndicators:
         or_height = or_high - or_low
         or_midpoint = (or_high + or_low) / 2
 
-        return {
+        result = {
             'or_high': or_high,
             'or_low': or_low,
             'or_height': or_height,
             'or_midpoint': or_midpoint
         }
+
+        if include_volume:
+            result['or_volume'] = (
+                or_data['volume'].sum()
+                if 'volume' in or_data.columns
+                else 0.0
+            )
+
+        return result
 
     @staticmethod
     def opening_range_by_day(
