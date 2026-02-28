@@ -220,8 +220,7 @@ class MockBroker(BrokerInterface):
             'order_type': order_type.value,
             'status': OrderStatus.FILLED.value,
             'filled_qty': quantity,
-            'filled_avg_price': fill_price,  # Matches interface spec
-            'avg_fill_price': fill_price,    # Alias for compatibility
+            'filled_avg_price': fill_price,
             'limit_price': limit_price,
             'stop_price': stop_price,
             'time_in_force': time_in_force.value,

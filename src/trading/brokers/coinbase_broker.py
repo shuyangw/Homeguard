@@ -292,7 +292,7 @@ class CoinbaseBroker(CryptoTradingInterface, AccountInterface):
                 'limit_price': limit_price,
                 'created_at': datetime.now(),
                 'filled_qty': Decimal('0'),
-                'avg_fill_price': 0.0,
+                'filled_avg_price': 0.0,
                 'fees': 0.0,
             }
 
@@ -457,7 +457,7 @@ class CoinbaseBroker(CryptoTradingInterface, AccountInterface):
             'limit_price': float(order.get('limit_price', 0) or 0),
             'created_at': order.get('created_time'),
             'filled_qty': Decimal(order.get('filled_size', '0')),
-            'avg_fill_price': float(order.get('average_filled_price', 0) or 0),
+            'filled_avg_price': float(order.get('average_filled_price', 0) or 0),
             'fees': float(order.get('total_fees', 0) or 0),
         }
 

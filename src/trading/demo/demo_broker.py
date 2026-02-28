@@ -306,7 +306,7 @@ class DemoBroker(CryptoTradingInterface):
             "created_at": execution.timestamp,
             "filled_at": execution.timestamp,
             "filled_qty": quantity,
-            "avg_fill_price": execution.fill_price,
+            "filled_avg_price": execution.fill_price,
             "fees": execution.fees,
             "slippage_cost": execution.slippage_cost,
             "latency_ms": execution.latency_ms,

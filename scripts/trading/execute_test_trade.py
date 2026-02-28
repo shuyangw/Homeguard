@@ -131,7 +131,7 @@ def main():
             logger.info(f"  Filled Qty: {order_status.get('filled_qty', 0)}")
 
             if order_status.get('filled_qty', 0) > 0:
-                logger.info(f"  Filled Price: ${order_status.get('avg_fill_price', 0):.2f}")
+                logger.info(f"  Filled Price: ${order_status.get('filled_avg_price', 0):.2f}")
                 logger.success("Order filled successfully!")
             else:
                 logger.warning("Order not yet filled (may be queued if market is closed)")

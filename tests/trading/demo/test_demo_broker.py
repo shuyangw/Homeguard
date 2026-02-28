@@ -134,7 +134,7 @@ class TestOrderPlacement:
         assert "quantity" in order
         assert "side" in order
         assert "status" in order
-        assert "avg_fill_price" in order
+        assert "filled_avg_price" in order
 
     def test_order_has_execution_details(self, broker_with_price):
         """Order includes execution details."""

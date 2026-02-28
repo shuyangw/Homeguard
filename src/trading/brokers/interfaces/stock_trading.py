@@ -85,7 +85,7 @@ class StockTradingInterface(OrderManagementInterface):
                 - stop_price (float): Stop price (if applicable)
                 - created_at (datetime): Order creation time
                 - filled_qty (int): Filled quantity
-                - avg_fill_price (float): Average fill price
+                - filled_avg_price (float): Average fill price
 
         Raises:
             BrokerConnectionError: If broker connection fails

@@ -87,7 +87,7 @@ try:
             side = order.get('side', 'unknown')
             qty = order.get('filled_qty', order.get('quantity', 0))
             symbol = order.get('symbol', '?')
-            price = order.get('avg_fill_price', 0)
+            price = order.get('filled_avg_price', 0)
             print(f'  {side.upper():<4} {float(qty):.6f} {symbol} @ \${price:,.2f}')
     else:
         print('No trades executed (portfolio already balanced or in cash regime)')

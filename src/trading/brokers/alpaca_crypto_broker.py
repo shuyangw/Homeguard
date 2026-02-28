@@ -275,7 +275,7 @@ class AlpacaCryptoBroker(CryptoTradingInterface, AccountInterface):
                 'limit_price': float(order.limit_price) if order.limit_price else None,
                 'created_at': order.created_at,
                 'filled_qty': Decimal(str(order.filled_qty or 0)),
-                'avg_fill_price': float(order.filled_avg_price or 0),
+                'filled_avg_price': float(order.filled_avg_price or 0),
                 'fees': 0.0,  # Alpaca includes fees in price
             }
 
@@ -319,7 +319,7 @@ class AlpacaCryptoBroker(CryptoTradingInterface, AccountInterface):
                 'status': self._convert_order_status(order.status).value,
                 'created_at': order.created_at,
                 'filled_qty': Decimal(str(order.filled_qty or 0)),
-                'avg_fill_price': float(order.filled_avg_price or 0),
+                'filled_avg_price': float(order.filled_avg_price or 0),
                 'fees': 0.0,
             }
         except Exception as e:
@@ -487,7 +487,7 @@ class AlpacaCryptoBroker(CryptoTradingInterface, AccountInterface):
             'limit_price': float(order.limit_price) if order.limit_price else None,
             'created_at': order.created_at,
             'filled_qty': Decimal(str(order.filled_qty or 0)),
-            'avg_fill_price': float(order.filled_avg_price or 0),
+            'filled_avg_price': float(order.filled_avg_price or 0),
             'fees': 0.0,
         }
 

@@ -321,7 +321,7 @@ class TestFinancialAccuracy:
         )
 
         # Verify fill price includes slippage
-        assert order["avg_fill_price"] == pytest.approx(50025.0, rel=0.001)
+        assert order["filled_avg_price"] == pytest.approx(50025.0, rel=0.001)
 
         # Verify fees
         assert order["fees"] == pytest.approx(5.0025, rel=0.01)
@@ -378,7 +378,7 @@ class TestSlippageVerification:
         order = broker.place_crypto_order("BTC/USD", Decimal("0.1"), OrderSide.BUY)
 
         # 10 bps = 0.1%, so fill = 50000 * 1.001 = 50050
-        assert order["avg_fill_price"] == pytest.approx(50050.0, rel=0.001)
+        assert order["filled_avg_price"] == pytest.approx(50050.0, rel=0.001)
 
     def test_sell_slippage_decreases_price(self):
         """Sell orders fill below market price."""
@@ -402,7 +402,7 @@ class TestSlippageVerification:
         sell_order = broker.place_crypto_order("BTC/USD", Decimal("0.1"), OrderSide.SELL)
 
         # 10 bps = 0.1%, so fill = 50000 * 0.999 = 49950
-        assert sell_order["avg_fill_price"] == pytest.approx(49950.0, rel=0.001)
+        assert sell_order["filled_avg_price"] == pytest.approx(49950.0, rel=0.001)
 
 
 class TestStatePersistence:

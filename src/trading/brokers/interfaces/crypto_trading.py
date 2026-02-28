@@ -103,7 +103,7 @@ class CryptoTradingInterface(OrderManagementInterface):
                 - limit_price (float): Limit price (if applicable)
                 - created_at (datetime): Order creation time
                 - filled_qty (Decimal): Filled quantity
-                - avg_fill_price (float): Average fill price
+                - filled_avg_price (float): Average fill price
                 - fees (float): Trading fees
 
         Raises:

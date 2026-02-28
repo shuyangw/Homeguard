@@ -627,7 +627,7 @@ class OMRLiveAdapter(StrategyAdapter):
                     # Error handling ensures logging failures don't block trading
                     try:
                         trade_logger = get_trade_log_writer()
-                        fill_price = order.get('avg_fill_price', signal.price)
+                        fill_price = order.get('filled_avg_price', signal.price)
                         trade_logger.log_entry(
                             strategy=STRATEGY_NAME,
                             symbol=signal.symbol,
@@ -841,7 +841,7 @@ class OMRLiveAdapter(StrategyAdapter):
                             try:
                                 position_info = self.state_manager.get_positions(STRATEGY_NAME).get(symbol, {})
                                 trade_logger = get_trade_log_writer()
-                                fill_price = order.get('avg_fill_price', current_price)
+                                fill_price = order.get('filled_avg_price', current_price)
                                 trade_logger.log_exit(
                                     strategy=STRATEGY_NAME,
                                     symbol=symbol,

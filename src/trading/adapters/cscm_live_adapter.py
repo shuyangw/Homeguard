@@ -416,7 +416,7 @@ class CSCMLiveAdapter:
                 symbol=order.get('symbol', ''),
                 action=action,
                 quantity=float(order.get('quantity', 0)),
-                price=float(order.get('avg_fill_price', 0)),
+                price=float(order.get('filled_avg_price', 0)),
                 order_id=order.get('order_id', ''),
                 metadata={
                     'order_type': order.get('order_type', ''),

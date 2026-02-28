@@ -195,7 +195,7 @@ class TradingEngineE2ETests:
 
             order_status = self.broker.get_order(order_id)
             status = order_status.get('status', 'unknown')
-            fill_price = order_status.get('avg_fill_price', 0)
+            fill_price = order_status.get('filled_avg_price', 0)
 
             logger.info(f"  Order status: {status}")
             logger.info(f"  Fill price: ${fill_price:.2f}")

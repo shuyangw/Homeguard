@@ -600,7 +600,7 @@ class AlpacaBroker(BrokerInterface):
             'stop_price': float(alpaca_order.stop_price) if alpaca_order.stop_price else None,
             'created_at': alpaca_order.created_at,
             'filled_qty': int(alpaca_order.filled_qty) if alpaca_order.filled_qty else 0,
-            'avg_fill_price': float(alpaca_order.filled_avg_price) if alpaca_order.filled_avg_price else None,
+            'filled_avg_price': float(alpaca_order.filled_avg_price) if alpaca_order.filled_avg_price else None,
         }
 
     def _translate_time_in_force(self, tif: TimeInForce) -> AlpacaTimeInForce:
