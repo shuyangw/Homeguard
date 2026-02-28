@@ -494,8 +494,8 @@ class TradingMonitorBot(commands.Bot):
                     "\u26d4 This bot only works in server channels using slash commands. "
                     "Type `/` to see available commands."
                 )
-            except discord.Forbidden:
-                pass
+            except discord.Forbidden as e:
+                logger.warning(f"Failed to send DM block message: {e}")
             return
 
 
@@ -671,15 +671,15 @@ async def run_investigation(
             logger.error(f"Discord API error during investigation: {e}", exc_info=True)
             try:
                 await interaction.followup.send(f"\u274c Discord error: {str(e)[:100]}")
-            except discord.HTTPException:
-                pass
+            except discord.HTTPException as followup_err:
+                logger.warning(f"Failed to send Discord error followup: {followup_err}")
 
         except Exception as e:
             logger.error(f"Investigation failed: {e}", exc_info=True)
             try:
                 await interaction.followup.send(f"\u274c Investigation failed: {str(e)[:200]}")
-            except discord.HTTPException:
-                pass
+            except discord.HTTPException as followup_err:
+                logger.warning(f"Failed to send investigation error followup: {followup_err}")
 
         finally:
             bot._active_investigations -= 1

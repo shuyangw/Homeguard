@@ -119,8 +119,8 @@ class OptimizationRunner:
             if progress_dialog:
                 try:
                     self.page.close(progress_dialog)
-                except Exception:
-                    pass  # Dialog cleanup - ignore any errors
+                except Exception as e:
+                    log_error(f"Failed to close progress dialog: {e}")
             self.show_notification(f"Optimization failed: {str(e)}", "error")
             self.show_error_dialog("Optimization Error", str(e))
 

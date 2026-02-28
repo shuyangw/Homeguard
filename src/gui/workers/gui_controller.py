@@ -731,8 +731,8 @@ class GUIBacktestController:
                             start_date = index[0].strftime('%Y-%m-%d') if len(index) > 0 else 'N/A'
                             end_date = index[-1].strftime('%Y-%m-%d') if len(index) > 0 else 'N/A'
                             self._worker_log(worker_id, f"Loaded {num_bars} bars from {start_date} to {end_date}", "info")
-                except Exception:
-                    pass  # Skip if data extraction fails
+                except Exception as e:
+                    log_error(f"Failed to extract portfolio data info: {e}")
 
                 # Results summary
                 level = "success" if return_pct >= 0 else "info"

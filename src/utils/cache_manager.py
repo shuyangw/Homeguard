@@ -14,6 +14,10 @@ from typing import Dict, Any, Optional, List
 from datetime import datetime, timedelta
 import pandas as pd
 
+from src.utils.logger import get_logger
+
+logger = get_logger(__name__)
+
 
 class CacheManager:
     """
@@ -83,8 +87,8 @@ class CacheManager:
             try:
                 with open(self.metadata_file, 'r') as f:
                     return json.load(f)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"Failed to load cache metadata: {e}")
 
         return {
             'version': '1.0',

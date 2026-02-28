@@ -1036,8 +1036,8 @@ class HVORBStrategy(LongShortStrategy):
                         try:
                             df = cache.load(item['symbol'], item['year'])
                             dfs.append(df)
-                        except Exception:
-                            pass
+                        except Exception as e:
+                            logger.warning(f"Failed to load sentiment cache for {item['symbol']} year {item['year']}: {e}")
 
                     if dfs:
                         self._sentiment_data = pd.concat(dfs, ignore_index=True)

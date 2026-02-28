@@ -39,8 +39,8 @@ if sys.platform == 'win32':
         try:
             f.seek(0)
             msvcrt.locking(f.fileno(), msvcrt.LK_UNLCK, 1)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"Failed to unlock file: {e}")
 else:
     import fcntl
 
@@ -333,7 +333,8 @@ class StrategyStateManager:
                         self._state = json.load(f)
                     logger.warning(f"Recovered state from backup: {backup.name}")
                     return
-                except Exception:
+                except Exception as e:
+                    logger.warning(f"Failed to load backup {backup.name}: {e}")
                     continue
 
             # No valid backup found
@@ -392,8 +393,8 @@ class StrategyStateManager:
                     }
                     self._save_state()
                     return True
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"Failed to check lock expiration: {e}")
 
             # Check if we already hold the lock
             if lock.get('holder') == strategy:

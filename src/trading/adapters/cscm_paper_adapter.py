@@ -325,8 +325,8 @@ class CSCMPaperAdapter(CSCMLiveAdapter):
                 if binance_price and alpaca_price:
                     spread_pct = abs(binance_price - alpaca_price) / alpaca_price * 100
                     status['btc_price_spread_pct'] = round(spread_pct, 4)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"Failed to compare BTC prices across sources: {e}")
 
         return status
 
