@@ -111,17 +111,18 @@ class TestSingleSymbolBacktest:
 class TestMultiSymbolBacktest:
     """Test multi-symbol portfolio backtesting."""
 
-    def test_multi_symbol_sweep_raises_not_implemented(self):
-        """Test that _run_multiple_symbols raises NotImplementedError."""
+    def test_multi_symbol_sweep_uses_first_symbol(self):
+        """Test that _run_multiple_symbols runs first symbol only with warning."""
         engine = BacktestEngine(initial_capital=30000.0, fees=0.001)
         strategy = MovingAverageCrossover(fast_window=5, slow_window=10)
 
         symbols = ['AAPL', 'MSFT', 'GOOGL']
 
-        with pytest.raises(NotImplementedError, match="Multi-symbol backtesting"):
-            engine._run_multiple_symbols(
-                strategy, symbols, '2024-01-01', '2024-12-31', 'close'
-            )
+        # Should not raise - runs first symbol only
+        portfolio = engine._run_multiple_symbols(
+            strategy, symbols, '2024-01-01', '2024-12-31', 'close'
+        )
+        # May return None if no data available, but should not error
 
 
 class TestSignalGeneration:

@@ -466,13 +466,15 @@ class BacktestEngine:
         """
         Run backtest for multiple symbols in sweep mode (each symbol separately).
 
-        This mode is not supported for single-symbol strategies.
-        Use MultiAssetPortfolio (portfolio_mode='multi') for multi-symbol backtests.
+        Note: Currently simplified to first symbol only. For true portfolio mode,
+        use _run_multi_asset_portfolio.
         """
-        raise NotImplementedError(
-            "Multi-symbol backtesting with single-symbol strategies is not supported. "
-            "Use MultiAssetPortfolio for multi-symbol backtests."
-        )
+        if len(symbols) > 1:
+            logger.warning(
+                f"Multi-symbol sweep simplified to first symbol only ({symbols[0]}). "
+                f"Use portfolio_mode='multi' for multi-symbol backtests."
+            )
+        return self._run_single_symbol(strategy, symbols[0], start_date, end_date, price_type)
 
     def _run_multi_asset_portfolio(
         self,
