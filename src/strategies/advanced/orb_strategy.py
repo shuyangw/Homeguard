@@ -22,7 +22,7 @@ Best Instruments:
 
 from datetime import datetime, time, timedelta
 from typing import Tuple, Dict, Optional, List, Set
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict
 from pathlib import Path
 import pandas as pd
 import numpy as np
@@ -39,6 +39,49 @@ from src.strategies.advanced.orb_numba_core import (
 from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+
+@dataclass
+class ORBConfig:
+    """Configuration for Opening Range Breakout Strategy parameters.
+
+    Groups all constructor parameters into a single config object to reduce
+    parameter explosion. Supports both config-based and kwargs-based
+    construction for backward compatibility.
+    """
+
+    # Core parameters
+    opening_range_minutes: int = 15
+    rvol_threshold: float = 1.5
+    rvol_lookback: int = 20
+    fast_ema: int = 9
+    slow_ema: int = 21
+    target_multiplier: float = 1.0
+    long_only: bool = False
+    use_regime: bool = True
+    use_gap_filter: bool = False
+    exit_time_hour: int = 15
+    exit_time_minute: int = 45
+    one_trade_per_day: bool = False
+    min_or_width_pct: float = 0.0
+
+    # Phase 2: Entry Quality
+    breakout_buffer_pct: float = 0.0
+    entry_cutoff_hour: int = 15
+    entry_cutoff_minute: int = 30
+
+    # Phase 3: Risk Management
+    use_atr_stops: bool = False
+    atr_period: int = 14
+    atr_stop_multiplier: float = 1.5
+    use_volume_confirmation: bool = False
+    volume_breakout_mult: float = 1.5
+    use_trailing_stop: bool = False
+
+    # Phase 4: Earnings Filter
+    use_earnings_filter: bool = False
+    earnings_buffer_days: int = 2
+    earnings_calendar_path: Optional[str] = None
 
 
 @dataclass
@@ -88,112 +131,65 @@ class ORBStrategy(LongShortStrategy):
 
     def __init__(
         self,
-        opening_range_minutes: int = 15,
-        rvol_threshold: float = 1.5,
-        rvol_lookback: int = 20,
-        fast_ema: int = 9,
-        slow_ema: int = 21,
-        target_multiplier: float = 1.0,
-        long_only: bool = False,
-        use_regime: bool = True,
-        use_gap_filter: bool = False,
-        exit_time_hour: int = 15,
-        exit_time_minute: int = 45,
-        one_trade_per_day: bool = False,
-        min_or_width_pct: float = 0.0,
-        # Phase 2: Entry Quality
-        breakout_buffer_pct: float = 0.0,
-        entry_cutoff_hour: int = 15,
-        entry_cutoff_minute: int = 30,
-        # Phase 3: Risk Management
-        use_atr_stops: bool = False,
-        atr_period: int = 14,
-        atr_stop_multiplier: float = 1.5,
-        use_volume_confirmation: bool = False,
-        volume_breakout_mult: float = 1.5,
-        use_trailing_stop: bool = False,
-        # Phase 4: Earnings Filter
-        use_earnings_filter: bool = False,
-        earnings_buffer_days: int = 2,
-        earnings_calendar_path: Optional[str] = None,
+        config: Optional[ORBConfig] = None,
         **kwargs
     ):
+        # Build config from kwargs if not provided (backward compatibility)
+        if config is None:
+            config = ORBConfig(**kwargs)
+        self._config = config
+
         # Set attributes BEFORE calling super().__init__()
         # because parent class calls validate_parameters()
-        self.opening_range_minutes = opening_range_minutes
-        self.rvol_threshold = rvol_threshold
-        self.rvol_lookback = rvol_lookback
-        self.fast_ema = fast_ema
-        self.slow_ema = slow_ema
-        self.target_multiplier = target_multiplier
-        self.long_only = long_only
-        self.use_regime = use_regime
-        self.use_gap_filter = use_gap_filter
-        self.one_trade_per_day = one_trade_per_day
-        self.min_or_width_pct = min_or_width_pct
+        self.opening_range_minutes = config.opening_range_minutes
+        self.rvol_threshold = config.rvol_threshold
+        self.rvol_lookback = config.rvol_lookback
+        self.fast_ema = config.fast_ema
+        self.slow_ema = config.slow_ema
+        self.target_multiplier = config.target_multiplier
+        self.long_only = config.long_only
+        self.use_regime = config.use_regime
+        self.use_gap_filter = config.use_gap_filter
+        self.one_trade_per_day = config.one_trade_per_day
+        self.min_or_width_pct = config.min_or_width_pct
 
         # Phase 2: Entry Quality
-        self.breakout_buffer_pct = breakout_buffer_pct
-        self.entry_cutoff_hour = entry_cutoff_hour
-        self.entry_cutoff_minute = entry_cutoff_minute
+        self.breakout_buffer_pct = config.breakout_buffer_pct
+        self.entry_cutoff_hour = config.entry_cutoff_hour
+        self.entry_cutoff_minute = config.entry_cutoff_minute
 
         # Phase 3: Risk Management
-        self.use_atr_stops = use_atr_stops
-        self.atr_period = atr_period
-        self.atr_stop_multiplier = atr_stop_multiplier
-        self.use_volume_confirmation = use_volume_confirmation
-        self.volume_breakout_mult = volume_breakout_mult
-        self.use_trailing_stop = use_trailing_stop
+        self.use_atr_stops = config.use_atr_stops
+        self.atr_period = config.atr_period
+        self.atr_stop_multiplier = config.atr_stop_multiplier
+        self.use_volume_confirmation = config.use_volume_confirmation
+        self.volume_breakout_mult = config.volume_breakout_mult
+        self.use_trailing_stop = config.use_trailing_stop
 
         # Phase 4: Earnings Filter
-        self.use_earnings_filter = use_earnings_filter
-        self.earnings_buffer_days = earnings_buffer_days
-        self.earnings_calendar_path = earnings_calendar_path
+        self.use_earnings_filter = config.use_earnings_filter
+        self.earnings_buffer_days = config.earnings_buffer_days
+        self.earnings_calendar_path = config.earnings_calendar_path
         self.earnings_blackout_dates: Set[datetime] = set()
 
         # Load earnings calendar if filter is enabled
-        if use_earnings_filter:
+        if config.use_earnings_filter:
             self._load_earnings_calendar()
 
         # Calculate OR end time based on minutes
-        or_end_minutes = 30 + opening_range_minutes
+        or_end_minutes = 30 + config.opening_range_minutes
         self.or_end_time = time(9, or_end_minutes % 60)
         if or_end_minutes >= 60:
             self.or_end_time = time(10, or_end_minutes - 60)
 
-        self.exit_time = time(exit_time_hour, exit_time_minute)
+        self.exit_time = time(config.exit_time_hour, config.exit_time_minute)
 
         # Regime detector (optional)
-        self.regime_detector = MarketRegimeDetector() if use_regime else None
+        self.regime_detector = MarketRegimeDetector() if config.use_regime else None
         self.current_regime = 'SIDEWAYS'
 
         # Now call parent init (which calls validate_parameters)
-        super().__init__(
-            opening_range_minutes=opening_range_minutes,
-            rvol_threshold=rvol_threshold,
-            rvol_lookback=rvol_lookback,
-            fast_ema=fast_ema,
-            slow_ema=slow_ema,
-            target_multiplier=target_multiplier,
-            long_only=long_only,
-            use_regime=use_regime,
-            use_gap_filter=use_gap_filter,
-            one_trade_per_day=one_trade_per_day,
-            min_or_width_pct=min_or_width_pct,
-            breakout_buffer_pct=breakout_buffer_pct,
-            entry_cutoff_hour=entry_cutoff_hour,
-            entry_cutoff_minute=entry_cutoff_minute,
-            use_atr_stops=use_atr_stops,
-            atr_period=atr_period,
-            atr_stop_multiplier=atr_stop_multiplier,
-            use_volume_confirmation=use_volume_confirmation,
-            volume_breakout_mult=volume_breakout_mult,
-            use_trailing_stop=use_trailing_stop,
-            use_earnings_filter=use_earnings_filter,
-            earnings_buffer_days=earnings_buffer_days,
-            earnings_calendar_path=earnings_calendar_path,
-            **kwargs
-        )
+        super().__init__(**asdict(config))
 
     def validate_parameters(self) -> None:
         """Validate strategy parameters."""

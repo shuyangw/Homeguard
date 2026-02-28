@@ -22,7 +22,7 @@ Best Instruments:
 - Stocks with SIP score >= 2.0
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict
 from datetime import datetime, time, timedelta
 from typing import Tuple, Dict, Optional, List
 import pandas as pd
@@ -43,6 +43,78 @@ from src.settings import get_local_storage_dir
 from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+
+@dataclass
+class HVORBConfig:
+    """Configuration for High Volatility Opening Range Breakout Strategy.
+
+    Groups all constructor parameters into a single config object to reduce
+    parameter explosion. Supports both config-based and kwargs-based
+    construction for backward compatibility.
+    """
+
+    # Opening Range
+    opening_range_minutes: int = 5
+
+    # SIP Score
+    sip_lookback_days: int = 14
+    sip_min_score: float = 2.0
+
+    # Gap Filtering
+    min_gap_pct: float = 0.02
+    max_gap_pct: float = 0.15
+    gap_direction_filter: bool = True
+
+    # Volatility (ATR)
+    atr_period: int = 14
+    min_atr_pct: float = 2.0
+    max_atr_pct: float = 10.0
+
+    # Tiered Exits
+    target1_multiplier: float = 1.0
+    target1_exit_pct: float = 0.5
+    target2_multiplier: float = 2.0
+    use_trailing_stop: bool = True
+    trailing_offset_pct: float = 0.02
+    eod_exit_hour: int = 15
+    eod_exit_minute: int = 55
+
+    # Risk Management
+    daily_max_loss_pct: float = 0.03
+    max_daily_trades: int = 10
+    max_concurrent_positions: int = 5
+
+    # Entry filters
+    entry_cutoff_hour: int = 15
+    entry_cutoff_minute: int = 30
+    rvol_threshold: float = 1.5
+
+    # Sentiment (Phase 2)
+    use_sentiment: bool = False
+    min_sentiment_score: float = 0.2
+    min_sentiment_confidence: float = 0.0
+    sentiment_data_path: Optional[str] = None
+    skip_earnings_days: bool = True
+
+    # Regime
+    use_regime: bool = True
+
+    # Momentum filter
+    use_momentum_filter: bool = False
+    momentum_ma_period: int = 20
+
+    # Pullback entry
+    use_pullback_entry: bool = False
+    pullback_threshold_pct: float = 0.5
+    pullback_timeout_bars: int = 30
+
+    # Time-based stop
+    use_time_stop: bool = False
+    time_stop_minutes: int = 30
+
+    # Base
+    long_only: bool = False
 
 
 @dataclass
@@ -113,176 +185,93 @@ class HVORBStrategy(LongShortStrategy):
 
     def __init__(
         self,
-        # Opening Range
-        opening_range_minutes: int = 5,
-
-        # SIP Score
-        sip_lookback_days: int = 14,
-        sip_min_score: float = 2.0,
-
-        # Gap Filtering
-        min_gap_pct: float = 0.02,
-        max_gap_pct: float = 0.15,
-        gap_direction_filter: bool = True,
-
-        # Volatility (ATR)
-        atr_period: int = 14,
-        min_atr_pct: float = 2.0,
-        max_atr_pct: float = 10.0,
-
-        # Tiered Exits
-        target1_multiplier: float = 1.0,
-        target1_exit_pct: float = 0.5,
-        target2_multiplier: float = 2.0,
-        use_trailing_stop: bool = True,
-        trailing_offset_pct: float = 0.02,
-        eod_exit_hour: int = 15,
-        eod_exit_minute: int = 55,
-
-        # Risk Management
-        daily_max_loss_pct: float = 0.03,
-        max_daily_trades: int = 10,
-        max_concurrent_positions: int = 5,
-
-        # Entry filters
-        entry_cutoff_hour: int = 15,
-        entry_cutoff_minute: int = 30,
-        rvol_threshold: float = 1.5,
-
-        # Sentiment (Phase 2)
-        use_sentiment: bool = False,
-        min_sentiment_score: float = 0.2,
-        min_sentiment_confidence: float = 0.0,  # Filter low-confidence sentiment
-        sentiment_data_path: Optional[str] = None,
-        skip_earnings_days: bool = True,  # Skip trading on earnings announcement days
-
-        # Regime
-        use_regime: bool = True,
-
-        # Momentum filter (require price > MA for longs)
-        use_momentum_filter: bool = False,
-        momentum_ma_period: int = 20,
-
-        # Pullback entry (wait for retest instead of immediate entry)
-        use_pullback_entry: bool = False,
-        pullback_threshold_pct: float = 0.5,  # How close to OR high for valid pullback
-        pullback_timeout_bars: int = 30,  # Cancel setup after N bars without pullback
-
-        # Time-based stop (exit if not profitable after N minutes)
-        use_time_stop: bool = False,
-        time_stop_minutes: int = 30,  # Exit if not profitable after this many minutes
-
-        # Base
-        long_only: bool = False,
+        config: Optional[HVORBConfig] = None,
         **kwargs
     ):
+        # Build config from kwargs if not provided (backward compatibility)
+        if config is None:
+            config = HVORBConfig(**kwargs)
+        self._config = config
+
         # Set all attributes BEFORE calling super().__init__()
-        self.opening_range_minutes = opening_range_minutes
-        self.sip_lookback_days = sip_lookback_days
-        self.sip_min_score = sip_min_score
+        self.opening_range_minutes = config.opening_range_minutes
+        self.sip_lookback_days = config.sip_lookback_days
+        self.sip_min_score = config.sip_min_score
 
-        self.min_gap_pct = min_gap_pct
-        self.max_gap_pct = max_gap_pct
-        self.gap_direction_filter = gap_direction_filter
+        self.min_gap_pct = config.min_gap_pct
+        self.max_gap_pct = config.max_gap_pct
+        self.gap_direction_filter = config.gap_direction_filter
 
-        self.atr_period = atr_period
-        self.min_atr_pct = min_atr_pct
-        self.max_atr_pct = max_atr_pct
+        self.atr_period = config.atr_period
+        self.min_atr_pct = config.min_atr_pct
+        self.max_atr_pct = config.max_atr_pct
 
-        self.target1_multiplier = target1_multiplier
-        self.target1_exit_pct = target1_exit_pct
-        self.target2_multiplier = target2_multiplier
-        self.use_trailing_stop = use_trailing_stop
-        self.trailing_offset_pct = trailing_offset_pct
-        self.eod_exit_hour = eod_exit_hour
-        self.eod_exit_minute = eod_exit_minute
+        self.target1_multiplier = config.target1_multiplier
+        self.target1_exit_pct = config.target1_exit_pct
+        self.target2_multiplier = config.target2_multiplier
+        self.use_trailing_stop = config.use_trailing_stop
+        self.trailing_offset_pct = config.trailing_offset_pct
+        self.eod_exit_hour = config.eod_exit_hour
+        self.eod_exit_minute = config.eod_exit_minute
 
-        self.daily_max_loss_pct = daily_max_loss_pct
-        self.max_daily_trades = max_daily_trades
-        self.max_concurrent_positions = max_concurrent_positions
+        self.daily_max_loss_pct = config.daily_max_loss_pct
+        self.max_daily_trades = config.max_daily_trades
+        self.max_concurrent_positions = config.max_concurrent_positions
 
-        self.entry_cutoff_hour = entry_cutoff_hour
-        self.entry_cutoff_minute = entry_cutoff_minute
-        self.rvol_threshold = rvol_threshold
+        self.entry_cutoff_hour = config.entry_cutoff_hour
+        self.entry_cutoff_minute = config.entry_cutoff_minute
+        self.rvol_threshold = config.rvol_threshold
 
-        self.use_sentiment = use_sentiment
-        self.min_sentiment_score = min_sentiment_score
-        self.min_sentiment_confidence = min_sentiment_confidence
-        self.sentiment_data_path = sentiment_data_path
-        self.skip_earnings_days = skip_earnings_days
+        self.use_sentiment = config.use_sentiment
+        self.min_sentiment_score = config.min_sentiment_score
+        self.min_sentiment_confidence = config.min_sentiment_confidence
+        self.sentiment_data_path = config.sentiment_data_path
+        self.skip_earnings_days = config.skip_earnings_days
 
-        self.use_regime = use_regime
-        self.long_only = long_only
+        self.use_regime = config.use_regime
+        self.long_only = config.long_only
 
-        self.use_momentum_filter = use_momentum_filter
-        self.momentum_ma_period = momentum_ma_period
+        self.use_momentum_filter = config.use_momentum_filter
+        self.momentum_ma_period = config.momentum_ma_period
         self._daily_ma = {}  # Cache for daily MA values by symbol
 
-        self.use_pullback_entry = use_pullback_entry
-        self.pullback_threshold_pct = pullback_threshold_pct
-        self.pullback_timeout_bars = pullback_timeout_bars
+        self.use_pullback_entry = config.use_pullback_entry
+        self.pullback_threshold_pct = config.pullback_threshold_pct
+        self.pullback_timeout_bars = config.pullback_timeout_bars
         self._pending_setups = {}  # Track breakouts waiting for pullback entry
 
-        self.use_time_stop = use_time_stop
-        self.time_stop_minutes = time_stop_minutes
+        self.use_time_stop = config.use_time_stop
+        self.time_stop_minutes = config.time_stop_minutes
 
         # Calculate OR end time
-        or_end_minutes = 30 + opening_range_minutes
+        or_end_minutes = 30 + config.opening_range_minutes
         self.or_end_time = time(9, or_end_minutes % 60)
         if or_end_minutes >= 60:
             self.or_end_time = time(10, or_end_minutes - 60)
 
-        self.eod_exit_time = time(eod_exit_hour, eod_exit_minute)
-        self.entry_cutoff_time = time(entry_cutoff_hour, entry_cutoff_minute)
+        self.eod_exit_time = time(config.eod_exit_hour, config.eod_exit_minute)
+        self.entry_cutoff_time = time(config.entry_cutoff_hour, config.entry_cutoff_minute)
 
         # Initialize tiered exit manager
         self.exit_config = TieredExitConfig(
-            target1_multiplier=target1_multiplier,
-            target2_multiplier=target2_multiplier,
-            target1_exit_pct=target1_exit_pct,
-            use_trailing=use_trailing_stop,
-            trailing_offset_pct=trailing_offset_pct,
+            target1_multiplier=config.target1_multiplier,
+            target2_multiplier=config.target2_multiplier,
+            target1_exit_pct=config.target1_exit_pct,
+            use_trailing=config.use_trailing_stop,
+            trailing_offset_pct=config.trailing_offset_pct,
             eod_exit_time=self.eod_exit_time
         )
         self.exit_manager = TieredExitManager(self.exit_config)
 
         # Regime detector (optional)
-        self.regime_detector = MarketRegimeDetector() if use_regime else None
+        self.regime_detector = MarketRegimeDetector() if config.use_regime else None
         self.current_regime = 'SIDEWAYS'
 
         # Sentiment data (loaded on first use)
         self._sentiment_data = None
 
         # Call parent init
-        super().__init__(
-            opening_range_minutes=opening_range_minutes,
-            sip_lookback_days=sip_lookback_days,
-            sip_min_score=sip_min_score,
-            min_gap_pct=min_gap_pct,
-            max_gap_pct=max_gap_pct,
-            gap_direction_filter=gap_direction_filter,
-            atr_period=atr_period,
-            min_atr_pct=min_atr_pct,
-            max_atr_pct=max_atr_pct,
-            target1_multiplier=target1_multiplier,
-            target1_exit_pct=target1_exit_pct,
-            target2_multiplier=target2_multiplier,
-            use_trailing_stop=use_trailing_stop,
-            trailing_offset_pct=trailing_offset_pct,
-            eod_exit_hour=eod_exit_hour,
-            eod_exit_minute=eod_exit_minute,
-            daily_max_loss_pct=daily_max_loss_pct,
-            max_daily_trades=max_daily_trades,
-            max_concurrent_positions=max_concurrent_positions,
-            entry_cutoff_hour=entry_cutoff_hour,
-            entry_cutoff_minute=entry_cutoff_minute,
-            rvol_threshold=rvol_threshold,
-            use_sentiment=use_sentiment,
-            min_sentiment_score=min_sentiment_score,
-            use_regime=use_regime,
-            long_only=long_only,
-            **kwargs
-        )
+        super().__init__(**asdict(config))
 
     def validate_parameters(self) -> None:
         """Validate strategy parameters."""

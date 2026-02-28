@@ -22,7 +22,7 @@ Two Variants:
 - Continuation: Pullback to internal liquidity, trend-following entry
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field, asdict
 from datetime import datetime, time, timedelta
 from typing import Tuple, Dict, Optional, List
 import pandas as pd
@@ -43,6 +43,62 @@ from src.utils.logger import get_logger
 from src.utils.timezone import tz
 
 logger = get_logger(__name__)
+
+
+@dataclass
+class ICTConfig:
+    """Configuration for ICT/SMC Strategy parameters.
+
+    Groups all constructor parameters into a single config object to reduce
+    parameter explosion. Supports both config-based and kwargs-based
+    construction for backward compatibility.
+    """
+
+    # Core parameters
+    trade_type: str = 'both'
+    swing_lookback: int = 5
+    min_swing_size_pct: float = 0.002
+    min_impulse_move_pct: float = 0.01
+    order_block_max_age: int = 50
+    impulse_bars: int = 15
+    risk_reward_ratio: float = 2.0
+    use_htf_filter: bool = True
+    htf_lookback: int = 20
+    use_regime: bool = True
+    long_only: bool = False
+    max_positions_per_day: int = 3
+    atr_period: int = 14
+    atr_stop_multiplier: float = 1.5
+    exit_time_hour: int = 15
+    exit_time_minute: int = 45
+    min_wick_ratio: float = 0.5
+    min_body_ratio: float = 0.3
+    sweep_threshold_pct: float = 0.001
+
+    # Optional features (disabled by default)
+    use_atr_impulse: bool = False
+    atr_impulse_multiple: float = 1.5
+    use_volume_filter: bool = False
+    rvol_threshold: float = 1.5
+    session_filter: str = 'none'
+    use_zone_quality: bool = False
+    min_zone_quality: float = 0.5
+
+    # Risk management: time stop and max loss cap
+    max_hold_bars: int = 0
+    max_loss_pct: float = 0.0
+
+    # Signal quality filters
+    min_sweep_depth_pct: float = 0.0
+    use_momentum_filter: bool = False
+    momentum_ema_period: int = 10
+    use_structure_filter: bool = False
+    require_ob_confluence: bool = False
+
+    # Trailing stop
+    use_trailing_stop: bool = False
+    trailing_trigger_r: float = 1.0
+    trailing_offset_r: float = 0.5
 
 
 @dataclass
@@ -105,98 +161,62 @@ class ICTStrategy(LongShortStrategy):
 
     def __init__(
         self,
-        trade_type: str = 'both',
-        swing_lookback: int = 5,
-        min_swing_size_pct: float = 0.002,
-        min_impulse_move_pct: float = 0.01,
-        order_block_max_age: int = 50,
-        impulse_bars: int = 15,
-        risk_reward_ratio: float = 2.0,
-        use_htf_filter: bool = True,
-        htf_lookback: int = 20,
-        use_regime: bool = True,
-        long_only: bool = False,
-        max_positions_per_day: int = 3,
-        atr_period: int = 14,
-        atr_stop_multiplier: float = 1.5,
-        exit_time_hour: int = 15,
-        exit_time_minute: int = 45,
-        min_wick_ratio: float = 0.5,
-        min_body_ratio: float = 0.3,
-        sweep_threshold_pct: float = 0.001,
-        # New optional features (disabled by default to avoid overcomplication)
-        use_atr_impulse: bool = False,
-        atr_impulse_multiple: float = 1.5,
-        use_volume_filter: bool = False,
-        rvol_threshold: float = 1.5,
-        session_filter: str = 'none',
-        use_zone_quality: bool = False,
-        min_zone_quality: float = 0.5,
-        # Risk management: time stop and max loss cap
-        max_hold_bars: int = 0,  # Max bars to hold position (0 = disabled). 3900 = ~10 trading days
-        max_loss_pct: float = 0.0,  # Max loss % before forced exit (0 = disabled). 0.15 = 15%
-        # NEW: Signal quality filters for improved win rate
-        min_sweep_depth_pct: float = 0.0,  # Min sweep depth % (0.002 = 0.2%)
-        use_momentum_filter: bool = False,  # Require momentum alignment (non-ICT)
-        momentum_ema_period: int = 10,  # EMA period for momentum
-        # ICT-aligned filters
-        use_structure_filter: bool = False,  # Only trade with market structure (pure ICT)
-        require_ob_confluence: bool = False,  # Require nearby unmitigated OB for entry
-        # NEW: Trailing stop for locking in profits
-        use_trailing_stop: bool = False,  # Enable trailing stop after hitting profit target
-        trailing_trigger_r: float = 1.0,  # R multiple to trigger trailing (1.0 = 1R)
-        trailing_offset_r: float = 0.5,  # Trail behind by this many R (0.5 = lock in 0.5R)
+        config: Optional[ICTConfig] = None,
         **kwargs
     ):
+        # Build config from kwargs if not provided (backward compatibility)
+        if config is None:
+            config = ICTConfig(**kwargs)
+        self._config = config
+
         # Set attributes BEFORE calling super().__init__()
         # because parent class calls validate_parameters()
-        self.trade_type = trade_type
-        self.swing_lookback = swing_lookback
-        self.min_swing_size_pct = min_swing_size_pct
-        self.min_impulse_move_pct = min_impulse_move_pct
-        self.order_block_max_age = order_block_max_age
-        self.impulse_bars = impulse_bars
-        self.risk_reward_ratio = risk_reward_ratio
-        self.use_htf_filter = use_htf_filter
-        self.htf_lookback = htf_lookback
-        self.use_regime = use_regime
-        self.long_only = long_only
-        self.max_positions_per_day = max_positions_per_day
-        self.atr_period = atr_period
-        self.atr_stop_multiplier = atr_stop_multiplier
-        self.exit_time = time(exit_time_hour, exit_time_minute)
-        self.min_wick_ratio = min_wick_ratio
-        self.min_body_ratio = min_body_ratio
-        self.sweep_threshold_pct = sweep_threshold_pct
+        self.trade_type = config.trade_type
+        self.swing_lookback = config.swing_lookback
+        self.min_swing_size_pct = config.min_swing_size_pct
+        self.min_impulse_move_pct = config.min_impulse_move_pct
+        self.order_block_max_age = config.order_block_max_age
+        self.impulse_bars = config.impulse_bars
+        self.risk_reward_ratio = config.risk_reward_ratio
+        self.use_htf_filter = config.use_htf_filter
+        self.htf_lookback = config.htf_lookback
+        self.use_regime = config.use_regime
+        self.long_only = config.long_only
+        self.max_positions_per_day = config.max_positions_per_day
+        self.atr_period = config.atr_period
+        self.atr_stop_multiplier = config.atr_stop_multiplier
+        self.exit_time = time(config.exit_time_hour, config.exit_time_minute)
+        self.min_wick_ratio = config.min_wick_ratio
+        self.min_body_ratio = config.min_body_ratio
+        self.sweep_threshold_pct = config.sweep_threshold_pct
 
-        # New optional features (from original spec)
-        self.use_atr_impulse = use_atr_impulse
-        self.atr_impulse_multiple = atr_impulse_multiple
-        self.use_volume_filter = use_volume_filter
-        self.rvol_threshold = rvol_threshold
-        self.session_filter = session_filter
-        self.use_zone_quality = use_zone_quality
-        self.min_zone_quality = min_zone_quality
+        # Optional features
+        self.use_atr_impulse = config.use_atr_impulse
+        self.atr_impulse_multiple = config.atr_impulse_multiple
+        self.use_volume_filter = config.use_volume_filter
+        self.rvol_threshold = config.rvol_threshold
+        self.session_filter = config.session_filter
+        self.use_zone_quality = config.use_zone_quality
+        self.min_zone_quality = config.min_zone_quality
 
         # Risk management: time stop and max loss cap
-        self.max_hold_bars = max_hold_bars
-        self.max_loss_pct = max_loss_pct
+        self.max_hold_bars = config.max_hold_bars
+        self.max_loss_pct = config.max_loss_pct
 
-        # NEW: Signal quality filters
-        self.min_sweep_depth_pct = min_sweep_depth_pct
-        self.use_momentum_filter = use_momentum_filter
-        self.momentum_ema_period = momentum_ema_period
-        # ICT-aligned filters
-        self.use_structure_filter = use_structure_filter
-        self.require_ob_confluence = require_ob_confluence
+        # Signal quality filters
+        self.min_sweep_depth_pct = config.min_sweep_depth_pct
+        self.use_momentum_filter = config.use_momentum_filter
+        self.momentum_ema_period = config.momentum_ema_period
+        self.use_structure_filter = config.use_structure_filter
+        self.require_ob_confluence = config.require_ob_confluence
 
-        # NEW: Trailing stop
-        self.use_trailing_stop = use_trailing_stop
-        self.trailing_trigger_r = trailing_trigger_r
-        self.trailing_offset_r = trailing_offset_r
+        # Trailing stop
+        self.use_trailing_stop = config.use_trailing_stop
+        self.trailing_trigger_r = config.trailing_trigger_r
+        self.trailing_offset_r = config.trailing_offset_r
 
         # Regime detector (optional)
-        self.regime_detector = MarketRegimeDetector() if use_regime else None
+        self.regime_detector = MarketRegimeDetector() if config.use_regime else None
         self.current_regime = 'SIDEWAYS'
 
         # State tracking (reset per backtest run)
@@ -206,47 +226,7 @@ class ICTStrategy(LongShortStrategy):
         self._positions: List[ICTPosition] = []
         self._daily_trades: Dict[str, int] = {}  # date -> trade count
 
-        super().__init__(
-            trade_type=trade_type,
-            swing_lookback=swing_lookback,
-            min_swing_size_pct=min_swing_size_pct,
-            min_impulse_move_pct=min_impulse_move_pct,
-            order_block_max_age=order_block_max_age,
-            impulse_bars=impulse_bars,
-            risk_reward_ratio=risk_reward_ratio,
-            use_htf_filter=use_htf_filter,
-            htf_lookback=htf_lookback,
-            use_regime=use_regime,
-            long_only=long_only,
-            max_positions_per_day=max_positions_per_day,
-            atr_period=atr_period,
-            atr_stop_multiplier=atr_stop_multiplier,
-            exit_time_hour=exit_time_hour,
-            exit_time_minute=exit_time_minute,
-            min_wick_ratio=min_wick_ratio,
-            min_body_ratio=min_body_ratio,
-            sweep_threshold_pct=sweep_threshold_pct,
-            # New optional features
-            use_atr_impulse=use_atr_impulse,
-            atr_impulse_multiple=atr_impulse_multiple,
-            use_volume_filter=use_volume_filter,
-            rvol_threshold=rvol_threshold,
-            session_filter=session_filter,
-            use_zone_quality=use_zone_quality,
-            min_zone_quality=min_zone_quality,
-            # Risk management
-            max_hold_bars=max_hold_bars,
-            max_loss_pct=max_loss_pct,
-            # NEW: Signal quality filters
-            min_sweep_depth_pct=min_sweep_depth_pct,
-            use_momentum_filter=use_momentum_filter,
-            momentum_ema_period=momentum_ema_period,
-            # NEW: Trailing stop
-            use_trailing_stop=use_trailing_stop,
-            trailing_trigger_r=trailing_trigger_r,
-            trailing_offset_r=trailing_offset_r,
-            **kwargs
-        )
+        super().__init__(**asdict(config))
 
     def validate_parameters(self) -> None:
         """Validate strategy parameters."""
@@ -276,18 +256,8 @@ class ICTStrategy(LongShortStrategy):
         """
         Generate long and short entry/exit signals.
 
-        VECTORIZED IMPLEMENTATION:
-        Pre-computes all indicators in bulk, then uses fast array lookups
-        in the sequential signal generation loop.
-
-        Signal generation logic:
-        1. Detect swing points and classify market structure
-        2. Identify unmitigated order blocks
-        3. Map liquidity pools
-        4. Detect liquidity sweeps (VECTORIZED)
-        5. Confirm with switch candle (VECTORIZED)
-        6. Check HTF alignment (optional)
-        7. Apply regime filter (optional)
+        Pre-computes all indicators in bulk, then iterates bars
+        calling _process_bar for per-bar signal logic.
 
         Args:
             data: DataFrame with OHLCV columns and DatetimeIndex
@@ -304,29 +274,64 @@ class ICTStrategy(LongShortStrategy):
             )
 
         n = len(data)
-
-        # Initialize signal arrays (use numpy for speed)
         long_entries_arr = np.zeros(n, dtype=bool)
         long_exits_arr = np.zeros(n, dtype=bool)
         short_entries_arr = np.zeros(n, dtype=bool)
         short_exits_arr = np.zeros(n, dtype=bool)
 
-        # =====================================================================
-        # PHASE 1: PRE-COMPUTE ALL INDICATORS (VECTORIZED)
-        # =====================================================================
+        indicators = self._compute_indicators(data)
 
-        # Calculate ATR for stop sizing
+        close_values = data['close'].values
+        low_values = data['low'].values
+        high_values = data['high'].values
+
+        active_position: Optional[ICTPosition] = None
+        min_bars = max(self.swing_lookback * 2 + 1, 20)
+
+        for i in range(min_bars, n):
+            active_position, signal = self._process_bar(
+                i, data, indicators, active_position,
+                close_values, low_values, high_values
+            )
+
+            if signal == 'long_exit':
+                long_exits_arr[i] = True
+            elif signal == 'short_exit':
+                short_exits_arr[i] = True
+            elif signal == 'long_entry':
+                long_entries_arr[i] = True
+            elif signal == 'short_entry':
+                short_entries_arr[i] = True
+
+        return (
+            pd.Series(long_entries_arr, index=data.index),
+            pd.Series(long_exits_arr, index=data.index),
+            pd.Series(short_entries_arr, index=data.index),
+            pd.Series(short_exits_arr, index=data.index),
+        )
+
+    def _compute_indicators(self, data: pd.DataFrame) -> Dict:
+        """Pre-compute all indicators for the entire dataset.
+
+        Runs vectorized indicator calculations so the per-bar loop
+        only needs O(1) lookups.
+
+        Args:
+            data: DataFrame with OHLCV columns and DatetimeIndex.
+
+        Returns:
+            Dict of pre-computed numpy arrays and scalar values.
+        """
+        n = len(data)
+
         atr = ICTIndicators.calculate_atr(data, period=self.atr_period)
-        atr_values = atr.values
 
-        # Detect swing points for entire dataset
         self._swing_points = ICTIndicators.detect_swing_points(
             data,
             lookback=self.swing_lookback,
             min_swing_size_pct=self.min_swing_size_pct
         )
 
-        # Identify order blocks (with optional ATR-based impulse detection)
         self._order_blocks = ICTIndicators.identify_order_blocks(
             data,
             self._swing_points,
@@ -338,61 +343,45 @@ class ICTStrategy(LongShortStrategy):
             atr_period=self.atr_period
         )
 
-        # Map liquidity levels
-        # NOTE: POTENTIAL LOOKAHEAD - liquidity levels are computed from ALL swing points
-        # including future ones. A proper fix would filter by swing.available_index.
-        # Impact is limited since sweep detection still uses real price action,
-        # but the specific level reference may include not-yet-confirmed swings.
+        # NOTE: POTENTIAL LOOKAHEAD - liquidity levels from ALL swing points
         self._liquidity_levels = ICTIndicators.identify_liquidity_levels(
             self._swing_points
         )
 
-        # Get market structure
-        # NOTE: POTENTIAL LOOKAHEAD - market structure uses ALL swing points.
-        # A proper fix would compute per-bar using only available_index <= i.
+        # NOTE: POTENTIAL LOOKAHEAD - market structure uses ALL swing points
         market_structure, _ = ICTIndicators.classify_market_structure(
             self._swing_points
         )
 
-        # Get HTF bias if enabled
-        # NOTE: POTENTIAL LOOKAHEAD - HTF bias uses ALL swing points.
+        # NOTE: POTENTIAL LOOKAHEAD - HTF bias uses ALL swing points
         htf_bias = 'neutral'
         if self.use_htf_filter:
             htf_bias, _ = ICTIndicators.get_htf_bias(
-                data,
-                self._swing_points,
-                lookback=self.htf_lookback
+                data, self._swing_points, lookback=self.htf_lookback
             )
 
-        # PRE-COMPUTE: Liquidity sweeps (VECTORIZED - replaces per-bar calls)
-        # Now includes sweep depth for quality filtering
         bullish_sweeps, bearish_sweeps, bullish_confirmed, bearish_confirmed, \
             bullish_sweep_depth, bearish_sweep_depth = \
             ICTIndicators.detect_liquidity_sweeps_vectorized(
-                data,
-                self._liquidity_levels,
+                data, self._liquidity_levels,
                 sweep_threshold_pct=self.sweep_threshold_pct,
                 min_sweep_depth_pct=self.min_sweep_depth_pct
             )
 
-        # PRE-COMPUTE: Switch candle patterns (VECTORIZED)
         switch_long, switch_short = ICTIndicators.detect_switch_candles_vectorized(
             data,
             min_wick_ratio=self.min_wick_ratio,
             min_body_ratio=self.min_body_ratio
         )
 
-        # PRE-COMPUTE: Order block mitigation (fixes O(n^2) bug)
         mitigation_map = ICTIndicators.precompute_order_block_mitigation(
             self._order_blocks, data
         )
 
-        # PRE-COMPUTE: Entry window mask
         entry_window_mask = ICTIndicators.compute_entry_window_mask(
             data, self.ENTRY_START, self.ENTRY_CUTOFF
         )
 
-        # PRE-COMPUTE: Volume filter mask (if enabled)
         if self.use_volume_filter:
             volume_mask = ICTIndicators.compute_high_volume_mask(
                 data, self.rvol_threshold
@@ -400,7 +389,6 @@ class ICTStrategy(LongShortStrategy):
         else:
             volume_mask = np.ones(n, dtype=bool)
 
-        # PRE-COMPUTE: Session filter mask (if enabled)
         if self.session_filter != 'none':
             session_mask = np.array([
                 ICTIndicators.is_optimal_session(t, self.session_filter)
@@ -409,219 +397,319 @@ class ICTStrategy(LongShortStrategy):
         else:
             session_mask = np.ones(n, dtype=bool)
 
-        # PRE-COMPUTE: Momentum alignment (if enabled)
         if self.use_momentum_filter:
-            bullish_momentum, bearish_momentum = ICTIndicators.compute_momentum_alignment(
-                data, ema_period=self.momentum_ema_period
-            )
+            bullish_momentum, bearish_momentum = \
+                ICTIndicators.compute_momentum_alignment(
+                    data, ema_period=self.momentum_ema_period
+                )
         else:
             bullish_momentum = np.ones(n, dtype=bool)
             bearish_momentum = np.ones(n, dtype=bool)
 
-        # Extract numpy arrays for fast access in loop
-        close_values = data['close'].values
-        low_values = data['low'].values
-        high_values = data['high'].values
+        return {
+            'atr_values': atr.values,
+            'market_structure': market_structure,
+            'htf_bias': htf_bias,
+            'bullish_confirmed': bullish_confirmed,
+            'bearish_confirmed': bearish_confirmed,
+            'switch_long': switch_long,
+            'switch_short': switch_short,
+            'mitigation_map': mitigation_map,
+            'entry_window_mask': entry_window_mask,
+            'volume_mask': volume_mask,
+            'session_mask': session_mask,
+            'bullish_momentum': bullish_momentum,
+            'bearish_momentum': bearish_momentum,
+        }
 
-        # =====================================================================
-        # PHASE 2: SEQUENTIAL SIGNAL GENERATION (stateful, but now O(1) per bar)
-        # =====================================================================
+    def _get_bar_time(self, timestamp) -> time:
+        """Convert a bar timestamp to Eastern Time time-of-day.
 
-        active_position: Optional[ICTPosition] = None
-        min_bars = max(self.swing_lookback * 2 + 1, 20)
+        Args:
+            timestamp: Bar timestamp (UTC DatetimeIndex element).
 
-        for i in range(min_bars, n):
-            current_time = data.index[i]
-            current_atr = atr_values[i] if i < len(atr_values) else 1.0
+        Returns:
+            time object in Eastern Time.
+        """
+        if hasattr(timestamp, 'time'):
+            try:
+                et_time = tz.from_utc(timestamp.to_pydatetime())
+                return et_time.time()
+            except Exception:
+                return timestamp.time()
+        return time(12, 0)
 
-            # Get time of day for exit check - CONVERT FROM UTC TO ET
-            # Data timestamps are stored in UTC, but exit_time is configured in ET
-            if hasattr(current_time, 'time'):
-                # Convert UTC timestamp to Eastern Time for proper comparison
-                try:
-                    et_time = tz.from_utc(current_time.to_pydatetime())
-                    bar_time = et_time.time()
-                except Exception:
-                    # Fallback if conversion fails
-                    bar_time = current_time.time()
-            else:
-                bar_time = time(12, 0)
+    def _process_bar(
+        self,
+        i: int,
+        data: pd.DataFrame,
+        indicators: Dict,
+        active_position: Optional[ICTPosition],
+        close_values: np.ndarray,
+        low_values: np.ndarray,
+        high_values: np.ndarray,
+    ) -> Tuple[Optional[ICTPosition], Optional[str]]:
+        """Process a single bar for entry/exit signals.
 
-            # Check for exits first
-            just_exited = False
-            if active_position is not None:
-                should_exit, exit_reason = self._check_exit(
-                    active_position,
-                    close_values[i],
-                    low_values[i],
-                    high_values[i],
-                    bar_time,
-                    current_bar_idx=i
-                )
+        Args:
+            i: Bar index.
+            data: Full OHLCV DataFrame.
+            indicators: Pre-computed indicator arrays from _compute_indicators.
+            active_position: Currently held position, or None.
+            close_values: Close price array.
+            low_values: Low price array.
+            high_values: High price array.
 
-                if should_exit:
-                    if active_position.direction == 'long':
-                        long_exits_arr[i] = True
-                    else:
-                        short_exits_arr[i] = True
-                    active_position = None
-                    just_exited = True  # Prevent re-entry on same bar
+        Returns:
+            Tuple of (updated active_position, signal_type).
+            signal_type is one of: 'long_entry', 'short_entry',
+            'long_exit', 'short_exit', or None.
+        """
+        current_time = data.index[i]
+        bar_time = self._get_bar_time(current_time)
 
-            # Skip entry logic if we have active position OR just exited
-            # (prevents same-bar re-entry after time stop / max loss)
-            if active_position is not None or just_exited:
-                continue
-
-            # Fast filter checks using pre-computed masks
-            if not entry_window_mask[i]:
-                continue
-
-            if not session_mask[i]:
-                continue
-
-            # Check daily trade limit
-            date_str = str(current_time.date()) if hasattr(current_time, 'date') else str(current_time)[:10]
-            daily_count = self._daily_trades.get(date_str, 0)
-            if daily_count >= self.max_positions_per_day:
-                continue
-
-            # Check for sweep + switch candle pattern using pre-computed arrays
-            has_bullish_setup = bullish_confirmed[i] and switch_long[i]
-            has_bearish_setup = bearish_confirmed[i] and switch_short[i]
-
-            if not has_bullish_setup and not has_bearish_setup:
-                continue
-
-            # Determine trade direction based on setup type and market structure
-            direction = None
-            trade_type_found = None
-
-            if self.trade_type in ['reversal', 'both']:
-                # Reversal: bullish sweep in bearish market or vice versa
-                if has_bullish_setup and market_structure != 'bullish':
-                    direction = 'long'
-                    trade_type_found = 'reversal'
-                elif has_bearish_setup and market_structure != 'bearish':
-                    direction = 'short'
-                    trade_type_found = 'reversal'
-
-            if direction is None and self.trade_type in ['continuation', 'both']:
-                # Continuation: sweep in direction of trend
-                if has_bullish_setup and market_structure == 'bullish':
-                    direction = 'long'
-                    trade_type_found = 'continuation'
-                elif has_bearish_setup and market_structure == 'bearish':
-                    direction = 'short'
-                    trade_type_found = 'continuation'
-
-            if direction is None:
-                continue
-
-            # Apply filters
-            if self.use_regime and not self._passes_regime_filter(direction):
-                continue
-
-            if self.long_only and direction == 'short':
-                continue
-
-            if self.use_htf_filter and not self._passes_htf_filter(direction, htf_bias):
-                continue
-
-            if self.use_volume_filter and not volume_mask[i]:
-                continue
-
-            # NEW: Momentum alignment filter - trade with the short-term trend (non-ICT)
-            if self.use_momentum_filter:
-                if direction == 'long' and not bullish_momentum[i]:
-                    continue
-                if direction == 'short' and not bearish_momentum[i]:
-                    continue
-
-            # ICT-ALIGNED: Market structure filter - only trade with structure
-            # This is pure ICT: longs only in bullish structure, shorts only in bearish
-            if self.use_structure_filter:
-                if direction == 'long' and market_structure != 'bullish':
-                    continue
-                if direction == 'short' and market_structure != 'bearish':
-                    continue
-
-            # Find nearby unmitigated order block for stop placement
-            nearby_ob = None
-            ob_direction = 'bullish' if direction == 'long' else 'bearish'
-            for ob in self._order_blocks:
-                if ob.direction != ob_direction:
-                    continue
-                # LOOKAHEAD FIX: Only use order blocks that are confirmed by current bar
-                # OB is only available after impulse move completes (available_index)
-                if ob.available_index > i:
-                    continue  # OB not yet confirmed - would be lookahead bias
-                # Check if mitigated by current bar
-                mit_idx = mitigation_map.get(ob.index, -1)
-                if mit_idx != -1 and mit_idx <= i:
-                    continue  # Already mitigated
-                # Check if price is near OB
-                if direction == 'long' and low_values[i] <= ob.high * 1.01:
-                    nearby_ob = ob
-                    break
-                elif direction == 'short' and high_values[i] >= ob.low * 0.99:
-                    nearby_ob = ob
-                    break
-
-            # ICT-ALIGNED: Require order block confluence for entry
-            # This is core ICT - sweeps should occur near valid order blocks
-            if self.require_ob_confluence and nearby_ob is None:
-                continue
-
-            # Calculate stop loss
-            if direction == 'long':
-                stop_loss = low_values[i] - current_atr * self.atr_stop_multiplier
-                if nearby_ob:
-                    stop_loss = min(stop_loss, nearby_ob.low - current_atr * 0.25)
-            else:
-                stop_loss = high_values[i] + current_atr * self.atr_stop_multiplier
-                if nearby_ob:
-                    stop_loss = max(stop_loss, nearby_ob.high + current_atr * 0.25)
-
-            # Calculate target
-            entry_price = close_values[i]
-            risk = abs(entry_price - stop_loss)
-            if direction == 'long':
-                target = entry_price + risk * self.risk_reward_ratio
-            else:
-                target = entry_price - risk * self.risk_reward_ratio
-
-            # Create position
-            position = ICTPosition(
-                symbol='',
-                direction=direction,
-                entry_price=entry_price,
-                entry_time=current_time,
-                stop_loss=stop_loss,
-                target=target,
-                order_block=nearby_ob,
-                trade_type=trade_type_found,
-                entry_bar_idx=i,
-                initial_stop_loss=stop_loss,  # Store for R calculation
-                trailing_active=False,
-                max_favorable_price=entry_price
+        # Check exits first
+        if active_position is not None:
+            should_exit, _ = self._check_exit(
+                active_position,
+                close_values[i], low_values[i], high_values[i],
+                bar_time, current_bar_idx=i
             )
+            if should_exit:
+                signal = 'long_exit' if active_position.direction == 'long' else 'short_exit'
+                return None, signal
+            # Still in position, no new signal
+            return active_position, None
 
-            # Generate signal
-            if direction == 'long':
-                long_entries_arr[i] = True
-            else:
-                short_entries_arr[i] = True
+        # Entry logic
+        if not self._passes_entry_filters(i, current_time, indicators):
+            return None, None
 
-            active_position = position
-            self._daily_trades[date_str] = daily_count + 1
+        direction, trade_type_found = self._determine_direction(i, indicators)
+        if direction is None:
+            return None, None
 
-        # Convert numpy arrays back to pandas Series
-        long_entries = pd.Series(long_entries_arr, index=data.index)
-        long_exits = pd.Series(long_exits_arr, index=data.index)
-        short_entries = pd.Series(short_entries_arr, index=data.index)
-        short_exits = pd.Series(short_exits_arr, index=data.index)
+        if not self._passes_directional_filters(
+            direction, indicators['htf_bias'], i, indicators
+        ):
+            return None, None
 
-        return long_entries, long_exits, short_entries, short_exits
+        atr_values = indicators['atr_values']
+        current_atr = atr_values[i] if i < len(atr_values) else 1.0
+        nearby_ob = self._find_nearby_order_block(
+            direction, i, low_values, high_values, indicators['mitigation_map']
+        )
+
+        if self.require_ob_confluence and nearby_ob is None:
+            return None, None
+
+        position = self._create_entry(
+            direction, trade_type_found, i, current_time,
+            nearby_ob, current_atr, close_values, low_values, high_values
+        )
+
+        signal = 'long_entry' if direction == 'long' else 'short_entry'
+        date_str = str(current_time.date()) if hasattr(current_time, 'date') else str(current_time)[:10]
+        self._daily_trades[date_str] = self._daily_trades.get(date_str, 0) + 1
+
+        return position, signal
+
+    def _passes_entry_filters(
+        self, i: int, current_time, indicators: Dict,
+    ) -> bool:
+        """Check pre-directional entry filters (window, session, daily limit, setup).
+
+        Args:
+            i: Bar index.
+            current_time: Timestamp for current bar.
+            indicators: Pre-computed indicator arrays.
+
+        Returns:
+            True if all filters pass.
+        """
+        if not indicators['entry_window_mask'][i]:
+            return False
+        if not indicators['session_mask'][i]:
+            return False
+
+        date_str = str(current_time.date()) if hasattr(current_time, 'date') else str(current_time)[:10]
+        if self._daily_trades.get(date_str, 0) >= self.max_positions_per_day:
+            return False
+
+        has_bullish = indicators['bullish_confirmed'][i] and indicators['switch_long'][i]
+        has_bearish = indicators['bearish_confirmed'][i] and indicators['switch_short'][i]
+        return has_bullish or has_bearish
+
+    def _determine_direction(
+        self, i: int, indicators: Dict,
+    ) -> Tuple[Optional[str], Optional[str]]:
+        """Determine trade direction and type from setup signals.
+
+        Args:
+            i: Bar index.
+            indicators: Pre-computed indicator arrays.
+
+        Returns:
+            Tuple of (direction, trade_type) or (None, None).
+        """
+        has_bullish = indicators['bullish_confirmed'][i] and indicators['switch_long'][i]
+        has_bearish = indicators['bearish_confirmed'][i] and indicators['switch_short'][i]
+        market_structure = indicators['market_structure']
+
+        direction = None
+        trade_type_found = None
+
+        if self.trade_type in ['reversal', 'both']:
+            if has_bullish and market_structure != 'bullish':
+                direction = 'long'
+                trade_type_found = 'reversal'
+            elif has_bearish and market_structure != 'bearish':
+                direction = 'short'
+                trade_type_found = 'reversal'
+
+        if direction is None and self.trade_type in ['continuation', 'both']:
+            if has_bullish and market_structure == 'bullish':
+                direction = 'long'
+                trade_type_found = 'continuation'
+            elif has_bearish and market_structure == 'bearish':
+                direction = 'short'
+                trade_type_found = 'continuation'
+
+        return direction, trade_type_found
+
+    def _passes_directional_filters(
+        self, direction: str, htf_bias: str, i: int, indicators: Dict,
+    ) -> bool:
+        """Apply filters that depend on trade direction.
+
+        Checks regime, long-only, HTF, volume, momentum, and structure filters.
+
+        Args:
+            direction: 'long' or 'short'.
+            htf_bias: Higher-timeframe bias string.
+            i: Bar index.
+            indicators: Pre-computed indicator arrays.
+
+        Returns:
+            True if all directional filters pass.
+        """
+        if self.use_regime and not self._passes_regime_filter(direction):
+            return False
+        if self.long_only and direction == 'short':
+            return False
+        if self.use_htf_filter and not self._passes_htf_filter(direction, htf_bias):
+            return False
+        if self.use_volume_filter and not indicators['volume_mask'][i]:
+            return False
+
+        if self.use_momentum_filter:
+            if direction == 'long' and not indicators['bullish_momentum'][i]:
+                return False
+            if direction == 'short' and not indicators['bearish_momentum'][i]:
+                return False
+
+        if self.use_structure_filter:
+            ms = indicators['market_structure']
+            if direction == 'long' and ms != 'bullish':
+                return False
+            if direction == 'short' and ms != 'bearish':
+                return False
+
+        return True
+
+    def _find_nearby_order_block(
+        self,
+        direction: str,
+        i: int,
+        low_values: np.ndarray,
+        high_values: np.ndarray,
+        mitigation_map: Dict,
+    ) -> Optional[OrderBlock]:
+        """Find the nearest unmitigated order block for stop placement.
+
+        Args:
+            direction: 'long' or 'short'.
+            i: Current bar index.
+            low_values: Low price array.
+            high_values: High price array.
+            mitigation_map: Pre-computed OB mitigation bar indices.
+
+        Returns:
+            OrderBlock if found, else None.
+        """
+        ob_direction = 'bullish' if direction == 'long' else 'bearish'
+        for ob in self._order_blocks:
+            if ob.direction != ob_direction:
+                continue
+            if ob.available_index > i:
+                continue
+            mit_idx = mitigation_map.get(ob.index, -1)
+            if mit_idx != -1 and mit_idx <= i:
+                continue
+            if direction == 'long' and low_values[i] <= ob.high * 1.01:
+                return ob
+            elif direction == 'short' and high_values[i] >= ob.low * 0.99:
+                return ob
+        return None
+
+    def _create_entry(
+        self,
+        direction: str,
+        trade_type_found: str,
+        i: int,
+        current_time,
+        nearby_ob: Optional[OrderBlock],
+        current_atr: float,
+        close_values: np.ndarray,
+        low_values: np.ndarray,
+        high_values: np.ndarray,
+    ) -> ICTPosition:
+        """Calculate stop/target and create an ICTPosition for entry.
+
+        Args:
+            direction: 'long' or 'short'.
+            trade_type_found: 'reversal' or 'continuation'.
+            i: Bar index.
+            current_time: Bar timestamp.
+            nearby_ob: Nearby order block (may be None).
+            current_atr: ATR value at bar i.
+            close_values: Close price array.
+            low_values: Low price array.
+            high_values: High price array.
+
+        Returns:
+            ICTPosition ready for tracking.
+        """
+        if direction == 'long':
+            stop_loss = low_values[i] - current_atr * self.atr_stop_multiplier
+            if nearby_ob:
+                stop_loss = min(stop_loss, nearby_ob.low - current_atr * 0.25)
+        else:
+            stop_loss = high_values[i] + current_atr * self.atr_stop_multiplier
+            if nearby_ob:
+                stop_loss = max(stop_loss, nearby_ob.high + current_atr * 0.25)
+
+        entry_price = close_values[i]
+        risk = abs(entry_price - stop_loss)
+        if direction == 'long':
+            target = entry_price + risk * self.risk_reward_ratio
+        else:
+            target = entry_price - risk * self.risk_reward_ratio
+
+        return ICTPosition(
+            symbol='',
+            direction=direction,
+            entry_price=entry_price,
+            entry_time=current_time,
+            stop_loss=stop_loss,
+            target=target,
+            order_block=nearby_ob,
+            trade_type=trade_type_found,
+            entry_bar_idx=i,
+            initial_stop_loss=stop_loss,
+            trailing_active=False,
+            max_favorable_price=entry_price
+        )
 
     def _check_reversal_setup(
         self,
