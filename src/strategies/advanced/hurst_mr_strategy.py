@@ -30,7 +30,7 @@ from typing import Tuple, Optional, Dict, Any
 import pandas as pd
 import numpy as np
 
-from src.backtesting.base.strategy import LongShortStrategy
+from src.strategies.advanced.zscore_mr_base import ZScoreMeanReversionBase
 from src.strategies.advanced.ml_crypto_mr_indicators import MLCryptoMRIndicators
 from src.utils.logger import get_logger
 
@@ -67,7 +67,7 @@ class HurstMRSignal:
     target_short: float
 
 
-class HurstMRStrategy(LongShortStrategy):
+class HurstMRStrategy(ZScoreMeanReversionBase):
     """
     Hurst Exponent-filtered Mean Reversion Strategy.
 
@@ -117,28 +117,15 @@ class HurstMRStrategy(LongShortStrategy):
         max_hold_bars: int = 10,
         **kwargs
     ):
-        # Store parameters as instance attributes
+        # Hurst-specific parameters
         self.hurst_window = hurst_window
         self.hurst_threshold = hurst_threshold
-        self.zscore_window = zscore_window
-        self.zscore_entry_threshold = zscore_entry_threshold
-        self.zscore_exit_threshold = zscore_exit_threshold
-        self.atr_period = atr_period
-        self.atr_stop_multiplier = atr_stop_multiplier
-        self.atr_target_multiplier = atr_target_multiplier
-        self.use_fixed_pct_exits = use_fixed_pct_exits
-        self.fixed_stop_pct = fixed_stop_pct
-        self.fixed_target_pct = fixed_target_pct
-        self.long_only = long_only
-        self.max_hold_bars = max_hold_bars
 
         # Position tracking
         self._current_position: Optional[HurstMRPosition] = None
 
-        # Call parent init
+        # Call base init (sets shared params and calls super().__init__)
         super().__init__(
-            hurst_window=hurst_window,
-            hurst_threshold=hurst_threshold,
             zscore_window=zscore_window,
             zscore_entry_threshold=zscore_entry_threshold,
             zscore_exit_threshold=zscore_exit_threshold,
@@ -150,8 +137,14 @@ class HurstMRStrategy(LongShortStrategy):
             fixed_target_pct=fixed_target_pct,
             long_only=long_only,
             max_hold_bars=max_hold_bars,
+            hurst_window=hurst_window,
+            hurst_threshold=hurst_threshold,
             **kwargs
         )
+
+    # ------------------------------------------------------------------
+    # Validation
+    # ------------------------------------------------------------------
 
     def validate_parameters(self) -> None:
         """Validate strategy parameters."""
@@ -176,8 +169,12 @@ class HurstMRStrategy(LongShortStrategy):
         """Reset strategy state for new backtest run."""
         self._current_position = None
 
-    def _calculate_indicators(self, data: pd.DataFrame) -> pd.DataFrame:
-        """Calculate all indicators needed for signal generation."""
+    # ------------------------------------------------------------------
+    # Base class hooks
+    # ------------------------------------------------------------------
+
+    def _compute_indicators(self, data: pd.DataFrame) -> pd.DataFrame:
+        """Calculate z-score, ATR, and Hurst exponent."""
         close = data['close']
 
         indicators = pd.DataFrame(index=data.index)
@@ -200,169 +197,32 @@ class HurstMRStrategy(LongShortStrategy):
 
         return indicators
 
-    def generate_long_short_signals(
-        self,
-        data: pd.DataFrame
-    ) -> Tuple[pd.Series, pd.Series, pd.Series, pd.Series]:
-        """
-        Generate entry and exit signals for long and short positions.
+    def _get_regime_filter_result(
+        self, i: int, indicators: pd.DataFrame
+    ) -> bool:
+        """Return True when Hurst exponent indicates mean-reverting regime."""
+        current_hurst = indicators['hurst'].iloc[i]
+        if pd.isna(current_hurst):
+            return False
+        return current_hurst < self.hurst_threshold
 
-        This method implements the core strategy logic:
-        1. Calculate Z-score and Hurst exponent
-        2. Generate entry signals when H < threshold and Z-score extreme
-        3. Track positions for ATR-based exits
+    def _get_min_required_bars(self) -> int:
+        """Minimum bars: largest of hurst_window and zscore_window plus buffer."""
+        return max(self.hurst_window, self.zscore_window) + 10
 
-        Args:
-            data: OHLCV DataFrame with DatetimeIndex
-
-        Returns:
-            Tuple of (long_entries, long_exits, short_entries, short_exits)
-        """
-        n = len(data)
-
-        # Initialize output arrays
-        long_entries = np.zeros(n, dtype=bool)
-        long_exits = np.zeros(n, dtype=bool)
-        short_entries = np.zeros(n, dtype=bool)
-        short_exits = np.zeros(n, dtype=bool)
-
-        # Check minimum data
-        min_required = max(self.hurst_window, self.zscore_window) + 10
-        if n < min_required:
-            logger.warning(f"Insufficient data for strategy: {n} bars < {min_required}")
-            return (
-                pd.Series(long_entries, index=data.index),
-                pd.Series(long_exits, index=data.index),
-                pd.Series(short_entries, index=data.index),
-                pd.Series(short_exits, index=data.index)
-            )
-
-        # Calculate indicators
-        indicators = self._calculate_indicators(data)
-
-        zscore = indicators['zscore']
-        hurst = indicators['hurst']
-        atr = indicators['atr']
-        close = indicators['close']
-
-        # Position tracking
-        position_active = False
-        position_direction = None
-        position_entry_bar = 0
-        position_stop = 0.0
-        position_target = 0.0
-
-        # Bar-by-bar processing
-        for i in range(n):
-            current_close = close.iloc[i]
-            current_zscore = zscore.iloc[i]
-            current_hurst = hurst.iloc[i]
-            current_atr = atr.iloc[i]
-
-            # === Check for exit if in position ===
-            if position_active:
-                bars_held = i - position_entry_bar
-                time_exit = bars_held >= self.max_hold_bars
-
-                if position_direction == 'long':
-                    if not pd.isna(current_close) and not pd.isna(current_zscore):
-                        hit_stop = current_close <= position_stop
-                        hit_target = current_close >= position_target
-                        mean_reversion = current_zscore >= -self.zscore_exit_threshold
-                    else:
-                        hit_stop = hit_target = mean_reversion = False
-
-                    if hit_stop or hit_target or mean_reversion or time_exit:
-                        long_exits[i] = True
-                        position_active = False
-                        position_direction = None
-
-                elif position_direction == 'short':
-                    if not pd.isna(current_close) and not pd.isna(current_zscore):
-                        hit_stop = current_close >= position_stop
-                        hit_target = current_close <= position_target
-                        mean_reversion = current_zscore <= self.zscore_exit_threshold
-                    else:
-                        hit_stop = hit_target = mean_reversion = False
-
-                    if hit_stop or hit_target or mean_reversion or time_exit:
-                        short_exits[i] = True
-                        position_active = False
-                        position_direction = None
-
-            # Skip entry if data is invalid
-            if pd.isna(current_zscore) or pd.isna(current_atr) or pd.isna(current_hurst):
-                continue
-
-            # === Check for entry if flat ===
-            if not position_active:
-                # Hurst filter: only trade in mean-reverting conditions
-                is_mean_reverting = current_hurst < self.hurst_threshold
-
-                if not is_mean_reverting:
-                    continue  # Skip if not mean-reverting
-
-                # Long entry: oversold condition
-                long_condition = current_zscore <= -self.zscore_entry_threshold
-
-                # Short entry: overbought condition
-                short_condition = current_zscore >= self.zscore_entry_threshold
-
-                # Generate entry signals
-                if long_condition:
-                    long_entries[i] = True
-                    position_active = True
-                    position_direction = 'long'
-                    position_entry_bar = i
-
-                    if self.use_fixed_pct_exits:
-                        position_stop = current_close * (1.0 - self.fixed_stop_pct)
-                        position_target = current_close * (1.0 + self.fixed_target_pct)
-                    else:
-                        position_stop = current_close - (current_atr * self.atr_stop_multiplier)
-                        position_target = current_close + (current_atr * self.atr_target_multiplier)
-
-                elif short_condition and not self.long_only:
-                    short_entries[i] = True
-                    position_active = True
-                    position_direction = 'short'
-                    position_entry_bar = i
-
-                    if self.use_fixed_pct_exits:
-                        position_stop = current_close * (1.0 + self.fixed_stop_pct)
-                        position_target = current_close * (1.0 - self.fixed_target_pct)
-                    else:
-                        position_stop = current_close + (current_atr * self.atr_stop_multiplier)
-                        position_target = current_close - (current_atr * self.atr_target_multiplier)
-
-        # Ensure time-based exits
-        self._ensure_time_exits(long_entries, long_exits, n)
-        self._ensure_time_exits(short_entries, short_exits, n)
-
+    def _check_indicator_nan_for_entry(
+        self, i: int, indicators: pd.DataFrame
+    ) -> bool:
+        """Skip entry when zscore, atr, or hurst is NaN."""
         return (
-            pd.Series(long_entries, index=data.index),
-            pd.Series(long_exits, index=data.index),
-            pd.Series(short_entries, index=data.index),
-            pd.Series(short_exits, index=data.index)
+            pd.isna(indicators['zscore'].iloc[i])
+            or pd.isna(indicators['atr'].iloc[i])
+            or pd.isna(indicators['hurst'].iloc[i])
         )
 
-    def _ensure_time_exits(
-        self,
-        entries: np.ndarray,
-        exits: np.ndarray,
-        n: int
-    ) -> None:
-        """Ensure every entry has a corresponding exit within max_hold_bars."""
-        entry_indices = np.where(entries)[0]
-
-        for entry_idx in entry_indices:
-            max_exit_idx = min(entry_idx + self.max_hold_bars, n - 1)
-            exit_range = exits[entry_idx + 1:max_exit_idx + 1]
-
-            if len(exit_range) > 0 and exit_range.any():
-                continue
-
-            exits[max_exit_idx] = True
+    # ------------------------------------------------------------------
+    # Live trading helpers (strategy-specific)
+    # ------------------------------------------------------------------
 
     def get_current_signal(self, data: pd.DataFrame) -> HurstMRSignal:
         """
@@ -374,7 +234,7 @@ class HurstMRStrategy(LongShortStrategy):
         Returns:
             HurstMRSignal with current state
         """
-        indicators = self._calculate_indicators(data)
+        indicators = self._compute_indicators(data)
 
         latest_idx = indicators.index[-1]
         latest = indicators.iloc[-1]
@@ -429,7 +289,7 @@ class HurstMRStrategy(LongShortStrategy):
         Returns:
             Dictionary with Hurst statistics
         """
-        indicators = self._calculate_indicators(data)
+        indicators = self._compute_indicators(data)
         hurst = indicators['hurst'].dropna()
 
         is_mean_reverting = hurst < self.hurst_threshold

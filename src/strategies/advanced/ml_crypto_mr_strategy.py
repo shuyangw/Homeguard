@@ -27,7 +27,7 @@ from typing import Tuple, Optional, Dict, Any
 import pandas as pd
 import numpy as np
 
-from src.backtesting.base.strategy import LongShortStrategy
+from src.strategies.advanced.zscore_mr_base import ZScoreMeanReversionBase
 from src.strategies.advanced.ml_crypto_mr_indicators import (
     MLCryptoMRIndicators,
     MLRegimeFilter,
@@ -51,7 +51,7 @@ class MLCryptoMRPosition:
     atr_at_entry: float
 
 
-class MLCryptoMRStrategy(LongShortStrategy):
+class MLCryptoMRStrategy(ZScoreMeanReversionBase):
     """
     ML-filtered Mean Reversion Strategy for Crypto.
 
@@ -118,28 +118,17 @@ class MLCryptoMRStrategy(LongShortStrategy):
         max_hold_bars: int = 10,
         **kwargs
     ):
-        # Store parameters as instance attributes before calling super().__init__
-        self.zscore_window = zscore_window
-        self.zscore_entry_threshold = zscore_entry_threshold
-        self.zscore_exit_threshold = zscore_exit_threshold
+        # Strategy-specific parameters (set before super().__init__)
         self.rsi_period = rsi_period
         self.rsi_oversold = rsi_oversold
         self.rsi_overbought = rsi_overbought
         self.use_rsi_confirmation = use_rsi_confirmation
-        self.atr_period = atr_period
-        self.atr_stop_multiplier = atr_stop_multiplier
-        self.atr_target_multiplier = atr_target_multiplier
-        self.use_fixed_pct_exits = use_fixed_pct_exits
-        self.fixed_stop_pct = fixed_stop_pct
-        self.fixed_target_pct = fixed_target_pct
         self.use_ml_filter = use_ml_filter
         self.ml_lookback_days = ml_lookback_days
         self.ml_retrain_frequency = ml_retrain_frequency
         self.adx_threshold = adx_threshold
         self.choppiness_threshold = choppiness_threshold
         self.model_type = model_type
-        self.long_only = long_only
-        self.max_hold_bars = max_hold_bars
 
         # Create indicator config
         self._indicator_config = {
@@ -168,31 +157,38 @@ class MLCryptoMRStrategy(LongShortStrategy):
         self._current_position: Optional[MLCryptoMRPosition] = None
         self._features_cache: Optional[pd.DataFrame] = None
 
-        # Call parent init
+        # Pre-computed regime predictions (populated in _pre_loop_setup)
+        self._is_ranging: Optional[pd.Series] = None
+
+        # Call base init (sets shared params and calls super().__init__)
         super().__init__(
             zscore_window=zscore_window,
             zscore_entry_threshold=zscore_entry_threshold,
             zscore_exit_threshold=zscore_exit_threshold,
-            rsi_period=rsi_period,
-            rsi_oversold=rsi_oversold,
-            rsi_overbought=rsi_overbought,
-            use_rsi_confirmation=use_rsi_confirmation,
             atr_period=atr_period,
             atr_stop_multiplier=atr_stop_multiplier,
             atr_target_multiplier=atr_target_multiplier,
             use_fixed_pct_exits=use_fixed_pct_exits,
             fixed_stop_pct=fixed_stop_pct,
             fixed_target_pct=fixed_target_pct,
+            long_only=long_only,
+            max_hold_bars=max_hold_bars,
+            rsi_period=rsi_period,
+            rsi_oversold=rsi_oversold,
+            rsi_overbought=rsi_overbought,
+            use_rsi_confirmation=use_rsi_confirmation,
             use_ml_filter=use_ml_filter,
             ml_lookback_days=ml_lookback_days,
             ml_retrain_frequency=ml_retrain_frequency,
             adx_threshold=adx_threshold,
             choppiness_threshold=choppiness_threshold,
             model_type=model_type,
-            long_only=long_only,
-            max_hold_bars=max_hold_bars,
             **kwargs
         )
+
+    # ------------------------------------------------------------------
+    # Validation
+    # ------------------------------------------------------------------
 
     def validate_parameters(self) -> None:
         """Validate strategy parameters."""
@@ -217,217 +213,75 @@ class MLCryptoMRStrategy(LongShortStrategy):
         """Reset strategy state for new backtest run."""
         self._current_position = None
         self._features_cache = None
+        self._is_ranging = None
         self._regime_filter.reset()
+
+    # ------------------------------------------------------------------
+    # Base class hooks
+    # ------------------------------------------------------------------
+
+    def _compute_indicators(self, data: pd.DataFrame) -> pd.DataFrame:
+        """Calculate all features needed for signal generation."""
+        return MLCryptoMRIndicators.calculate_all_features(
+            data, self._indicator_config
+        )
+
+    def _pre_loop_setup(
+        self, data: pd.DataFrame, indicators: pd.DataFrame
+    ) -> None:
+        """Train ML model and pre-compute regime predictions."""
+        n = len(data)
+
+        if self.use_ml_filter:
+            min_train_idx = min(self.ml_lookback_days, n // 2)
+            self._regime_filter.fit(indicators, end_idx=min_train_idx)
+
+        is_ranging, _prob_ranging = self._regime_filter.predict(indicators)
+        self._is_ranging = is_ranging
+
+    def _get_regime_filter_result(
+        self, i: int, indicators: pd.DataFrame
+    ) -> bool:
+        """Return True when ML filter predicts ranging regime (or ML off)."""
+        if not self.use_ml_filter:
+            return True
+
+        ranging = self._is_ranging.iloc[i]
+        if pd.isna(ranging):
+            return False
+        return bool(ranging)
+
+    def _get_min_required_bars(self) -> int:
+        """Minimum bars: zscore_window plus buffer."""
+        return self.zscore_window + 10
+
+    def _check_entry_confirmation(
+        self, i: int, indicators: pd.DataFrame
+    ) -> Tuple[bool, bool]:
+        """
+        RSI confirmation for entries.
+
+        Returns (long_ok, short_ok). When use_rsi_confirmation is False,
+        both are True.
+        """
+        if not self.use_rsi_confirmation:
+            return True, True
+
+        current_rsi = indicators['rsi'].iloc[i]
+        if pd.isna(current_rsi):
+            return False, False
+
+        long_ok = current_rsi < self.rsi_oversold
+        short_ok = current_rsi > self.rsi_overbought
+        return long_ok, short_ok
+
+    # ------------------------------------------------------------------
+    # Live trading helpers (strategy-specific)
+    # ------------------------------------------------------------------
 
     def _calculate_features(self, data: pd.DataFrame) -> pd.DataFrame:
         """Calculate all features needed for signal generation."""
         return MLCryptoMRIndicators.calculate_all_features(data, self._indicator_config)
-
-    def generate_long_short_signals(
-        self,
-        data: pd.DataFrame
-    ) -> Tuple[pd.Series, pd.Series, pd.Series, pd.Series]:
-        """
-        Generate entry and exit signals for long and short positions.
-
-        This method implements the core strategy logic:
-        1. Calculate all indicators
-        2. Get regime predictions from ML filter
-        3. Generate entry signals (Z-score + regime filter + RSI)
-        4. Track positions for ATR-based exits
-
-        Args:
-            data: OHLCV DataFrame with DatetimeIndex
-
-        Returns:
-            Tuple of (long_entries, long_exits, short_entries, short_exits)
-            Each is a boolean Series aligned to data.index
-        """
-        n = len(data)
-
-        # Initialize output arrays
-        long_entries = np.zeros(n, dtype=bool)
-        long_exits = np.zeros(n, dtype=bool)
-        short_entries = np.zeros(n, dtype=bool)
-        short_exits = np.zeros(n, dtype=bool)
-
-        if n < self.zscore_window + 10:
-            logger.warning(f"Insufficient data for strategy: {n} bars")
-            return (
-                pd.Series(long_entries, index=data.index),
-                pd.Series(long_exits, index=data.index),
-                pd.Series(short_entries, index=data.index),
-                pd.Series(short_exits, index=data.index)
-            )
-
-        # Calculate features
-        features = self._calculate_features(data)
-
-        # Train ML model on initial data (if using ML)
-        if self.use_ml_filter:
-            min_train_idx = min(self.ml_lookback_days, n // 2)
-            self._regime_filter.fit(features, end_idx=min_train_idx)
-
-        # Get regime predictions
-        is_ranging, prob_ranging = self._regime_filter.predict(features)
-
-        # Extract key indicators
-        zscore = features['zscore']
-        rsi = features['rsi']
-        atr = features['atr']
-        close = features['close']
-
-        # Position tracking for exits
-        position_active = False
-        position_direction = None  # 'long' or 'short'
-        position_entry_bar = 0
-        position_stop = 0.0
-        position_target = 0.0
-
-        # Bar-by-bar processing for position tracking
-        for i in range(n):
-            current_close = close.iloc[i]
-            current_zscore = zscore.iloc[i]
-            current_atr = atr.iloc[i]
-
-            # === Check for exit if in position (even with NaN data) ===
-            if position_active:
-                bars_held = i - position_entry_bar
-
-                # Time-based exit ALWAYS fires regardless of data quality
-                time_exit = bars_held >= self.max_hold_bars
-
-                if position_direction == 'long':
-                    # Price-based exits only if we have valid data
-                    if not pd.isna(current_close) and not pd.isna(current_zscore):
-                        hit_stop = current_close <= position_stop
-                        hit_target = current_close >= position_target
-                        mean_reversion = current_zscore >= -self.zscore_exit_threshold
-                    else:
-                        hit_stop = hit_target = mean_reversion = False
-
-                    if hit_stop or hit_target or mean_reversion or time_exit:
-                        long_exits[i] = True
-                        position_active = False
-                        position_direction = None
-
-                elif position_direction == 'short':
-                    # Price-based exits only if we have valid data
-                    if not pd.isna(current_close) and not pd.isna(current_zscore):
-                        hit_stop = current_close >= position_stop
-                        hit_target = current_close <= position_target
-                        mean_reversion = current_zscore <= self.zscore_exit_threshold
-                    else:
-                        hit_stop = hit_target = mean_reversion = False
-
-                    if hit_stop or hit_target or mean_reversion or time_exit:
-                        short_exits[i] = True
-                        position_active = False
-                        position_direction = None
-
-            # Skip entry checks if we have NaN data
-            if pd.isna(current_zscore) or pd.isna(current_atr):
-                continue
-
-            # === Check for entry if flat ===
-            if not position_active:
-                # Get regime filter result
-                ranging = is_ranging.iloc[i] if not pd.isna(is_ranging.iloc[i]) else False
-
-                # Apply ML filter
-                if self.use_ml_filter and not ranging:
-                    continue  # Skip entry if trending
-
-                # Check RSI confirmation
-                current_rsi = rsi.iloc[i]
-                if pd.isna(current_rsi):
-                    continue
-
-                rsi_oversold = current_rsi < self.rsi_oversold
-                rsi_overbought = current_rsi > self.rsi_overbought
-
-                # Long entry: oversold condition
-                long_condition = current_zscore <= -self.zscore_entry_threshold
-                if self.use_rsi_confirmation:
-                    long_condition = long_condition and rsi_oversold
-
-                # Short entry: overbought condition
-                short_condition = current_zscore >= self.zscore_entry_threshold
-                if self.use_rsi_confirmation:
-                    short_condition = short_condition and rsi_overbought
-
-                # Generate entry signals
-                if long_condition:
-                    long_entries[i] = True
-                    position_active = True
-                    position_direction = 'long'
-                    position_entry_bar = i
-                    # Calculate stop/target based on mode
-                    if self.use_fixed_pct_exits:
-                        position_stop = current_close * (1.0 - self.fixed_stop_pct)
-                        position_target = current_close * (1.0 + self.fixed_target_pct)
-                    else:
-                        position_stop = current_close - (current_atr * self.atr_stop_multiplier)
-                        position_target = current_close + (current_atr * self.atr_target_multiplier)
-
-                elif short_condition and not self.long_only:
-                    short_entries[i] = True
-                    position_active = True
-                    position_direction = 'short'
-                    position_entry_bar = i
-                    # Calculate stop/target based on mode
-                    if self.use_fixed_pct_exits:
-                        position_stop = current_close * (1.0 + self.fixed_stop_pct)
-                        position_target = current_close * (1.0 - self.fixed_target_pct)
-                    else:
-                        position_stop = current_close + (current_atr * self.atr_stop_multiplier)
-                        position_target = current_close - (current_atr * self.atr_target_multiplier)
-
-        # === Post-processing: Ensure time-based exits exist ===
-        # This is a safety net in case the internal tracking missed any exits
-        self._ensure_time_exits(long_entries, long_exits, n)
-        self._ensure_time_exits(short_entries, short_exits, n)
-
-        # Convert to pandas Series
-        return (
-            pd.Series(long_entries, index=data.index),
-            pd.Series(long_exits, index=data.index),
-            pd.Series(short_entries, index=data.index),
-            pd.Series(short_exits, index=data.index)
-        )
-
-    def _ensure_time_exits(
-        self,
-        entries: np.ndarray,
-        exits: np.ndarray,
-        n: int
-    ) -> None:
-        """
-        Ensure every entry has a corresponding exit within max_hold_bars.
-
-        This is a safety net to guarantee time-based exits even if the
-        main loop's position tracking gets out of sync.
-
-        Args:
-            entries: Boolean array of entry signals (modified in place)
-            exits: Boolean array of exit signals (modified in place)
-            n: Length of arrays
-        """
-        entry_indices = np.where(entries)[0]
-
-        for entry_idx in entry_indices:
-            # Find the exit bar (max_hold_bars after entry, capped at last bar)
-            max_exit_idx = min(entry_idx + self.max_hold_bars, n - 1)
-
-            # Check if there's already an exit signal between entry and max_exit
-            exit_range = exits[entry_idx + 1:max_exit_idx + 1]
-            if len(exit_range) > 0 and exit_range.any():
-                # There's already an exit, skip to that exit's position
-                first_exit = entry_idx + 1 + np.argmax(exit_range)
-                continue
-
-            # No exit found - force one at max_hold_bars
-            exits[max_exit_idx] = True
 
     def get_current_signal(self, data: pd.DataFrame) -> MLCryptoMRSignal:
         """
