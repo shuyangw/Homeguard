@@ -692,7 +692,8 @@ class OMRLiveAdapter(StrategyAdapter):
                             metadata={
                                 'probability': signal.metadata.get('probability') if signal.metadata else None,
                                 'expected_return': signal.metadata.get('expected_return') if signal.metadata else None
-                            }
+                            },
+                            account_snapshot=self.broker.get_account()
                         )
                     except Exception as log_err:
                         logger.error(f"[OMR] Trade logging failed (non-blocking): {log_err}")
@@ -904,7 +905,8 @@ class OMRLiveAdapter(StrategyAdapter):
                                     exit_price=float(fill_price) if fill_price else current_price,
                                     order_id=order.get('order_id'),
                                     entry_price=position_info.get('entry_price', entry_price),
-                                    entry_time=position_info.get('entry_time')
+                                    entry_time=position_info.get('entry_time'),
+                                    account_snapshot=self.broker.get_account()
                                 )
                             except Exception as log_err:
                                 logger.error(f"[OMR] Trade logging failed (non-blocking): {log_err}")

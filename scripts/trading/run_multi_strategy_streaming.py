@@ -59,7 +59,8 @@ class MultiStrategyRunner:
         self,
         omr_adapter: OMRLiveAdapter,
         ramp_adapter: RAMPLiveAdapter,
-        check_interval: int = 15
+        check_interval: int = 15,
+        snapshot_worker=None
     ):
         """
         Initialize multi-strategy runner.
@@ -68,10 +69,12 @@ class MultiStrategyRunner:
             omr_adapter: OMR strategy adapter
             ramp_adapter: RAMP strategy adapter
             check_interval: Seconds between schedule checks
+            snapshot_worker: Optional PortfolioSnapshotWorker for periodic snapshots
         """
         self.omr_adapter = omr_adapter
         self.ramp_adapter = ramp_adapter
         self.check_interval = check_interval
+        self.snapshot_worker = snapshot_worker
 
         # Execution tracking
         self.omr_last_entry = None
@@ -87,6 +90,8 @@ class MultiStrategyRunner:
         """Handle graceful shutdown."""
         logger.info("Received shutdown signal")
         self.running = False
+        if self.snapshot_worker:
+            self.snapshot_worker.stop()
 
     def should_refresh_capital(self) -> bool:
         """Check if daily capital refresh should run (9:30 AM ET)."""
@@ -415,11 +420,25 @@ def main():
         ramp_adapter.preload_historical_data()
         logger.info("")
 
+        # Create portfolio logger and snapshot worker
+        from src.trading.logging import PortfolioLogger, PortfolioSnapshotWorker
+
+        portfolio_log_dir = Path(project_root) / "data" / "trading" / "logs"
+        portfolio_logger = PortfolioLogger(log_dir=portfolio_log_dir)
+        snapshot_worker = PortfolioSnapshotWorker(
+            broker=broker,
+            portfolio_logger=portfolio_logger,
+            interval_minutes=15
+        )
+        snapshot_worker.start()
+        logger.success("Portfolio snapshot worker started (15-min intervals)")
+
         # Create multi-strategy runner
         runner = MultiStrategyRunner(
             omr_adapter=omr_adapter,
             ramp_adapter=ramp_adapter,
-            check_interval=15  # Check every 15 seconds
+            check_interval=15,  # Check every 15 seconds
+            snapshot_worker=snapshot_worker
         )
 
         # Run continuously

@@ -1164,7 +1164,8 @@ class RAMPLiveAdapter(StrategyAdapter):
                                         exit_price=float(fill_price) if fill_price else float(pos.get('current_price', 0)),
                                         order_id=order.get('order_id'),
                                         entry_price=position_info.get('entry_price', float(pos.get('avg_entry_price', 0))),
-                                        entry_time=position_info.get('entry_time')
+                                        entry_time=position_info.get('entry_time'),
+                                        account_snapshot=self.broker.get_account()
                                     )
                                 except Exception as log_err:
                                     logger.error(f"[RAMP] Trade logging failed (non-blocking): {log_err}")
@@ -1268,7 +1269,8 @@ class RAMPLiveAdapter(StrategyAdapter):
                                         'rank': signal.metadata.get('rank') if signal.metadata else None,
                                         'momentum_score': signal.metadata.get('momentum_score') if signal.metadata else None,
                                         'regime': regime
-                                    }
+                                    },
+                                    account_snapshot=self.broker.get_account()
                                 )
                             except Exception as log_err:
                                 logger.error(f"[RAMP] Trade logging failed (non-blocking): {log_err}")
