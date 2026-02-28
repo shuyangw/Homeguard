@@ -87,20 +87,15 @@ Homeguard is a professional-grade backtesting framework for algorithmic trading 
 **Purpose**: Fetch, store, and retrieve historical market data
 
 **Key Components**:
-- **AlpacaClient** ([src/data_engine/api/alpaca_client.py](../../src/data_engine/api/alpaca_client.py))
-  - Connects to Alpaca REST API
-  - Fetches OHLCV bars (open, high, low, close, volume)
-  - Rate limiting and error handling
+- **DataAcquisitionManager** ([src/data/acquisition/manager.py](../../src/data/acquisition/manager.py))
+  - Unified entry point for all data downloads
+  - Plugin-based architecture (equities, crypto, futures, news)
+  - Multi-threaded with retry logic and manifest tracking
 
-- **ParquetStorage** ([src/data_engine/storage/parquet_storage.py](../../src/data_engine/storage/parquet_storage.py))
-  - Stores data in Apache Parquet format
-  - Partitioned by timeframe and symbol
-  - 100x compression vs CSV
-
-- **IngestionPipeline** ([src/data_engine/orchestration/ingestion_pipeline.py](../../src/data_engine/orchestration/ingestion_pipeline.py))
-  - Multi-threaded data ingestion
-  - Progress tracking
-  - Batch processing for efficiency
+- **BaseDownloader** ([src/data/acquisition/base.py](../../src/data/acquisition/base.py))
+  - Shared infrastructure for all download plugins
+  - Hive-partitioned parquet storage
+  - Schema validation and thread-safe client management
 
 - **DataLoader** ([src/backtesting/engine/data_loader.py](../../src/backtesting/engine/data_loader.py))
   - Loads data from Parquet via DuckDB

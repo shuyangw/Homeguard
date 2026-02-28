@@ -21,7 +21,7 @@ Each major module in `src/` now has comprehensive architecture documentation at 
 | `src/settings/` | [CONFIGURATION_SYSTEM.md](../../src/settings/CONFIGURATION_SYSTEM.md) | Config schema, YAML loading, validation |
 | `src/utils/` | [UTILITY_MODULES.md](../../src/utils/UTILITY_MODULES.md) | Logger, timezone, VIX provider |
 | `src/discord_bot/` | [DISCORD_BOT_ARCHITECTURE.md](../../src/discord_bot/DISCORD_BOT_ARCHITECTURE.md) | Discord monitoring bot |
-| `src/data_engine/` | [DATA_ENGINE.md](../../src/data_engine/DATA_ENGINE.md) | Data ingestion system |
+| `src/data/acquisition/` | (inline) | Unified data acquisition with plugin architecture |
 | `src/gui/` | [GUI.md](../../src/gui/GUI.md) | Desktop GUI application |
 | `src/visualization/` | [VISUALIZATION.md](../../src/visualization/VISUALIZATION.md) | Charts and reporting |
 
@@ -30,7 +30,7 @@ Each major module in `src/` now has comprehensive architecture documentation at 
 ## Table of Contents
 
 1. [Root Level Modules](#root-level-modules)
-2. [Data Engine Layer](#data-engine-layer)
+2. [Data Acquisition Layer](#data-acquisition-layer)
 3. [Stock Screening Layer](#stock-screening-layer) (NEW)
 4. [YFinance Fundamentals Layer](#yfinance-fundamentals-layer) (NEW)
 5. [News and Sentiment Layer](#news-and-sentiment-layer)
@@ -176,166 +176,42 @@ python -m src.run_ingestion
 
 ---
 
-## Data Engine Layer
+## Data Acquisition Layer
 
-### `src/data_engine/api/alpaca_client.py`
-**Purpose**: Alpaca API client for fetching market data
+### `src/data/acquisition/` (Package)
+**Purpose**: Unified data acquisition with plugin-based architecture
+
+**Note**: This module supersedes the legacy `src/data_engine/` (deleted) and
+`src/data/downloader.py` / `src/data/crypto_downloader.py` (deleted).
 
 **Key Classes**:
-- `AlpacaClient`: REST API client
+- `DataAcquisitionManager`: Single entry point for all data downloads
+- `BaseDownloader`: Abstract base with shared threading, retry, and storage
+- `DownloadResult`: Result dataclass with statistics
 
-**Key Methods**:
-- `fetch_bars(symbol, start, end, timeframe)`: Fetch OHLCV bars
-- `get_latest_trade(symbol)`: Get latest trade price
-- `get_account()`: Get account information
-
-**Rate Limiting**:
-- Implements automatic retry with exponential backoff
-- Respects Alpaca API rate limits (200 requests/minute)
-
-**Error Handling**:
-- Connection errors -> retry
-- Authentication errors -> fail fast
-- Data errors -> log and skip
-
-**Dependencies**: `requests`, `pandas`, `api_key`
+**Plugins** (in `src/data/acquisition/plugins/`):
+- `AlpacaEquitiesPlugin`: Equity OHLCV from Alpaca
+- `AlpacaCryptoPlugin`: Crypto OHLCV from Alpaca
+- `DatabentoFuturesPlugin`: Futures trades from Databento
+- `AlpacaNewsPlugin`: News articles from Alpaca
 
 **Usage Example**:
 ```python
-from data_engine.api.alpaca_client import AlpacaClient
-client = AlpacaClient(api_key, secret_key)
-bars = client.fetch_bars('AAPL', '2023-01-01', '2024-01-01', '1Min')
-```
+from src.data.acquisition import DataAcquisitionManager
 
----
-
-### `src/data_engine/loaders/symbol_loader.py`
-**Purpose**: Load symbol lists from files
-
-**Key Classes**:
-- `SymbolLoader`: Symbol list loader
-
-**Key Methods**:
-- `load_from_csv(filepath)`: Load from CSV file
-- `load_from_txt(filepath)`: Load from text file (one per line)
-- `load_from_list(symbols)`: Load from Python list
-
-**Supported Formats**:
-- CSV: `symbol,name,sector`
-- TXT: `AAPL\nMSFT\nGOOGL`
-- List: `['AAPL', 'MSFT', 'GOOGL']`
-
-**Dependencies**: `pandas`, `pathlib`
-
-**Usage Example**:
-```python
-from data_engine.loaders.symbol_loader import SymbolLoader
-loader = SymbolLoader()
-symbols = loader.load_from_csv('sp500.csv')
-```
-
----
-
-### `src/data_engine/storage/parquet_storage.py`
-**Purpose**: Store and retrieve market data in Parquet format
-
-**Key Classes**:
-- `ParquetStorage`: Parquet file manager
-
-**Key Methods**:
-- `save_bars(symbol, data, timeframe)`: Save OHLCV data
-- `load_bars(symbol, start, end, timeframe)`: Load OHLCV data
-- `get_available_dates(symbol, timeframe)`: List available dates
-- `delete_symbol(symbol, timeframe)`: Delete all data for symbol
-
-**Storage Structure**:
-```
-data/
-└── equities_1min/
-    ├── AAPL/
-    │   ├── 2023-01-01.parquet
-    │   ├── 2023-01-02.parquet
-    │   └── ...
-    └── MSFT/
-        └── ...
-```
-
-**Partitioning**:
-- By timeframe (1min, 5min, 1hour, 1day)
-- By symbol (AAPL, MSFT, etc.)
-- By date (one file per trading day)
-
-**Compression**: Parquet default compression (snappy)
-
-**Dependencies**: `pandas`, `pyarrow`, `pathlib`
-
-**Usage Example**:
-```python
-from data_engine.storage.parquet_storage import ParquetStorage
-storage = ParquetStorage(data_dir='data/')
-storage.save_bars('AAPL', bars_df, '1Min')
-data = storage.load_bars('AAPL', '2023-01-01', '2024-01-01', '1Min')
-```
-
----
-
-### `src/data_engine/storage/metadata_store.py`
-**Purpose**: Store metadata about symbol universes
-
-**Key Classes**:
-- `MetadataStore`: JSON-based metadata storage
-
-**Metadata Tracked**:
-- Symbol universes (DOW30, NASDAQ100, S&P500)
-- Last update timestamp
-- Data availability ranges
-- Symbol sector/industry information
-
-**Storage Format**: JSON file (`metadata.json`)
-
-**Dependencies**: `json`, `pathlib`, `datetime`
-
-**Usage Example**:
-```python
-from data_engine.storage.metadata_store import MetadataStore
-store = MetadataStore()
-store.update_universe('DOW30', ['AAPL', 'MSFT', ...])
-symbols = store.get_universe('DOW30')
-```
-
----
-
-### `src/data_engine/orchestration/ingestion_pipeline.py`
-**Purpose**: Multi-threaded data ingestion orchestration
-
-**Key Classes**:
-- `IngestionPipeline`: Pipeline orchestrator
-
-**Key Methods**:
-- `run(symbols, start, end, timeframe, workers)`: Execute ingestion
-- `fetch_and_store(symbol)`: Worker function for single symbol
-- `on_progress(symbol, status)`: Progress callback
-- `on_complete()`: Completion callback
-
-**Features**:
-- **Multi-threading**: ThreadPoolExecutor (1-8 workers)
-- **Progress tracking**: Real-time progress updates
-- **Error handling**: Continue on errors, log failures
-- **Retry logic**: Retry failed symbols up to 3 times
-
-**Dependencies**: `ThreadPoolExecutor`, `AlpacaClient`, `ParquetStorage`, `logger`
-
-**Usage Example**:
-```python
-from data_engine.orchestration.ingestion_pipeline import IngestionPipeline
-pipeline = IngestionPipeline(data_dir='data/')
-pipeline.run(
-    symbols=['AAPL', 'MSFT', 'GOOGL'],
-    start='2023-01-01',
-    end='2024-01-01',
-    timeframe='1Min',
-    workers=4
+manager = DataAcquisitionManager()
+result = manager.download(
+    source="equities",
+    symbols=["AAPL", "MSFT"],
+    start_date="2020-01-01",
+    skip_existing=True,
 )
+```
+
+**CLI**:
+```bash
+python -m src.data.acquisition --source equities --symbols AAPL,MSFT --start 2020-01-01
+python -m src.data.acquisition --status
 ```
 
 ---

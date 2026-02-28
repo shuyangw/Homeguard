@@ -33,8 +33,18 @@
 
 ```
 src/data/
-├── __init__.py                  # Public API: AlpacaDownloader, Timeframe
-├── downloader.py                # Bulk download from Alpaca API
+├── __init__.py                  # Public API: News, Sentiment
+├── acquisition/                 # Unified data acquisition (replaces downloader.py)
+│   ├── __init__.py              # DataAcquisitionManager, DownloadResult
+│   ├── base.py                  # BaseDownloader with threading, retry, storage
+│   ├── manager.py               # Orchestrator for all data downloads
+│   ├── schemas.py               # Canonical schema definitions
+│   ├── manifest.py              # Download tracking manifest
+│   └── plugins/                 # Source-specific plugins
+│       ├── alpaca_equities.py   # Equity OHLCV from Alpaca
+│       ├── alpaca_crypto.py     # Crypto OHLCV from Alpaca
+│       ├── alpaca_news.py       # News from Alpaca
+│       └── databento_futures.py # Futures from Databento
 └── providers/
     ├── __init__.py              # Provider exports
     ├── base.py                  # DataProviderInterface abstract class
@@ -169,57 +179,53 @@ cache.clear(symbol='AAPL')  # Clear one symbol
 cache.clear()  # Clear all
 ```
 
-### AlpacaDownloader (`downloader.py`)
+### DataAcquisitionManager (`acquisition/manager.py`)
 
-**Purpose**: Bulk download historical data from Alpaca API.
+**Purpose**: Unified entry point for all data downloads (replaces legacy AlpacaDownloader).
 
 **Features**:
+- Plugin-based architecture (equities, crypto, futures, news)
 - Multi-threaded downloads (default 6 threads)
 - Retry logic with exponential backoff (3 retries/symbol)
 - End-of-run retry rounds (3 rounds for failures)
 - Skip-existing support
 - Canonical 8-column schema enforcement
 - Hive partitioned output format
-
-**Supported Timeframes**:
-| Enum | Output Directory |
-|------|------------------|
-| `Timeframe.MINUTE` | `equities_1min/` |
-| `Timeframe.HOUR` | `equities_1hour/` |
-| `Timeframe.DAY` | `equities_1day/` |
+- Download manifest tracking
 
 **Usage**:
 ```python
-from src.data import AlpacaDownloader, Timeframe
+from src.data.acquisition import DataAcquisitionManager
 
-downloader = AlpacaDownloader(
-    start_date='2017-01-01',
-    end_date='2024-12-31',
-    num_threads=6
+manager = DataAcquisitionManager()
+result = manager.download(
+    source="equities",
+    symbols=["AAPL", "MSFT", "GOOGL"],
+    start_date="2017-01-01",
+    end_date="2024-12-31",
+    skip_existing=True,
+    num_threads=6,
 )
 
-result = downloader.download_symbols(
-    symbols=['AAPL', 'MSFT', 'GOOGL'],
-    timeframe=Timeframe.MINUTE,
-    skip_existing=True
-)
-
-print(f"Downloaded {result.total_bars} bars")
+print(f"Downloaded {result.total_rows} rows")
 print(f"Success rate: {result.success_rate:.1f}%")
 print(f"Failed: {result.failed_symbols}")
 ```
 
 **Command Line**:
 ```bash
-# Download from CSV
+# Download equities from CSV
 python scripts/download_symbols.py --csv backtest_lists/sp500-2025.csv --skip-existing
 
 # Download specific symbols
 python scripts/download_symbols.py --symbols AAPL,MSFT,GOOGL
 
-# Download hourly/daily data
-python scripts/download_symbols.py --csv etfs.csv --timeframe hour
-python scripts/download_symbols.py --csv etfs.csv --timeframe day
+# Download crypto
+python scripts/download_crypto.py --skip-existing
+
+# Unified CLI
+python -m src.data.acquisition --source equities --symbols AAPL,MSFT --start 2020-01-01
+python -m src.data.acquisition --status
 ```
 
 ---
@@ -247,14 +253,14 @@ API Request (symbol, timeframe, date range)
 
 ## Public API
 
-### Primary Exports
+### Acquisition Exports
 
 ```python
-from src.data import AlpacaDownloader, DownloadResult, Timeframe
+from src.data.acquisition import DataAcquisitionManager, DownloadResult
 
 # Download data
-downloader = AlpacaDownloader(start_date='2020-01-01')
-result = downloader.download_symbols(['AAPL'], timeframe=Timeframe.MINUTE)
+manager = DataAcquisitionManager()
+result = manager.download(source="equities", symbols=["AAPL"], start_date="2020-01-01")
 ```
 
 ### Provider Exports
@@ -362,7 +368,7 @@ pytest tests/data/ -v
 
 - [Architecture Overview](../../docs/architecture/ARCHITECTURE_OVERVIEW.md)
 - [Module Reference](../../docs/architecture/MODULE_REFERENCE.md)
-- [Data Engine](../data_engine/README.md)
+- [Data Acquisition](acquisition/__init__.py)
 - [CLAUDE.md - Data Handling](../../CLAUDE.md)
 
 ---

@@ -76,7 +76,7 @@ Data stored in Parquet files
        │               │               │               │
        ▼               ▼               ▼               ▼
 ┌──────────────────────────────────────────────────────────────┐
-│ 3. ALPACA CLIENT (data_engine/api/alpaca_client.py)         │
+│ 3. ALPACA CLIENT (data/acquisition/plugins/alpaca_equities) │
 │    client.fetch_bars(symbol, start, end, '1Min')            │
 │                                                              │
 │    API Request:                                              │
@@ -112,7 +112,7 @@ Data stored in Parquet files
                  │
                  ▼
 ┌──────────────────────────────────────────────────────────────┐
-│ 6. PARQUET STORAGE (data_engine/storage/parquet_storage.py) │
+│ 6. PARQUET STORAGE (data/acquisition/base.py)              │
 │    storage.save_bars(symbol, bars_df, '1Min')               │
 │                                                              │
 │    Writes to:                                                │
@@ -126,7 +126,7 @@ Data stored in Parquet files
                  │
                  ▼
 ┌──────────────────────────────────────────────────────────────┐
-│ 7. METADATA UPDATE (data_engine/storage/metadata_store.py)  │
+│ 7. MANIFEST UPDATE (data/acquisition/manifest.py)           │
 │    store.update_symbol_metadata(                             │
 │        symbol='AAPL',                                        │
 │        start_date='2023-01-03',                              │
