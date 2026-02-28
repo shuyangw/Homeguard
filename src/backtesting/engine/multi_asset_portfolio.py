@@ -621,12 +621,12 @@ class MultiAssetPortfolio(BasePortfolio):
 
         self.rebalancing_events.append(rebalancing_event)
 
-    def stats(self) -> Optional[pd.Series]:
+    def stats(self) -> Optional[Dict[str, Any]]:
         """
         Calculate portfolio statistics.
 
         Returns:
-            pd.Series with statistics (VectorBT-compatible format)
+            Dictionary of performance metrics (consistent with BasePortfolio interface)
         """
         if not self.equity_curve or len(self.equity_curve) == 0:
             return None
@@ -640,13 +640,12 @@ class MultiAssetPortfolio(BasePortfolio):
         returns = equity_series.pct_change().dropna()
 
         if len(returns) == 0:
-            stats_dict = {
+            return {
                 'Total Return [%]': total_return_pct,
                 'Start Value': self.init_cash,
                 'End Value': equity_series.iloc[-1],
                 'Total Trades': len(self.closed_positions)
             }
-            return pd.Series(stats_dict)
 
         # Annualized return
         mean_return = returns.mean()
@@ -673,7 +672,7 @@ class MultiAssetPortfolio(BasePortfolio):
         total_trades = len(self.closed_positions)
         win_rate_pct = (len(winning_trades) / total_trades * 100) if total_trades > 0 else 0
 
-        stats_dict = {
+        return {
             'Total Return [%]': total_return_pct,
             'Annual Return [%]': annual_return_pct,
             'Sharpe Ratio': sharpe_ratio,
@@ -684,8 +683,6 @@ class MultiAssetPortfolio(BasePortfolio):
             'End Value': equity_series.iloc[-1],
             'Avg Positions': np.mean([len(self.positions)]),  # TODO: Track over time
         }
-
-        return pd.Series(stats_dict)
 
     # NOTE: _get_periods_per_year is inherited from BasePortfolio
 

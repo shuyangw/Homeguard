@@ -111,33 +111,17 @@ class TestSingleSymbolBacktest:
 class TestMultiSymbolBacktest:
     """Test multi-symbol portfolio backtesting."""
 
-    def test_multi_symbol_backtest_executes(self, multi_symbol_data):
-        """Test that multi-symbol backtest executes without errors."""
+    def test_multi_symbol_sweep_raises_not_implemented(self):
+        """Test that _run_multiple_symbols raises NotImplementedError."""
         engine = BacktestEngine(initial_capital=30000.0, fees=0.001)
         strategy = MovingAverageCrossover(fast_window=5, slow_window=10)
 
         symbols = ['AAPL', 'MSFT', 'GOOGL']
-        data = multi_symbol_data
 
-        portfolio = engine._run_multiple_symbols(strategy, data, symbols, 'close')
-
-        assert portfolio is not None
-        assert hasattr(portfolio, 'stats')
-
-    def test_multi_symbol_cash_sharing(self, multi_symbol_data):
-        """Test that cash sharing works across symbols."""
-        engine = BacktestEngine(initial_capital=10000.0, fees=0.0)
-        strategy = MovingAverageCrossover(fast_window=3, slow_window=7)
-
-        symbols = ['AAPL', 'MSFT', 'GOOGL']
-        data = multi_symbol_data
-
-        portfolio = engine._run_multiple_symbols(strategy, data, symbols, 'close')
-
-        stats = portfolio.stats()
-        if stats is not None:
-            start_value = stats.get('Start Value', 0)
-            assert start_value == 10000.0, "Initial capital should match"
+        with pytest.raises(NotImplementedError, match="Multi-symbol backtesting"):
+            engine._run_multiple_symbols(
+                strategy, symbols, '2024-01-01', '2024-12-31', 'close'
+            )
 
 
 class TestSignalGeneration:
