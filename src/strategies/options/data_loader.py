@@ -8,6 +8,9 @@ from datetime import date, time, datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
+import pyarrow as pa
+import pyarrow.compute as pc
+import pyarrow.parquet as pq
 import pandas as pd
 
 from src.utils.logger import get_logger
@@ -33,7 +36,7 @@ class OptionsDataLoader:
 
     def __init__(self, data_dir: Path):
         self._data_dir = Path(data_dir)
-        self._month_cache: Dict[Tuple[str, int, int], pd.DataFrame] = {}
+        self._month_cache: Dict[tuple, pd.DataFrame] = {}
 
     def get_available_symbols(self) -> List[str]:
         symbols = []
@@ -50,7 +53,9 @@ class OptionsDataLoader:
     def get_chain_at_time(
         self, symbol: str, target_date: date, target_time: time
     ) -> pd.DataFrame:
-        month_df = self._load_month(symbol, target_date.year, target_date.month)
+        month_df = self._load_month(
+            symbol, target_date.year, target_date.month, target_time=target_time
+        )
         if month_df.empty:
             return pd.DataFrame()
 
@@ -89,8 +94,14 @@ class OptionsDataLoader:
     def clear_cache(self):
         self._month_cache.clear()
 
-    def _load_month(self, symbol: str, year: int, month: int) -> pd.DataFrame:
-        cache_key = (symbol, year, month)
+    def _load_month(
+        self,
+        symbol: str,
+        year: int,
+        month: int,
+        target_time: Optional[time] = None,
+    ) -> pd.DataFrame:
+        cache_key = (symbol, year, month, target_time)
         if cache_key in self._month_cache:
             return self._month_cache[cache_key]
 
@@ -108,7 +119,33 @@ class OptionsDataLoader:
             return empty
 
         logger.debug(f"Loading options data: {parquet_path}")
-        df = pd.read_parquet(parquet_path)
+
+        if target_time is not None:
+            # Memory-efficient: read in batches, keep only matching timestamps.
+            # This avoids OOM on large chains (NVDA ~10M rows, SPX ~16M rows).
+            time_suffix = f"T{target_time.hour:02d}:{target_time.minute:02d}:00"
+            pf = pq.ParquetFile(parquet_path)
+            filtered_batches = []
+            for batch in pf.iter_batches(batch_size=200_000):
+                ts = batch.column("timestamp").cast(pa.string())
+                mask = pc.ends_with(ts, time_suffix)
+                filtered = batch.filter(mask)
+                if filtered.num_rows > 0:
+                    filtered_batches.append(filtered)
+
+            if filtered_batches:
+                table = pa.concat_tables(
+                    [pa.Table.from_batches([b]) for b in filtered_batches]
+                )
+                df = table.to_pandas()
+            else:
+                df = pd.DataFrame()
+        else:
+            df = pd.read_parquet(parquet_path)
+
+        if df.empty:
+            self._month_cache[cache_key] = df
+            return df
 
         df = self._transform(df)
 

@@ -199,7 +199,7 @@ class TestCache:
 
     def test_month_cache_reused(self, loader_with_data):
         loader_with_data.get_eod_chain("AAPL", date(2024, 6, 15))
-        assert ("AAPL", 2024, 6) in loader_with_data._month_cache
+        assert ("AAPL", 2024, 6, time(16, 0)) in loader_with_data._month_cache
 
 
 class TestGetDateRange:

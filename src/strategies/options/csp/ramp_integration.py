@@ -159,20 +159,21 @@ class CSPBacktestRunner:
         self, symbol: str, start_date: date, end_date: date
     ) -> pd.Series:
         """Extract daily underlying_price from options chain EOD snapshots."""
+        from datetime import time as dt_time
+
+        eod_time = dt_time(16, 0)
         prices: Dict[date, float] = {}
         current = date(start_date.year, start_date.month, 1)
         end_month = date(end_date.year, end_date.month, 1)
 
         while current <= end_month:
-            month_df = self._options_loader._load_month(symbol, current.year, current.month)
+            month_df = self._options_loader._load_month(
+                symbol, current.year, current.month, target_time=eod_time
+            )
             if not month_df.empty:
-                # Get one underlying_price per date at EOD (16:00)
-                from datetime import time as dt_time
-                eod_mask = month_df["time"] == dt_time(16, 0)
-                eod_df = month_df.loc[eod_mask]
-                for d in eod_df["date"].unique():
+                for d in month_df["date"].unique():
                     if start_date <= d <= end_date:
-                        day_rows = eod_df[eod_df["date"] == d]
+                        day_rows = month_df[month_df["date"] == d]
                         prices[d] = float(day_rows["underlying_price"].iloc[0])
 
             # Move to next month
@@ -226,7 +227,15 @@ class CSPBacktestRunner:
             logger.error("SPY or VIX data missing -- aborting")
             return CSPBacktestResult(closed_trades=[], daily_snapshots=[])
 
-        options_symbols = self._get_options_symbols()
+        all_options = self._get_options_symbols()
+        # Only keep symbols that are in the equity universe to avoid loading
+        # massive index option chains (SPX ~16M rows/month) that cause OOM.
+        equity_set = set(equity_prices.columns)
+        options_symbols = [s for s in all_options if s in equity_set]
+        logger.info(
+            f"Options symbols filtered: {len(all_options)} available, "
+            f"{len(options_symbols)} in equity universe"
+        )
 
         # Build RAMP components
         ramp_cfg = self._config.get("ramp", {})
