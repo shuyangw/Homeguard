@@ -83,7 +83,8 @@ class CSCMLiveAdapter:
         rebalance_day: str = 'sunday',
         go_to_cash_in_bear: bool = True,
         broker: Optional[CryptoBrokerRouter] = None,
-        paper: bool = True
+        paper: bool = True,
+        signal_logger=None
     ):
         """
         Initialize CSCM live adapter.
@@ -125,6 +126,9 @@ class CSCMLiveAdapter:
 
         # Data provider
         self._data_provider = create_crypto_data_provider()
+
+        # Signal logger (for hypothetical performance tracking)
+        self._signal_logger = signal_logger
 
         # State tracking
         self._last_rebalance: Optional[datetime] = None
@@ -317,6 +321,17 @@ class CSCMLiveAdapter:
         logger.info(f"[CSCM] BTC: ${risk_signals.btc_price:,.2f} (SMA: ${risk_signals.btc_sma:,.2f})")
         logger.info(f"[CSCM] Top symbols: {risk_signals.top_symbols}")
 
+        # Log rebalance decision
+        if self._signal_logger:
+            self._signal_logger.log_rebalance(
+                regime=risk_signals.regime,
+                btc_price=risk_signals.btc_price,
+                btc_sma=risk_signals.btc_sma,
+                top_symbols=risk_signals.top_symbols,
+                momentum_scores=risk_signals.momentum_scores,
+                target_positions=target_positions,
+            )
+
         # Get current positions and balance
         current_positions = self._get_current_positions()
         available_balance = self._get_account_balance()
@@ -465,6 +480,28 @@ class CSCMLiveAdapter:
         logger.info(f"[CSCM] Run at {now}")
 
         try:
+            # Fetch data and compute signals every cycle (for logging)
+            data_dict = self._fetch_historical_data()
+            if data_dict and 'BTC/USD' in data_dict:
+                self.signals.update_historical_data(data_dict)
+                risk_signals = self.signals.get_risk_signals()
+
+                logger.info(f"[CSCM] Regime: {risk_signals.regime}")
+                logger.info(f"[CSCM] BTC: ${risk_signals.btc_price:,.2f} (SMA: ${risk_signals.btc_sma:,.2f})")
+
+                # Log signal snapshot
+                if self._signal_logger:
+                    self._signal_logger.log_signal(
+                        regime=risk_signals.regime,
+                        btc_price=risk_signals.btc_price,
+                        btc_sma=risk_signals.btc_sma,
+                        is_rebalance_day=risk_signals.is_rebalance_day,
+                        reduce_exposure=risk_signals.reduce_exposure,
+                        exposure_pct=risk_signals.exposure_pct,
+                        top_symbols=risk_signals.top_symbols,
+                        momentum_scores=risk_signals.momentum_scores,
+                    )
+
             # Check trailing stop first (may close positions)
             stop_triggered = self._check_trailing_stop()
             if stop_triggered:
