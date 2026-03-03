@@ -140,6 +140,12 @@ def main():
                 auto_failover=False
             )
 
+        # Create signal logger for hypothetical performance tracking
+        from src.trading.logging import CSCMSignalLogger
+
+        signal_log_dir = Path(project_root) / "data" / "trading" / "logs"
+        signal_logger = CSCMSignalLogger(log_dir=signal_log_dir)
+
         # Create adapter
         adapter = CSCMLiveAdapter(
             universe=universe,
@@ -149,7 +155,8 @@ def main():
             rebalance_day=rebalance_day,
             go_to_cash_in_bear=go_to_cash_in_bear,
             broker=broker,
-            paper=args.paper
+            paper=args.paper,
+            signal_logger=signal_logger
         )
 
         logger.info(f"Universe: {len(universe)} symbols")
