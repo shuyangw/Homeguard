@@ -248,6 +248,14 @@ docs/*
 !docs/troubleshooting/
 !docs/troubleshooting/**
 
+# KEEP: Reports (backtest results, validation reports)
+!docs/reports/
+!docs/reports/**
+
+# KEEP: Plans (design docs, implementation plans)
+!docs/plans/
+!docs/plans/**
+
 # Hide everything else (new files only - previously tracked files remain):
 # - docs/api/ (can be generated from code)
 # - docs/guides/ (user guides, wiki material)
