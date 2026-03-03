@@ -60,11 +60,12 @@ class OptionsDataLoader:
         return result
 
     def get_date_range(self, symbol: str) -> Tuple[Optional[date], Optional[date]]:
+        """Get earliest and latest months available for a symbol using directory listing only."""
         symbol_dir = self._data_dir / f"root={symbol}"
         if not symbol_dir.exists():
             return (None, None)
 
-        all_dates: List[date] = []
+        year_months: List[Tuple[int, int]] = []
         for year_dir in symbol_dir.iterdir():
             if not (year_dir.is_dir() and year_dir.name.startswith("year=")):
                 continue
@@ -73,14 +74,17 @@ class OptionsDataLoader:
                 if not (month_dir.is_dir() and month_dir.name.startswith("month=")):
                     continue
                 month = int(month_dir.name.split("=", 1)[1])
-                month_df = self._load_month(symbol, year, month)
-                if not month_df.empty:
-                    all_dates.extend(month_df["date"].unique())
+                data_file = month_dir / "data.parquet"
+                if data_file.exists():
+                    year_months.append((year, month))
 
-        if not all_dates:
+        if not year_months:
             return (None, None)
 
-        return (min(all_dates), max(all_dates))
+        year_months.sort()
+        first_y, first_m = year_months[0]
+        last_y, last_m = year_months[-1]
+        return (date(first_y, first_m, 1), date(last_y, last_m, 1))
 
     def clear_cache(self):
         self._month_cache.clear()
@@ -103,7 +107,7 @@ class OptionsDataLoader:
             self._month_cache[cache_key] = empty
             return empty
 
-        logger.debug("Loading options data: %s", parquet_path)
+        logger.debug(f"Loading options data: {parquet_path}")
         df = pd.read_parquet(parquet_path)
 
         df = self._transform(df)

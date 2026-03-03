@@ -206,8 +206,9 @@ class TestGetDateRange:
 
     def test_get_date_range(self, loader_with_data):
         min_date, max_date = loader_with_data.get_date_range("AAPL")
-        assert min_date == date(2024, 6, 15)
-        assert max_date == date(2024, 6, 15)
+        # Returns first-of-month dates from directory listing (fast, no parquet load)
+        assert min_date == date(2024, 6, 1)
+        assert max_date == date(2024, 6, 1)
 
     def test_get_date_range_unknown_symbol(self, loader_with_data):
         result = loader_with_data.get_date_range("UNKNOWN")
