@@ -82,37 +82,39 @@ class CSPBacktestRunner:
     def _load_equity_prices(
         self, symbols: List[str], start_date: date, end_date: date
     ) -> pd.DataFrame:
-        """Load daily close prices for *symbols* from local parquet storage.
+        """Load daily close prices from equities_daily_cache.parquet.
 
         Returns:
             DataFrame with DatetimeIndex (dates) and symbol columns containing close prices.
         """
         storage = get_local_storage_dir()
-        series_map: Dict[str, pd.Series] = {}
+        cache_path = storage / "equities_daily_cache.parquet"
 
-        for sym in symbols:
-            parquet_path = storage / sym / "1day.parquet"
-            if not parquet_path.exists():
-                continue
-            df = pd.read_parquet(parquet_path)
-            if "close" not in df.columns:
-                continue
-            if not isinstance(df.index, pd.DatetimeIndex):
-                if "timestamp" in df.columns:
-                    df.index = pd.to_datetime(df["timestamp"])
-                else:
-                    df.index = pd.to_datetime(df.index)
-            mask = (df.index.date >= start_date) & (df.index.date <= end_date)
-            subset = df.loc[mask, "close"]
-            if not subset.empty:
-                series_map[sym] = subset
-
-        if not series_map:
+        if not cache_path.exists():
+            logger.error(f"Equities daily cache not found at {cache_path}")
             return pd.DataFrame()
 
-        prices = pd.DataFrame(series_map)
+        logger.info(f"Loading equity prices from {cache_path}")
+        df = pd.read_parquet(cache_path)
+
+        # Filter to requested symbols
+        symbols_set = set(symbols)
+        df = df[df["symbol"].isin(symbols_set)].copy()
+
+        # Parse dates and filter range
+        df["trade_date"] = pd.to_datetime(df["trade_date"], utc=True)
+        mask = (df["trade_date"].dt.date >= start_date) & (df["trade_date"].dt.date <= end_date)
+        df = df.loc[mask]
+
+        if df.empty:
+            return pd.DataFrame()
+
+        # Pivot to wide format: DatetimeIndex x symbol columns
+        prices = df.pivot_table(index="trade_date", columns="symbol", values="close")
         prices.index = pd.to_datetime(prices.index)
         prices = prices.sort_index()
+
+        logger.info(f"Loaded equity prices: {len(prices)} days, {len(prices.columns)} symbols")
         return prices
 
     def _load_spy_vix(
@@ -120,34 +122,73 @@ class CSPBacktestRunner:
     ) -> Tuple[pd.Series, pd.Series]:
         """Load SPY and VIX close prices with extra lookback for regime detection.
 
+        SPY comes from equities_daily_cache.parquet.
+        VIX comes from options chain underlying_px (not in equities cache).
+
         Returns:
             (spy_series, vix_series) each indexed by DatetimeIndex.
         """
         lookback_start = start_date - timedelta(days=REGIME_LOOKBACK_DAYS)
         storage = get_local_storage_dir()
 
+        # Load SPY from equities daily cache
         spy_series = pd.Series(dtype=float)
-        vix_series = pd.Series(dtype=float)
+        cache_path = storage / "equities_daily_cache.parquet"
+        if cache_path.exists():
+            df = pd.read_parquet(cache_path)
+            spy_df = df[df["symbol"] == "SPY"].copy()
+            spy_df["trade_date"] = pd.to_datetime(spy_df["trade_date"], utc=True)
+            mask = (spy_df["trade_date"].dt.date >= lookback_start) & (spy_df["trade_date"].dt.date <= end_date)
+            spy_df = spy_df.loc[mask].sort_values("trade_date")
+            if not spy_df.empty:
+                spy_series = pd.Series(
+                    spy_df["close"].values,
+                    index=pd.DatetimeIndex(spy_df["trade_date"]),
+                )
+                logger.info(f"SPY prices: {len(spy_series)} days")
+        else:
+            logger.warning(f"Equities cache not found at {cache_path}")
 
-        for sym, target in [("SPY", "spy"), ("VIX", "vix")]:
-            parquet_path = storage / sym / "1day.parquet"
-            if not parquet_path.exists():
-                logger.warning(f"Missing {sym} data at {parquet_path}")
-                continue
-            df = pd.read_parquet(parquet_path)
-            if not isinstance(df.index, pd.DatetimeIndex):
-                if "timestamp" in df.columns:
-                    df.index = pd.to_datetime(df["timestamp"])
-                else:
-                    df.index = pd.to_datetime(df.index)
-            mask = (df.index.date >= lookback_start) & (df.index.date <= end_date)
-            subset = df.loc[mask, "close"].sort_index()
-            if target == "spy":
-                spy_series = subset
-            else:
-                vix_series = subset
+        # Load VIX from options chain underlying_px
+        vix_series = self._load_underlying_px_series("VIX", lookback_start, end_date)
+        logger.info(f"VIX prices: {len(vix_series)} days (from options chain)")
 
         return spy_series, vix_series
+
+    def _load_underlying_px_series(
+        self, symbol: str, start_date: date, end_date: date
+    ) -> pd.Series:
+        """Extract daily underlying_price from options chain EOD snapshots."""
+        prices: Dict[date, float] = {}
+        current = date(start_date.year, start_date.month, 1)
+        end_month = date(end_date.year, end_date.month, 1)
+
+        while current <= end_month:
+            month_df = self._options_loader._load_month(symbol, current.year, current.month)
+            if not month_df.empty:
+                # Get one underlying_price per date at EOD (16:00)
+                from datetime import time as dt_time
+                eod_mask = month_df["time"] == dt_time(16, 0)
+                eod_df = month_df.loc[eod_mask]
+                for d in eod_df["date"].unique():
+                    if start_date <= d <= end_date:
+                        day_rows = eod_df[eod_df["date"] == d]
+                        prices[d] = float(day_rows["underlying_price"].iloc[0])
+
+            # Move to next month
+            if current.month == 12:
+                current = date(current.year + 1, 1, 1)
+            else:
+                current = date(current.year, current.month + 1, 1)
+
+        if not prices:
+            return pd.Series(dtype=float)
+
+        sorted_dates = sorted(prices.keys())
+        return pd.Series(
+            [prices[d] for d in sorted_dates],
+            index=pd.DatetimeIndex([datetime(d.year, d.month, d.day) for d in sorted_dates]),
+        )
 
     # ------------------------------------------------------------------
     # Main run

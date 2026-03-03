@@ -98,7 +98,7 @@ class OptionsDataLoader:
             self._data_dir
             / f"root={symbol}"
             / f"year={year}"
-            / f"month={month}"
+            / f"month={month:02d}"
             / "data.parquet"
         )
 

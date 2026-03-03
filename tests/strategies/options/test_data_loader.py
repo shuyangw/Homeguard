@@ -12,7 +12,7 @@ from src.strategies.options.data_loader import OptionsDataLoader
 
 def _create_sample_parquet(base_dir, symbol: str, year: int, month: int):
     """Create minimal parquet files with 2 timestamps, each having 1 put and 1 call."""
-    symbol_dir = base_dir / f"root={symbol}" / f"year={year}" / f"month={month}"
+    symbol_dir = base_dir / f"root={symbol}" / f"year={year}" / f"month={month:02d}"
     symbol_dir.mkdir(parents=True, exist_ok=True)
 
     rows = [
