@@ -1,0 +1,33 @@
+strategy:
+  initial_capital: 100000
+  max_csp_allocation: 0.30
+  max_positions: 5
+  profit_target_pct: 0.50
+  loss_limit_multiple: 2.0
+  min_dte_exit: 5
+  slippage_pct: 0.01
+  contract_fee: 0.02
+
+contract_selection:
+  target_delta_min: -0.35
+  target_delta_max: -0.25
+  min_dte: 21
+  max_dte: 35
+  min_open_interest: 100
+  max_spread_pct: 0.15
+
+ramp:
+  vix_threshold: 25.0
+  spy_dd_threshold: -0.05
+
+dates:
+  in_sample_start: "2022-01-01"
+  in_sample_end: "2023-06-30"
+  out_of_sample_start: "2023-07-01"
+  out_of_sample_end: "2024-12-31"
+
+validation:
+  min_sharpe: 0.5
+  max_drawdown: 0.10
+  min_win_rate: 0.60
+  min_return_on_collateral: 0.01
