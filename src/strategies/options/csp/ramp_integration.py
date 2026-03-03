@@ -214,8 +214,9 @@ class CSPBacktestRunner:
             symbols = _load_sp500_symbols()
         logger.info(f"RAMP-CSP run: {start_date} -> {end_date}, {len(symbols)} symbols")
 
-        # Load data
-        equity_prices = self._load_equity_prices(symbols, start_date, end_date)
+        # Load data (with lookback for RAMP momentum calculation)
+        equity_lookback_start = start_date - timedelta(days=REGIME_LOOKBACK_DAYS)
+        equity_prices = self._load_equity_prices(symbols, equity_lookback_start, end_date)
         if equity_prices.empty:
             logger.error("No equity price data loaded -- aborting")
             return CSPBacktestResult(closed_trades=[], daily_snapshots=[])
