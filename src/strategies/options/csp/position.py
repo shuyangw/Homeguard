@@ -16,6 +16,11 @@ class CSPPosition:
     current_delta: float = 0.0
     current_dte: int = 0
 
+    regime_at_entry: str = "UNKNOWN"
+    momentum_rank: int = -1
+    last_iv: float = 0.30
+    entry_fee: float = 0.0
+
     @property
     def premium_collected(self) -> float:
         return self.entry_price * 100 * self.num_contracts
@@ -45,10 +50,13 @@ class CSPTrade:
     regime_at_entry: str
     regime_at_exit: str
     momentum_rank_at_entry: int
+    entry_fee: float = 0.0
+    exit_fee: float = 0.0
 
     @property
     def realized_pnl(self) -> float:
-        return (self.entry_price - self.exit_price) * 100 * self.num_contracts
+        gross = (self.entry_price - self.exit_price) * 100 * self.num_contracts
+        return gross - self.entry_fee - self.exit_fee
 
     @property
     def holding_days(self) -> int:

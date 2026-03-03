@@ -22,25 +22,10 @@ from datetime import date
 import pandas as pd
 
 from src.strategies.options.csp.ramp_integration import CSPBacktestRunner, load_csp_config
-from src.strategies.options.csp.metrics import compute_csp_metrics
+from src.strategies.options.csp.metrics import compute_csp_metrics, compute_sharpe, compute_max_drawdown
 from src.utils.logger import get_logger
 
 logger = get_logger()
-
-
-def compute_sharpe(equity_curve: pd.Series) -> float:
-    """Compute annualized Sharpe ratio from daily equity."""
-    returns = equity_curve.pct_change().dropna()
-    if returns.std() == 0:
-        return 0.0
-    return (returns.mean() / returns.std()) * (252 ** 0.5)
-
-
-def compute_max_drawdown(equity_curve: pd.Series) -> float:
-    """Compute maximum drawdown as a fraction."""
-    cummax = equity_curve.cummax()
-    drawdown = (equity_curve - cummax) / cummax
-    return abs(drawdown.min())
 
 
 def run_period(runner, start, end, label):

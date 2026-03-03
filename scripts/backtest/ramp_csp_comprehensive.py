@@ -11,7 +11,7 @@ Anti-overfitting approach:
 - Flag any parameter set that improves OOS Sharpe by more than 50% (suspect)
 
 Usage:
-    python scripts/backtest_scripts/ramp_csp_comprehensive.py
+    python scripts/backtest/ramp_csp_comprehensive.py
 """
 
 import sys
@@ -27,27 +27,10 @@ from datetime import date, datetime
 import pandas as pd
 
 from src.strategies.options.csp.ramp_integration import CSPBacktestRunner, load_csp_config
-from src.strategies.options.csp.metrics import compute_csp_metrics
+from src.strategies.options.csp.metrics import compute_csp_metrics, compute_sharpe, compute_max_drawdown
 from src.utils.logger import get_logger
 
 logger = get_logger()
-
-
-def compute_sharpe(equity_curve: pd.Series) -> float:
-    if equity_curve is None or len(equity_curve) < 2:
-        return 0.0
-    returns = equity_curve.pct_change().dropna()
-    if returns.std() == 0:
-        return 0.0
-    return float((returns.mean() / returns.std()) * (252 ** 0.5))
-
-
-def compute_max_drawdown(equity_curve: pd.Series) -> float:
-    if equity_curve is None or len(equity_curve) < 2:
-        return 0.0
-    cummax = equity_curve.cummax()
-    drawdown = (equity_curve - cummax) / cummax
-    return float(abs(drawdown.min()))
 
 
 def compute_cagr(equity_curve: pd.Series) -> float:

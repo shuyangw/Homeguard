@@ -87,3 +87,11 @@ class TestCSPTrade:
     def test_return_on_collateral_zero_strike(self):
         trade = self._make_trade(strike=0.0)
         assert trade.return_on_collateral == pytest.approx(0.0)
+
+    def test_realized_pnl_includes_fees(self):
+        trade = self._make_trade(
+            entry_price=2.50, exit_price=1.20, num_contracts=2,
+            entry_fee=0.04, exit_fee=0.04,
+        )
+        gross = (2.50 - 1.20) * 100 * 2  # 260.0
+        assert trade.realized_pnl == pytest.approx(gross - 0.04 - 0.04)

@@ -1,7 +1,28 @@
 from collections import defaultdict
 from typing import Dict, List
 
+import pandas as pd
+
 from src.strategies.options.csp.position import CSPTrade
+
+
+def compute_sharpe(equity_curve: pd.Series) -> float:
+    """Compute annualized Sharpe ratio from daily equity curve."""
+    if equity_curve is None or len(equity_curve) < 2:
+        return 0.0
+    returns = equity_curve.pct_change().dropna()
+    if returns.std() == 0:
+        return 0.0
+    return float((returns.mean() / returns.std()) * (252 ** 0.5))
+
+
+def compute_max_drawdown(equity_curve: pd.Series) -> float:
+    """Compute maximum drawdown as a fraction."""
+    if equity_curve is None or len(equity_curve) < 2:
+        return 0.0
+    cummax = equity_curve.cummax()
+    drawdown = (equity_curve - cummax) / cummax
+    return float(abs(drawdown.min()))
 
 
 def compute_csp_metrics(trades: List[CSPTrade]) -> Dict:

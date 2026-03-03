@@ -134,9 +134,8 @@ class CSPBacktestEngine:
                 self.mtm.update_position(pos, chain, current_date)
             else:
                 underlying = get_underlying_price(pos.symbol, current_date)
-                last_iv = getattr(pos, "_last_iv", 0.30)
                 estimated = self.mtm.estimate_price(
-                    pos, current_date, underlying, last_iv,
+                    pos, current_date, underlying, pos.last_iv,
                 )
                 pos.current_price = estimated
                 pos.current_dte = max((pos.expiry - current_date).days, 0)
@@ -192,9 +191,11 @@ class CSPBacktestEngine:
             exit_price=buy_back_price,
             num_contracts=pos.num_contracts,
             exit_reason=reason,
-            regime_at_entry=getattr(pos, "_regime_at_entry", "UNKNOWN"),
+            regime_at_entry=pos.regime_at_entry,
             regime_at_exit=regime,
-            momentum_rank_at_entry=getattr(pos, "_momentum_rank", -1),
+            momentum_rank_at_entry=pos.momentum_rank,
+            entry_fee=pos.entry_fee,
+            exit_fee=fee,
         )
         self.closed_trades.append(trade)
 
@@ -236,7 +237,9 @@ class CSPBacktestEngine:
         if remaining_alloc <= 0:
             return
 
-        open_slots = max(self.max_positions - len(self.positions), 1)
+        open_slots = self.max_positions - len(self.positions)
+        if open_slots <= 0:
+            return
         per_position_limit = remaining_alloc / open_slots
 
         for rank, symbol in enumerate(candidates):
@@ -286,10 +289,11 @@ class CSPBacktestEngine:
                 collateral=collateral,
                 current_price=entry_price,
                 current_dte=int(contract["days_to_expiry"]),
+                regime_at_entry=regime,
+                momentum_rank=rank,
+                last_iv=float(contract.get("implied_vol", 0.30)),
+                entry_fee=fee,
             )
-            pos._regime_at_entry = regime  # type: ignore[attr-defined]
-            pos._momentum_rank = rank  # type: ignore[attr-defined]
-            pos._last_iv = float(contract.get("implied_vol", 0.30))  # type: ignore[attr-defined]
 
             self.cash -= collateral
             self.cash += premium - fee

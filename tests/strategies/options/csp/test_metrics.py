@@ -2,7 +2,9 @@ from datetime import date
 
 import pytest
 
-from src.strategies.options.csp.metrics import compute_csp_metrics
+import pandas as pd
+
+from src.strategies.options.csp.metrics import compute_csp_metrics, compute_sharpe, compute_max_drawdown
 from src.strategies.options.csp.position import CSPTrade
 
 
@@ -81,3 +83,47 @@ class TestComputeCspMetrics:
         )
         result = compute_csp_metrics([trade])
         assert result["avg_holding_days"] == 15.0
+
+
+class TestComputeSharpe:
+    def test_positive_sharpe(self):
+        equity = pd.Series(
+            [100.0, 101.0, 102.0, 103.0, 104.0],
+            index=pd.date_range("2024-01-01", periods=5),
+        )
+        sharpe = compute_sharpe(equity)
+        assert sharpe > 0
+
+    def test_none_returns_zero(self):
+        assert compute_sharpe(None) == 0.0
+
+    def test_single_value_returns_zero(self):
+        equity = pd.Series([100.0], index=pd.date_range("2024-01-01", periods=1))
+        assert compute_sharpe(equity) == 0.0
+
+    def test_flat_equity_returns_zero(self):
+        equity = pd.Series(
+            [100.0, 100.0, 100.0],
+            index=pd.date_range("2024-01-01", periods=3),
+        )
+        assert compute_sharpe(equity) == 0.0
+
+
+class TestComputeMaxDrawdown:
+    def test_drawdown_from_decline(self):
+        equity = pd.Series(
+            [100.0, 110.0, 99.0, 105.0],
+            index=pd.date_range("2024-01-01", periods=4),
+        )
+        dd = compute_max_drawdown(equity)
+        assert dd == pytest.approx(11.0 / 110.0)
+
+    def test_none_returns_zero(self):
+        assert compute_max_drawdown(None) == 0.0
+
+    def test_monotonic_increase_returns_zero(self):
+        equity = pd.Series(
+            [100.0, 101.0, 102.0],
+            index=pd.date_range("2024-01-01", periods=3),
+        )
+        assert compute_max_drawdown(equity) == pytest.approx(0.0)
