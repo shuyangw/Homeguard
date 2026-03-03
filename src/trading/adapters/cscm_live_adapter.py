@@ -26,7 +26,7 @@ import pickle
 
 import pandas as pd
 
-from src.data.providers import create_crypto_data_provider
+from src.data.providers.binance import BinanceDataProvider
 from src.strategies.advanced.cscm_signals import CSCMSignals, CSCMRiskSignals
 from src.trading.brokers.crypto_router import CryptoBrokerRouter
 from src.trading.brokers.interfaces import OrderSide, OrderType
@@ -124,8 +124,8 @@ class CSCMLiveAdapter:
         self._broker = broker
         self._broker_initialized = False
 
-        # Data provider
-        self._data_provider = create_crypto_data_provider()
+        # Data provider (Binance REST API - no credentials needed)
+        self._data_provider = BinanceDataProvider()
 
         # Signal logger (for hypothetical performance tracking)
         self._signal_logger = signal_logger
