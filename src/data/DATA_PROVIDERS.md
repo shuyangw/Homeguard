@@ -215,13 +215,13 @@ print(f"Failed: {result.failed_symbols}")
 **Command Line**:
 ```bash
 # Download equities from CSV
-python scripts/download_symbols.py --csv config/universes/sp500-2025.csv --skip-existing
+python scripts/data/download_symbols.py --csv config/universes/sp500-2025.csv --skip-existing
 
 # Download specific symbols
-python scripts/download_symbols.py --symbols AAPL,MSFT,GOOGL
+python scripts/data/download_symbols.py --symbols AAPL,MSFT,GOOGL
 
 # Download crypto
-python scripts/download_crypto.py --skip-existing
+python scripts/data/download_crypto.py --skip-existing
 
 # Unified CLI
 python -m src.data.acquisition --source equities --symbols AAPL,MSFT --start 2020-01-01

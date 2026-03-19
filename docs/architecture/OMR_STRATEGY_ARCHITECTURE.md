@@ -575,19 +575,19 @@ DEFAULT_PARAMS = {
 **Start Paper Trading (Continuous Mode)**:
 ```bash
 cd scripts/trading
-scripts/run_paper_trading.bat --strategy omr
+scripts/ops/run_paper_trading.bat --strategy omr
 ```
 
 **Test Single Execution (Entry)**:
 ```bash
 # Wait until 3:55 PM, then run:
-scripts/run_paper_trading.bat --strategy omr --once
+scripts/ops/run_paper_trading.bat --strategy omr --once
 ```
 
 **Test Single Execution (Exit)**:
 ```bash
 # Wait until 9:31 AM next day, then run:
-scripts/run_paper_trading.bat --strategy omr --once
+scripts/ops/run_paper_trading.bat --strategy omr --once
 ```
 
 **View Live Logs**:

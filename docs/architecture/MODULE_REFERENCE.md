@@ -536,16 +536,16 @@ daily_score = cache.get_daily_sentiment('AAPL', datetime(2024, 3, 15))
 
 ---
 
-### `scripts/download_news.py`
+### `scripts/data/download_news.py`
 **Purpose**: CLI script for news download
 
 **Usage**:
 ```bash
 # Download news for specific symbols
-python scripts/download_news.py --symbols AAPL,MSFT --start 2024-01-01
+python scripts/data/download_news.py --symbols AAPL,MSFT --start 2024-01-01
 
 # Download for date range
-python scripts/download_news.py --symbols TQQQ --start 2024-01-01 --end 2024-06-30
+python scripts/data/download_news.py --symbols TQQQ --start 2024-01-01 --end 2024-06-30
 ```
 
 ---

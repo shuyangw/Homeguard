@@ -3,7 +3,7 @@
 Start the live trading bot with production logging.
 
 Usage:
-    python scripts/start_trading_bot.py
+    python scripts/ops/start_trading_bot.py
 
 This script:
 1. Sets up production logging with rotation

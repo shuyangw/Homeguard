@@ -16,7 +16,7 @@ cp .env.example .env          # Add Alpaca API credentials
 cp settings.ini.example settings.ini  # Set data paths
 
 # 3. Download data
-python scripts/download_symbols.py --csv config/universes/sp500-2025.csv --skip-existing
+python scripts/data/download_symbols.py --csv config/universes/sp500-2025.csv --skip-existing
 
 # 4. Run a backtest
 python -m src.backtest_runner --config config/backtesting/ma_single.yaml

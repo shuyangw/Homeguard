@@ -184,7 +184,7 @@ The HV ORB strategy supports optional sentiment filtering using FinBERT, a finan
 
 ### How It Works
 
-1. **News Download**: Download news from Alpaca API via `scripts/download_news.py`
+1. **News Download**: Download news from Alpaca API via `scripts/data/download_news.py`
 2. **Sentiment Computation**: Run FinBERT via `scripts/compute_sentiment.py`
 3. **Cache Storage**: Results stored in Parquet files for fast loading
 4. **Entry Filtering**: Long entries need sentiment >= -0.2, shorts need <= 0.2
@@ -206,7 +206,7 @@ The HV ORB strategy supports optional sentiment filtering using FinBERT, a finan
 pip install transformers torch
 
 # 2. Download news for symbols
-python scripts/download_news.py --symbols TQQQ,SQQQ --start 2024-01-01
+python scripts/data/download_news.py --symbols TQQQ,SQQQ --start 2024-01-01
 
 # 3. Compute sentiment scores
 python scripts/compute_sentiment.py --all
@@ -292,7 +292,7 @@ python -m src.backtest_runner --config config/backtesting/hv_orb_baseline.yaml
 
 ```bash
 # First, download news and compute sentiment
-python scripts/download_news.py --symbols TQQQ,SQQQ --start 2024-01-01
+python scripts/data/download_news.py --symbols TQQQ,SQQQ --start 2024-01-01
 python scripts/compute_sentiment.py --all
 
 # Then run with sentiment config

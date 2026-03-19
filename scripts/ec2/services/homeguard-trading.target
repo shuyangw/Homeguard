@@ -1,6 +1,0 @@
-[Unit]
-Description=Homeguard Trading Services
-After=network.target
-
-[Install]
-WantedBy=multi-user.target

@@ -54,7 +54,7 @@ This document provides an overview of coding standards and guidelines for the Ho
 **CRITICAL**: Follow canonical schema. Use `get_local_storage_dir()` for paths.
 - **Storage**: `from src.settings import get_local_storage_dir` - NEVER hardcode paths
 - **Schema**: 8 columns (timestamp, open, high, low, close, volume, trade_count, vwap) - lowercase, float64
-- **Download**: `python scripts/download_symbols.py --csv <file> --skip-existing`
+- **Download**: `python scripts/data/download_symbols.py --csv <file> --skip-existing`
 - **Symbol lists**: `config/universes/sp500-2025.csv`, `russell1000-2025.csv`, `russell2000-2025.csv`
 - Details: [`.claude/data_handling.md`](.claude/data_handling.md)
 
