@@ -13,7 +13,7 @@ from pathlib import Path
 
 # Get S&P 500 symbols
 project_root = Path(__file__).resolve().parent.parent.parent
-csv_path = project_root / 'backtest_lists' / 'sp500-2025.csv'
+csv_path = project_root / 'config/universes' / 'sp500-2025.csv'
 symbols_df = pd.read_csv(csv_path)
 sp500_symbols = symbols_df['Symbol'].tolist()
 

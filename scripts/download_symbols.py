@@ -9,7 +9,7 @@ Usage:
     python scripts/download_symbols.py --symbols AAPL,MSFT,GOOGL
 
     # Download from CSV file (uses 'Symbol' column)
-    python scripts/download_symbols.py --csv backtest_lists/sp500-2025.csv
+    python scripts/download_symbols.py --csv config/universes/sp500-2025.csv
 
     # Download from text file (one symbol per line)
     python scripts/download_symbols.py --file my_symbols.txt
@@ -87,7 +87,7 @@ def main():
         epilog="""
 Examples:
   python scripts/download_symbols.py --symbols AAPL,MSFT,GOOGL
-  python scripts/download_symbols.py --csv backtest_lists/sp500-2025.csv --skip-existing
+  python scripts/download_symbols.py --csv config/universes/sp500-2025.csv --skip-existing
   python scripts/download_symbols.py --file symbols.txt
   python scripts/download_symbols.py --symbols SPY,QQQ --start 2020-01-01 --end 2024-12-31
         """

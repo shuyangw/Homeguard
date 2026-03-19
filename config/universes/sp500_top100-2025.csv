@@ -1,0 +1,101 @@
+Ranking,Company Name,Symbol
+1,Nvidia,NVDA
+2,Microsoft,MSFT
+3,Apple Inc.,AAPL
+4,Amazon,AMZN
+5,Meta Platforms,META
+6,Broadcom,AVGO
+7,Alphabet Inc. (Class A),GOOGL
+8,Alphabet Inc. (Class C),GOOG
+9,Tesla Inc.,TSLA
+10,Berkshire Hathaway,BRK.B
+11,Walmart,WMT
+12,JPMorgan Chase,JPM
+13,Oracle Corporation,ORCL
+14,Visa Inc.,V
+15,Lilly (Eli),LLY
+16,Netflix,NFLX
+17,Mastercard,MA
+18,ExxonMobil,XOM
+19,Costco,COST
+20,Johnson & Johnson,JNJ
+21,Palantir Technologies,PLTR
+22,Home Depot (The),HD
+23,AbbVie,ABBV
+24,Procter & Gamble,PG
+25,Bank of America,BAC
+26,Chevron Corporation,CVX
+27,Coca-Cola Company (The),KO
+28,T-Mobile US,TMUS
+29,Advanced Micro Devices,AMD
+30,GE Aerospace,GE
+31,UnitedHealth Group,UNH
+32,Cisco,CSCO
+33,Philip Morris International,PM
+34,Wells Fargo,WFC
+35,Salesforce,CRM
+36,Morgan Stanley,MS
+37,Abbott Laboratories,ABT
+38,Linde plc,LIN
+39,IBM,IBM
+40,Goldman Sachs,GS
+41,McDonald's,MCD
+42,American Express,AXP
+43,Merck & Co.,MRK
+44,Walt Disney Company (The),DIS
+45,RTX Corporation,RTX
+46,AT&T,T
+47,PepsiCo,PEP
+48,Intuit,INTU
+49,Uber,UBER
+50,Caterpillar Inc.,CAT
+51,Verizon,VZ
+52,ServiceNow,NOW
+53,Thermo Fisher Scientific,TMO
+54,Booking Holdings,BKNG
+55,Texas Instruments,TXN
+56,BlackRock,BLK
+57,Boeing,BA
+58,Charles Schwab Corporation,SCHW
+59,Arista Networks,ANET
+60,Citigroup,C
+61,Intuitive Surgical,ISRG
+62,Qualcomm,QCOM
+63,GE Vernova,GEV
+64,S&P Global,SPGI
+65,Amgen,AMGN
+66,NextEra Energy,NEE
+67,Accenture,ACN
+68,Boston Scientific,BSX
+69,Adobe Inc.,ADBE
+70,Danaher Corporation,DHR
+71,TJX Companies,TJX
+72,Gilead Sciences,GILD
+73,Stryker Corporation,SYK
+74,Progressive Corporation,PGR
+75,Pfizer,PFE
+76,Lowe's,LOW
+77,Micron Technology,MU
+78,Capital One,COF
+79,Eaton Corporation,ETN
+80,Honeywell,HON
+81,Amphenol,APH
+82,Deere & Company,DE
+83,Blackstone Inc.,BX
+84,Applied Materials,AMAT
+85,Union Pacific Corporation,UNP
+86,KKR,KKR
+87,Lam Research,LRCX
+88,Comcast,CMCSA
+89,Automatic Data Processing,ADP
+90,Medtronic,MDT
+91,Palo Alto Networks,PANW
+92,ConocoPhillips,COP
+93,KLA Corporation,KLAC
+94,Synopsys,SNPS
+95,Analog Devices,ADI
+96,Nike Inc.,NKE
+97,Altria,MO
+98,Chubb Limited,CB
+99,Welltower,WELL
+100,DoorDash,DASH

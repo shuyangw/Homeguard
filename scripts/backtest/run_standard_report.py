@@ -26,16 +26,16 @@ from src.settings import PROJECT_ROOT as PROJ_ROOT
 
 
 def load_symbol_list(list_name: str) -> list:
-    """Load symbols from backtest_lists/ directory."""
-    backtest_lists_dir = PROJ_ROOT / "backtest_lists"
+    """Load symbols from config/universes/ directory."""
+    config/universes_dir = PROJ_ROOT / "config/universes"
 
     # Try exact match first
     if Path(list_name).exists():
         csv_path = Path(list_name)
     else:
-        matches = list(backtest_lists_dir.glob(f"{list_name}*.csv"))
+        matches = list(config/universes_dir.glob(f"{list_name}*.csv"))
         if not matches:
-            matches = list(backtest_lists_dir.glob(f"*{list_name}*.csv"))
+            matches = list(config/universes_dir.glob(f"*{list_name}*.csv"))
 
         if not matches:
             raise FileNotFoundError(f"No backtest list found matching: {list_name}")

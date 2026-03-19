@@ -87,11 +87,11 @@ def main():
 
     # Load symbols based on universe
     if args.universe == 'top100':
-        symbols_path = PROJECT_ROOT / 'backtest_lists' / 'sp500_top100-2025.csv'
+        symbols_path = PROJECT_ROOT / 'config/universes' / 'sp500_top100-2025.csv'
     elif args.universe == 'top250':
-        symbols_path = PROJECT_ROOT / 'backtest_lists' / 'sp500_top250-2025.csv'
+        symbols_path = PROJECT_ROOT / 'config/universes' / 'sp500_top250-2025.csv'
     else:
-        symbols_path = PROJECT_ROOT / 'backtest_lists' / 'sp500-2025.csv'
+        symbols_path = PROJECT_ROOT / 'config/universes' / 'sp500-2025.csv'
 
     import pandas as pd
     symbols_df = pd.read_csv(symbols_path)

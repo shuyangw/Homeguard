@@ -41,7 +41,7 @@ Response:
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/api/symbols/lists` | GET | List available CSV files in backtest_lists/ |
+| `/api/symbols/lists` | GET | List available CSV files in config/universes/ |
 | `/api/symbols/lists/{filename}` | GET | Get symbols from a specific CSV file |
 
 ### Backtest

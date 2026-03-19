@@ -6,13 +6,13 @@ catalog format. The original data remains unchanged.
 
 Usage:
     # Convert S&P 500 symbols
-    python scripts/convert_to_nautilus_catalog.py --csv backtest_lists/sp500-2025.csv
+    python scripts/convert_to_nautilus_catalog.py --csv config/universes/sp500-2025.csv
 
     # Convert specific symbols
     python scripts/convert_to_nautilus_catalog.py --symbols AAPL,MSFT,GOOGL
 
     # Convert with date range
-    python scripts/convert_to_nautilus_catalog.py --csv backtest_lists/sp500-2025.csv \\
+    python scripts/convert_to_nautilus_catalog.py --csv config/universes/sp500-2025.csv \\
         --start 2020-01-01 --end 2024-12-31
 
     # Convert only daily data
@@ -56,9 +56,9 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  %(prog)s --csv backtest_lists/sp500-2025.csv
+  %(prog)s --csv config/universes/sp500-2025.csv
   %(prog)s --symbols AAPL,MSFT,GOOGL
-  %(prog)s --csv backtest_lists/sp500-2025.csv --start 2020-01-01
+  %(prog)s --csv config/universes/sp500-2025.csv --start 2020-01-01
   %(prog)s --symbols AAPL --timeframe 1day
         """
     )

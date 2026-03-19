@@ -1023,7 +1023,7 @@ def main():
 
             if args.strategy == 'ramp' or args.strategy == 'multi':
                 import pandas as pd
-                ramp_symbols = pd.read_csv('backtest_lists/sp500-2025.csv')['Symbol'].tolist()
+                ramp_symbols = pd.read_csv('config/universes/sp500-2025.csv')['Symbol'].tolist()
                 all_symbols.extend(ramp_symbols)
                 logger.info(f"  RAMP symbols: {len(ramp_symbols)}")
 

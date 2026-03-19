@@ -251,7 +251,7 @@ class MomentumLiveAdapter(StrategyAdapter):
         from pathlib import Path
 
         project_root = Path(__file__).resolve().parent.parent.parent.parent
-        csv_path = project_root / 'backtest_lists' / 'sp500-2025.csv'
+        csv_path = project_root / 'config/universes' / 'sp500-2025.csv'
 
         try:
             import pandas as pd

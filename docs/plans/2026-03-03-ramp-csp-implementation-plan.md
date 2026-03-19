@@ -2049,7 +2049,7 @@ class CSPBacktestRunner:
         if symbols is None:
             sp500_path = (
                 Path(__file__).parent.parent.parent.parent.parent
-                / "backtest_lists" / "sp500-2025.csv"
+                / "config/universes" / "sp500-2025.csv"
             )
             symbols = pd.read_csv(sp500_path)["Symbol"].tolist()
 

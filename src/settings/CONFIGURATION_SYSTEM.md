@@ -296,7 +296,7 @@ symbols:
   # OR
   # universe: "production.conservative"
   # OR
-  # file: "backtest_lists/sp500-2025.csv"
+  # file: "config/universes/sp500-2025.csv"
 
 dates:
   start: "2023-01-01"

@@ -2,7 +2,7 @@
 import pandas as pd
 from pathlib import Path
 
-sp500_file = Path(__file__).parent.parent / 'backtest_lists' / 'sp500-2025.csv'
+sp500_file = Path(__file__).parent.parent / 'config/universes' / 'sp500-2025.csv'
 local_data = Path(r'F:\Stock_Data\equities_1min')
 
 sp500 = pd.read_csv(sp500_file)['Symbol'].tolist()

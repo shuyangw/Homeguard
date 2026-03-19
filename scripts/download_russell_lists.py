@@ -1,6 +1,6 @@
 """
 Download Russell 1000 and Russell 2000 stock lists from multiple sources.
-Converts to backtest_lists schema: Ranking, Company Name, Symbol
+Converts to config/universes schema: Ranking, Company Name, Symbol
 """
 
 import pandas as pd
@@ -110,7 +110,7 @@ def download_russell_index(index_name: str) -> pd.DataFrame:
 
 
 def main():
-    output_dir = project_root / 'backtest_lists'
+    output_dir = project_root / 'config/universes'
     output_dir.mkdir(exist_ok=True)
 
     # Download Russell 1000

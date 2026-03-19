@@ -183,7 +183,7 @@ def main():
     import pandas as pd
 
     omr_symbols = ETFUniverse.LEVERAGED_3X  # ~15 symbols
-    ramp_symbols = pd.read_csv('backtest_lists/sp500-2025.csv')['Symbol'].tolist()  # ~500 symbols
+    ramp_symbols = pd.read_csv('config/universes/sp500-2025.csv')['Symbol'].tolist()  # ~500 symbols
 
     all_symbols = list(set(omr_symbols + ramp_symbols + ['SPY']))  # ~515 symbols total
 

@@ -117,7 +117,7 @@ class MultiStrategyRunner:
 ```python
 # Combine all symbols from both strategies
 omr_symbols = load_omr_config().symbols  # 15 symbols
-ramp_symbols = pd.read_csv('backtest_lists/sp500-2025.csv')['Symbol'].tolist()  # 500 symbols
+ramp_symbols = pd.read_csv('config/universes/sp500-2025.csv')['Symbol'].tolist()  # 500 symbols
 all_symbols = list(set(omr_symbols + ramp_symbols + ['SPY']))  # 515 symbols
 
 # Create single shared provider

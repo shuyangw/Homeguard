@@ -26,14 +26,14 @@ strategy:
 # Universe configuration
 universe:
   type: "sp500"                 # Full S&P 500
-  source: "backtest_lists/sp500-2025.csv"
+  source: "config/universes/sp500-2025.csv"
 
   # Alternative universes (uncomment to use)
   # type: "sp500_top100"
-  # source: "backtest_lists/sp500_top100-2025.csv"
+  # source: "config/universes/sp500_top100-2025.csv"
   #
   # type: "sp500_top250"
-  # source: "backtest_lists/sp500_top250-2025.csv"
+  # source: "config/universes/sp500_top250-2025.csv"
 
 # Position manager configuration
 position_manager:

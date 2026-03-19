@@ -147,7 +147,7 @@ Win rate of 54.46% is better than S&P 500 baseline (48.8%), indicating:
 | File | Description |
 |------|-------------|
 | `config/backtesting/orb_leveraged_extended.yaml` | Backtest configuration |
-| `backtest_lists/leveraged_etfs_extended.csv` | Symbol list (62 ETFs with header) |
+| `config/universes/leveraged_etfs_extended.csv` | Symbol list (62 ETFs with header) |
 | `logs/backtesting/results/20251216_021759_ORBStrategy/` | Results directory |
 | `...trades/20251216_022316_all_trades.csv` | All 1,098 trades |
 
@@ -303,7 +303,7 @@ This would balance the trade reduction while maintaining more opportunities than
 |------|-------------|
 | `config/backtesting/orb_leveraged_extended.yaml` | Baseline config |
 | `config/backtesting/orb_leveraged_improved.yaml` | Improved config |
-| `backtest_lists/leveraged_etfs_extended.csv` | Symbol list (62 ETFs) |
+| `config/universes/leveraged_etfs_extended.csv` | Symbol list (62 ETFs) |
 | `logs/.../20251216_021759_ORBStrategy/` | Baseline results |
 | `logs/.../20251216_022704_ORBStrategy/` | Improved results |
 

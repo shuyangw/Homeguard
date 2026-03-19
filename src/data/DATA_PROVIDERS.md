@@ -215,7 +215,7 @@ print(f"Failed: {result.failed_symbols}")
 **Command Line**:
 ```bash
 # Download equities from CSV
-python scripts/download_symbols.py --csv backtest_lists/sp500-2025.csv --skip-existing
+python scripts/download_symbols.py --csv config/universes/sp500-2025.csv --skip-existing
 
 # Download specific symbols
 python scripts/download_symbols.py --symbols AAPL,MSFT,GOOGL

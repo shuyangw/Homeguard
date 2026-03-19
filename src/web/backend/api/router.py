@@ -18,7 +18,7 @@ cache = ConfigCache()
 
 # Use project root for paths (go up from src/web/backend/api/router.py)
 PROJECT_ROOT = Path(__file__).parent.parent.parent.parent.parent
-BACKTEST_LISTS_DIR = PROJECT_ROOT / "backtest_lists"
+BACKTEST_LISTS_DIR = PROJECT_ROOT / "config/universes"
 
 # --- Strategies ---
 
@@ -73,7 +73,7 @@ async def get_strategies():
 
 @router.get("/symbols/lists")
 async def get_symbol_lists():
-    """Get list of available CSV files in backtest_lists."""
+    """Get list of available CSV files in config/universes."""
     logger.debug(f"Looking for symbol lists in: {BACKTEST_LISTS_DIR}")
     if not BACKTEST_LISTS_DIR.exists():
         logger.warning(f"Directory does not exist: {BACKTEST_LISTS_DIR}")

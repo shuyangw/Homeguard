@@ -162,7 +162,7 @@ def validate_earnings_data(df: pd.DataFrame, symbols: list, start_year: int, end
 
 def main():
     # Read high-vol symbol list
-    symbols_file = project_root / "backtest_lists" / "sp500_highvol.csv"
+    symbols_file = project_root / "config/universes" / "sp500_highvol.csv"
 
     if not symbols_file.exists():
         print(f"Symbol list not found: {symbols_file}")
@@ -210,7 +210,7 @@ def main():
         print(f"  {status} {symbol}: {count} earnings dates")
 
     # Save to CSV
-    output_dir = project_root / "backtest_lists"
+    output_dir = project_root / "config/universes"
     output_file = output_dir / "earnings_calendar_sp500_highvol.csv"
 
     earnings_df.to_csv(output_file, index=False)

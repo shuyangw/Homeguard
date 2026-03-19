@@ -107,7 +107,7 @@ equities_*/
 *.csv
 !examples/**/*.csv
 !tests/**/*.csv
-!backtest_lists/**/*.csv
+!config/universes/**/*.csv
 
 # Log files
 logs/
@@ -144,7 +144,7 @@ env.md
 claude.md
 
 # Backtest lists - tracked for deployment (required by MP strategy)
-# backtest_lists/  # REMOVED: sp500-2025.csv needed on EC2
+# config/universes/  # Symbol lists needed on EC2 - tracked via CSV exception above
 
 # Scratch/experimental - not tracked
 scripts/backtest_scripts/

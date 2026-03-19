@@ -19,7 +19,7 @@ from src.utils.logger import get_logger
 logger = get_logger()
 
 DEFAULT_CONFIG_PATH = PROJECT_ROOT / "config" / "strategies" / "ramp_csp.yaml"
-SP500_LIST_PATH = PROJECT_ROOT / "backtest_lists" / "sp500-2025.csv"
+SP500_LIST_PATH = PROJECT_ROOT / "config/universes" / "sp500-2025.csv"
 REGIME_LOOKBACK_DAYS = 400
 
 

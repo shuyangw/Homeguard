@@ -222,7 +222,7 @@ class ORBStrategy(LongShortStrategy):
         if not self.earnings_calendar_path:
             # Use default path
             project_root = Path(__file__).parent.parent.parent.parent
-            default_path = project_root / "backtest_lists" / "earnings_calendar_sp500_highvol.csv"
+            default_path = project_root / "config/universes" / "earnings_calendar_sp500_highvol.csv"
             if default_path.exists():
                 self.earnings_calendar_path = str(default_path)
             else:

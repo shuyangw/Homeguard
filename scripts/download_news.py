@@ -9,7 +9,7 @@ Usage:
     python scripts/download_news.py --symbols AAPL,MSFT,GOOGL
 
     # Download from CSV file (uses 'Symbol' column)
-    python scripts/download_news.py --csv backtest_lists/sp500-2025.csv
+    python scripts/download_news.py --csv config/universes/sp500-2025.csv
 
     # Download from text file (one symbol per line)
     python scripts/download_news.py --file my_symbols.txt
@@ -87,7 +87,7 @@ Examples:
     python scripts/download_news.py --symbols AAPL,MSFT,GOOGL
 
     # Download from S&P 500 list
-    python scripts/download_news.py --csv backtest_lists/sp500-2025.csv --skip-existing
+    python scripts/download_news.py --csv config/universes/sp500-2025.csv --skip-existing
 
     # Download with custom date range
     python scripts/download_news.py --symbols SPY --start 2024-01-01 --end 2024-12-31

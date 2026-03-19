@@ -354,7 +354,7 @@ def main():
         logger.info(f"  OMR: {len(omr_symbols)} symbols")
 
         # RAMP configuration
-        ramp_symbols = pd.read_csv('backtest_lists/sp500-2025.csv')['Symbol'].tolist()
+        ramp_symbols = pd.read_csv('config/universes/sp500-2025.csv')['Symbol'].tolist()
         logger.info(f"  RAMP: {len(ramp_symbols)} symbols")
 
         # Combine all symbols for streaming

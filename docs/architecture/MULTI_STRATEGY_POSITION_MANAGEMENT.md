@@ -41,7 +41,7 @@ Strategies MUST trade non-overlapping universes to prevent conflicts:
 | Strategy | Universe | Example Symbols | Universe Source |
 |----------|----------|-----------------|-----------------|
 | OMR      | Leveraged ETFs | TQQQ, SOXL, UPRO | `ETFUniverse.LEVERAGED_3X` |
-| MP       | S&P 500 (filtered) | AAPL, MSFT, NVDA | `backtest_lists/sp500-2025.csv` |
+| MP       | S&P 500 (filtered) | AAPL, MSFT, NVDA | `config/universes/sp500-2025.csv` |
 | *pairs*  | Cointegrated pairs | XOM/CVX, KO/PEP | TBD |
 | *vol*    | VIX products | VXX, UVXY, SVXY | TBD |
 
