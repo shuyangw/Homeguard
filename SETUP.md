@@ -105,7 +105,7 @@ Deploy trading bot to AWS EC2 with automated scheduling and monitoring.
 - **[Infrastructure Overview](docs/INFRASTRUCTURE_OVERVIEW.md)** - Complete AWS architecture and cost breakdown
 
 **Management**:
-- **[SSH Scripts Documentation](scripts/ec2/SSH_SCRIPTS_README.md)** - Quick-access management scripts (10 scripts)
+- **[SSH Scripts Documentation](infra/ec2/SSH_SCRIPTS_README.md)** - Quick-access management scripts (10 scripts)
 - **[Health Check Cheatsheet](docs/HEALTH_CHECK_CHEATSHEET.md)** - Monitoring and troubleshooting guide
 
 **Current Deployment Info**:
@@ -126,4 +126,4 @@ Deploy trading bot to AWS EC2 with automated scheduling and monitoring.
 **For Cloud Deployment**:
 1. Complete initial configuration above
 2. Follow [Quick Start Deployment](docs/guides/QUICK_START_DEPLOYMENT.md)
-3. Use [SSH Scripts](scripts/ec2/) for daily monitoring
+3. Use [SSH Scripts](infra/ec2/) for daily monitoring

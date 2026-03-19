@@ -18,7 +18,7 @@
 | **Scheduled Start/Stop** | [+] Enabled | 9:00 AM - 4:30 PM ET (Mon-Fri) |
 | **Security** | [+] Active | SSH from `<YOUR_IP_CIDR>` only |
 | **Trading Bot** | [+] Running | systemd service active |
-| **Management Scripts** | [+] Available | 10 scripts in `scripts/ec2/` |
+| **Management Scripts** | [+] Available | 10 scripts in `infra/ec2/` |
 | **Health Monitoring** | [+] Configured | Automated 6-point health check |
 
 ---
@@ -346,7 +346,7 @@ tail -f ~/logs/trading_$(date +%Y%m%d).log
 
 Pre-configured scripts for easy instance management (Windows & Linux/Mac):
 
-**Location**: `scripts/ec2/`
+**Location**: `infra/ec2/`
 
 | Script | Purpose | Usage |
 |--------|---------|-------|
@@ -360,17 +360,17 @@ Pre-configured scripts for easy instance management (Windows & Linux/Mac):
 **Windows Quick Start**:
 ```bash
 # From repository root
-scripts\ec2\check_bot.bat
-scripts\ec2\view_logs.bat
-scripts\ec2\daily_health_check.bat
+infra\ec2\check_bot.bat
+infra\ec2\view_logs.bat
+infra\ec2\daily_health_check.bat
 ```
 
 **Linux/Mac Quick Start**:
 ```bash
 # From repository root
-scripts/ec2/check_bot.sh
-scripts/ec2/view_logs.sh
-scripts/ec2/daily_health_check.sh
+infra/ec2/check_bot.sh
+infra/ec2/view_logs.sh
+infra/ec2/daily_health_check.sh
 ```
 
 ### Health Monitoring
@@ -451,9 +451,9 @@ sudo journalctl -u homeguard-discord -f
 **Important**: The Discord bot is fully isolated from the trading bot. Discord bot failures have zero impact on trading operations.
 
 **Management Scripts**:
-- `scripts/ec2/discord_bot_status.bat` - Check status
-- `scripts/ec2/discord_bot_restart.bat` - Restart service
-- `scripts/ec2/discord_bot_logs.bat` - View logs
+- `infra/ec2/discord_bot_status.bat` - Check status
+- `infra/ec2/discord_bot_restart.bat` - Restart service
+- `infra/ec2/discord_bot_logs.bat` - View logs
 
 ### Code Updates
 
@@ -461,7 +461,7 @@ To update the bot code on EC2:
 
 ```bash
 # Method 1: Using SSH script
-scripts\ec2\connect.bat   # or connect.sh
+infra\ec2\connect.bat   # or connect.sh
 
 # Then on the instance:
 cd ~/Homeguard
@@ -519,4 +519,4 @@ ssh -i ~/.ssh/homeguard-trading.pem ec2-user@<YOUR_EC2_IP> \
 
 **Last Updated**: November 15, 2025
 **Managed by**: Terraform
-**Configuration**: `terraform/terraform.tfvars`
+**Configuration**: `infra/terraform/terraform.tfvars`

@@ -28,7 +28,7 @@ Environment:
     Requires websocket-client: pip install websocket-client
 
 Service Installation (Linux):
-    sudo cp scripts/ec2/services/homeguard-cscm-demo.service /etc/systemd/system/
+    sudo cp infra/ec2/services/homeguard-cscm-demo.service /etc/systemd/system/
     sudo systemctl enable homeguard-cscm-demo
     sudo systemctl start homeguard-cscm-demo
 """

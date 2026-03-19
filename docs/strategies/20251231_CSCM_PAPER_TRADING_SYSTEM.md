@@ -121,9 +121,9 @@ Shell scripts for quick status queries on EC2.
 
 | Command | Script | Purpose |
 |---------|--------|---------|
-| `cscm-status` | `scripts/ec2/cscm_status.sh` | Portfolio value, positions, regime |
-| `cscm-refresh` | `scripts/ec2/cscm_refresh.sh` | Force refresh portfolio value |
-| `cscm-positions` | `scripts/ec2/cscm_positions.sh` | Detailed position breakdown |
+| `cscm-status` | `infra/ec2/cscm_status.sh` | Portfolio value, positions, regime |
+| `cscm-refresh` | `infra/ec2/cscm_refresh.sh` | Force refresh portfolio value |
+| `cscm-positions` | `infra/ec2/cscm_positions.sh` | Detailed position breakdown |
 
 ### 6. Discord Bot
 
@@ -141,11 +141,11 @@ Simple slash commands for remote monitoring (no LLM required).
 
 ### EC2 Service
 
-**Service File**: `scripts/ec2/services/homeguard-cscm-paper.service`
+**Service File**: `infra/ec2/services/homeguard-cscm-paper.service`
 
 ```bash
 # Install service
-sudo cp scripts/ec2/services/homeguard-cscm-paper.service /etc/systemd/system/
+sudo cp infra/ec2/services/homeguard-cscm-paper.service /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable homeguard-cscm-paper
 sudo systemctl start homeguard-cscm-paper

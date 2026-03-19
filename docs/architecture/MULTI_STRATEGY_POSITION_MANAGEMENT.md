@@ -667,7 +667,7 @@ All logs are prefixed with strategy identifier:
 | Toggle config | `config/trading/strategy_toggle.yaml` |
 | Position state | `data/trading/strategy_positions.json` |
 | State manager | `src/trading/state/strategy_state_manager.py` |
-| Toggle command | `scripts/ec2/toggle_strategy.sh` |
+| Toggle command | `infra/ec2/toggle_strategy.sh` |
 | Live runner | `scripts/trading/run_live_paper_trading.py` |
 | OMR adapter | `src/trading/adapters/omr_live_adapter.py` |
 | MP adapter | `src/trading/adapters/momentum_live_adapter.py` |

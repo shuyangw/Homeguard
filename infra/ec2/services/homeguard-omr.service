@@ -1,0 +1,24 @@
+[Unit]
+Description=Homeguard OMR Strategy - Overnight Mean Reversion
+After=network.target
+PartOf=homeguard-trading.target
+Conflicts=homeguard-trading.service
+
+[Service]
+Type=simple
+User=ec2-user
+WorkingDirectory=/home/ec2-user/Homeguard
+Environment="PATH=/home/ec2-user/Homeguard/venv/bin:/usr/local/bin:/usr/bin:/bin"
+ExecStart=/home/ec2-user/Homeguard/venv/bin/python scripts/trading/run_live_paper_trading.py --strategy omr
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=homeguard-omr
+
+# Resource limits
+MemoryMax=512M
+CPUQuota=75%
+
+[Install]
+WantedBy=homeguard-trading.target

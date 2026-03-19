@@ -23,5 +23,5 @@ Strategies currently deployed on EC2 for live/paper trading.
 Before adding a strategy to production:
 1. Complete walk-forward validation (see `docs/strategies/research/`)
 2. Document in this directory with `{STRATEGY}_STRATEGY.md` naming
-3. Update deployment scripts in `scripts/ec2/`
+3. Update deployment scripts in `infra/ec2/`
 4. Add to systemd service configuration

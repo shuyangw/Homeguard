@@ -137,8 +137,8 @@ This documentation is organized by topic for easy navigation. Select the categor
 - [**Infrastructure Overview**](INFRASTRUCTURE_OVERVIEW.md) - Complete AWS architecture, cost breakdown, daily operations
 
 ### Infrastructure Details
-- [**Terraform README**](../terraform/README.md) - Infrastructure as code configuration and management
-- [**SSH Scripts Documentation**](../scripts/ec2/SSH_SCRIPTS_README.md) - Quick-access management scripts (10 scripts)
+- [**Terraform README**](../infra/terraform/README.md) - Infrastructure as code configuration and management
+- [**SSH Scripts Documentation**](../infra/ec2/SSH_SCRIPTS_README.md) - Quick-access management scripts (10 scripts)
 - [**Health Check Cheatsheet**](HEALTH_CHECK_CHEATSHEET.md) - Comprehensive monitoring guide
 - [**Troubleshooting Guide**](guides/TROUBLESHOOTING.md) - Common issues and solutions
 
@@ -323,7 +323,7 @@ When adding new documentation:
   - Lambda-powered automated scheduling (9 AM start, 4:30 PM stop ET Mon-Fri)
   - Systemd service with auto-restart capabilities
   - ~$7/month total cost (46% savings vs 24/7)
-- [+] Created 10 SSH management scripts for easy monitoring (scripts/ec2/)
+- [+] Created 10 SSH management scripts for easy monitoring (infra/ec2/)
 - [+] Automated 6-point health check system
 - [+] Complete infrastructure documentation (8 comprehensive docs)
 - [+] Terraform infrastructure as code configuration

@@ -1,0 +1,14 @@
+[Unit]
+Description=Homeguard Portfolio Snapshot
+After=network.target
+
+[Service]
+Type=oneshot
+User=ec2-user
+WorkingDirectory=/home/ec2-user/Homeguard
+ExecStart=/home/ec2-user/Homeguard/venv/bin/python scripts/trading/snapshot_portfolio.py
+StandardOutput=append:/home/ec2-user/.homeguard/demo/snapshots/snapshot.log
+StandardError=append:/home/ec2-user/.homeguard/demo/snapshots/snapshot.log
+
+[Install]
+WantedBy=multi-user.target

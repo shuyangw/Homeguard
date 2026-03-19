@@ -3,7 +3,7 @@
 Quick reference for monitoring your Homeguard trading bot on EC2.
 
 > **Note**: Replace placeholders with your actual values from `.env` file or `terraform output`.
-> Use the pre-configured scripts in `scripts/ec2/` which automatically read from `.env`.
+> Use the pre-configured scripts in `infra/ec2/` which automatically read from `.env`.
 
 **Instance IP**: `<YOUR_EC2_IP>` (see `EC2_IP` in `.env`)
 **Instance ID**: `<YOUR_INSTANCE_ID>` (see `EC2_INSTANCE_ID` in `.env`)
@@ -17,8 +17,8 @@ Quick reference for monitoring your Homeguard trading bot on EC2.
 
 **Quick Script** (recommended):
 ```bash
-scripts/ec2/check_bot.sh       # Linux/Mac
-scripts\ec2\check_bot.bat      # Windows
+infra/ec2/check_bot.sh       # Linux/Mac
+infra\ec2\check_bot.bat      # Windows
 ```
 
 **Manual SSH**:
@@ -37,8 +37,8 @@ ssh -i ~/.ssh/homeguard-trading.pem ec2-user@<YOUR_EC2_IP> "sudo systemctl statu
 
 **Quick Script**:
 ```bash
-scripts/ec2/view_logs.sh       # Linux/Mac
-scripts\ec2\view_logs.bat      # Windows
+infra/ec2/view_logs.sh       # Linux/Mac
+infra\ec2\view_logs.bat      # Windows
 ```
 
 **Manual SSH**:
@@ -115,7 +115,7 @@ aws ec2 describe-instances --instance-ids <YOUR_INSTANCE_ID> --query 'Reservatio
 aws ec2 describe-instances --instance-ids <YOUR_INSTANCE_ID> --query 'Reservations[0].Instances[0].State.Name'
 
 # 2. Check bot service status
-scripts/ec2/check_bot.sh
+infra/ec2/check_bot.sh
 
 # 3. Verify no recent errors
 ssh -i ~/.ssh/homeguard-trading.pem ec2-user@<YOUR_EC2_IP> "sudo journalctl -u homeguard-trading -p err --since '1 hour ago' --no-pager"
@@ -129,7 +129,7 @@ ssh -i ~/.ssh/homeguard-trading.pem ec2-user@<YOUR_EC2_IP> "sudo journalctl -u h
 
 ```bash
 # View live activity (watch for 30 seconds)
-scripts/ec2/view_logs.sh
+infra/ec2/view_logs.sh
 ```
 
 **Expected**:
@@ -173,7 +173,7 @@ sudo systemctl status homeguard-trading
 sudo journalctl -u homeguard-trading -n 50
 
 # Restart bot
-scripts/ec2/restart_bot.sh
+infra/ec2/restart_bot.sh
 ```
 
 ---
@@ -185,7 +185,7 @@ scripts/ec2/restart_bot.sh
 ssh -i ~/.ssh/homeguard-trading.pem ec2-user@<YOUR_EC2_IP> "sudo systemctl restart homeguard-trading"
 
 # Verify it restarted
-scripts/ec2/check_bot.sh
+infra/ec2/check_bot.sh
 ```
 
 ---
@@ -220,7 +220,7 @@ exit
 ssh -i ~/.ssh/homeguard-trading.pem ec2-user@<YOUR_EC2_IP> "free -h"
 
 # If memory is full, restart bot
-scripts/ec2/restart_bot.sh
+infra/ec2/restart_bot.sh
 ```
 
 ---
@@ -235,7 +235,7 @@ aws logs tail /aws/lambda/homeguard-start-instance --since 1h
 aws ec2 start-instances --instance-ids <YOUR_INSTANCE_ID>
 
 # Wait 2 minutes, then verify bot started
-scripts/ec2/check_bot.sh
+infra/ec2/check_bot.sh
 ```
 
 ---
@@ -396,9 +396,9 @@ exit
 | Task | Command |
 |------|---------|
 | **SSH to instance** | `ssh -i ~/.ssh/homeguard-trading.pem ec2-user@<YOUR_EC2_IP>` |
-| **Check bot status** | `scripts/ec2/check_bot.sh` |
-| **View live logs** | `scripts/ec2/view_logs.sh` |
-| **Restart bot** | `scripts/ec2/restart_bot.sh` |
+| **Check bot status** | `infra/ec2/check_bot.sh` |
+| **View live logs** | `infra/ec2/view_logs.sh` |
+| **Restart bot** | `infra/ec2/restart_bot.sh` |
 | **Stop bot** | `sudo systemctl stop homeguard-trading` |
 | **Start bot** | `sudo systemctl start homeguard-trading` |
 | **Check errors** | `sudo journalctl -u homeguard-trading -p err -n 20` |

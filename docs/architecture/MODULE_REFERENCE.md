@@ -2869,7 +2869,7 @@ BrokerInterface               <- Composite: Account + MarketHours + MarketData +
 
 **Purpose**: AWS cloud deployment infrastructure with automated scheduling and monitoring
 
-**Location**: `terraform/`, `scripts/ec2/`, systemd service files
+**Location**: `infra/terraform/`, `infra/ec2/`, systemd service files
 
 **Total Components**: 20+ infrastructure resources + 10 management scripts
 
@@ -2877,32 +2877,32 @@ BrokerInterface               <- Composite: Account + MarketHours + MarketData +
 
 ### Terraform Infrastructure as Code
 
-#### `terraform/main.tf`
+#### `infra/terraform/main.tf`
 **Purpose**: Core infrastructure definition
 - EC2 instance (t4g.small ARM64)
 - Security group (SSH access only)
 - Elastic IP (static IP address)
 - EBS volume (8 GB encrypted)
 
-#### `terraform/scheduled_start_stop.tf`
+#### `infra/terraform/scheduled_start_stop.tf`
 **Purpose**: Automated scheduling infrastructure
 - Lambda functions for start/stop
 - EventBridge cron rules (9 AM start, 4:30 PM stop ET Mon-Fri)
 - IAM roles and policies
 - CloudWatch Log Groups (90-day retention)
 
-#### `terraform/user-data.sh`
+#### `infra/terraform/user-data.sh`
 **Purpose**: Bootstrap script for EC2 instance
 - Installs Python 3.11 and dependencies
 - Clones repository from GitHub
 - Creates systemd service
 - Configures environment variables
 
-#### `terraform/lambda/start_instance.py`
+#### `infra/terraform/lambda/start_instance.py`
 **Purpose**: Lambda function to start EC2 instance
 - Triggered by EventBridge at 9 AM ET weekdays
 
-#### `terraform/lambda/stop_instance.py`
+#### `infra/terraform/lambda/stop_instance.py`
 **Purpose**: Lambda function to stop EC2 instance
 - Triggered by EventBridge at 4:30 PM ET weekdays
 
@@ -2910,30 +2910,30 @@ BrokerInterface               <- Composite: Account + MarketHours + MarketData +
 
 ### SSH Management Scripts
 
-**Location**: `scripts/ec2/`
+**Location**: `infra/ec2/`
 
 **Purpose**: Quick-access scripts for monitoring and managing cloud-deployed bot
 
-#### `scripts/ec2/connect.bat` / `connect.sh`
+#### `infra/ec2/connect.bat` / `connect.sh`
 **Purpose**: SSH into EC2 instance
 - Windows batch and Linux/Mac shell versions
 
-#### `scripts/ec2/check_bot.bat` / `check_bot.sh`
+#### `infra/ec2/check_bot.bat` / `check_bot.sh`
 **Purpose**: Check bot status and recent activity
 - Shows systemd service status
 - Displays last 10 log lines
 
-#### `scripts/ec2/view_logs.bat` / `view_logs.sh`
+#### `infra/ec2/view_logs.bat` / `view_logs.sh`
 **Purpose**: Stream live bot logs
 - Real-time log monitoring
 - Press Ctrl+C to stop
 
-#### `scripts/ec2/restart_bot.bat` / `restart_bot.sh`
+#### `infra/ec2/restart_bot.bat` / `restart_bot.sh`
 **Purpose**: Restart trading bot service
 - Restarts systemd service
 - Shows status after restart
 
-#### `scripts/ec2/daily_health_check.bat` / `daily_health_check.sh`
+#### `infra/ec2/daily_health_check.bat` / `daily_health_check.sh`
 **Purpose**: Automated 6-point health validation
 - Instance state check
 - Bot service status
@@ -2942,7 +2942,7 @@ BrokerInterface               <- Composite: Account + MarketHours + MarketData +
 - Last activity logs
 - Market status
 
-#### `scripts/ec2/view_logs_plain.bat`
+#### `infra/ec2/view_logs_plain.bat`
 **Purpose**: View logs without ANSI colors
 - For Windows CMD compatibility
 
@@ -2971,7 +2971,7 @@ BrokerInterface               <- Composite: Account + MarketHours + MarketData +
 - Cost breakdown (~$7/month)
 - Management commands
 
-#### `terraform/README.md`
+#### `infra/terraform/README.md`
 **Purpose**: Terraform deployment guide
 - Prerequisites and setup
 - Configuration options
@@ -2979,7 +2979,7 @@ BrokerInterface               <- Composite: Account + MarketHours + MarketData +
 - Troubleshooting
 - Post-deployment management
 
-#### `scripts/ec2/SSH_SCRIPTS_README.md`
+#### `infra/ec2/SSH_SCRIPTS_README.md`
 **Purpose**: SSH scripts documentation
 - Script descriptions and usage
 - Troubleshooting guide

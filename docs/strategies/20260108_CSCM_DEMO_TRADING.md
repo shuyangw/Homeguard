@@ -136,10 +136,10 @@ Portfolio state is saved to `~/.homeguard/demo/`:
 
 ### Service File
 
-Location: `scripts/ec2/services/homeguard-cscm-demo.service`
+Location: `infra/ec2/services/homeguard-cscm-demo.service`
 
 ```bash
-sudo cp scripts/ec2/services/homeguard-cscm-demo.service /etc/systemd/system/
+sudo cp infra/ec2/services/homeguard-cscm-demo.service /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable homeguard-cscm-demo
 sudo systemctl start homeguard-cscm-demo
@@ -154,13 +154,13 @@ The EC2 instance is automatically started/stopped for CSCM rebalance:
 | Start | Saturday 23:00 | 1 hour before rebalance |
 | Stop | Sunday 00:10 | 10 minutes after rebalance |
 
-Terraform resources in `terraform/scheduled_start_stop.tf`:
+Terraform resources in `infra/terraform/scheduled_start_stop.tf`:
 - `aws_cloudwatch_event_rule.start_instance_sunday`
 - `aws_cloudwatch_event_rule.stop_instance_sunday`
 
 ### EC2 Commands
 
-After running `./scripts/ec2/instance_setup_bashrc.sh --force`:
+After running `./infra/ec2/instance_setup_bashrc.sh --force`:
 
 | Command | Description |
 |---------|-------------|

@@ -72,8 +72,8 @@ This deployment combines OMR and RAMP strategies into a single process that shar
 | File | Purpose |
 |------|---------|
 | `scripts/trading/run_multi_strategy_streaming.py` | Multi-strategy runner |
-| `scripts/ec2/homeguard-multi.service` | Systemd service file |
-| `scripts/ec2/deploy_multi_strategy_streaming.sh` | Deployment script |
+| `infra/ec2/homeguard-multi.service` | Systemd service file |
+| `infra/ec2/deploy_multi_strategy_streaming.sh` | Deployment script |
 
 ### Key Components
 
@@ -176,7 +176,7 @@ bars = provider.get_bars('TQQQ', n=390)  # OMR needs 390 bars
 
 ```bash
 cd /home/ec2-user/Homeguard
-bash scripts/ec2/deploy_multi_strategy_streaming.sh
+bash infra/ec2/deploy_multi_strategy_streaming.sh
 ```
 
 **The script will:**
@@ -518,7 +518,7 @@ All strategies share the same LiveDataProvider instance.
 **Deploy:**
 ```bash
 cd /home/ec2-user/Homeguard
-bash scripts/ec2/deploy_multi_strategy_streaming.sh
+bash infra/ec2/deploy_multi_strategy_streaming.sh
 ```
 
 **Monitor:**

@@ -74,7 +74,7 @@ See [docs/strategies/production/](docs/strategies/production/) for strategy docu
 ### Deployment
 - [Infrastructure Overview](docs/INFRASTRUCTURE_OVERVIEW.md) - AWS architecture
 - [Health Check Cheatsheet](docs/HEALTH_CHECK_CHEATSHEET.md) - Monitoring guide
-- [Terraform README](terraform/README.md) - Infrastructure as code
+- [Terraform README](infra/terraform/README.md) - Infrastructure as code
 
 ### Strategies
 - [Production Strategies](docs/strategies/production/) - RAMP, OMR documentation
@@ -102,7 +102,7 @@ Homeguard/
   config/             # YAML backtest configurations
   config/universes/     # Symbol CSV lists
   scripts/            # Utility scripts
-  terraform/          # AWS infrastructure
+  infra/              # Infrastructure (terraform + EC2 ops)
   tests/              # Unit tests
   docs/               # Documentation
 ```

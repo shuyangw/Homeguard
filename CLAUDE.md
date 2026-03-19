@@ -251,8 +251,8 @@ Update docs when modifying user-facing functionality.
 ### Infrastructure & Deployment Documentation
 **CRITICAL**: Update infrastructure docs when changing deployment/cloud infrastructure.
 - **ALWAYS** update `docs/INFRASTRUCTURE_OVERVIEW.md` when modifying AWS resources
-- Update `terraform/README.md` when changing Terraform configuration
-- Update `scripts/ec2/` documentation when adding/modifying management scripts
+- Update `infra/terraform/README.md` when changing Terraform configuration
+- Update `infra/ec2/` documentation when adding/modifying management scripts
 - Keep `docs/HEALTH_CHECK_CHEATSHEET.md` current with monitoring procedures
 - Document cost changes, instance type modifications, or scheduling updates
 - Infrastructure docs must reflect actual deployed resources
@@ -285,12 +285,12 @@ Update docs when modifying user-facing functionality.
 #### Current Protected Files
 - `.env` - API keys and EC2 configuration (git-ignored)
 - `settings.ini` - Personal paths and settings (git-ignored)
-- `scripts/ec2/ec2_config.sh` - Not used; EC2 config is in `.env`
-- `scripts/ec2/ec2_config.bat` - Not used; EC2 config is in `.env`
+- `infra/ec2/ec2_config.sh` - Not used; EC2 config is in `.env`
+- `infra/ec2/ec2_config.bat` - Not used; EC2 config is in `.env`
 
 #### Helper Scripts for Shell/Batch
-- Shell scripts use `source scripts/ec2/load_env.sh` to parse `.env`
-- Batch scripts use `call scripts\ec2\load_env.bat` to parse `.env`
+- Shell scripts use `source infra/ec2/load_env.sh` to parse `.env`
+- Batch scripts use `call infra\ec2\load_env.bat` to parse `.env`
 - Both helpers validate required variables and provide helpful error messages
 
 ### Git Workflow
@@ -343,11 +343,11 @@ Update docs when modifying user-facing functionality.
 | **Codebase Analyzer** | `.claude/agents/codebase-analyzer.md` | Analyze code quality, LOC by type, code smells, test coverage gaps |
 
 **EC2 Management Scripts** (Windows):
-- `scripts\ec2\local_start_instance.bat` - Start EC2 instance
-- `scripts\ec2\local_stop_instance.bat` - Stop EC2 instance
-- `scripts\ec2\check_bot.bat` - Check bot status
-- `scripts\ec2\view_logs.bat` - Stream live logs
-- `scripts\ec2\daily_health_check.bat` - Run 6-point health check
+- `infra\ec2\local_start_instance.bat` - Start EC2 instance
+- `infra\ec2\local_stop_instance.bat` - Stop EC2 instance
+- `infra\ec2\check_bot.bat` - Check bot status
+- `infra\ec2\view_logs.bat` - Stream live logs
+- `infra\ec2\daily_health_check.bat` - Run 6-point health check
 
 **EC2 Instance Aliases** (when connected via SSH):
 - `bot-status` - Check systemd service status
@@ -460,7 +460,7 @@ Note: Environment, logging, data schema, ASCII-only, and GUI rules are in their 
 - **Adding logging** - Read [`.claude/logging.md`](.claude/logging.md)
 - **Creating documentation** - Read [`.claude/documentation.md`](.claude/documentation.md)
 - **Committing or pushing code** - Read [`.claude/git_workflow.md`](.claude/git_workflow.md)
-- **Modifying AWS infrastructure** - Update `docs/INFRASTRUCTURE_OVERVIEW.md` and `terraform/README.md`
+- **Modifying AWS infrastructure** - Update `docs/INFRASTRUCTURE_OVERVIEW.md` and `infra/terraform/README.md`
 - **Downloading market data** - Follow canonical schema in Data Handling section above
 - **Stock screening** - See [`src/screening/README.md`](src/screening/README.md)
 - **Fundamental data** - See [`src/data/yfinance/README.md`](src/data/yfinance/README.md)

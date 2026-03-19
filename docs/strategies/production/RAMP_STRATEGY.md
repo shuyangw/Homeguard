@@ -185,7 +185,7 @@ strategies:
 
 ### EC2 Service
 
-Service file: `scripts/ec2/services/homeguard-ramp.service`
+Service file: `infra/ec2/services/homeguard-ramp.service`
 
 ```bash
 # Start RAMP service
@@ -220,7 +220,7 @@ RAMP runs alongside OMR with proper isolation:
 | `src/strategies/advanced/ramp_strategy.py` | Pure signal generation logic |
 | `src/trading/adapters/ramp_live_adapter.py` | Live trading adapter |
 | `src/strategies/advanced/market_regime_detector.py` | Regime classification |
-| `scripts/ec2/services/homeguard-ramp.service` | Systemd service definition |
+| `infra/ec2/services/homeguard-ramp.service` | Systemd service definition |
 | `config/trading/strategy_toggle.yaml` | Enable/disable toggle |
 
 ### Class Hierarchy
