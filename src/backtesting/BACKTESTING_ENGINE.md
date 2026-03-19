@@ -291,7 +291,7 @@ pytest tests/engine/ -v
 
 - [Architecture Overview](../../docs/architecture/ARCHITECTURE_OVERVIEW.md)
 - [Module Reference](../../docs/architecture/MODULE_REFERENCE.md)
-- [Backtesting Guidelines](../../backtest_guidelines/guidelines.md)
+- [Backtesting Guidelines](../../docs/guidelines/backtesting.md)
 
 ---
 

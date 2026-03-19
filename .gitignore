@@ -256,6 +256,10 @@ docs/*
 !docs/plans/
 !docs/plans/**
 
+# KEEP: Guidelines (backtesting standards, coding guidelines)
+!docs/guidelines/
+!docs/guidelines/**
+
 # Hide everything else (new files only - previously tracked files remain):
 # - docs/api/ (can be generated from code)
 # - docs/guides/ (user guides, wiki material)
