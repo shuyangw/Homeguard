@@ -17,7 +17,7 @@ class ConfigManager:
     """
     Manages GUI configuration presets and symbol lists.
 
-    Storage location: <project_root>/gui_config/
+    Storage location: <project_root>/artifacts/gui/
     - presets.json: Saved backtest configurations
     - symbol_lists.json: Saved symbol groups
     - last_run.json: Last executed configuration
@@ -29,12 +29,12 @@ class ConfigManager:
 
         Args:
             config_dir: Optional custom config directory.
-                       Defaults to project_root/gui_config/
+                       Defaults to project_root/artifacts/gui/
         """
         if config_dir is None:
-            # Use project root/gui_config
+            # Use project root/artifacts/gui
             from config import PROJECT_ROOT
-            config_dir = PROJECT_ROOT / "gui_config"
+            config_dir = PROJECT_ROOT / "artifacts/gui"
 
         self.config_dir = Path(config_dir)
         self.config_dir.mkdir(parents=True, exist_ok=True)

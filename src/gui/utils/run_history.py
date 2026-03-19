@@ -27,11 +27,11 @@ class RunHistory:
         Initialize run history.
 
         Args:
-            history_file: Path to history JSON file (defaults to gui_config/run_history.json)
+            history_file: Path to history JSON file (defaults to artifacts/gui/run_history.json)
         """
         if history_file is None:
             from config import PROJECT_ROOT
-            config_dir = PROJECT_ROOT / "gui_config"
+            config_dir = PROJECT_ROOT / "artifacts/gui"
             config_dir.mkdir(parents=True, exist_ok=True)
             history_file = config_dir / "run_history.json"
 

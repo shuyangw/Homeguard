@@ -14,25 +14,25 @@ class TestCLIHelpers:
     """Tests for CLI helper functions."""
 
     def test_parse_symbols_arg(self):
-        from scripts.download_symbols import parse_symbols_arg
+        from scripts.data.download_symbols import parse_symbols_arg
 
         result = parse_symbols_arg("AAPL, msft, GOOGL")
         assert result == ["AAPL", "MSFT", "GOOGL"]
 
     def test_parse_symbols_arg_strips_whitespace(self):
-        from scripts.download_symbols import parse_symbols_arg
+        from scripts.data.download_symbols import parse_symbols_arg
 
         result = parse_symbols_arg("  AAPL  ,  MSFT  ")
         assert result == ["AAPL", "MSFT"]
 
     def test_parse_symbols_arg_filters_empty(self):
-        from scripts.download_symbols import parse_symbols_arg
+        from scripts.data.download_symbols import parse_symbols_arg
 
         result = parse_symbols_arg("AAPL,,MSFT,")
         assert result == ["AAPL", "MSFT"]
 
     def test_load_symbols_from_csv(self):
-        from scripts.download_symbols import load_symbols_from_csv
+        from scripts.data.download_symbols import load_symbols_from_csv
 
         with tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False) as f:
             f.write("Symbol,Name\n")
@@ -44,7 +44,7 @@ class TestCLIHelpers:
             assert result == ["AAPL", "MSFT"]
 
     def test_load_symbols_from_csv_filters_nan(self):
-        from scripts.download_symbols import load_symbols_from_csv
+        from scripts.data.download_symbols import load_symbols_from_csv
 
         with tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False) as f:
             f.write("Symbol,Name\n")
@@ -57,7 +57,7 @@ class TestCLIHelpers:
             assert result == ["AAPL", "MSFT"]
 
     def test_load_symbols_from_file(self):
-        from scripts.download_symbols import load_symbols_from_file
+        from scripts.data.download_symbols import load_symbols_from_file
 
         with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as f:
             f.write("AAPL\n")
@@ -69,7 +69,7 @@ class TestCLIHelpers:
             assert result == ["AAPL", "MSFT", "GOOGL"]
 
     def test_load_symbols_from_file_ignores_comments(self):
-        from scripts.download_symbols import load_symbols_from_file
+        from scripts.data.download_symbols import load_symbols_from_file
 
         with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as f:
             f.write("# This is a comment\n")
@@ -82,7 +82,7 @@ class TestCLIHelpers:
             assert result == ["AAPL", "MSFT"]
 
     def test_load_symbols_from_file_ignores_empty_lines(self):
-        from scripts.download_symbols import load_symbols_from_file
+        from scripts.data.download_symbols import load_symbols_from_file
 
         with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as f:
             f.write("AAPL\n")
@@ -99,19 +99,19 @@ class TestCLIFileNotFound:
     """Tests for file not found errors."""
 
     def test_csv_not_found(self):
-        from scripts.download_symbols import load_symbols_from_csv
+        from scripts.data.download_symbols import load_symbols_from_csv
 
         with pytest.raises(FileNotFoundError):
             load_symbols_from_csv(Path("/nonexistent/file.csv"))
 
     def test_file_not_found(self):
-        from scripts.download_symbols import load_symbols_from_file
+        from scripts.data.download_symbols import load_symbols_from_file
 
         with pytest.raises(FileNotFoundError):
             load_symbols_from_file(Path("/nonexistent/file.txt"))
 
     def test_csv_no_symbol_column(self):
-        from scripts.download_symbols import load_symbols_from_csv
+        from scripts.data.download_symbols import load_symbols_from_csv
 
         with tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False) as f:
             f.write("Name,Value\n")

@@ -100,11 +100,14 @@ Homeguard/
     gui/              # Desktop GUI
     utils/            # Logger, timezone, utilities
   config/             # YAML backtest configurations
-  config/universes/     # Symbol CSV lists
-  scripts/            # Utility scripts
-  infra/              # Infrastructure (terraform + EC2 ops)
+  config/universes/   # Symbol CSV lists
+  scripts/            # Utility scripts (data/, ops/, backtest/, trading/)
+  infra/              # Infrastructure (terraform/ + ec2/)
+  tools/              # Standalone tools (Go options downloader)
+  examples/           # Example scripts
   tests/              # Unit tests
   docs/               # Documentation
+  artifacts/          # Generated output (gitignored: logs, cache, models, etc.)
 ```
 
 ---
