@@ -432,12 +432,20 @@ def get_logger(log_file: Optional[Path] = None) -> Logger:
     Get a logger instance.
 
     Args:
-        log_file: Optional file path to write logs to disk
+        log_file: Optional file path to write logs to disk.
+            NOTE: Many modules call get_logger(__name__) following the
+            standard logging pattern. The __name__ string is NOT a file
+            path, so we ignore it and return the global logger.
 
     Returns:
         Logger instance
     """
     if log_file:
+        # Ignore module names passed as __name__ (e.g. "src.strategies.advanced.bmsb_indicators").
+        # These are not file paths -- the caller wants a named logger, not file logging.
+        log_file_str = str(log_file)
+        if log_file_str.startswith("src.") or log_file_str.startswith("tests."):
+            return _global_logger
         return Logger(log_file=log_file)
     return _global_logger
 
