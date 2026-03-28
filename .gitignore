@@ -15,6 +15,8 @@ secrets/
 # ============================================================================
 settings.ini
 .claude
+TODO.md
+.claude-recovery.log
 
 # ============================================================================
 # IDE AND EDITOR FILES
@@ -254,14 +256,6 @@ docs/*
 # KEEP: Troubleshooting documentation (production issue analysis)
 !docs/troubleshooting/
 !docs/troubleshooting/**
-
-# KEEP: Reports (backtest results, validation reports)
-!docs/reports/
-!docs/reports/**
-
-# KEEP: Plans (design docs, implementation plans)
-!docs/plans/
-!docs/plans/**
 
 # KEEP: Guidelines (backtesting standards, coding guidelines)
 !docs/guidelines/
