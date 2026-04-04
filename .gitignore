@@ -160,6 +160,11 @@ scripts/backtest_scripts/
 scripts/scratch/
 config/backtesting/scratch/
 
+# Archived strategies - failed/non-viable, kept locally for reference
+src/strategies/options/_archived/
+tests/strategies/options/_archived/
+config/strategies/_archived/
+
 # ============================================================================
 # DOCUMENTATION (Discouraged per CLAUDE.md)
 # ============================================================================

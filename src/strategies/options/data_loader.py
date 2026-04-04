@@ -137,6 +137,7 @@ class OptionsDataLoader:
                 table = pa.concat_tables(
                     [pa.Table.from_batches([b]) for b in filtered_batches]
                 )
+                table = self._decode_dict_columns(table)
                 df = table.to_pandas()
             else:
                 df = pd.DataFrame()
@@ -151,6 +152,22 @@ class OptionsDataLoader:
 
         self._month_cache[cache_key] = df
         return df
+
+    @staticmethod
+    def _decode_dict_columns(table: pa.Table) -> pa.Table:
+        """Decode dictionary-encoded columns to plain types.
+
+        Some parquet files use dictionary encoding with uint32 indices
+        which pyarrow cannot convert to pandas directly. Decoding them
+        to their value type fixes the ArrowTypeError.
+        """
+        new_columns = []
+        for i, field in enumerate(table.schema):
+            col = table.column(i)
+            if pa.types.is_dictionary(field.type):
+                col = pc.cast(col, field.type.value_type)
+            new_columns.append(col)
+        return pa.table(new_columns, names=table.column_names)
 
     @staticmethod
     def _transform(df: pd.DataFrame) -> pd.DataFrame:
