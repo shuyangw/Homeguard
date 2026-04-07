@@ -1,0 +1,40 @@
+# ==================================================================
+# IBKR Connection Configuration
+# ==================================================================
+#
+# Ports:
+#   4001 = IB Gateway live
+#   4002 = IB Gateway paper  (default)
+#   7496 = TWS live
+#   7497 = TWS paper
+#
+# Environment variable overrides:
+#   IBKR_HOST, IBKR_PORT, IBKR_CLIENT_ID, IBKR_ACCOUNT,
+#   IBKR_READONLY, IBKR_TIMEOUT, IBKR_MARKET_DATA_TYPE
+
+ibkr:
+  host: "127.0.0.1"
+  port: 4002                        # Paper trading gateway
+  client_id: 10                     # Unique per connection (avoid conflicts)
+  timeout_seconds: 30
+  readonly: false
+  account: ""                       # Empty = auto-detect first managed account
+
+  # Reconnection (for daily Gateway restarts, network blips)
+  max_reconnect_attempts: 50
+  reconnect_base_delay: 2.0         # Exponential backoff: 2s, 4s, 8s, ... 30s cap
+  reconnect_max_delay: 30.0
+
+  # Historical data pacing (IBKR limit: 60 per 10 min)
+  historical_pacing_max_per_10min: 58    # Leave headroom
+  identical_request_cooldown_seconds: 15.0
+
+  # Streaming (reqMktData subscription limit)
+  max_streaming_lines: 100
+
+  # Market data type
+  # 1 = Live (requires subscription, ~$14.50/mo for US equities + options)
+  # 2 = Frozen (last available live price)
+  # 3 = Delayed (15-min delay, FREE for paper trading)
+  # 4 = Delayed-Frozen
+  market_data_type: 3
