@@ -66,13 +66,19 @@ class BrokerFactory:
                 paper=config.get('paper', True)
             )
 
-        elif broker_type in ['ib', 'interactive_brokers', 'interactivebrokers']:
-            # Future implementation
-            logger.error("Interactive Brokers not implemented yet")
-            raise NotImplementedError(
-                "Interactive Brokers support not implemented yet. "
-                "To add IB support, implement IBBroker class in ib_broker.py"
+        elif broker_type in ['ib', 'interactive_brokers', 'interactivebrokers', 'ibkr']:
+            from .ibkr import IBKRBroker, IBKRConfig
+            logger.info("Creating IBKRBroker instance")
+            ibkr_config = IBKRConfig(
+                host=config.get('host', '127.0.0.1'),
+                port=int(config.get('port', 4002)),
+                client_id=int(config.get('client_id', 1)),
+                readonly=config.get('readonly', False),
+                account=config.get('account', ''),
             )
+            broker = IBKRBroker(ibkr_config)
+            broker.start()
+            return broker
 
         elif broker_type in ['tdameritrade', 'tda', 'td_ameritrade']:
             # Future implementation
