@@ -14,6 +14,7 @@ from src.trading.adapters.strategy_adapter import StrategyAdapter
 if TYPE_CHECKING:
     from src.data.providers.base import DataProviderInterface
     from src.streaming.live_data_provider import LiveDataProvider
+from src.streaming.interface import StreamingProviderInterface
 from src.strategies.core import StrategySignals, Signal
 from src.strategies.advanced.overnight_signal_generator import OvernightReversionSignals
 from src.strategies.advanced.market_regime_detector import MarketRegimeDetector
@@ -354,7 +355,7 @@ class OMRLiveAdapter(StrategyAdapter):
         Returns:
             Dict of symbol -> DataFrame if streaming is available, None otherwise
         """
-        if self._data_provider is None or not hasattr(self._data_provider, 'get_bars'):
+        if self._data_provider is None or not isinstance(self._data_provider, StreamingProviderInterface):
             return None
 
         logger.info(f"[OMR] Fetching intraday data from LiveDataProvider (streaming)...")

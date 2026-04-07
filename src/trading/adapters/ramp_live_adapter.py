@@ -19,6 +19,7 @@ from src.utils.vix_provider import get_vix_provider
 if TYPE_CHECKING:
     from src.data.providers.base import DataProviderInterface
     from src.streaming.live_data_provider import LiveDataProvider
+from src.streaming.interface import StreamingProviderInterface
 from src.strategies.advanced.ramp_strategy import (
     RAMPSignals,
     RAMPSignal,
@@ -731,7 +732,7 @@ class RAMPLiveAdapter(StrategyAdapter):
             failed = 0
 
             # Check if we have LiveDataProvider (streaming)
-            if self._data_provider is not None and hasattr(self._data_provider, 'get_bars'):
+            if self._data_provider is not None and isinstance(self._data_provider, StreamingProviderInterface):
                 logger.info("[RAMP] Using LiveDataProvider streaming buffer for today's closes...")
 
                 for symbol in self.symbols:
