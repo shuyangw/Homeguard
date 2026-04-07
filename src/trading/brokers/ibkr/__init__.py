@@ -17,7 +17,9 @@ Dependencies:
 """
 
 from src.trading.brokers.ibkr.config import IBKRConfig
+from src.trading.brokers.ibkr.streaming import IBKRStreamingProvider
 
 __all__ = [
     "IBKRConfig",
+    "IBKRStreamingProvider",
 ]
