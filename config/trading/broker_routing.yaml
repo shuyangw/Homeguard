@@ -1,0 +1,29 @@
+# Strategy-to-broker routing configuration.
+#
+# Brokers are created once and shared across strategies that use the same broker.
+# Strategies not listed here use the default_broker.
+#
+# Paper vs live is controlled by broker config:
+#   Alpaca: paper: true/false
+#   IBKR: port: 4002 (paper) / 4001 (live)
+
+brokers:
+  alpaca:
+    paper: true
+    # Credentials from env: ALPACA_PAPER_KEY_ID, ALPACA_PAPER_SECRET_KEY
+
+  # Uncomment when IBKR Gateway is running:
+  # ibkr:
+  #   port: 4002
+  #   client_id: 10
+  #   readonly: false
+
+strategies:
+  omr:
+    broker: alpaca
+  ramp:
+    broker: alpaca
+  cscm:
+    broker: coinbase
+
+default_broker: alpaca
