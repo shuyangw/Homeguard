@@ -47,12 +47,14 @@ Reference:
     - Alpaca SDK: https://alpaca.markets/sdks/python/
 """
 
+from src.streaming.interface import StreamingProviderInterface
 from src.streaming.live_data_provider import LiveDataProvider
 from src.streaming.types import Bar, Quote, Trade
 from src.streaming.binance_stream import BinanceStreamManager
 from src.streaming.crypto_buffer import CryptoBarBuffer
 
 __all__ = [
+    "StreamingProviderInterface",
     "LiveDataProvider",
     "Bar",
     "Quote",

@@ -31,6 +31,7 @@ from typing import Callable, List, Optional
 import pandas as pd
 
 from src.streaming.types import Bar, Quote, Trade
+from src.streaming.interface import StreamingProviderInterface
 from src.streaming._hub import MarketDataHub
 from src.utils.logger import get_logger
 
@@ -64,7 +65,7 @@ def _get_alpaca_credentials() -> tuple:
     return api_key, secret_key
 
 
-class LiveDataProvider:
+class LiveDataProvider(StreamingProviderInterface):
     """
     Public interface for all live market data.
 
@@ -111,11 +112,14 @@ class LiveDataProvider:
             fallback_enabled=fallback_enabled,
         )
         self._feed = feed
-
-        # Provider name for compatibility with DataProviderInterface
-        self.name = f"streaming-{feed}"
+        self._name = f"streaming-{feed}"
 
         logger.info(f"LiveDataProvider initialized with {feed.upper()} feed")
+
+    @property
+    def name(self) -> str:
+        """Provider name identifier."""
+        return self._name
 
     # === Lifecycle ===
 
