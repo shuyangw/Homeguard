@@ -1,0 +1,29 @@
+# IBC configuration for automated IB Gateway login.
+# Values with ${...} are resolved from .env at service start.
+#
+# Docs: https://github.com/IbcAlpha/IBC/blob/master/userguide.md
+
+LogToConsole=yes
+FIX=no
+
+IbLoginId=${IBKR_USERNAME}
+IbPassword=${IBKR_PASSWORD}
+TradingMode=${IBKR_TRADING_MODE}
+
+# Accept incoming API connections (localhost only)
+AcceptIncomingConnectionAction=accept
+
+# Don't auto-close; systemd manages lifecycle
+ClosedownAt=
+
+# Accept non-brokerage account warning
+AcceptNonBrokerageAccountWarning=yes
+
+# If another session exists, take over as primary
+ExistingSessionDetectedAction=primary
+
+# JVM memory (match systemd MemoryMax budget)
+JavaHeapSize=512
+
+# Override API port from env
+OverrideTwsApiPort=${IBKR_GATEWAY_PORT}

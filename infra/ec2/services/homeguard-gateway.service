@@ -1,0 +1,33 @@
+[Unit]
+Description=IB Gateway via IBC (automated login)
+After=network.target
+Before=homeguard-trading.target
+
+[Service]
+Type=simple
+User=ec2-user
+WorkingDirectory=/home/ec2-user
+
+# Source credentials from .env
+EnvironmentFile=/home/ec2-user/Homeguard/.env
+
+# Virtual display for Gateway's Swing UI
+Environment="DISPLAY=:1"
+
+# Start Xvfb then launch Gateway via IBC
+ExecStartPre=/usr/bin/Xvfb :1 -screen 0 1024x768x24 &
+ExecStart=/opt/ibc/scripts/ibcstart.sh -g \
+    --ibc-ini=/home/ec2-user/Homeguard/config/ibkr/ibc-config.ini \
+    --java-path=/usr/lib/jvm/bellsoft-java17-full-aarch64/bin
+
+Restart=on-failure
+RestartSec=30
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=homeguard-gateway
+
+# Memory limit (Gateway + Xvfb)
+MemoryMax=768M
+
+[Install]
+WantedBy=homeguard-trading.target
