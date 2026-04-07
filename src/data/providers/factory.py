@@ -76,6 +76,18 @@ def create_data_provider(
         elif name_lower == 'yfinance':
             providers.append(YFinanceDataProvider())
 
+        elif name_lower == 'ibkr':
+            try:
+                from src.trading.brokers.ibkr.data_download import IBKRDataProvider
+                from src.trading.brokers.ibkr.connection import IBKRConnectionManager
+                conn = IBKRConnectionManager.get_instance()
+                if conn.is_connected:
+                    providers.append(IBKRDataProvider(conn))
+                else:
+                    logger.warning("IBKR provider requested but not connected")
+            except ImportError:
+                logger.warning("IBKR module not available")
+
         else:
             logger.warning(f"Unknown provider: {name}")
 
