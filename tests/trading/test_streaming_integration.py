@@ -10,6 +10,7 @@ from datetime import datetime, timedelta
 from unittest.mock import Mock, MagicMock, patch
 import pandas as pd
 
+from src.streaming.interface import StreamingProviderInterface
 from src.trading.adapters.omr_live_adapter import OMRLiveAdapter
 from src.trading.adapters.ramp_live_adapter import RAMPLiveAdapter
 
@@ -64,7 +65,7 @@ def mock_streaming_provider():
 
     Simulates a buffer that contains today's intraday bars.
     """
-    provider = Mock()
+    provider = Mock(spec=StreamingProviderInterface)
 
     # Give it the streaming provider's signature (get_bars method)
     def get_bars(symbol, n=None):
@@ -475,7 +476,7 @@ class TestStreamingFallback:
     def test_streaming_provider_buffer_empty_fallback(self, mock_broker):
         """Test adapter falls back to broker when streaming buffer is empty."""
         # Create streaming provider that returns empty DataFrames
-        empty_provider = Mock()
+        empty_provider = Mock(spec=StreamingProviderInterface)
         empty_provider.get_bars.return_value = pd.DataFrame()  # Empty buffer
 
         adapter = OMRLiveAdapter(

@@ -12,6 +12,7 @@ from datetime import datetime, timedelta
 from unittest.mock import Mock, patch, MagicMock
 import pandas as pd
 
+from src.streaming.interface import StreamingProviderInterface
 from src.streaming._hub import MarketDataHub
 from src.streaming.types import Bar
 from src.utils.timezone import tz
@@ -268,7 +269,7 @@ class TestOMRDataValidation:
 
         # Mock broker and data provider
         mock_broker = Mock()
-        mock_provider = Mock()
+        mock_provider = Mock(spec=StreamingProviderInterface)
 
         # Mock get_bars to return only 100/390 bars (26%)
         mock_df = pd.DataFrame({
@@ -307,7 +308,7 @@ class TestOMRDataValidation:
 
         # Mock broker and data provider
         mock_broker = Mock()
-        mock_provider = Mock()
+        mock_provider = Mock(spec=StreamingProviderInterface)
 
         # Mock get_bars to return full 390 bars
         mock_df = pd.DataFrame({
