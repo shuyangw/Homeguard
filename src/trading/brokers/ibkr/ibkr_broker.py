@@ -385,10 +385,34 @@ class IBKRBroker(
         start_date: Optional[datetime] = None,
         end_date: Optional[datetime] = None,
     ) -> List[Dict]:
-        """Get orders with optional filters."""
+        """Get orders with optional filters.
+
+        Combines current session trades with completed orders from IBKR
+        so the full order history is visible regardless of connection lifecycle.
+        """
         try:
+            # Current session orders (open + cancelled this session)
             trades = self._conn.ib.trades()
-            result = [self._translate_order(t) for t in trades]
+            seen_ids = set()
+            result = []
+            for t in trades:
+                order_dict = self._translate_order(t)
+                result.append(order_dict)
+                seen_ids.add(order_dict['order_id'])
+
+            # Completed orders from previous sessions
+            async def _fetch_completed():
+                return await self._conn.ib.reqCompletedOrdersAsync(apiOnly=False)
+
+            try:
+                completed = self._conn.run_sync(_fetch_completed())
+                for t in completed:
+                    order_dict = self._translate_order(t)
+                    if order_dict['order_id'] not in seen_ids:
+                        result.append(order_dict)
+                        seen_ids.add(order_dict['order_id'])
+            except Exception as e:
+                logger.warning(f"[IBKR] Could not fetch completed orders: {e}")
 
             if status is not None:
                 result = [o for o in result if o['status'] == status.value]
