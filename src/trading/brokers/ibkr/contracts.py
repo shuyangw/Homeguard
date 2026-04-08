@@ -283,8 +283,5 @@ class ContractResolver:
                 f"secType={contract.secType}"
             )
         qualified = contracts[0]
-        logger.debug(
-            "[IBKR] Qualified %s -> conId=%s",
-            contract.symbol, qualified.conId,
-        )
+        logger.debug(f"[IBKR] Qualified {contract.symbol} -> conId={qualified.conId}")
         return qualified
