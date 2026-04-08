@@ -11,6 +11,7 @@ Implements 22 abstract methods across 6 interfaces:
     OptionsTradingInterface (7+)
 """
 
+import asyncio
 from datetime import date, datetime
 from typing import Dict, List, Optional, Tuple
 
@@ -107,10 +108,10 @@ class IBKRBroker(
 
     async def _fetch_account(self, account_id: str) -> Dict:
         ib = self._conn.ib
-        ib.reqAccountSummary()
-        await ib.sleepAsync(1)
+        await ib.reqAccountSummaryAsync()
+        await asyncio.sleep(0.5)
 
-        values = ib.accountSummary(account_id)
+        values = await ib.accountSummaryAsync(account_id)
         result = {
             'account_id': account_id,
             'buying_power': 0.0,
@@ -608,12 +609,12 @@ class IBKRBroker(
 
     async def _place(self, contract, order):
         trade = self._conn.ib.placeOrder(contract, order)
-        await self._conn.ib.sleepAsync(0.5)
+        await asyncio.sleep(0.5)
         return trade
 
     async def _snapshot(self, contract):
         ticker = self._conn.ib.reqMktData(contract, '', True, False)
-        await self._conn.ib.sleepAsync(2)
+        await asyncio.sleep(2)
         return ticker
 
     def _translate_order(self, trade) -> Dict:

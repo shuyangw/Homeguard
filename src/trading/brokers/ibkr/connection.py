@@ -111,9 +111,11 @@ class IBKRConnectionManager:
         )
         self._thread.start()
 
-        # Connect (blocks until done or timeout)
+        # Connect (blocks until done or timeout).
+        # Use 2x timeout because connectAsync performs order syncs that
+        # may time out independently (especially in read-only mode).
         try:
-            self.run_sync(self._connect())
+            self.run_sync(self._connect(), timeout=self._config.timeout_seconds * 3)
         except Exception as e:
             self.stop()
             raise BrokerConnectionError(f"Failed to connect: {e}") from e

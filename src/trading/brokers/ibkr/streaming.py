@@ -8,6 +8,7 @@ to Homeguard Bar/Quote/Trade dataclasses at the boundary.
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 from collections import defaultdict, deque
 from datetime import datetime
@@ -227,7 +228,7 @@ class IBKRStreamingProvider(StreamingProviderInterface):
 
     async def _req_market_data(self, contract):
         ticker = self._conn.ib.reqMktData(contract, '', False, False)
-        await self._conn.ib.sleepAsync(0.5)
+        await asyncio.sleep(0.5)
         return ticker
 
     @staticmethod
