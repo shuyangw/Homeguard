@@ -111,6 +111,29 @@ def test_migration_noop_on_v2_file(temp_paths):
     assert on_disk["strategies"]["omr"]["positions"]["TQQQ"]["broker"] == "ibkr"
 
 
+def test_migration_handles_malformed_strategy_entry(temp_paths):
+    state_file, toggle_file = temp_paths
+    v1 = {
+        "version": 1,
+        "strategies": {
+            "omr": {
+                "positions": {
+                    "TQQQ": {"qty": 10, "entry_price": 50.0, "entry_time": "t", "order_id": "x"},
+                },
+                "last_execution": None,
+            },
+            "broken": None,  # malformed entry
+        },
+    }
+    state_file.write_text(json.dumps(v1))
+    StrategyStateManager(state_file=state_file, toggle_file=toggle_file)
+    on_disk = json.loads(state_file.read_text())
+    assert on_disk["version"] == 2
+    assert on_disk["strategies"]["omr"]["positions"]["TQQQ"]["broker"] == "alpaca"
+    # broken entry preserved as-is; no crash
+    assert "broken" in on_disk["strategies"]
+
+
 def test_migration_handles_empty_strategies(temp_paths):
     state_file, toggle_file = temp_paths
     v1 = {

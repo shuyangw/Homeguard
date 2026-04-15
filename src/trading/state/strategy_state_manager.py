@@ -292,8 +292,18 @@ class StrategyStateManager:
     def _migrate_v1_to_v2(self) -> None:
         """One-shot migration: stamp broker='alpaca' on every untagged position."""
         tagged = 0
-        for strategy, data in self._state.get('strategies', {}).items():
-            positions = data.get('positions', {}) if isinstance(data, dict) else {}
+        strategies = self._state.get('strategies', {})
+        if not isinstance(strategies, dict):
+            self._state['version'] = 2
+            self._save_state()
+            logger.warning("Migrated state file v1 -> v2: 'strategies' was not a dict, no positions tagged")
+            return
+        for strategy, data in strategies.items():
+            if not isinstance(data, dict):
+                continue
+            positions = data.get('positions', {})
+            if not isinstance(positions, dict):
+                continue
             for symbol, pos in positions.items():
                 if isinstance(pos, dict) and 'broker' not in pos:
                     pos['broker'] = 'alpaca'
