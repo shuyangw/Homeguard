@@ -846,6 +846,82 @@ def create_ramp_adapter(broker, data_provider=None, *, broker_name: str):
     )
 
 
+def preflight_reconcile(
+    strategy: str,
+    broker,
+    broker_name: str,
+    state_manager,
+    force_start: bool,
+) -> int:
+    """
+    Pre-flight reconciliation check.
+
+    Returns 0 if safe to proceed, 1 if the runner should exit.
+    Never mutates state. On mismatch + force_start, logs WARNING and returns 0.
+    """
+    state_positions = state_manager.get_positions(strategy)
+
+    if not state_positions:
+        logger.info(f"[Reconcile] {strategy} has no tracked positions. Clear to proceed.")
+        logger.success(f"[Reconcile] Pre-flight check passed for {strategy}")
+        return 0
+
+    logger.info(
+        f"[Reconcile] {strategy} has {len(state_positions)} tracked positions"
+    )
+
+    try:
+        broker_positions = {
+            p['symbol']: p['quantity']
+            for p in broker.get_stock_positions()
+        }
+    except Exception as e:
+        logger.error(f"[Reconcile] Cannot query broker positions: {e}")
+        if not force_start:
+            logger.error("Cannot verify positions. Use --force-start to skip.")
+            return 1
+        logger.warning("--force-start: proceeding despite broker error")
+        return 0
+
+    mismatches = []
+    for symbol, pos_info in state_positions.items():
+        state_qty = pos_info['qty']
+        pos_broker = pos_info['broker']  # always present post-migration
+        broker_qty = broker_positions.get(symbol, 0)
+
+        if pos_broker != broker_name and state_qty > 0:
+            mismatches.append(
+                f"{symbol}: {state_qty} shares tagged {pos_broker}, "
+                f"runner on {broker_name}"
+            )
+        elif broker_qty == 0 and state_qty > 0 and pos_broker == broker_name:
+            mismatches.append(
+                f"{symbol}: state says {state_qty} on {broker_name}, "
+                f"broker reports 0"
+            )
+
+    if mismatches:
+        logger.error("=" * 60)
+        logger.error("POSITION MISMATCH DETECTED")
+        logger.error("=" * 60)
+        for m in mismatches:
+            logger.error(f"  {m}")
+        logger.error("")
+        logger.error("Options:")
+        logger.error("  1. Close positions on the old broker first")
+        logger.error("  2. Switch broker_routing.yaml back to the old broker")
+        logger.error("  3. Use --force-start to start anyway (state untouched)")
+        logger.error("=" * 60)
+        if not force_start:
+            return 1
+        logger.warning(
+            "--force-start: proceeding despite mismatches, state unchanged"
+        )
+
+    logger.success(f"[Reconcile] Pre-flight check passed for {strategy}")
+    return 0
+
+
 def main():
     """Main entry point."""
     parser = argparse.ArgumentParser(description='Run live paper trading')
@@ -1012,6 +1088,19 @@ def main():
         # Check market status
         market_open = broker.is_market_open()
         logger.info(f"  Market: {'OPEN' if market_open else 'CLOSED'}")
+
+        # Pre-flight reconciliation for state-tracked strategies
+        if args.strategy in ('omr', 'ramp', 'mp'):
+            preflight_state_manager = StrategyStateManager()
+            preflight_rc = preflight_reconcile(
+                strategy=args.strategy,
+                broker=broker,
+                broker_name=broker_name,
+                state_manager=preflight_state_manager,
+                force_start=args.force_start,
+            )
+            if preflight_rc != 0:
+                return preflight_rc
 
         # Check if streaming is enabled via environment variable
         use_streaming = os.getenv('USE_STREAMING', 'false').lower() in ('true', '1', 'yes')
