@@ -204,7 +204,7 @@ class TestBrokerSync:
 
         # Broker says no TQQQ position
         broker_positions = {}
-        changes = manager.sync_with_broker(broker_positions)
+        changes = manager.sync_with_broker('alpaca', broker_positions)
 
         assert 'omr:TQQQ' in changes['removed']
         assert manager.has_position('omr', 'TQQQ') is False
@@ -215,7 +215,7 @@ class TestBrokerSync:
 
         # Broker says only 60 shares
         broker_positions = {'TQQQ': 60}
-        changes = manager.sync_with_broker(broker_positions)
+        changes = manager.sync_with_broker('alpaca', broker_positions)
 
         assert 'omr:TQQQ' in changes['updated']
         assert manager.get_position_qty('omr', 'TQQQ') == 60
@@ -225,7 +225,7 @@ class TestBrokerSync:
         manager.add_position('omr', 'TQQQ', 100, 45.00, broker='alpaca')
 
         broker_positions = {'TQQQ': 100}
-        changes = manager.sync_with_broker(broker_positions)
+        changes = manager.sync_with_broker('alpaca', broker_positions)
 
         assert len(changes['removed']) == 0
         assert len(changes['updated']) == 0

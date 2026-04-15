@@ -146,7 +146,7 @@ class TestSyncWithBroker:
         # Broker only has MSFT
         broker_positions = {'MSFT': 50}
 
-        changes = state_manager.sync_with_broker(broker_positions)
+        changes = state_manager.sync_with_broker('alpaca', broker_positions)
 
         assert 'mp:AAPL' in changes['removed']
         positions = state_manager.get_positions('mp')
@@ -160,7 +160,7 @@ class TestSyncWithBroker:
         # Broker shows only 60 shares (partial close)
         broker_positions = {'AAPL': 60}
 
-        changes = state_manager.sync_with_broker(broker_positions)
+        changes = state_manager.sync_with_broker('alpaca', broker_positions)
 
         assert 'mp:AAPL' in changes['updated']
         positions = state_manager.get_positions('mp')
@@ -174,7 +174,7 @@ class TestSyncWithBroker:
         # This indicates a tracking bug (e.g., top-up not recorded)
         broker_positions = {'AAPL': 150}
 
-        changes = state_manager.sync_with_broker(broker_positions)
+        changes = state_manager.sync_with_broker('alpaca', broker_positions)
 
         assert 'mp:AAPL' in changes['drift_detected']
         # State should be healed to match broker
@@ -187,7 +187,7 @@ class TestSyncWithBroker:
 
         broker_positions = {'AAPL': 100}
 
-        changes = state_manager.sync_with_broker(broker_positions)
+        changes = state_manager.sync_with_broker('alpaca', broker_positions)
 
         assert len(changes['removed']) == 0
         assert len(changes['updated']) == 0
@@ -201,7 +201,7 @@ class TestSyncWithBroker:
         # Broker has both
         broker_positions = {'AAPL': 100, 'TQQQ': 50}
 
-        changes = state_manager.sync_with_broker(broker_positions)
+        changes = state_manager.sync_with_broker('alpaca', broker_positions)
 
         # No changes expected
         assert len(changes['removed']) == 0
@@ -292,7 +292,7 @@ class TestMPTopUpScenario:
 
         # Sync with broker would detect drift
         broker_positions = {'AAPL': 125}  # Broker has correct qty
-        changes = state_manager.sync_with_broker(broker_positions)
+        changes = state_manager.sync_with_broker('alpaca', broker_positions)
 
         # Drift should be detected and healed
         assert 'mp:AAPL' in changes['drift_detected']

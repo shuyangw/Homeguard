@@ -641,53 +641,75 @@ class StrategyStateManager:
     # Broker Synchronization
     # =========================================================================
 
-    def sync_with_broker(self, broker_positions: Dict[str, int]) -> Dict[str, List[str]]:
+    def sync_with_broker(
+        self,
+        broker_name: str,
+        broker_positions: Dict[str, int],
+    ) -> Dict[str, List[str]]:
         """
-        Synchronize state with actual broker positions.
+        Synchronize state with actual broker positions for a specific broker.
 
-        Handles:
-        - Positions closed externally (stop-loss, manual)
-        - Positions partially closed
-        - Positions increased externally (logs warning but updates to match)
-        - STATE DRIFT DETECTION: When broker qty > state qty unexpectedly
+        Only reconciles positions tagged with `broker_name`. Positions tagged
+        with a different broker are left untouched and reported in 'skipped'.
+
+        Untagged positions indicate a post-migration bug and raise ValueError.
 
         Args:
-            broker_positions: Dict of symbol -> quantity from broker
+            broker_name: Name of the broker being synced ('alpaca', 'ibkr', ...)
+            broker_positions: Dict of symbol -> quantity from that broker
 
         Returns:
-            Dict with 'removed', 'updated', and 'drift_detected' lists of symbols
+            Dict with 'removed', 'updated', 'drift_detected', 'skipped' lists.
         """
         self._load_state()
 
-        changes = {'removed': [], 'updated': [], 'drift_detected': []}
+        changes: Dict[str, List[str]] = {
+            'removed': [],
+            'updated': [],
+            'drift_detected': [],
+            'skipped': [],
+        }
 
         for strategy, data in self._state.get('strategies', {}).items():
             positions = data.get('positions', {})
 
             for symbol in list(positions.keys()):
+                pos_broker = positions[symbol].get('broker')
+                if pos_broker is None:
+                    logger.error(
+                        f"[{strategy.upper()}] {symbol} has no broker tag "
+                        f"(post-migration bug)"
+                    )
+                    raise ValueError(f"Untagged position: {strategy}:{symbol}")
+
+                if pos_broker != broker_name:
+                    changes['skipped'].append(f"{strategy}:{symbol} (on {pos_broker})")
+                    continue
+
                 state_qty = positions[symbol]['qty']
                 broker_qty = broker_positions.get(symbol, 0)
 
                 if broker_qty == 0:
-                    # Position no longer exists at broker
-                    logger.warning(f"[{strategy.upper()}] Position {symbol} closed externally")
+                    logger.warning(
+                        f"[{strategy.upper()}] {symbol} closed on {broker_name}"
+                    )
                     del positions[symbol]
                     changes['removed'].append(f"{strategy}:{symbol}")
 
                 elif broker_qty < state_qty:
-                    # Position partially closed
-                    logger.warning(f"[{strategy.upper()}] Position {symbol} reduced: {state_qty} -> {broker_qty}")
+                    logger.warning(
+                        f"[{strategy.upper()}] {symbol} reduced on {broker_name}: "
+                        f"{state_qty} -> {broker_qty}"
+                    )
                     positions[symbol]['qty'] = broker_qty
                     changes['updated'].append(f"{strategy}:{symbol}")
 
                 elif broker_qty > state_qty:
-                    # STATE DRIFT DETECTED: Broker has MORE than state expected
-                    # This indicates a bug in position tracking (e.g., top-up not recorded)
                     logger.error(
-                        f"[{strategy.upper()}] STATE DRIFT DETECTED: {symbol} "
-                        f"state={state_qty} but broker={broker_qty} (+{broker_qty - state_qty} untracked)"
+                        f"[{strategy.upper()}] DRIFT on {broker_name}: {symbol} "
+                        f"state={state_qty} broker={broker_qty} "
+                        f"(+{broker_qty - state_qty} untracked)"
                     )
-                    # Update state to match broker (self-heal)
                     positions[symbol]['qty'] = broker_qty
                     changes['drift_detected'].append(f"{strategy}:{symbol}")
 
