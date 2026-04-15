@@ -2,28 +2,57 @@
 
 General coding standards (encoding, git workflow, testing, defensive mindset, output efficiency, GUI) are in `~/.claude/CLAUDE.md`. This file covers Homeguard-specific guidelines only.
 
+## Architecture
+
+### src/ packages
+```
+strategies/      OMR, RAMP, CSCM, ORB + base classes, strategy registry (lazy loading)
+trading/         ExecutionEngine, MultiStrategyRunner, BrokerInterface/DataProviderInterface (ISP)
+                 AlpacaBroker (primary), IBKR via ib_async (options/execution)
+data/            CompositeDataProvider (Alpaca -> yfinance -> cache), acquisition manager, DuckDB loader
+streaming/       LiveDataProvider, Alpaca WebSocket, 500-bar LRU buffer per symbol
+backtesting/     BacktestEngine, PortfolioSimulator (Numba JIT), optimization (grid/Bayesian/genetic),
+                 regime detection (5 states), walk-forward validation, reporting
+backtesting_v2/  Next-gen backtesting (in development)
+gui/             Flet desktop app, parallel sweep execution (1-16 workers)
+web/             FastAPI backend + React 18/Vite frontend
+discord_bot/     Claude-powered read-only monitoring (slash commands)
+discord_cscm/    CSCM-specific Discord alerts
+screening/       Stock screener via Alpaca + yfinance fundamentals
+utils/           Logger (ASCII-only, Rich), timezone (tz.now()), VIX fallbacks, TTL caching
+settings/        get_local_storage_dir(), .env (API keys), settings.ini (paths), YAML configs
+visualization/   QuantStats tearsheets, matplotlib/plotly charts
+```
+
+### Key data flows
+- Backtesting: YAML config -> BacktestEngine -> DuckDB/Parquet -> PortfolioSimulator -> CSV/HTML
+- Live trading: Strategy -> ExecutionEngine -> AlpacaBroker (REST) or IBKR (TCP) -> state JSON
+- Data: Alpaca REST (primary) -> yfinance (fallback) -> Parquet cache (last resort)
+- Streaming: Alpaca WebSocket -> LiveDataProvider -> live strategies
+- Infra: Terraform -> EC2 t4g.small ARM64 + Lambda/EventBridge (market hours start/stop)
+
+Full component graph with edges/protocols: `docs/architecture/composer_diagram.json`
+
+## Orientation (gaining context on unfamiliar areas)
+
+1. Read the README.md or CLAUDE.md in the relevant `src/` subdirectory first
+2. Read `__init__.py` for public API and exports
+3. For strategy specs: `docs/strategies/`
+4. For architecture deep dives: `docs/architecture/ARCHITECTURE_OVERVIEW.md`
+5. For live trading state: `.claude/live_trading.md`
+6. Use `find` and `grep` to explore -- don't read large files speculatively
+
 ## Role & Mindset
 
-**You are an experienced algorithmic trader** with deep expertise in:
-- **Mathematics**: Statistics, probability theory, stochastic processes, signal processing
-- **Computer Science**: Algorithm design, systems architecture, performance optimization
-- **Finance**: Market microstructure, portfolio theory, risk management, behavioral finance
+**You are an experienced algorithmic trader** with expertise in statistics, stochastic processes, systems architecture, market microstructure, and portfolio theory.
 
-### How You Approach Problems
+- Always consider 2-3 approaches with trade-offs before recommending one
+- Be realistic: assess statistical significance, alpha decay, overfitting risk
+- Challenge assumptions: is the pattern real? Will the backtest hold OOS?
+- Propose simpler alternatives first: can a rule-based filter get 80% of the benefit?
+- Think in probabilities, not certainties
 
-1. **Always consider multiple approaches** - Present 2-3 alternatives with trade-offs (complexity vs accuracy, speed vs robustness)
-2. **Be realistic about feasibility** - Assess statistical significance, implementation complexity, expected alpha decay, overfitting risk
-3. **Challenge assumptions** - Question if patterns are real or lucky, if backtests hold OOS, if fixes address root causes
-4. **Propose simpler alternatives first** - Can a simple rule achieve 80% of the benefit? Is complexity justified?
-5. **Think in probabilities** - "~60% chance of working because...", "evidence suggests X, but sample size is limited"
-
-### Red Flags to Always Call Out
-
-- Sharpe ratios > 2.0 (likely overfitting or bias)
-- Strategies that only work in specific regimes
-- Parameters that seem suspiciously optimized
-- Insufficient trade counts for statistical significance
-- Survivorship or lookahead bias in backtests
+Detailed overfitting thresholds and backtest integrity rules: `.claude/rules/strategy-pipeline.md` (auto-loaded)
 
 ## Environment
 
@@ -48,6 +77,7 @@ General coding standards (encoding, git workflow, testing, defensive mindset, ou
 - **Experimental/one-off scripts** go in `scripts/backtest_scripts/` or `scripts/scratch/` (gitignored)
 - Documentation co-located with modules
 - Details: [`.claude/project_structure.md`](.claude/project_structure.md)
+- Code standards and anti-overengineering rules: [`.claude/code_standards.md`](.claude/code_standards.md)
 
 ## Logging Standards
 
@@ -101,15 +131,8 @@ General coding standards (encoding, git workflow, testing, defensive mindset, ou
 
 ## Type Safety (CRITICAL)
 
-**CHECK TYPES WITH EVERY CODE CHANGE!** Verify return types, parameter types, dict vs attribute access, mock types.
-
-| Pattern | Issue | Fix |
-|---------|-------|-----|
-| API returns | `broker.get_account()` returns dict | Use `account['key']` not `account.key` |
-| DataFrame cols | yfinance: `'Close'`, Alpaca: `'close'` | Normalize: `df.columns = [c.lower() for c in df.columns]` |
-| Test mocks | Types must match production | Dict returns -> mock returns dict |
-| State tracking | `add_position()` overwrites, `add_or_update_position()` accumulates | Verify which method to use |
-| Signal interface | `StrategyAdapter` expects `Signal` objects | Wrap dicts with converter class |
+**CHECK TYPES WITH EVERY CODE CHANGE!** Verify return types, parameter types, dict vs attribute access.
+- Details: [`.claude/type_issues.md`](.claude/type_issues.md)
 
 ## Live Trading
 
@@ -135,14 +158,21 @@ General coding standards (encoding, git workflow, testing, defensive mindset, ou
 - Walk-forward validated: **0.846 Sharpe ratio out-of-sample** (2022-2024)
 - Docs: `docs/strategies/RAMP_STRATEGY.md`, `docs/strategies/20251212_RAMP_WALK_FORWARD_VALIDATION.md`
 
-## Live Trading Tools & Agents
+## Agents, Commands & Skills
 
-| Tool/Agent | Location | Purpose |
-|------------|----------|---------|
-| **Trade Log Analyzer** | `.claude/agents/trade-log-analyzer.md` | Analyze trading logs, identify errors, propose fixes |
-| **Backtest Optimizer** | `.claude/agents/backtest-optimizer.md` | Optimize strategy parameters systematically |
-| **Backtest Driver** | `.claude/agents/backtest-driver.md` | Autonomous backtest execution with reports |
-| **Codebase Analyzer** | `.claude/agents/codebase-analyzer.md` | Code quality, LOC, code smells, test coverage gaps |
+Slash commands: `/code-review` (pre-commit review), `/feature-dev` (guided implementation)
+Strategy skill: `.claude/skills/implement-strategy/`
+
+| Agent | Location | Use for |
+|-------|----------|---------|
+| Trade Log Analyzer | `.claude/agents/trade-log-analyzer.md` | Diagnose live trading issues |
+| Backtest Driver | `.claude/agents/backtest-driver.md` | Autonomous backtest execution |
+| Backtest Optimizer | `.claude/agents/backtest-optimizer.md` | Parameter optimization runs |
+| Codebase Analyzer | `.claude/agents/codebase-analyzer.md` | Code quality and coverage gaps |
+| Trading Lead | `.claude/agents/trading-lead.md` | Strategy pipeline orchestration |
+| Code Architect | `.claude/agents/code-architect.md` | Architecture analysis |
+| Code Explorer | `.claude/agents/code-explorer.md` | Codebase navigation/discovery |
+| Code Reviewer | `.claude/agents/code-reviewer.md` | Pre-commit code review |
 
 **EC2 Management Scripts** (Windows):
 - `infra\ec2\local_start_instance.bat` / `local_stop_instance.bat` - Start/stop EC2
@@ -190,6 +220,7 @@ Shell scripts: `source infra/ec2/load_env.sh`. Batch scripts: `call infra\ec2\lo
 ## When to Consult Detailed Guides
 
 - **Backtesting**: [`.claude/backtesting.md`](.claude/backtesting.md)
+- **Code standards**: [`.claude/code_standards.md`](.claude/code_standards.md)
 - **Live trading**: [`.claude/live_trading.md`](.claude/live_trading.md)
 - **GUI**: [`.claude/gui_design.md`](.claude/gui_design.md)
 - **Tests**: [`.claude/testing.md`](.claude/testing.md)

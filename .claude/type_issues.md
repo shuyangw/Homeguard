@@ -125,3 +125,15 @@ exits = exits.fillna(False).astype(bool)
 # For multi-symbol price DataFrames:
 prices_df = prices_df.ffill().bfill()
 ```
+
+## Project-Specific Type Gotchas
+
+**CHECK TYPES WITH EVERY CODE CHANGE.** Verify return types, parameter types, dict vs attribute access, mock types.
+
+| Pattern | Issue | Fix |
+|---------|-------|-----|
+| API returns | `broker.get_account()` returns dict | Use `account['key']` not `account.key` |
+| DataFrame cols | yfinance: `'Close'`, Alpaca: `'close'` | Normalize: `df.columns = [c.lower() for c in df.columns]` |
+| Test mocks | Types must match production | Dict returns -> mock returns dict |
+| State tracking | `add_position()` overwrites, `add_or_update_position()` accumulates | Verify which method to use |
+| Signal interface | `StrategyAdapter` expects `Signal` objects | Wrap dicts with converter class |
