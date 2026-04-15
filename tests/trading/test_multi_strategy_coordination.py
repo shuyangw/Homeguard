@@ -129,7 +129,7 @@ class TestPositionOwnership:
 
     def test_add_position(self, manager):
         """Test adding a position."""
-        manager.add_position('omr', 'TQQQ', 100, 45.00, 'order123')
+        manager.add_position('omr', 'TQQQ', 100, 45.00, 'order123', broker='alpaca')
 
         positions = manager.get_positions('omr')
         assert 'TQQQ' in positions
@@ -139,7 +139,7 @@ class TestPositionOwnership:
 
     def test_remove_position(self, manager):
         """Test removing a position."""
-        manager.add_position('omr', 'TQQQ', 100, 45.00)
+        manager.add_position('omr', 'TQQQ', 100, 45.00, broker='alpaca')
         manager.remove_position('omr', 'TQQQ')
 
         positions = manager.get_positions('omr')
@@ -148,7 +148,7 @@ class TestPositionOwnership:
     def test_symbol_owned_by_other_detection(self, manager):
         """Test detecting when symbol is owned by another strategy."""
         # OMR takes position in TQQQ
-        manager.add_position('omr', 'TQQQ', 100, 45.00)
+        manager.add_position('omr', 'TQQQ', 100, 45.00, broker='alpaca')
 
         # MP should see TQQQ is owned by OMR
         owner = manager.symbol_owned_by_other('mp', 'TQQQ')
@@ -160,8 +160,8 @@ class TestPositionOwnership:
 
     def test_separate_positions_per_strategy(self, manager):
         """Each strategy has separate position tracking."""
-        manager.add_position('omr', 'TQQQ', 100, 45.00)
-        manager.add_position('mp', 'AAPL', 50, 150.00)
+        manager.add_position('omr', 'TQQQ', 100, 45.00, broker='alpaca')
+        manager.add_position('mp', 'AAPL', 50, 150.00, broker='alpaca')
 
         omr_positions = manager.get_positions('omr')
         mp_positions = manager.get_positions('mp')
@@ -173,7 +173,7 @@ class TestPositionOwnership:
 
     def test_update_position_qty(self, manager):
         """Test updating position quantity (partial close)."""
-        manager.add_position('omr', 'TQQQ', 100, 45.00)
+        manager.add_position('omr', 'TQQQ', 100, 45.00, broker='alpaca')
         manager.update_position_qty('omr', 'TQQQ', 60)
 
         positions = manager.get_positions('omr')
@@ -181,7 +181,7 @@ class TestPositionOwnership:
 
     def test_has_position(self, manager):
         """Test checking if strategy has position."""
-        manager.add_position('omr', 'TQQQ', 100, 45.00)
+        manager.add_position('omr', 'TQQQ', 100, 45.00, broker='alpaca')
 
         assert manager.has_position('omr', 'TQQQ') is True
         assert manager.has_position('omr', 'SOXL') is False
@@ -200,7 +200,7 @@ class TestBrokerSync:
 
     def test_sync_detects_closed_position(self, manager):
         """Sync should detect externally closed positions."""
-        manager.add_position('omr', 'TQQQ', 100, 45.00)
+        manager.add_position('omr', 'TQQQ', 100, 45.00, broker='alpaca')
 
         # Broker says no TQQQ position
         broker_positions = {}
@@ -211,7 +211,7 @@ class TestBrokerSync:
 
     def test_sync_detects_partial_close(self, manager):
         """Sync should detect partially closed positions."""
-        manager.add_position('omr', 'TQQQ', 100, 45.00)
+        manager.add_position('omr', 'TQQQ', 100, 45.00, broker='alpaca')
 
         # Broker says only 60 shares
         broker_positions = {'TQQQ': 60}
@@ -222,7 +222,7 @@ class TestBrokerSync:
 
     def test_sync_no_changes(self, manager):
         """Sync should return empty when positions match."""
-        manager.add_position('omr', 'TQQQ', 100, 45.00)
+        manager.add_position('omr', 'TQQQ', 100, 45.00, broker='alpaca')
 
         broker_positions = {'TQQQ': 100}
         changes = manager.sync_with_broker(broker_positions)
@@ -355,7 +355,7 @@ class TestConcurrentExecution:
         mgr = StrategyStateManager(state_file=state_file, toggle_file=toggle_file)
 
         # OMR takes position in a symbol
-        mgr.add_position('omr', 'TEST', 100, 50.00)
+        mgr.add_position('omr', 'TEST', 100, 50.00, broker='alpaca')
 
         # Simulate MP checking before trading
         owner = mgr.symbol_owned_by_other('mp', 'TEST')
@@ -377,7 +377,7 @@ class TestStateFileIntegrity:
         mgr = StrategyStateManager(state_file=state_file, toggle_file=toggle_file)
 
         # Add position
-        mgr.add_position('omr', 'TQQQ', 100, 45.00)
+        mgr.add_position('omr', 'TQQQ', 100, 45.00, broker='alpaca')
 
         # Verify file exists and is valid JSON
         assert state_file.exists()
@@ -393,7 +393,7 @@ class TestStateFileIntegrity:
 
         # First manager creates initial state
         mgr1 = StrategyStateManager(state_file=state_file, toggle_file=toggle_file)
-        mgr1.add_position('omr', 'TQQQ', 100, 45.00)
+        mgr1.add_position('omr', 'TQQQ', 100, 45.00, broker='alpaca')
 
         # Second manager should create backup
         mgr2 = StrategyStateManager(state_file=state_file, toggle_file=toggle_file)
