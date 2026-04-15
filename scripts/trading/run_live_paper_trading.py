@@ -857,7 +857,9 @@ def preflight_reconcile(
     Pre-flight reconciliation check.
 
     Returns 0 if safe to proceed, 1 if the runner should exit.
-    Never mutates state. On mismatch + force_start, logs WARNING and returns 0.
+    Never mutates position data; may trigger a one-shot v1->v2 schema
+    migration on first load. On mismatch + force_start, logs WARNING
+    and returns 0.
     """
     state_positions = state_manager.get_positions(strategy)
 
@@ -885,8 +887,13 @@ def preflight_reconcile(
 
     mismatches = []
     for symbol, pos_info in state_positions.items():
-        state_qty = pos_info['qty']
-        pos_broker = pos_info['broker']  # always present post-migration
+        state_qty = pos_info.get('qty', 0)
+        pos_broker = pos_info.get('broker')
+        if pos_broker is None:
+            mismatches.append(
+                f"{symbol}: state entry missing 'broker' tag"
+            )
+            continue
         broker_qty = broker_positions.get(symbol, 0)
 
         if pos_broker != broker_name and state_qty > 0:
@@ -917,6 +924,7 @@ def preflight_reconcile(
         logger.warning(
             "--force-start: proceeding despite mismatches, state unchanged"
         )
+        return 0
 
     logger.success(f"[Reconcile] Pre-flight check passed for {strategy}")
     return 0
@@ -1091,16 +1099,29 @@ def main():
 
         # Pre-flight reconciliation for state-tracked strategies
         if args.strategy in ('omr', 'ramp', 'mp'):
+            preflight_strategies = [args.strategy]
+        elif args.strategy == 'multi':
+            preflight_strategies = ['omr', 'ramp', 'mp']
+        else:
+            preflight_strategies = []
+
+        if preflight_strategies:
             preflight_state_manager = StrategyStateManager()
-            preflight_rc = preflight_reconcile(
-                strategy=args.strategy,
-                broker=broker,
-                broker_name=broker_name,
-                state_manager=preflight_state_manager,
-                force_start=args.force_start,
+            for _strategy in preflight_strategies:
+                preflight_rc = preflight_reconcile(
+                    strategy=_strategy,
+                    broker=broker,
+                    broker_name=broker_name,
+                    state_manager=preflight_state_manager,
+                    force_start=args.force_start,
+                )
+                if preflight_rc != 0:
+                    return preflight_rc
+        else:
+            logger.info(
+                f"[Reconcile] Pre-flight skipped for strategy={args.strategy} "
+                "(no state-tracked positions to check)"
             )
-            if preflight_rc != 0:
-                return preflight_rc
 
         # Check if streaming is enabled via environment variable
         use_streaming = os.getenv('USE_STREAMING', 'false').lower() in ('true', '1', 'yes')
