@@ -251,7 +251,7 @@ class StrategyStateManager:
     # =========================================================================
 
     def _load_state(self) -> None:
-        """Load state from JSON file with validation."""
+        """Load state from JSON file with validation and v1->v2 migration."""
         try:
             if self.state_file.exists():
                 with open(self.state_file, 'r') as f:
@@ -263,10 +263,16 @@ class StrategyStateManager:
                 if 'version' not in self._state:
                     self._state['version'] = 1
 
+                # v1 -> v2 migration: tag every untagged position as 'alpaca'.
+                # Alpaca is the only broker in production as of commit b42b09e,
+                # so this default is correct. Post-migration, untagged positions
+                # are a bug and will raise in sync/write paths.
+                if self._state.get('version', 1) < 2:
+                    self._migrate_v1_to_v2()
             else:
                 # Initialize empty state
                 self._state = {
-                    'version': 1,
+                    'version': 2,
                     'last_updated': tz.iso_timestamp(),
                     'execution_lock': None,
                     'strategies': {
@@ -282,6 +288,19 @@ class StrategyStateManager:
         except Exception as e:
             logger.error(f"Failed to load state: {e}")
             self._state = {'strategies': {}}
+
+    def _migrate_v1_to_v2(self) -> None:
+        """One-shot migration: stamp broker='alpaca' on every untagged position."""
+        tagged = 0
+        for strategy, data in self._state.get('strategies', {}).items():
+            positions = data.get('positions', {}) if isinstance(data, dict) else {}
+            for symbol, pos in positions.items():
+                if isinstance(pos, dict) and 'broker' not in pos:
+                    pos['broker'] = 'alpaca'
+                    tagged += 1
+        self._state['version'] = 2
+        self._save_state()
+        logger.info(f"Migrated state file v1 -> v2: tagged {tagged} positions as 'alpaca'")
 
     def _save_state(self) -> None:
         """Save state to JSON file atomically with file locking."""
