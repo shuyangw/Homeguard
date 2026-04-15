@@ -122,7 +122,8 @@ def omr_adapter(mock_broker, mock_regime_detector, mock_bayesian_model):
                         max_positions=3,
                         position_size=0.1,
                         regime_detector=mock_regime_detector,
-                        bayesian_model=mock_bayesian_model
+                        bayesian_model=mock_bayesian_model,
+                        broker_name='alpaca',
                     )
 
                     adapter.execution_engine = mock_ee_instance
@@ -153,7 +154,8 @@ class TestOMRLiveAdapterInit:
                             broker=mock_broker,
                             symbols=symbols,
                             regime_detector=mock_regime_detector,
-                            bayesian_model=mock_bayesian_model
+                            bayesian_model=mock_bayesian_model,
+                            broker_name='alpaca',
                         )
 
         assert adapter.symbols == symbols
@@ -171,7 +173,8 @@ class TestOMRLiveAdapterInit:
                             broker=mock_broker,
                             symbols=None,
                             regime_detector=mock_regime_detector,
-                            bayesian_model=mock_bayesian_model
+                            bayesian_model=mock_bayesian_model,
+                            broker_name='alpaca',
                         )
 
         assert adapter.symbols == ETFUniverse.LEVERAGED_3X

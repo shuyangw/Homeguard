@@ -118,7 +118,9 @@ class OMRLiveAdapter(StrategyAdapter):
         position_size: float = 0.1,
         regime_detector: Optional[MarketRegimeDetector] = None,
         bayesian_model: Optional[BayesianReversionModel] = None,
-        data_provider: Optional[Union["DataProviderInterface", "LiveDataProvider"]] = None
+        data_provider: Optional[Union["DataProviderInterface", "LiveDataProvider"]] = None,
+        *,
+        broker_name: str,
     ):
         """
         Initialize OMR live adapter.
@@ -209,6 +211,9 @@ class OMRLiveAdapter(StrategyAdapter):
         self._data_provider = data_provider
         if data_provider is not None:
             logger.info(f"[OMR] Using data provider: {data_provider.name}")
+
+        # Broker identifier used when tagging positions in the shared state file
+        self._broker_name = broker_name
 
         # Initialize state manager for multi-strategy coordination
         self.state_manager = StrategyStateManager()
@@ -676,7 +681,8 @@ class OMRLiveAdapter(StrategyAdapter):
                     # Use add_or_update_position to safely handle any edge cases
                     order_id = order.get('order_id')
                     self.state_manager.add_or_update_position(
-                        STRATEGY_NAME, signal.symbol, qty, signal.price, order_id
+                        STRATEGY_NAME, signal.symbol, qty, signal.price, order_id,
+                        broker=self._broker_name,
                     )
 
                     # Log trade entry to persistent trade log
@@ -742,7 +748,7 @@ class OMRLiveAdapter(StrategyAdapter):
             try:
                 # Sync state with broker (detect external position changes)
                 broker_positions = {p['symbol']: int(p['quantity']) for p in self.broker.get_positions()}
-                changes = self.state_manager.sync_with_broker(broker_positions)
+                changes = self.state_manager.sync_with_broker(self._broker_name, broker_positions)
                 if changes['removed']:
                     logger.info(f"[OMR] Detected closed positions: {changes['removed']}")
 
