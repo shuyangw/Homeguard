@@ -50,7 +50,7 @@ class TestAddPosition:
 
     def test_add_new_position(self, state_manager):
         """Test adding a brand new position."""
-        state_manager.add_position('mp', 'AAPL', 100, 150.0, 'order_123')
+        state_manager.add_position('mp', 'AAPL', 100, 150.0, 'order_123', broker='alpaca')
 
         positions = state_manager.get_positions('mp')
         assert 'AAPL' in positions
@@ -61,10 +61,10 @@ class TestAddPosition:
     def test_add_position_overwrites_existing(self, state_manager):
         """Test that add_position OVERWRITES existing position (the bug we fixed)."""
         # Add initial position
-        state_manager.add_position('mp', 'AAPL', 100, 150.0, 'order_1')
+        state_manager.add_position('mp', 'AAPL', 100, 150.0, 'order_1', broker='alpaca')
 
         # Add again with different qty - this OVERWRITES
-        state_manager.add_position('mp', 'AAPL', 50, 160.0, 'order_2')
+        state_manager.add_position('mp', 'AAPL', 50, 160.0, 'order_2', broker='alpaca')
 
         positions = state_manager.get_positions('mp')
         # BUG BEHAVIOR: qty is 50, not 150!
@@ -73,8 +73,8 @@ class TestAddPosition:
 
     def test_add_position_different_strategies(self, state_manager):
         """Test positions are isolated between strategies."""
-        state_manager.add_position('mp', 'AAPL', 100, 150.0)
-        state_manager.add_position('omr', 'TQQQ', 50, 45.0)
+        state_manager.add_position('mp', 'AAPL', 100, 150.0, broker='alpaca')
+        state_manager.add_position('omr', 'TQQQ', 50, 45.0, broker='alpaca')
 
         mp_positions = state_manager.get_positions('mp')
         omr_positions = state_manager.get_positions('omr')
@@ -140,8 +140,8 @@ class TestSyncWithBroker:
 
     def test_sync_removes_closed_positions(self, state_manager):
         """Test that positions closed at broker are removed from state."""
-        state_manager.add_position('mp', 'AAPL', 100, 150.0)
-        state_manager.add_position('mp', 'MSFT', 50, 300.0)
+        state_manager.add_position('mp', 'AAPL', 100, 150.0, broker='alpaca')
+        state_manager.add_position('mp', 'MSFT', 50, 300.0, broker='alpaca')
 
         # Broker only has MSFT
         broker_positions = {'MSFT': 50}
@@ -155,7 +155,7 @@ class TestSyncWithBroker:
 
     def test_sync_updates_partial_closes(self, state_manager):
         """Test that partial closes update state qty."""
-        state_manager.add_position('mp', 'AAPL', 100, 150.0)
+        state_manager.add_position('mp', 'AAPL', 100, 150.0, broker='alpaca')
 
         # Broker shows only 60 shares (partial close)
         broker_positions = {'AAPL': 60}
@@ -168,7 +168,7 @@ class TestSyncWithBroker:
 
     def test_sync_detects_drift_broker_higher(self, state_manager):
         """Test that state drift is detected when broker has MORE than state."""
-        state_manager.add_position('mp', 'AAPL', 100, 150.0)
+        state_manager.add_position('mp', 'AAPL', 100, 150.0, broker='alpaca')
 
         # Broker shows 150 shares - MORE than state expected
         # This indicates a tracking bug (e.g., top-up not recorded)
@@ -183,7 +183,7 @@ class TestSyncWithBroker:
 
     def test_sync_no_changes_when_matched(self, state_manager):
         """Test that no changes when state matches broker."""
-        state_manager.add_position('mp', 'AAPL', 100, 150.0)
+        state_manager.add_position('mp', 'AAPL', 100, 150.0, broker='alpaca')
 
         broker_positions = {'AAPL': 100}
 
@@ -195,8 +195,8 @@ class TestSyncWithBroker:
 
     def test_sync_multiple_strategies(self, state_manager):
         """Test sync handles multiple strategies correctly."""
-        state_manager.add_position('mp', 'AAPL', 100, 150.0)
-        state_manager.add_position('omr', 'TQQQ', 50, 45.0)
+        state_manager.add_position('mp', 'AAPL', 100, 150.0, broker='alpaca')
+        state_manager.add_position('omr', 'TQQQ', 50, 45.0, broker='alpaca')
 
         # Broker has both
         broker_positions = {'AAPL': 100, 'TQQQ': 50}
@@ -213,7 +213,7 @@ class TestCrossStrategyIsolation:
 
     def test_symbol_owned_by_other_returns_owner(self, state_manager):
         """Test detecting when another strategy owns a symbol."""
-        state_manager.add_position('mp', 'AAPL', 100, 150.0)
+        state_manager.add_position('mp', 'AAPL', 100, 150.0, broker='alpaca')
 
         owner = state_manager.symbol_owned_by_other('omr', 'AAPL')
 
@@ -221,7 +221,7 @@ class TestCrossStrategyIsolation:
 
     def test_symbol_owned_by_other_returns_none_if_not_owned(self, state_manager):
         """Test None returned when symbol not owned by another."""
-        state_manager.add_position('mp', 'AAPL', 100, 150.0)
+        state_manager.add_position('mp', 'AAPL', 100, 150.0, broker='alpaca')
 
         owner = state_manager.symbol_owned_by_other('omr', 'MSFT')
 
@@ -229,7 +229,7 @@ class TestCrossStrategyIsolation:
 
     def test_symbol_owned_by_self_returns_none(self, state_manager):
         """Test that checking own positions returns None."""
-        state_manager.add_position('mp', 'AAPL', 100, 150.0)
+        state_manager.add_position('mp', 'AAPL', 100, 150.0, broker='alpaca')
 
         owner = state_manager.symbol_owned_by_other('mp', 'AAPL')
 
@@ -237,8 +237,8 @@ class TestCrossStrategyIsolation:
 
     def test_remove_position_only_affects_own_strategy(self, state_manager):
         """Test removing position doesn't affect other strategies."""
-        state_manager.add_position('mp', 'AAPL', 100, 150.0)
-        state_manager.add_position('omr', 'AAPL', 50, 160.0)  # Same symbol, different strategy
+        state_manager.add_position('mp', 'AAPL', 100, 150.0, broker='alpaca')
+        state_manager.add_position('omr', 'AAPL', 50, 160.0, broker='alpaca')  # Same symbol, different strategy
 
         state_manager.remove_position('mp', 'AAPL')
 
@@ -281,10 +281,10 @@ class TestMPTopUpScenario:
         This test documents the bug behavior before it was fixed.
         """
         # Day 1: Initial buy
-        state_manager.add_position('mp', 'AAPL', 100, 150.0, 'order_1')
+        state_manager.add_position('mp', 'AAPL', 100, 150.0, 'order_1', broker='alpaca')
 
         # Day 2: Top-up using OLD buggy method (add_position)
-        state_manager.add_position('mp', 'AAPL', 25, 140.0, 'order_2')
+        state_manager.add_position('mp', 'AAPL', 25, 140.0, 'order_2', broker='alpaca')
 
         positions = state_manager.get_positions('mp')
         # BUG: Shows 25 instead of 125!
@@ -320,8 +320,8 @@ class TestOMRPositionTracking:
 
     def test_omr_positions_dont_affect_mp(self, state_manager):
         """Test OMR positions don't interfere with MP."""
-        state_manager.add_position('mp', 'AAPL', 100, 150.0)
-        state_manager.add_position('omr', 'TQQQ', 50, 45.0)
+        state_manager.add_position('mp', 'AAPL', 100, 150.0, broker='alpaca')
+        state_manager.add_position('omr', 'TQQQ', 50, 45.0, broker='alpaca')
 
         # Remove all OMR positions
         state_manager.remove_position('omr', 'TQQQ')
@@ -352,7 +352,7 @@ class TestEdgeCases:
 
     def test_has_position(self, state_manager):
         """Test has_position helper."""
-        state_manager.add_position('mp', 'AAPL', 100, 150.0)
+        state_manager.add_position('mp', 'AAPL', 100, 150.0, broker='alpaca')
 
         assert state_manager.has_position('mp', 'AAPL') is True
         assert state_manager.has_position('mp', 'MSFT') is False
@@ -360,7 +360,7 @@ class TestEdgeCases:
 
     def test_get_position_qty(self, state_manager):
         """Test get_position_qty helper."""
-        state_manager.add_position('mp', 'AAPL', 100, 150.0)
+        state_manager.add_position('mp', 'AAPL', 100, 150.0, broker='alpaca')
 
         assert state_manager.get_position_qty('mp', 'AAPL') == 100
         assert state_manager.get_position_qty('mp', 'MSFT') == 0

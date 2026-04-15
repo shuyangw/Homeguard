@@ -475,7 +475,8 @@ class StrategyStateManager:
         symbol: str,
         qty: int,
         entry_price: float,
-        order_id: Optional[str] = None
+        order_id: Optional[str] = None,
+        broker: Optional[str] = None,
     ) -> None:
         """
         Add a position to a strategy's tracked positions.
@@ -486,7 +487,11 @@ class StrategyStateManager:
             qty: Quantity
             entry_price: Entry price
             order_id: Optional order ID
+            broker: Name of the broker that opened the position (required in v2)
         """
+        if not broker:
+            raise ValueError("add_position requires broker name (v2 schema)")
+
         self._load_state()
 
         if 'strategies' not in self._state:
@@ -498,11 +503,15 @@ class StrategyStateManager:
             'qty': qty,
             'entry_price': entry_price,
             'entry_time': tz.iso_timestamp(),
-            'order_id': order_id
+            'order_id': order_id,
+            'broker': broker,
         }
 
         self._save_state()
-        logger.info(f"[{strategy.upper()}] Added position: {symbol} ({qty} shares @ ${entry_price:.2f})")
+        logger.info(
+            f"[{strategy.upper()}] Added position: {symbol} "
+            f"({qty} shares @ ${entry_price:.2f}) on {broker}"
+        )
 
     def update_position_qty(self, strategy: str, symbol: str, new_qty: int) -> None:
         """Update the quantity of an existing position."""

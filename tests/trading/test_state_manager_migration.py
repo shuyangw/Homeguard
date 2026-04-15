@@ -148,3 +148,20 @@ def test_migration_handles_empty_strategies(temp_paths):
 
     on_disk = json.loads(state_file.read_text())
     assert on_disk["version"] == 2
+
+
+def test_add_position_requires_broker(temp_paths):
+    state_file, toggle_file = temp_paths
+    mgr = StrategyStateManager(state_file=state_file, toggle_file=toggle_file)
+
+    with pytest.raises(ValueError, match="broker"):
+        mgr.add_position('omr', 'TQQQ', 100, 52.30, order_id='x')
+
+
+def test_add_position_stores_broker_tag(temp_paths):
+    state_file, toggle_file = temp_paths
+    mgr = StrategyStateManager(state_file=state_file, toggle_file=toggle_file)
+
+    mgr.add_position('omr', 'TQQQ', 100, 52.30, order_id='x', broker='alpaca')
+    positions = mgr.get_positions('omr')
+    assert positions['TQQQ']['broker'] == 'alpaca'
