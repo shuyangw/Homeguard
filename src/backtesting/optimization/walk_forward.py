@@ -44,6 +44,7 @@ from src.backtesting.engine.backtest_engine import BacktestEngine
 from src.backtesting.optimization.base_optimizer import BaseOptimizer
 from src.settings import get_backtest_results_dir
 from src.utils import logger
+from src.utils.timezone import tz
 
 
 class WalkForwardOptimizer:
@@ -460,12 +461,13 @@ class WalkForwardOptimizer:
 
                 results_data.append(row)
 
+        ts = tz.datetime_str()
         if results_data:
             df = pd.DataFrame(results_data)
-            df.to_csv(output_dir / 'walk_forward_results.csv', index=False)
+            df.to_csv(output_dir / f'{ts}_walk_forward_results.csv', index=False)
 
         # Export summary
-        with open(output_dir / 'walk_forward_summary.txt', 'w') as f:
+        with open(output_dir / f'{ts}_walk_forward_summary.txt', 'w') as f:
             f.write("WALK-FORWARD VALIDATION SUMMARY\n")
             f.write("=" * 60 + "\n\n")
             f.write(f"Strategy: {strategy_class.__name__}\n")

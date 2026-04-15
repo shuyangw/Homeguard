@@ -14,6 +14,7 @@ from pathlib import Path
 from dataclasses import dataclass
 
 from src.utils import logger
+from src.utils.timezone import tz
 from src.backtesting.optimization.base_optimizer import BaseOptimizer
 
 
@@ -726,12 +727,13 @@ class GeneticOptimizer(BaseOptimizer):
         df = df.sort_values(by=metric, ascending=ascending)
         df['distance_from_best'] = abs(df[metric] - best_value)
 
-        csv_path = output_path / 'optimization_results.csv'
+        ts = tz.datetime_str()
+        csv_path = output_path / f'{ts}_optimization_results.csv'
         df.to_csv(csv_path, index=False)
         logger.info(f"Exported optimization results to: {csv_path}")
 
         # Export summary
-        summary_path = output_path / 'optimization_summary.txt'
+        summary_path = output_path / f'{ts}_optimization_summary.txt'
         with open(summary_path, 'w') as f:
             f.write(f"Genetic Algorithm Optimization Summary\n")
             f.write(f"{'='*60}\n\n")

@@ -46,6 +46,7 @@ from src.backtesting.regimes.detector import TrendDetector, VolatilityDetector, 
 from src.backtesting.regimes.analyzer import RegimeAnalyzer
 from src.settings import get_backtest_results_dir
 from src.utils import logger
+from src.utils.timezone import tz
 
 
 class RegimeAwareOptimizer:
@@ -400,12 +401,13 @@ class RegimeAwareOptimizer:
                 row.update({f'param_{k}': v for k, v in result['best_params'].items()})
                 params_data.append(row)
 
+        ts = tz.datetime_str()
         if params_data:
             df = pd.DataFrame(params_data)
-            df.to_csv(output_dir / 'regime_parameters.csv', index=False)
+            df.to_csv(output_dir / f'{ts}_regime_parameters.csv', index=False)
 
         # Export summary
-        with open(output_dir / 'regime_optimization_summary.txt', 'w') as f:
+        with open(output_dir / f'{ts}_regime_optimization_summary.txt', 'w') as f:
             f.write("REGIME-AWARE OPTIMIZATION SUMMARY\n")
             f.write("=" * 60 + "\n\n")
             f.write(f"Strategy: {analysis['strategy']}\n")

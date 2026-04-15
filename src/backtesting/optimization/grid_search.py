@@ -12,6 +12,7 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass
 
 from src.utils import logger
+from src.utils.timezone import tz
 
 if TYPE_CHECKING:
     from backtesting.engine.backtest_engine import BacktestEngine
@@ -828,8 +829,9 @@ class GridSearchOptimizer:
         ascending = (metric == 'max_drawdown')
         df = df.sort_values(by=metric, ascending=ascending)
 
-        # Export to CSV
-        csv_path = output_path / 'optimization_results.csv'
+        # Export to CSV (timestamped to preserve run history)
+        ts = tz.datetime_str()
+        csv_path = output_path / f'{ts}_optimization_results.csv'
         df.to_csv(csv_path, index=False)
 
         logger.blank()
@@ -839,7 +841,7 @@ class GridSearchOptimizer:
         logger.info(f"Invalid combinations: {len([r for r in all_results if r['error']])}")
 
         # Phase 2: Export parameter sensitivity analysis
-        sensitivity_path = output_path / 'parameter_sensitivity.csv'
+        sensitivity_path = output_path / f'{ts}_parameter_sensitivity.csv'
         self._export_sensitivity_analysis(df, metric, sensitivity_path)
         logger.info(f"Parameter sensitivity analysis: {sensitivity_path}")
 
