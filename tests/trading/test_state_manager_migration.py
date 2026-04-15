@@ -165,3 +165,39 @@ def test_add_position_stores_broker_tag(temp_paths):
     mgr.add_position('omr', 'TQQQ', 100, 52.30, order_id='x', broker='alpaca')
     positions = mgr.get_positions('omr')
     assert positions['TQQQ']['broker'] == 'alpaca'
+
+
+def test_add_or_update_new_position_requires_broker(temp_paths):
+    state_file, toggle_file = temp_paths
+    mgr = StrategyStateManager(state_file=state_file, toggle_file=toggle_file)
+
+    with pytest.raises(ValueError, match="broker"):
+        mgr.add_or_update_position('omr', 'TQQQ', 100, 52.30)
+
+
+def test_add_or_update_new_position_tags_broker(temp_paths):
+    state_file, toggle_file = temp_paths
+    mgr = StrategyStateManager(state_file=state_file, toggle_file=toggle_file)
+
+    mgr.add_or_update_position('omr', 'TQQQ', 100, 52.30, broker='alpaca')
+    assert mgr.get_positions('omr')['TQQQ']['broker'] == 'alpaca'
+
+
+def test_add_or_update_top_up_preserves_broker(temp_paths):
+    state_file, toggle_file = temp_paths
+    mgr = StrategyStateManager(state_file=state_file, toggle_file=toggle_file)
+
+    mgr.add_or_update_position('omr', 'TQQQ', 100, 52.30, broker='alpaca')
+    # Top up without passing broker -- existing tag must survive.
+    new_qty = mgr.add_or_update_position('omr', 'TQQQ', 50, 53.00)
+    assert new_qty == 150
+    assert mgr.get_positions('omr')['TQQQ']['broker'] == 'alpaca'
+
+
+def test_add_or_update_top_up_conflicting_broker_raises(temp_paths):
+    state_file, toggle_file = temp_paths
+    mgr = StrategyStateManager(state_file=state_file, toggle_file=toggle_file)
+
+    mgr.add_or_update_position('omr', 'TQQQ', 100, 52.30, broker='alpaca')
+    with pytest.raises(ValueError, match="Cannot top up"):
+        mgr.add_or_update_position('omr', 'TQQQ', 50, 53.00, broker='ibkr')

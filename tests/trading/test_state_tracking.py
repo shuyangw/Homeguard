@@ -90,7 +90,7 @@ class TestAddOrUpdatePosition:
 
     def test_add_or_update_new_position(self, state_manager):
         """Test creating a new position."""
-        total = state_manager.add_or_update_position('mp', 'AAPL', 100, 150.0, 'order_1')
+        total = state_manager.add_or_update_position('mp', 'AAPL', 100, 150.0, 'order_1', broker='alpaca')
 
         assert total == 100
         positions = state_manager.get_positions('mp')
@@ -100,7 +100,7 @@ class TestAddOrUpdatePosition:
     def test_add_or_update_topup_existing(self, state_manager):
         """Test topping up an existing position adds to qty."""
         # Create initial position
-        state_manager.add_or_update_position('mp', 'AAPL', 100, 150.0, 'order_1')
+        state_manager.add_or_update_position('mp', 'AAPL', 100, 150.0, 'order_1', broker='alpaca')
 
         # Top up with additional shares
         total = state_manager.add_or_update_position('mp', 'AAPL', 25, 145.0, 'order_2')
@@ -114,7 +114,7 @@ class TestAddOrUpdatePosition:
 
     def test_add_or_update_multiple_topups(self, state_manager):
         """Test multiple top-ups accumulate correctly."""
-        state_manager.add_or_update_position('mp', 'AAPL', 100, 150.0)
+        state_manager.add_or_update_position('mp', 'AAPL', 100, 150.0, broker='alpaca')
         state_manager.add_or_update_position('mp', 'AAPL', 20, 145.0)
         state_manager.add_or_update_position('mp', 'AAPL', 30, 155.0)
 
@@ -123,7 +123,7 @@ class TestAddOrUpdatePosition:
 
     def test_add_or_update_preserves_entry_time(self, state_manager):
         """Test that original entry_time is preserved on top-up."""
-        state_manager.add_or_update_position('mp', 'AAPL', 100, 150.0)
+        state_manager.add_or_update_position('mp', 'AAPL', 100, 150.0, broker='alpaca')
         original_time = state_manager.get_positions('mp')['AAPL']['entry_time']
 
         # Wait a moment and top up
@@ -261,7 +261,7 @@ class TestMPTopUpScenario:
         3. State should show 125 total shares
         """
         # Day 1: Initial buy
-        state_manager.add_or_update_position('mp', 'AAPL', 100, 150.0, 'order_1')
+        state_manager.add_or_update_position('mp', 'AAPL', 100, 150.0, 'order_1', broker='alpaca')
 
         positions = state_manager.get_positions('mp')
         assert positions['AAPL']['qty'] == 100
@@ -305,8 +305,8 @@ class TestOMRPositionTracking:
     def test_omr_open_and_close_cycle(self, state_manager):
         """Test OMR daily cycle: open at 3:50 PM, close at 9:31 AM."""
         # 3:50 PM: Open positions
-        state_manager.add_or_update_position('omr', 'TQQQ', 100, 45.0)
-        state_manager.add_or_update_position('omr', 'SQQQ', 50, 12.0)
+        state_manager.add_or_update_position('omr', 'TQQQ', 100, 45.0, broker='alpaca')
+        state_manager.add_or_update_position('omr', 'SQQQ', 50, 12.0, broker='alpaca')
 
         positions = state_manager.get_positions('omr')
         assert len(positions) == 2

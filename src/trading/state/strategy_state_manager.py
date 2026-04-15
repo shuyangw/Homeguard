@@ -530,24 +530,17 @@ class StrategyStateManager:
         symbol: str,
         qty_delta: int,
         price: float,
-        order_id: Optional[str] = None
+        order_id: Optional[str] = None,
+        broker: Optional[str] = None,
     ) -> int:
         """
-        Add to existing position or create new one.
+        Add to an existing position or create a new one.
 
-        CRITICAL: Use this for top-ups to avoid state drift!
-        - If position exists: adds qty_delta to existing qty
-        - If position doesn't exist: creates new position with qty_delta
+        - New positions: broker is REQUIRED.
+        - Top-ups: broker is optional. If passed and differs from the existing
+          tag, raises ValueError. If omitted, the existing tag is preserved.
 
-        Args:
-            strategy: Strategy name
-            symbol: Stock symbol
-            qty_delta: Quantity to ADD (not total)
-            price: Current price (for new positions or logging)
-            order_id: Optional order ID
-
-        Returns:
-            New total quantity after update
+        Returns new total quantity after update.
         """
         self._load_state()
 
@@ -559,29 +552,40 @@ class StrategyStateManager:
         positions = self._state['strategies'][strategy]['positions']
 
         if symbol in positions:
-            # Existing position - ADD to qty (don't overwrite!)
+            existing_broker = positions[symbol].get('broker')
+            if broker and existing_broker and broker != existing_broker:
+                raise ValueError(
+                    f"Cannot top up {strategy}:{symbol}: state tagged "
+                    f"{existing_broker!r}, caller passed {broker!r}"
+                )
             old_qty = positions[symbol]['qty']
             new_qty = old_qty + qty_delta
             positions[symbol]['qty'] = new_qty
-            # Keep original entry_price and entry_time
             self._save_state()
             logger.info(
-                f"[{strategy.upper()}] Topped up {symbol}: {old_qty} + {qty_delta} = {new_qty} shares"
+                f"[{strategy.upper()}] Topped up {symbol}: "
+                f"{old_qty} + {qty_delta} = {new_qty} shares"
             )
             return new_qty
-        else:
-            # New position
-            positions[symbol] = {
-                'qty': qty_delta,
-                'entry_price': price,
-                'entry_time': tz.iso_timestamp(),
-                'order_id': order_id
-            }
-            self._save_state()
-            logger.info(
-                f"[{strategy.upper()}] Added position: {symbol} ({qty_delta} shares @ ${price:.2f})"
+
+        # New position -- broker is required.
+        if not broker:
+            raise ValueError(
+                "add_or_update_position requires broker for new positions (v2 schema)"
             )
-            return qty_delta
+        positions[symbol] = {
+            'qty': qty_delta,
+            'entry_price': price,
+            'entry_time': tz.iso_timestamp(),
+            'order_id': order_id,
+            'broker': broker,
+        }
+        self._save_state()
+        logger.info(
+            f"[{strategy.upper()}] Added position: {symbol} "
+            f"({qty_delta} shares @ ${price:.2f}) on {broker}"
+        )
+        return qty_delta
 
     def remove_position(self, strategy: str, symbol: str) -> None:
         """Remove a position from a strategy's tracked positions."""
