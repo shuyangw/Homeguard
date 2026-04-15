@@ -12,6 +12,7 @@ Provides:
 See docs/architecture/MULTI_STRATEGY_POSITION_MANAGEMENT.md for full documentation.
 """
 
+import copy
 import json
 import os
 import sys
@@ -743,17 +744,19 @@ class StrategyStateManager:
 
         try:
             current_positions = {
-                p['symbol']: p['quantity'] for p in current_broker.get_stock_positions()
+                p['symbol']: abs(int(p['quantity'])) for p in current_broker.get_stock_positions()
             }
         except Exception as e:
+            logger.error(f"Failed to fetch positions from {current_broker_name}: {e}")
             current_positions = {}
             blocking_reasons.append(f"Cannot reach current broker ({current_broker_name}): {e}")
 
         try:
             new_positions = {
-                p['symbol']: p['quantity'] for p in new_broker.get_stock_positions()
+                p['symbol']: abs(int(p['quantity'])) for p in new_broker.get_stock_positions()
             }
         except Exception as e:
+            logger.error(f"Failed to fetch positions from {new_broker_name}: {e}")
             new_positions = {}
             blocking_reasons.append(f"Cannot reach new broker ({new_broker_name}): {e}")
 
@@ -764,7 +767,7 @@ class StrategyStateManager:
             state_qty = pos_info.get('qty', 0)
             if pos_broker == current_broker_name and state_qty > 0:
                 broker_qty = current_positions.get(symbol, 0)
-                if broker_qty > 0:
+                if broker_qty != 0:
                     blocking_reasons.append(
                         f"{symbol}: {broker_qty} shares still open on {current_broker_name}"
                     )
@@ -783,7 +786,7 @@ class StrategyStateManager:
             'safe': safe,
             'positions_on_current': current_positions,
             'positions_on_new': new_positions,
-            'state_positions': state_positions,
+            'state_positions': copy.deepcopy(state_positions),
             'blocking_reasons': blocking_reasons,
             'action_required': action,
         }

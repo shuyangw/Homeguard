@@ -105,7 +105,7 @@ def test_check_broker_switch_safety_blocks_when_current_holds(mgr):
     current = _fake_broker({'TQQQ': 100}); new = _fake_broker({})
     result = mgr.check_broker_switch_safety('omr', 'alpaca', 'ibkr', current, new)
     assert result['safe'] is False
-    assert any('TQQQ' in r and '100' in r for r in result['blocking_reasons'])
+    assert any('TQQQ: 100 shares' in r for r in result['blocking_reasons'])
 
 
 def test_check_broker_switch_safety_unreachable_current_blocks(mgr):
@@ -116,3 +116,32 @@ def test_check_broker_switch_safety_unreachable_current_blocks(mgr):
     result = mgr.check_broker_switch_safety('omr', 'alpaca', 'ibkr', current, new)
     assert result['safe'] is False
     assert any('Cannot reach' in r for r in result['blocking_reasons'])
+
+
+def test_check_broker_switch_safety_ignores_zero_qty_state_rows(mgr):
+    mgr.add_position('omr', 'TQQQ', 100, 52.30, order_id='x', broker='alpaca')
+    # simulate a fully-closed state row (qty=0 ghost)
+    mgr._load_state()
+    mgr._state['strategies']['omr']['positions']['TQQQ']['qty'] = 0
+    mgr._save_state()
+    current = _fake_broker({}); new = _fake_broker({})
+    result = mgr.check_broker_switch_safety('omr', 'alpaca', 'ibkr', current, new)
+    assert result['safe'] is True
+    assert result['blocking_reasons'] == []
+
+
+def test_check_broker_switch_safety_ignores_position_on_unrelated_broker(mgr):
+    mgr.add_position('omr', 'TQQQ', 100, 52.30, order_id='x', broker='tradier')
+    current = _fake_broker({}); new = _fake_broker({})
+    result = mgr.check_broker_switch_safety('omr', 'alpaca', 'ibkr', current, new)
+    assert result['safe'] is True
+    assert result['blocking_reasons'] == []
+
+
+def test_check_broker_switch_safety_blocks_on_short_position(mgr):
+    mgr.add_position('omr', 'TQQQ', 100, 52.30, order_id='x', broker='alpaca')
+    current = _fake_broker({'TQQQ': -100})  # short leg is still open
+    new = _fake_broker({})
+    result = mgr.check_broker_switch_safety('omr', 'alpaca', 'ibkr', current, new)
+    assert result['safe'] is False
+    assert any('TQQQ: 100 shares' in r for r in result['blocking_reasons'])
