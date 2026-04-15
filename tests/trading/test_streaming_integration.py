@@ -245,7 +245,8 @@ class TestRAMPStreamingIntegration:
         adapter = RAMPLiveAdapter(
             broker=mock_broker,
             symbols=['AAPL', 'MSFT', 'GOOGL'],
-            data_provider=mock_streaming_provider
+            data_provider=mock_streaming_provider,
+            broker_name='alpaca'
         )
 
         assert adapter._data_provider is not None
@@ -258,7 +259,8 @@ class TestRAMPStreamingIntegration:
         adapter = RAMPLiveAdapter(
             broker=mock_broker,
             symbols=['AAPL', 'MSFT', 'GOOGL'],
-            data_provider=mock_streaming_provider
+            data_provider=mock_streaming_provider,
+            broker_name='alpaca'
         )
 
         # Create historical cache (missing today)
@@ -301,7 +303,8 @@ class TestRAMPStreamingIntegration:
         adapter = RAMPLiveAdapter(
             broker=mock_broker,
             symbols=['AAPL', 'MSFT'],
-            data_provider=mock_streaming_provider
+            data_provider=mock_streaming_provider,
+            broker_name='alpaca'
         )
 
         # Setup cache
@@ -340,7 +343,8 @@ class TestRAMPStreamingIntegration:
         adapter = RAMPLiveAdapter(
             broker=mock_broker,
             symbols=['AAPL', 'MSFT'],
-            data_provider=mock_streaming_provider
+            data_provider=mock_streaming_provider,
+            broker_name='alpaca'
         )
 
         # Create cache missing today

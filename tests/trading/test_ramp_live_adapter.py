@@ -100,7 +100,8 @@ def ramp_adapter(mock_broker):
                             max_capital_allocation=1.0,
                             reduced_exposure=0.5,
                             vix_threshold=25.0,
-                            spy_dd_threshold=-0.05
+                            spy_dd_threshold=-0.05,
+                            broker_name='alpaca'
                         )
 
                         adapter.execution_engine = mock_ee_instance
@@ -130,7 +131,8 @@ class TestRAMPLiveAdapterInit:
                             symbols = ['AAPL', 'MSFT', 'GOOGL']
                             adapter = RAMPLiveAdapter(
                                 broker=mock_broker,
-                                symbols=symbols
+                                symbols=symbols,
+                                broker_name='alpaca'
                             )
 
         assert adapter.symbols == symbols
@@ -157,7 +159,8 @@ class TestRAMPLiveAdapterInit:
 
                                 adapter = RAMPLiveAdapter(
                                     broker=mock_broker,
-                                    symbols=None
+                                    symbols=None,
+                                    broker_name='alpaca'
                                 )
 
         # Should have loaded from CSV
@@ -224,7 +227,8 @@ class TestRAMPDataCaching:
 
                             adapter = RAMPLiveAdapter(
                                 broker=mock_broker,
-                                symbols=['AAPL', 'MSFT']
+                                symbols=['AAPL', 'MSFT'],
+                                broker_name='alpaca'
                             )
 
                             # Preload should use cache
@@ -245,7 +249,8 @@ class TestRAMPDataCaching:
 
                             adapter = RAMPLiveAdapter(
                                 broker=mock_broker,
-                                symbols=['AAPL', 'MSFT']
+                                symbols=['AAPL', 'MSFT'],
+                                broker_name='alpaca'
                             )
 
                             # Clear any prior calls and preload

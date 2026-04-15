@@ -309,7 +309,9 @@ class RAMPLiveAdapter(StrategyAdapter):
         vix_threshold: float = 25.0,
         spy_dd_threshold: float = -0.05,
         slippage_per_share: float = 0.01,
-        data_provider: Optional[Union["DataProviderInterface", "LiveDataProvider"]] = None
+        data_provider: Optional[Union["DataProviderInterface", "LiveDataProvider"]] = None,
+        *,
+        broker_name: str
     ):
         """
         Initialize RAMP live adapter.
@@ -385,6 +387,7 @@ class RAMPLiveAdapter(StrategyAdapter):
         self.vix_threshold = vix_threshold
         self.spy_dd_threshold = spy_dd_threshold
         self.slippage_per_share = slippage_per_share
+        self._broker_name = broker_name
 
         # Store reference to RAMP signals
         self._ramp_signals = ramp_signals
@@ -998,7 +1001,7 @@ class RAMPLiveAdapter(StrategyAdapter):
             try:
                 # Sync state with broker (detect external position changes)
                 broker_positions = {p['symbol']: int(p['quantity']) for p in self.broker.get_positions()}
-                changes = self.state_manager.sync_with_broker(broker_positions)
+                changes = self.state_manager.sync_with_broker(self._broker_name, broker_positions)
                 if changes['removed']:
                     logger.info(f"[RAMP] Detected closed positions: {changes['removed']}")
 
@@ -1252,7 +1255,8 @@ class RAMPLiveAdapter(StrategyAdapter):
                             # CRITICAL: This prevents state drift when topping up existing positions
                             order_id = order.get('order_id')
                             self.state_manager.add_or_update_position(
-                                STRATEGY_NAME, symbol, shares_to_buy, current_price, order_id
+                                STRATEGY_NAME, symbol, shares_to_buy, current_price, order_id,
+                                broker=self._broker_name
                             )
 
                             # Log trade entry to persistent trade log
