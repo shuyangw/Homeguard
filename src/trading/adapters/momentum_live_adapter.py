@@ -159,7 +159,9 @@ class MomentumLiveAdapter(StrategyAdapter):
         spy_dd_threshold: float = -0.05,
         mom_vol_percentile: float = 0.90,
         slippage_per_share: float = 0.01,
-        data_provider: Optional["DataProviderInterface"] = None
+        data_provider: Optional["DataProviderInterface"] = None,
+        *,
+        broker_name: str,
     ):
         """
         Initialize Momentum live adapter.
@@ -221,6 +223,9 @@ class MomentumLiveAdapter(StrategyAdapter):
 
         # Store reference to momentum signals
         self._momentum_signals = momentum_signals
+
+        # Broker identity for multi-broker state tracking
+        self._broker_name = broker_name
 
         # Initialize state manager for multi-strategy coordination
         self.state_manager = StrategyStateManager()
@@ -643,7 +648,7 @@ class MomentumLiveAdapter(StrategyAdapter):
             try:
                 # Sync state with broker (detect external position changes)
                 broker_positions = {p['symbol']: int(p['quantity']) for p in self.broker.get_positions()}
-                changes = self.state_manager.sync_with_broker(broker_positions)
+                changes = self.state_manager.sync_with_broker(self._broker_name, broker_positions)
                 if changes['removed']:
                     logger.info(f"[MP] Detected closed positions: {changes['removed']}")
 
@@ -837,7 +842,8 @@ class MomentumLiveAdapter(StrategyAdapter):
                             # CRITICAL: This prevents state drift when topping up existing positions
                             order_id = order.get('order_id')
                             self.state_manager.add_or_update_position(
-                                STRATEGY_NAME, symbol, shares_to_buy, current_price, order_id
+                                STRATEGY_NAME, symbol, shares_to_buy, current_price, order_id,
+                                broker=self._broker_name
                             )
 
                             # Log trade entry to persistent trade log

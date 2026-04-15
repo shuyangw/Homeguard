@@ -923,7 +923,8 @@ class TestMomentumLiveAdapter:
             broker=mock_mp_broker,
             symbols=['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'META'],
             top_n=3,
-            position_size=0.10
+            position_size=0.10,
+            broker_name='alpaca'
         )
         return adapter
 
@@ -935,7 +936,8 @@ class TestMomentumLiveAdapter:
             broker=mock_mp_broker,
             symbols=['AAPL', 'MSFT'],
             top_n=5,
-            position_size=0.10
+            position_size=0.10,
+            broker_name='alpaca'
         )
 
         assert adapter.broker == mock_mp_broker
@@ -1282,7 +1284,8 @@ class TestMPDataFetchingIntegration:
             broker=mock_broker_with_realistic_data,
             symbols=['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'META'],
             top_n=3,
-            position_size=0.10
+            position_size=0.10,
+            broker_name='alpaca'
         )
 
         # Step 1: 9:30 AM preload
@@ -1315,7 +1318,8 @@ class TestMPDataFetchingIntegration:
             broker=mock_broker_with_realistic_data,
             symbols=['AAPL', 'MSFT'],
             top_n=2,
-            position_size=0.10
+            position_size=0.10,
+            broker_name='alpaca'
         )
 
         # Preload historical data
@@ -1349,7 +1353,8 @@ class TestMPDataFetchingIntegration:
             broker=mock_broker_with_realistic_data,
             symbols=['AAPL', 'MSFT'],
             top_n=2,
-            position_size=0.10
+            position_size=0.10,
+            broker_name='alpaca'
         )
 
         # Preload
