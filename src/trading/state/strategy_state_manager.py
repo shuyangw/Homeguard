@@ -718,6 +718,76 @@ class StrategyStateManager:
 
         return changes
 
+    def get_positions_by_broker(self, strategy: str) -> Dict[str, Dict]:
+        """Get positions for a strategy, grouped by the broker that opened them."""
+        positions = self.get_positions(strategy)
+        by_broker: Dict[str, Dict] = {}
+        for symbol, info in positions.items():
+            broker = info.get('broker')
+            if broker is None:
+                raise ValueError(f"Untagged position: {strategy}:{symbol}")
+            by_broker.setdefault(broker, {})[symbol] = info
+        return by_broker
+
+    def check_broker_switch_safety(
+        self,
+        strategy: str,
+        current_broker_name: str,
+        new_broker_name: str,
+        current_broker,
+        new_broker,
+    ) -> Dict[str, Any]:
+        """Query both brokers and report whether it's safe to switch. Does NOT mutate state."""
+        state_positions = self.get_positions(strategy)
+        blocking_reasons: List[str] = []
+
+        try:
+            current_positions = {
+                p['symbol']: p['quantity'] for p in current_broker.get_stock_positions()
+            }
+        except Exception as e:
+            current_positions = {}
+            blocking_reasons.append(f"Cannot reach current broker ({current_broker_name}): {e}")
+
+        try:
+            new_positions = {
+                p['symbol']: p['quantity'] for p in new_broker.get_stock_positions()
+            }
+        except Exception as e:
+            new_positions = {}
+            blocking_reasons.append(f"Cannot reach new broker ({new_broker_name}): {e}")
+
+        for symbol, pos_info in state_positions.items():
+            pos_broker = pos_info.get('broker')
+            if pos_broker is None:
+                raise ValueError(f"Untagged position: {strategy}:{symbol}")
+            state_qty = pos_info.get('qty', 0)
+            if pos_broker == current_broker_name and state_qty > 0:
+                broker_qty = current_positions.get(symbol, 0)
+                if broker_qty > 0:
+                    blocking_reasons.append(
+                        f"{symbol}: {broker_qty} shares still open on {current_broker_name}"
+                    )
+
+        safe = len(blocking_reasons) == 0
+        if blocking_reasons:
+            action = (
+                f"Close {len(blocking_reasons)} position(s) on {current_broker_name} "
+                f"before switching to {new_broker_name}:\n"
+                + '\n'.join(f"  - {r}" for r in blocking_reasons)
+            )
+        else:
+            action = f"Safe to switch {strategy} from {current_broker_name} to {new_broker_name}"
+
+        return {
+            'safe': safe,
+            'positions_on_current': current_positions,
+            'positions_on_new': new_positions,
+            'state_positions': state_positions,
+            'blocking_reasons': blocking_reasons,
+            'action_required': action,
+        }
+
     # =========================================================================
     # Orphaned Positions
     # =========================================================================
