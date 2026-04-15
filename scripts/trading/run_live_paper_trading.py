@@ -52,6 +52,7 @@ from src.trading.adapters import (
     RAMPLiveAdapter
 )
 from src.trading.config import load_omr_config
+from src.trading.config.broker_routing import load_broker_routing
 from src.data.providers import create_data_provider
 from src.trading.state import StrategyStateManager
 from src.strategies.universe import EquityUniverse, ETFUniverse
@@ -756,7 +757,7 @@ def create_triple_ma_adapter(broker, symbols, fast=20, medium=50, slow=200, posi
     )
 
 
-def create_omr_adapter(broker, symbols=None, min_probability=None, min_return=None, position_size=None, max_positions=None, omr_config=None, data_provider=None):
+def create_omr_adapter(broker, symbols=None, min_probability=None, min_return=None, position_size=None, max_positions=None, omr_config=None, data_provider=None, *, broker_name: str):
     """
     Create Overnight Mean Reversion adapter.
 
@@ -776,12 +777,13 @@ def create_omr_adapter(broker, symbols=None, min_probability=None, min_return=No
         if data_provider is not None:
             adapter_params['data_provider'] = data_provider
             logger.info(f"  Using data provider: {data_provider.name}")
-        return OMRLiveAdapter(broker=broker, **adapter_params)
+        return OMRLiveAdapter(broker=broker, broker_name=broker_name, **adapter_params)
 
     # Fallback to individual parameters (for testing)
     logger.warning("Creating OMR adapter with individual parameters (NOT using production config)")
     return OMRLiveAdapter(
         broker=broker,
+        broker_name=broker_name,
         symbols=symbols if symbols is not None else [],
         min_probability=min_probability if min_probability is not None else 0.60,
         min_expected_return=min_return if min_return is not None else 0.002,
@@ -791,7 +793,7 @@ def create_omr_adapter(broker, symbols=None, min_probability=None, min_return=No
     )
 
 
-def create_mp_adapter(broker, position_size=0.065, top_n=10, data_provider=None):
+def create_mp_adapter(broker, position_size=0.065, top_n=10, data_provider=None, *, broker_name: str):
     """
     Create Momentum Protection adapter.
 
@@ -809,6 +811,7 @@ def create_mp_adapter(broker, position_size=0.065, top_n=10, data_provider=None)
         logger.info(f"  Using data provider: {data_provider.name}")
     return MomentumLiveAdapter(
         broker=broker,
+        broker_name=broker_name,
         symbols=None,  # Uses S&P 500 by default
         top_n=top_n,
         position_size=position_size,
@@ -821,7 +824,7 @@ def create_mp_adapter(broker, position_size=0.065, top_n=10, data_provider=None)
     )
 
 
-def create_ramp_adapter(broker, data_provider=None):
+def create_ramp_adapter(broker, data_provider=None, *, broker_name: str):
     """
     Create Regime-Aware Momentum Protection adapter.
 
@@ -837,6 +840,7 @@ def create_ramp_adapter(broker, data_provider=None):
         logger.info(f"  Using data provider: {data_provider.name}")
     return RAMPLiveAdapter(
         broker=broker,
+        broker_name=broker_name,
         symbols=None,  # Uses S&P 500 by default
         data_provider=data_provider
     )
@@ -915,6 +919,12 @@ def main():
         help='Bypass market open check for testing (DANGEROUS - only use for testing)'
     )
 
+    parser.add_argument(
+        '--force-start',
+        action='store_true',
+        help='Start despite position mismatches. Does NOT modify state. (DANGEROUS)',
+    )
+
     # Strategy-specific parameters
     parser.add_argument('--fast', type=int, default=50, help='Fast MA period (MA strategies)')
     parser.add_argument('--medium', type=int, default=50, help='Medium MA period (Triple MA)')
@@ -976,13 +986,17 @@ def main():
     logger.info("=" * 80)
 
     try:
-        # Initialize broker
-        logger.info("Initializing Alpaca broker...")
-        broker = AlpacaBroker(
-            api_key=api_key,
-            secret_key=secret_key,
-            paper=True
-        )
+        # Initialize broker via routing config
+        logger.info("Loading broker routing...")
+        try:
+            routing = load_broker_routing()
+            broker = routing[args.strategy]
+            broker_name = routing.get_broker_name(args.strategy)
+        except Exception as e:
+            logger.error(f"[Routing] Failed to load broker routing: {e}")
+            return 1
+
+        logger.info(f"[Routing] {args.strategy} execution broker: {broker_name}")
 
         # Verify connection
         account = broker.get_account()
@@ -1087,7 +1101,8 @@ def main():
             adapter = create_omr_adapter(
                 broker,
                 omr_config=omr_config,  # Use production config
-                data_provider=data_provider  # Alpaca -> yfinance fallback
+                data_provider=data_provider,  # Alpaca -> yfinance fallback
+                broker_name=broker_name
             )
         elif args.strategy == 'mp':
             # Momentum Protection strategy
@@ -1095,13 +1110,15 @@ def main():
                 broker,
                 position_size=args.position_size if args.position_size != 0.05 else 0.065,
                 top_n=args.max_positions if args.max_positions != 3 else 10,
-                data_provider=data_provider  # Alpaca -> yfinance fallback
+                data_provider=data_provider,  # Alpaca -> yfinance fallback
+                broker_name=broker_name
             )
         elif args.strategy == 'ramp':
             # Regime-Aware Momentum Protection strategy
             adapter = create_ramp_adapter(
                 broker,
-                data_provider=data_provider  # Alpaca -> yfinance fallback
+                data_provider=data_provider,  # Alpaca -> yfinance fallback
+                broker_name=broker_name
             )
         elif args.strategy == 'multi':
             # Multi-strategy mode - run all enabled strategies
@@ -1118,11 +1135,11 @@ def main():
             # For now, create OMR adapter if enabled (primary strategy)
             # TODO: Implement full multi-adapter runner
             if 'omr' in enabled:
-                adapter = create_omr_adapter(broker, omr_config=omr_config, data_provider=data_provider)
+                adapter = create_omr_adapter(broker, omr_config=omr_config, data_provider=data_provider, broker_name=broker_name)
             elif 'mp' in enabled:
-                adapter = create_mp_adapter(broker, data_provider=data_provider)
+                adapter = create_mp_adapter(broker, data_provider=data_provider, broker_name=broker_name)
             elif 'ramp' in enabled:
-                adapter = create_ramp_adapter(broker, data_provider=data_provider)
+                adapter = create_ramp_adapter(broker, data_provider=data_provider, broker_name=broker_name)
             else:
                 logger.error("No supported strategy enabled")
                 return 1
