@@ -87,7 +87,7 @@ def check_one(strategy: str, target_name: str) -> int:
     import yaml
     from src.trading.brokers.broker_factory import BrokerFactory
 
-    with open("config/trading/broker_routing.yaml") as f:
+    with open(project_root / "config" / "trading" / "broker_routing.yaml") as f:
         cfg = yaml.safe_load(f)
     target_cfg = cfg.get("brokers", {}).get(target_name)
     if target_cfg is None:
@@ -119,7 +119,7 @@ def main() -> int:
     parser.add_argument('--to', dest='target', help="Target broker name (alpaca, ibkr)")
     parser.add_argument(
         '--all', action='store_true',
-        help="Check all strategies against their currently-assigned broker (sanity check).",
+        help="Sanity-check all strategies: verify state-file positions match their routed broker.",
     )
     args = parser.parse_args()
 
@@ -130,12 +130,51 @@ def main() -> int:
         for strategy in ['omr', 'ramp', 'mp']:
             current_name = routing.get_broker_name(strategy)
             current_broker = routing[strategy]
-            result = mgr.check_broker_switch_safety(
-                strategy, current_name, current_name, current_broker, current_broker,
-            )
-            print_report(strategy, current_name, current_name, result)
-            if not result['safe']:
+            state_positions = mgr.get_positions(strategy)
+
+            try:
+                broker_positions = {
+                    p['symbol']: p['quantity']
+                    for p in current_broker.get_stock_positions()
+                }
+            except Exception as e:
+                logger.error(
+                    f"[-] {strategy}: cannot reach {current_name}: {e}"
+                )
                 worst = 1
+                continue
+
+            mismatches = []
+            for symbol, pos_info in state_positions.items():
+                pos_broker = pos_info.get('broker')
+                state_qty = pos_info.get('qty', 0)
+                if pos_broker != current_name and state_qty > 0:
+                    mismatches.append(
+                        f"{symbol}: {state_qty} shares tagged {pos_broker}, "
+                        f"routed to {current_name}"
+                    )
+                    continue
+                broker_qty = broker_positions.get(symbol, 0)
+                if broker_qty == 0 and state_qty > 0 and pos_broker == current_name:
+                    mismatches.append(
+                        f"{symbol}: state says {state_qty} on {current_name}, "
+                        f"broker reports 0"
+                    )
+
+            logger.info(
+                f"[+] {strategy} ({current_name}): "
+                f"{len(state_positions)} tracked, "
+                f"{len(broker_positions)} on broker"
+            )
+            if not mismatches:
+                logger.success(f"    [+] RECONCILED")
+            else:
+                logger.error(f"    [-] {len(mismatches)} mismatches:")
+                for m in mismatches:
+                    logger.error(f"      - {m}")
+                worst = 1
+            logger.info("")
+
         return worst
 
     if not args.strategy or not args.target:
