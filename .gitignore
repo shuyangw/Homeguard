@@ -14,7 +14,7 @@ secrets/
 # CONFIGURATION - Environment and Settings
 # ============================================================================
 settings.ini
-.claude
+.claude/settings.local.json
 TODO.md
 .claude-recovery.log
 
