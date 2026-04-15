@@ -323,7 +323,8 @@ class TestOMRLiveAdapter:
     def test_initialization_default_symbols(self, mock_broker):
         """Test OMR adapter uses default symbols."""
         adapter = OMRLiveAdapter(
-            broker=mock_broker
+            broker=mock_broker,
+            broker_name='alpaca'
         )
 
         # Should use default leveraged 3x ETFs
@@ -335,6 +336,7 @@ class TestOMRLiveAdapter:
 
         adapter = OMRLiveAdapter(
             broker=mock_broker,
+            broker_name='alpaca',
             symbols=custom_symbols
         )
 
@@ -343,7 +345,8 @@ class TestOMRLiveAdapter:
     def test_get_schedule(self, mock_broker):
         """Test OMR schedule configuration."""
         adapter = OMRLiveAdapter(
-            broker=mock_broker
+            broker=mock_broker,
+            broker_name='alpaca'
         )
 
         schedule = adapter.get_schedule()
@@ -371,7 +374,8 @@ class TestOMRLiveAdapter:
         mock_broker.is_market_open.return_value = True
 
         adapter = OMRLiveAdapter(
-            broker=mock_broker
+            broker=mock_broker,
+            broker_name='alpaca'
         )
 
         # Should run at 3:50 PM
@@ -382,6 +386,7 @@ class TestOMRLiveAdapter:
         """Test OMR fetches SPY and VIX for regime detection."""
         adapter = OMRLiveAdapter(
             broker=mock_broker,
+            broker_name='alpaca',
             symbols=['TQQQ', 'SQQQ']
         )
 
@@ -407,7 +412,8 @@ class TestOMRLiveAdapter:
         mock_broker.get_positions.return_value = [mock_position]
 
         adapter = OMRLiveAdapter(
-            broker=mock_broker
+            broker=mock_broker,
+            broker_name='alpaca'
         )
 
         # Mock execution engine
@@ -424,7 +430,8 @@ class TestOMRLiveAdapter:
         mock_broker.get_positions.return_value = []
 
         adapter = OMRLiveAdapter(
-            broker=mock_broker
+            broker=mock_broker,
+            broker_name='alpaca'
         )
 
         # Mock execution engine
@@ -440,6 +447,7 @@ class TestOMRLiveAdapter:
         """Test that execute_signals adds positions to state manager."""
         adapter = OMRLiveAdapter(
             broker=mock_broker,
+            broker_name='alpaca',
             symbols=['TQQQ', 'SQQQ']
         )
 
@@ -478,6 +486,7 @@ class TestOMRLiveAdapter:
         """Test that failed orders are not tracked in state manager."""
         adapter = OMRLiveAdapter(
             broker=mock_broker,
+            broker_name='alpaca',
             symbols=['TQQQ']
         )
 
@@ -589,6 +598,7 @@ class TestVIXDataFetching:
         """Test _fetch_vix_yfinance returns non-empty DataFrame."""
         adapter = OMRLiveAdapter(
             broker=mock_broker,
+            broker_name='alpaca',
             symbols=['TQQQ']
         )
 
@@ -611,6 +621,7 @@ class TestVIXDataFetching:
         """Test _fetch_vix_yfinance returns DataFrame with OHLCV columns."""
         adapter = OMRLiveAdapter(
             broker=mock_broker,
+            broker_name='alpaca',
             symbols=['TQQQ']
         )
 
@@ -657,6 +668,7 @@ class TestVIXDataFetching:
 
         adapter = OMRLiveAdapter(
             broker=mock_broker,
+            broker_name='alpaca',
             symbols=['SPY']  # Just SPY to simplify
         )
 
@@ -699,6 +711,7 @@ class TestVIXDataFetching:
 
         adapter = OMRLiveAdapter(
             broker=mock_broker,
+            broker_name='alpaca',
             symbols=['TQQQ']
         )
 
@@ -746,6 +759,7 @@ class TestVIXDataFetching:
         """
         adapter = OMRLiveAdapter(
             broker=mock_broker,
+            broker_name='alpaca',
             symbols=['TQQQ']
         )
 
@@ -784,7 +798,7 @@ class TestColumnNormalization:
 
     def test_normalize_single_level_uppercase(self, mock_broker):
         """Test normalization of simple uppercase column names."""
-        adapter = OMRLiveAdapter(broker=mock_broker, symbols=['SPY'])
+        adapter = OMRLiveAdapter(broker=mock_broker, broker_name='alpaca', symbols=['SPY'])
 
         import pandas as pd
         dates = pd.date_range('2024-01-01', '2024-01-10', freq='D')
@@ -809,7 +823,7 @@ class TestColumnNormalization:
 
     def test_normalize_mixed_case_columns(self, mock_broker):
         """Test normalization of mixed case column names."""
-        adapter = OMRLiveAdapter(broker=mock_broker, symbols=['SPY'])
+        adapter = OMRLiveAdapter(broker=mock_broker, broker_name='alpaca', symbols=['SPY'])
 
         import pandas as pd
         dates = pd.date_range('2024-01-01', '2024-01-10', freq='D')
@@ -833,7 +847,7 @@ class TestColumnNormalization:
 
     def test_normalize_already_lowercase(self, mock_broker):
         """Test that already lowercase columns remain unchanged."""
-        adapter = OMRLiveAdapter(broker=mock_broker, symbols=['SPY'])
+        adapter = OMRLiveAdapter(broker=mock_broker, broker_name='alpaca', symbols=['SPY'])
 
         import pandas as pd
         dates = pd.date_range('2024-01-01', '2024-01-10', freq='D')
@@ -1390,6 +1404,7 @@ class TestDataProviderIntegration:
         """Test OMRLiveAdapter accepts optional data_provider parameter."""
         adapter = OMRLiveAdapter(
             broker=mock_broker,
+            broker_name='alpaca',
             symbols=['TQQQ'],
             data_provider=mock_data_provider
         )
@@ -1401,6 +1416,7 @@ class TestDataProviderIntegration:
         """Test OMRLiveAdapter works with data_provider=None (backward compatible)."""
         adapter = OMRLiveAdapter(
             broker=mock_broker,
+            broker_name='alpaca',
             symbols=['TQQQ'],
             data_provider=None
         )
@@ -1411,6 +1427,7 @@ class TestDataProviderIntegration:
         """Test OMRLiveAdapter uses data_provider for intraday data fetch."""
         adapter = OMRLiveAdapter(
             broker=mock_broker,
+            broker_name='alpaca',
             symbols=['TQQQ', 'SQQQ'],
             data_provider=mock_data_provider
         )
@@ -1425,6 +1442,7 @@ class TestDataProviderIntegration:
         """Test that data_provider is properly stored in base StrategyAdapter."""
         adapter = OMRLiveAdapter(
             broker=mock_broker,
+            broker_name='alpaca',
             symbols=['TQQQ'],
             data_provider=mock_data_provider
         )

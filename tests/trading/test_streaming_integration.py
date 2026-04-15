@@ -142,6 +142,7 @@ class TestOMRStreamingIntegration:
         """Test OMRLiveAdapter accepts LiveDataProvider."""
         adapter = OMRLiveAdapter(
             broker=mock_broker,
+            broker_name='alpaca',
             symbols=['TQQQ', 'SQQQ'],
             data_provider=mock_streaming_provider
         )
@@ -154,6 +155,7 @@ class TestOMRStreamingIntegration:
         """Test OMR fetches intraday data from streaming buffer instead of API."""
         adapter = OMRLiveAdapter(
             broker=mock_broker,
+            broker_name='alpaca',
             symbols=['TQQQ', 'SQQQ', 'UPRO'],
             data_provider=mock_streaming_provider
         )
@@ -185,6 +187,7 @@ class TestOMRStreamingIntegration:
         """Test OMR uses streaming provider, not broker API for symbol data."""
         adapter = OMRLiveAdapter(
             broker=mock_broker,
+            broker_name='alpaca',
             symbols=['TQQQ'],
             data_provider=mock_streaming_provider
         )
@@ -214,6 +217,7 @@ class TestOMRStreamingIntegration:
         """Test streaming data returns correct OHLCV schema."""
         adapter = OMRLiveAdapter(
             broker=mock_broker,
+            broker_name='alpaca',
             symbols=['TQQQ'],
             data_provider=mock_streaming_provider
         )
@@ -388,6 +392,7 @@ class TestStreamingVsPollingComparison:
         # Setup OMR with streaming
         omr_streaming = OMRLiveAdapter(
             broker=mock_broker,
+            broker_name='alpaca',
             symbols=['TQQQ', 'SQQQ'],
             data_provider=mock_streaming_provider
         )
@@ -395,6 +400,7 @@ class TestStreamingVsPollingComparison:
         # Setup OMR without streaming (polling via broker)
         omr_polling = OMRLiveAdapter(
             broker=mock_broker,
+            broker_name='alpaca',
             symbols=['TQQQ', 'SQQQ'],
             data_provider=None  # No provider = use broker
         )
@@ -434,6 +440,7 @@ class TestStreamingVsPollingComparison:
         # Setup OMR with streaming
         omr_streaming = OMRLiveAdapter(
             broker=mock_broker,
+            broker_name='alpaca',
             symbols=['TQQQ'],
             data_provider=mock_streaming_provider
         )
@@ -441,6 +448,7 @@ class TestStreamingVsPollingComparison:
         # Setup OMR with polling
         omr_polling = OMRLiveAdapter(
             broker=mock_broker,
+            broker_name='alpaca',
             symbols=['TQQQ'],
             data_provider=None
         )
@@ -481,6 +489,7 @@ class TestStreamingFallback:
 
         adapter = OMRLiveAdapter(
             broker=mock_broker,
+            broker_name='alpaca',
             symbols=['TQQQ'],
             data_provider=empty_provider
         )
@@ -508,6 +517,7 @@ class TestStreamingProviderSignatureDetection:
         """Test adapter detects LiveDataProvider by checking for get_bars method."""
         adapter = OMRLiveAdapter(
             broker=mock_broker,
+            broker_name='alpaca',
             symbols=['TQQQ'],
             data_provider=mock_streaming_provider
         )
@@ -532,6 +542,7 @@ class TestStreamingProviderSignatureDetection:
 
         adapter = OMRLiveAdapter(
             broker=mock_broker,
+            broker_name='alpaca',
             symbols=['TQQQ'],
             data_provider=polling_provider
         )

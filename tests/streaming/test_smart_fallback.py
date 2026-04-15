@@ -290,6 +290,7 @@ class TestOMRDataValidation:
         # Create adapter
         adapter = OMRLiveAdapter(
             broker=mock_broker,
+            broker_name='alpaca',
             symbols=['TQQQ'],
             data_provider=mock_provider
         )
@@ -329,6 +330,7 @@ class TestOMRDataValidation:
         # Create adapter
         adapter = OMRLiveAdapter(
             broker=mock_broker,
+            broker_name='alpaca',
             symbols=['TQQQ'],
             data_provider=mock_provider
         )
