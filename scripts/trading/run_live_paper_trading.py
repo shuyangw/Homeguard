@@ -378,7 +378,7 @@ class TradingSessionTracker:
 class LiveTradingRunner:
     """Manages continuous live paper trading execution with logging."""
 
-    def __init__(self, adapter, check_interval: int = 15, log_dir: Path = None, enable_intraday_prefetch: bool = True, force_market_open: bool = False):
+    def __init__(self, adapter, check_interval: int = 15, log_dir: Path = None, enable_intraday_prefetch: bool = True, assume_market_open: bool = False):
         """
         Initialize live trading runner.
 
@@ -387,7 +387,7 @@ class LiveTradingRunner:
             check_interval: Seconds between schedule checks (default: 15)
             log_dir: Directory for log files (default: logs/live_trading)
             enable_intraday_prefetch: Deprecated - strategies now fetch data at execution time
-            force_market_open: Bypass market open check for testing (default: False)
+            assume_market_open: Bypass market open check for testing (default: False)
         """
         self.adapter = adapter
         self.check_interval = check_interval
@@ -398,7 +398,7 @@ class LiveTradingRunner:
         self.data_preloaded_today: bool = False  # Track if data pre-loaded today
         self.intraday_prefetched_today: bool = False  # Track if intraday data pre-fetched today
         self.enable_intraday_prefetch: bool = enable_intraday_prefetch  # Toggle for intraday pre-fetching
-        self.force_market_open: bool = force_market_open  # Bypass market open check for testing
+        self.assume_market_open: bool = assume_market_open  # Bypass market open check for testing
 
         # Setup logging directory
         if log_dir is None:
@@ -427,7 +427,7 @@ class LiveTradingRunner:
 
     def _is_market_open(self) -> bool:
         """Check if market is open, with bypass support for testing."""
-        if self.force_market_open:
+        if self.assume_market_open:
             return True
         return self.adapter.broker.is_market_open()
 
@@ -529,8 +529,8 @@ class LiveTradingRunner:
             try:
                 market_open = self._is_market_open()
                 market_status_str = 'OPEN' if market_open else 'CLOSED'
-                if self.force_market_open and not self.adapter.broker.is_market_open():
-                    market_status_str = 'FORCED OPEN (testing)'
+                if self.assume_market_open and not self.adapter.broker.is_market_open():
+                    market_status_str = 'ASSUMED OPEN (testing)'
 
                 # Log market check to session tracker
                 self.session_tracker.log_check(market_open)
@@ -632,8 +632,8 @@ class LiveTradingRunner:
         logger.info(f"Check interval: {self.check_interval}s")
         logger.info(f"Log directory: {self.log_dir}")
         logger.info(f"Intraday pre-fetch: Strategies fetch at execution time")
-        if self.force_market_open:
-            logger.warning(f"FORCE MARKET OPEN: ENABLED (market checks bypassed)")
+        if self.assume_market_open:
+            logger.warning(f"ASSUME MARKET OPEN: market-hours checks bypassed")
         logger.info("Press Ctrl+C to stop")
         logger.info("=" * 80)
 
@@ -998,9 +998,9 @@ def main():
 
     # Testing/Debug options
     parser.add_argument(
-        '--force-market-open',
+        '--assume-market-open',
         action='store_true',
-        help='Bypass market open check for testing (DANGEROUS - only use for testing)'
+        help='Assume market is open, skipping market-hours checks (for testing only)'
     )
 
     parser.add_argument(
@@ -1275,11 +1275,11 @@ def main():
             # Continuous execution
             enable_prefetch = not args.no_intraday_prefetch  # Inverted: --no-intraday-prefetch disables
 
-            # Warn if forcing market open
-            if args.force_market_open:
+            # Warn if assuming market open
+            if args.assume_market_open:
                 logger.warning("=" * 60)
-                logger.warning("FORCE MARKET OPEN MODE ENABLED")
-                logger.warning("Market open checks are BYPASSED - for testing only!")
+                logger.warning("ASSUME MARKET OPEN: market-hours checks bypassed")
+                logger.warning("For testing only -- strategy signals may not fire outside market hours")
                 logger.warning("=" * 60)
 
             runner = LiveTradingRunner(
@@ -1287,7 +1287,7 @@ def main():
                 check_interval=args.check_interval,
                 log_dir=log_dir,
                 enable_intraday_prefetch=enable_prefetch,
-                force_market_open=args.force_market_open
+                assume_market_open=args.assume_market_open
             )
             runner.run_continuous()
 
