@@ -10,7 +10,7 @@ IBC_VERSION="3.23.0"
 JDK_VERSION="17.0.14+10"
 
 echo "[1/6] Installing system dependencies..."
-sudo yum install -y xorg-x11-server-Xvfb gettext  # gettext provides envsubst
+sudo yum install -y xorg-x11-server-Xvfb gettext libXi libXtst alsa-lib
 
 echo "[2/6] Installing Bellsoft Liberica JDK 17 (aarch64 Full)..."
 if ! java -version 2>&1 | grep -q "17"; then
@@ -21,10 +21,17 @@ fi
 
 echo "[3/6] Installing IB Gateway (stable)..."
 if [ ! -d /home/ec2-user/ibgateway ]; then
-    cd /tmp
+    # Installer bundles x64 JRE; on ARM64 we patch it to use the system JDK
+    mkdir -p /home/ec2-user/tmp
+    cd /home/ec2-user/tmp
     wget -q https://download2.interactivebrokers.com/installers/ibgateway/stable-standalone/ibgateway-stable-standalone-linux-x64.sh
     chmod +x ibgateway-stable-standalone-linux-x64.sh
-    sudo -u ec2-user bash ibgateway-stable-standalone-linux-x64.sh -q -dir /home/ec2-user/ibgateway
+    cp ibgateway-stable-standalone-linux-x64.sh ibgateway-patched.sh
+    JAVA_HOME_PATH="/usr/lib/jvm/bellsoft-java17-full.aarch64"
+    sed -i "s|app_java_home=\`pwd\`\$|app_java_home=${JAVA_HOME_PATH}|" ibgateway-patched.sh
+    sed -i 's|app_java_home=$app_java_home/jre|# patched: using system JDK|' ibgateway-patched.sh
+    export TMPDIR=/home/ec2-user/tmp
+    sudo -u ec2-user bash ibgateway-patched.sh -q -dir /home/ec2-user/ibgateway
 fi
 
 echo "[4/6] Installing IBC ${IBC_VERSION}..."
