@@ -1,5 +1,5 @@
 # IBC configuration for automated IB Gateway login.
-# Values with ${...} are resolved from .env at service start.
+# Values with ${...} are resolved via envsubst at service start.
 #
 # Docs: https://github.com/IbcAlpha/IBC/blob/master/userguide.md
 
@@ -22,8 +22,15 @@ AcceptNonBrokerageAccountWarning=yes
 # If another session exists, take over as primary
 ExistingSessionDetectedAction=primary
 
+# 2FA handling (IB Key mobile app)
+SecondFactorAuthenticationTimeout=180
+ReloginAfterSecondFactorAuthenticationTimeout=yes
+
 # JVM memory (match systemd MemoryMax budget)
 JavaHeapSize=512
 
 # Override API port from env
 OverrideTwsApiPort=${IBKR_GATEWAY_PORT}
+
+# Read-only API (set no for order submission)
+ReadOnlyApi=no

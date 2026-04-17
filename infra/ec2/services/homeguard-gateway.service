@@ -1,6 +1,7 @@
 [Unit]
 Description=IB Gateway via IBC (automated login)
-After=network.target
+After=network-online.target homeguard-xvfb.service
+Requires=homeguard-xvfb.service
 Before=homeguard-trading.target
 
 [Service]
@@ -10,14 +11,12 @@ WorkingDirectory=/home/ec2-user
 
 # Source credentials from .env
 EnvironmentFile=/home/ec2-user/Homeguard/.env
-
-# Virtual display for Gateway's Swing UI
 Environment="DISPLAY=:1"
 
-# Start Xvfb then launch Gateway via IBC
-ExecStartPre=/usr/bin/Xvfb :1 -screen 0 1024x768x24 &
+# Render IBC config from template (resolve env vars), then launch Gateway
+ExecStartPre=/bin/bash -c 'envsubst < /home/ec2-user/Homeguard/config/ibkr/ibc-config.ini.template > /home/ec2-user/ibc-config.ini'
 ExecStart=/opt/ibc/scripts/ibcstart.sh -g \
-    --ibc-ini=/home/ec2-user/Homeguard/config/ibkr/ibc-config.ini \
+    --ibc-ini=/home/ec2-user/ibc-config.ini \
     --java-path=/usr/lib/jvm/bellsoft-java17-full-aarch64/bin
 
 Restart=on-failure
@@ -26,8 +25,8 @@ StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=homeguard-gateway
 
-# Memory limit (Gateway + Xvfb)
-MemoryMax=768M
+# Memory limit (Gateway only, Xvfb is separate)
+MemoryMax=640M
 
 [Install]
 WantedBy=homeguard-trading.target
