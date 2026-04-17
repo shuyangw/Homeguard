@@ -12,17 +12,18 @@ brokers:
     paper: true
     # Credentials from env: ALPACA_PAPER_KEY_ID, ALPACA_PAPER_SECRET_KEY
 
-  # Uncomment when IBKR Gateway is running:
-  # ibkr:
-  #   port: 4002
-  #   client_id: 10
-  #   readonly: false
+  ibkr:
+    port: 4002
+    client_id: 10
+    readonly: false
 
 strategies:
   omr:
-    broker: alpaca
+    broker: ibkr
   ramp:
-    broker: alpaca
+    broker: alpaca    # Keep on Alpaca until existing positions are closed
+  mp:
+    broker: ibkr
   cscm:
     broker: coinbase
 
