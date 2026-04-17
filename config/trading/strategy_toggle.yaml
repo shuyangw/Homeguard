@@ -1,14 +1,14 @@
-last_modified: '2026-03-19T01:08:14.909806-04:00'
+last_modified: '2026-04-15T02:13:25.075864-04:00'
 modified_by: api
 strategies:
   cscm:
     enabled: false
     shutdown_requested: false
   mp:
-    enabled: true
+    enabled: false
     shutdown_requested: false
   omr:
-    enabled: true
+    enabled: false
     shutdown_requested: false
   ramp:
     enabled: true

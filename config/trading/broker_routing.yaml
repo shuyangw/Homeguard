@@ -21,7 +21,7 @@ strategies:
   omr:
     broker: ibkr
   ramp:
-    broker: alpaca    # Keep on Alpaca until existing positions are closed
+    broker: ibkr
   mp:
     broker: ibkr
   cscm:
