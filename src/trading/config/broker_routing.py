@@ -5,6 +5,7 @@ Reads broker_routing.yaml and creates shared broker instances.
 Strategies get their assigned broker; unlisted strategies get the default.
 """
 
+import os
 from typing import Any, Dict, Tuple
 
 import yaml
@@ -44,6 +45,28 @@ class BrokerRoutingMap:
         return self._default[1]
 
 
+_ALPACA_ENV_MAP = {
+    True: ("ALPACA_PAPER_KEY_ID", "ALPACA_PAPER_SECRET_KEY"),
+    False: ("ALPACA_LIVE_KEY_ID", "ALPACA_LIVE_SECRET_KEY"),
+}
+
+
+def _resolve_env_credentials(broker_type: str, cfg: Dict) -> None:
+    """Inject API credentials from environment if not already in config."""
+    if broker_type == "alpaca" and "api_key" not in cfg:
+        paper = cfg.get("paper", True)
+        key_var, secret_var = _ALPACA_ENV_MAP[bool(paper)]
+        api_key = os.environ.get(key_var)
+        secret_key = os.environ.get(secret_var)
+        if not api_key or not secret_key:
+            raise ValueError(
+                f"Alpaca credentials not in config or environment. "
+                f"Set {key_var} and {secret_var}"
+            )
+        cfg["api_key"] = api_key
+        cfg["secret_key"] = secret_key
+
+
 def load_broker_routing(
     config_path: str = "config/trading/broker_routing.yaml",
 ) -> BrokerRoutingMap:
@@ -72,6 +95,7 @@ def load_broker_routing(
         try:
             cfg = dict(broker_cfg)
             broker_type = cfg.pop("type", broker_name)
+            _resolve_env_credentials(broker_type, cfg)
             broker_instances[broker_name] = BrokerFactory.create_broker(
                 broker_type, cfg
             )

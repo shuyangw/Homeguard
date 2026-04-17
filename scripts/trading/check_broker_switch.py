@@ -18,6 +18,9 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 
+from dotenv import load_dotenv
+load_dotenv()
+
 from src.trading.config.broker_routing import load_broker_routing
 from src.trading.state.strategy_state_manager import StrategyStateManager
 from src.utils.logger import logger
