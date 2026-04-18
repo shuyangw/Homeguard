@@ -13,5 +13,11 @@ Usage:
 
 from src.monitoring.registry import MetricsRegistry
 from src.monitoring.server import start_metrics_server
+from src.monitoring.snapshot import SnapshotWriter, read_snapshot
 
-__all__ = ['MetricsRegistry', 'start_metrics_server']
+__all__ = [
+    'MetricsRegistry',
+    'start_metrics_server',
+    'SnapshotWriter',
+    'read_snapshot',
+]
