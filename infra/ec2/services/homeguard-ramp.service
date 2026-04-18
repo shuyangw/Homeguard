@@ -9,6 +9,8 @@ Type=simple
 User=ec2-user
 WorkingDirectory=/home/ec2-user/Homeguard
 Environment="PATH=/home/ec2-user/Homeguard/venv/bin:/usr/local/bin:/usr/bin:/bin"
+Environment="METRICS_PORT=8082"
+Environment="ENABLE_METRICS=true"
 ExecStart=/home/ec2-user/Homeguard/venv/bin/python scripts/trading/run_live_paper_trading.py --strategy ramp
 Restart=always
 RestartSec=10
@@ -17,8 +19,9 @@ StandardError=journal
 SyslogIdentifier=homeguard-ramp
 
 # Resource limits
-MemoryMax=512M
+MemoryMax=700M
 CPUQuota=75%
+OOMScoreAdjust=-900
 
 [Install]
 WantedBy=homeguard-trading.target
