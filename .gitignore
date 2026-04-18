@@ -258,6 +258,10 @@ docs/*
 !docs/strategies/
 !docs/strategies/**
 
+# KEEP: Session work logs (implementation summaries for cross-session recall)
+!docs/progress/
+!docs/progress/**
+
 # KEEP: Troubleshooting documentation (production issue analysis)
 !docs/troubleshooting/
 !docs/troubleshooting/**

@@ -201,6 +201,38 @@ Strategy skill: `.claude/skills/implement-strategy/`
 
 Shell scripts: `source infra/ec2/load_env.sh`. Batch scripts: `call infra\ec2\load_env.bat`.
 
+## Session Work Logs
+
+After completing a significant implementation session (new features, infra changes, migrations, multi-step fixes), write a timestamped summary to `docs/progress/YYYYMMDD_<TOPIC>.md`.
+
+**When to write:** At the end of a session that produced commits -- not for pure research/discussion sessions.
+
+**Format:**
+```markdown
+# <Topic> - YYYY-MM-DD
+
+## Summary
+1-3 sentence overview of what was accomplished.
+
+## Changes Made
+- **File/area**: what changed and why (bulleted, concise)
+
+## Commits
+- `<short-hash>` <commit message>
+
+## Known Issues / Remaining Work
+- What's left, what broke, what needs follow-up
+
+## Validation
+- How the changes were verified (tests run, manual checks, EC2 deploy)
+```
+
+**Rules:**
+- Keep it factual and concise -- this is a reference doc, not a narrative
+- Include commit hashes so future sessions can trace changes
+- Always list remaining work so the next session knows where to pick up
+- Do not duplicate content already in commit messages -- focus on context and decisions that aren't captured in code
+
 ## Common Type Issues
 
 - DataFrame.xs() type hints, VectorBT incomplete stubs, SQL injection prevention
