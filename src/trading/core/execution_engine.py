@@ -51,7 +51,8 @@ class ExecutionEngine:
         broker: BrokerInterface,
         max_retries: int = 3,
         retry_delay: float = 1.0,
-        fill_timeout: float = 30.0
+        fill_timeout: float = 30.0,
+        metrics_registry=None,
     ):
         """
         Initialize execution engine.
@@ -61,11 +62,13 @@ class ExecutionEngine:
             max_retries: Maximum order retry attempts
             retry_delay: Delay between retries (seconds)
             fill_timeout: Maximum time to wait for fill (seconds)
+            metrics_registry: Optional MetricsRegistry for order event recording
         """
         self.broker = broker
         self.max_retries = max_retries
         self.retry_delay = retry_delay
         self.fill_timeout = fill_timeout
+        self.metrics_registry = metrics_registry
 
         # Order tracking
         self.orders: Dict[str, Dict] = {}
@@ -117,6 +120,9 @@ class ExecutionEngine:
             BrokerError: If order execution fails after all retries
         """
         self.total_orders += 1
+        if self.metrics_registry:
+            broker_name = getattr(self.broker, 'name', 'unknown')
+            self.metrics_registry.record_order_submitted(side.value, broker_name)
         execution_start = datetime.now()
 
         logger.info(
@@ -170,6 +176,11 @@ class ExecutionEngine:
 
                 self.execution_history.append(execution)
                 self.successful_orders += 1
+                if self.metrics_registry:
+                    broker_name = getattr(self.broker, 'name', 'unknown')
+                    filled_price = float(order.get('filled_avg_price', 0))
+                    slippage_bps = 0.0  # Placeholder -- adapters can provide expected price
+                    self.metrics_registry.record_order_filled(broker_name, slippage_bps)
 
                 logger.success(
                     f"Order executed successfully: {order['order_id']} | "
@@ -187,6 +198,9 @@ class ExecutionEngine:
                 execution['end_time'] = datetime.now()
                 self.execution_history.append(execution)
                 self.failed_orders += 1
+                if self.metrics_registry:
+                    broker_name = getattr(self.broker, 'name', 'unknown')
+                    self.metrics_registry.record_order_rejected(str(e)[:50], broker_name)
                 raise
 
             except BrokerError as e:
@@ -205,6 +219,9 @@ class ExecutionEngine:
                     execution['end_time'] = datetime.now()
                     self.execution_history.append(execution)
                     self.failed_orders += 1
+                    if self.metrics_registry:
+                        broker_name = getattr(self.broker, 'name', 'unknown')
+                        self.metrics_registry.record_order_rejected(str(last_error)[:50], broker_name)
                     raise BrokerError(f"Order execution failed after {self.max_retries} attempts: {last_error}")
 
         # Should not reach here
