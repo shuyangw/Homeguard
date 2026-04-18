@@ -378,7 +378,10 @@ class TradingSessionTracker:
 class LiveTradingRunner:
     """Manages continuous live paper trading execution with logging."""
 
-    def __init__(self, adapter, check_interval: int = 15, log_dir: Path = None, enable_intraday_prefetch: bool = True, assume_market_open: bool = False):
+    def __init__(self, adapter, check_interval: int = 15, log_dir: Path = None,
+                 enable_intraday_prefetch: bool = True,
+                 assume_market_open: bool = False,
+                 metrics_registry=None):
         """
         Initialize live trading runner.
 
@@ -388,6 +391,7 @@ class LiveTradingRunner:
             log_dir: Directory for log files (default: logs/live_trading)
             enable_intraday_prefetch: Deprecated - strategies now fetch data at execution time
             assume_market_open: Bypass market open check for testing (default: False)
+            metrics_registry: Optional MetricsRegistry for monitoring (default: None)
         """
         self.adapter = adapter
         self.check_interval = check_interval
@@ -399,6 +403,7 @@ class LiveTradingRunner:
         self.intraday_prefetched_today: bool = False  # Track if intraday data pre-fetched today
         self.enable_intraday_prefetch: bool = enable_intraday_prefetch  # Toggle for intraday pre-fetching
         self.assume_market_open: bool = assume_market_open  # Bypass market open check for testing
+        self.metrics_registry = metrics_registry  # Optional MetricsRegistry for monitoring
 
         # Setup logging directory
         if log_dir is None:
@@ -641,6 +646,35 @@ class LiveTradingRunner:
             try:
                 # Log minute progress
                 self._log_minute_progress()
+
+                # Update metrics
+                if self.metrics_registry is not None:
+                    from src.monitoring.hooks import (
+                        update_portfolio_metrics,
+                        update_market_status,
+                        update_process_metrics,
+                        update_websocket_metrics,
+                    )
+                    try:
+                        account = self.adapter.broker.get_account()
+                        if account:
+                            broker_name = getattr(self.adapter, 'broker_name', 'unknown')
+                            update_portfolio_metrics(self.metrics_registry, account, broker_name)
+                        update_market_status(self.metrics_registry, self._is_market_open())
+                        update_process_metrics(self.metrics_registry)
+
+                        # WebSocket status if streaming
+                        if hasattr(self.adapter, 'data_provider') and self.adapter.data_provider:
+                            dp = self.adapter.data_provider
+                            if hasattr(dp, 'is_connected'):
+                                feed = os.getenv('STREAMING_FEED', 'iex')
+                                connected = dp.is_connected()
+                                symbols = getattr(dp, '_subscribed_count', 0)
+                                update_websocket_metrics(
+                                    self.metrics_registry, feed, connected, symbols
+                                )
+                    except Exception as e:
+                        logger.error(f"Metrics update failed: {e}")
 
                 # Use EST for all time comparisons
                 now_est = tz.now()
@@ -1069,6 +1103,29 @@ def main():
     logger.info(f"Mode: {'Run once' if args.once else 'Continuous'}")
     logger.info("=" * 80)
 
+    # Initialize metrics registry if enabled
+    metrics_registry = None
+    if os.getenv('ENABLE_METRICS', 'false').lower() in ('true', '1', 'yes'):
+        from src.monitoring import MetricsRegistry, start_metrics_server
+        from src.monitoring.snapshot import SnapshotWriter
+
+        # Port assignment: 8080 + strategy index
+        strategy_ports = {'omr': 8081, 'ramp': 8082, 'mp': 8083, 'cscm': 8084}
+        metrics_port = int(os.getenv(
+            'METRICS_PORT',
+            str(strategy_ports.get(args.strategy, 8085))
+        ))
+
+        metrics_registry = MetricsRegistry(strategy=args.strategy)
+        start_metrics_server(metrics_registry, port=metrics_port)
+
+        # Start snapshot writer
+        from src.settings import get_local_storage_dir
+        snapshot_dir = os.path.join(get_local_storage_dir(), 'state')
+        SnapshotWriter(metrics_registry, snapshot_dir=snapshot_dir).start_background()
+
+        logger.info(f"Metrics enabled on port {metrics_port}")
+
     try:
         # Initialize broker via routing config
         logger.info("Loading broker routing...")
@@ -1287,7 +1344,8 @@ def main():
                 check_interval=args.check_interval,
                 log_dir=log_dir,
                 enable_intraday_prefetch=enable_prefetch,
-                assume_market_open=args.assume_market_open
+                assume_market_open=args.assume_market_open,
+                metrics_registry=metrics_registry,
             )
             runner.run_continuous()
 
