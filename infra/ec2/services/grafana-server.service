@@ -1,0 +1,21 @@
+[Unit]
+Description=Grafana Dashboard Server
+After=network.target victoria-metrics.service
+
+[Service]
+Type=simple
+User=grafana
+Group=grafana
+ExecStart=/usr/sbin/grafana-server \
+  --config=/etc/grafana/grafana.ini \
+  --homepath=/usr/share/grafana
+Restart=on-failure
+RestartSec=10
+MemoryMax=400M
+OOMScoreAdjust=300
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=grafana-server
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,57 @@
+# Grafana alert rules for Homeguard monitoring
+# Import via Grafana UI: Alerting -> Import
+# Or provision via Grafana alerting API
+
+groups:
+  - name: homeguard-trading
+    rules:
+      - alert: DrawdownApproachingLimit
+        expr: max(hg_portfolio_drawdown_pct) > 7
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Portfolio drawdown at {{ $value }}%"
+          description: "Drawdown exceeding 7% for 5 minutes. Review positions."
+
+      - alert: DrawdownCritical
+        expr: max(hg_portfolio_drawdown_pct) > 9
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "CRITICAL: Portfolio drawdown at {{ $value }}%"
+          description: "Drawdown exceeding 9%. Check if auto-stop triggered."
+
+      - alert: IBGatewayDown
+        expr: (time() - max(hg_broker_last_heartbeat_timestamp{broker="ibkr"})) > 120 and max(hg_market_open) == 1
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "IB Gateway unreachable for {{ $value }}s"
+          description: "Check IBC service, may need manual login."
+
+      - alert: WebSocketDisconnected
+        expr: min(hg_websocket_connected{provider="iex"}) == 0 and max(hg_market_open) == 1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "IEX WebSocket disconnected during market hours"
+
+      - alert: StrategySignalStale
+        expr: (time() - max(hg_strategy_last_signal_timestamp) by (strategy)) > 7200 and max(hg_market_open) == 1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Strategy {{ $labels.strategy }} signal stale ({{ $value }}s)"
+
+      - alert: OrderRejectionSpike
+        expr: sum(rate(hg_orders_rejected_total[5m])) > 0.1
+        for: 3m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Order rejection rate elevated"

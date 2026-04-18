@@ -1,0 +1,24 @@
+[Unit]
+Description=VictoriaMetrics - Time Series Database
+After=network.target
+
+[Service]
+Type=simple
+User=victoria
+Group=victoria
+ExecStart=/usr/local/bin/victoria-metrics-prod \
+  -storageDataPath=/var/lib/victoria-metrics \
+  -httpListenAddr=127.0.0.1:8428 \
+  -retentionPeriod=90d \
+  -promscrape.config=/etc/homeguard/scrape.yaml
+Restart=on-failure
+RestartSec=10
+MemoryMax=200M
+OOMScoreAdjust=300
+LimitNOFILE=65536
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=victoria-metrics
+
+[Install]
+WantedBy=multi-user.target

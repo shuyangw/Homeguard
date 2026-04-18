@@ -51,7 +51,8 @@ class ExecutionEngine:
         broker: BrokerInterface,
         max_retries: int = 3,
         retry_delay: float = 1.0,
-        fill_timeout: float = 30.0
+        fill_timeout: float = 30.0,
+        metrics_registry=None,
     ):
         """
         Initialize execution engine.
@@ -61,11 +62,13 @@ class ExecutionEngine:
             max_retries: Maximum order retry attempts
             retry_delay: Delay between retries (seconds)
             fill_timeout: Maximum time to wait for fill (seconds)
+            metrics_registry: Optional MetricsRegistry for order event recording
         """
         self.broker = broker
         self.max_retries = max_retries
         self.retry_delay = retry_delay
         self.fill_timeout = fill_timeout
+        self.metrics_registry = metrics_registry
 
         # Order tracking
         self.orders: Dict[str, Dict] = {}
@@ -81,6 +84,11 @@ class ExecutionEngine:
             f"Initialized ExecutionEngine (max_retries={max_retries}, "
             f"retry_delay={retry_delay}s, fill_timeout={fill_timeout}s)"
         )
+
+    def _broker_label(self) -> str:
+        # Prometheus label for the active broker; falls back to class name so
+        # metrics never silently collapse to "unknown" if a broker forgets to set .name
+        return getattr(self.broker, 'name', type(self.broker).__name__.lower())
 
     # ==================== Order Execution ====================
 
@@ -117,6 +125,11 @@ class ExecutionEngine:
             BrokerError: If order execution fails after all retries
         """
         self.total_orders += 1
+        if self.metrics_registry is not None:
+            try:
+                self.metrics_registry.record_order_submitted(side.value, self._broker_label())
+            except Exception as e:
+                logger.error(f"Metrics record_order_submitted failed: {e}")
         execution_start = datetime.now()
 
         logger.info(
@@ -170,6 +183,14 @@ class ExecutionEngine:
 
                 self.execution_history.append(execution)
                 self.successful_orders += 1
+                if self.metrics_registry is not None:
+                    try:
+                        # TODO(monitoring): compute real slippage from expected vs filled
+                        # once adapters expose expected_price; today always 0.0
+                        slippage_bps = 0.0
+                        self.metrics_registry.record_order_filled(self._broker_label(), slippage_bps)
+                    except Exception as e:
+                        logger.error(f"Metrics record_order_filled failed: {e}")
 
                 logger.success(
                     f"Order executed successfully: {order['order_id']} | "
@@ -187,6 +208,11 @@ class ExecutionEngine:
                 execution['end_time'] = datetime.now()
                 self.execution_history.append(execution)
                 self.failed_orders += 1
+                if self.metrics_registry is not None:
+                    try:
+                        self.metrics_registry.record_order_rejected(str(e)[:50], self._broker_label())
+                    except Exception as metric_err:
+                        logger.error(f"Metrics record_order_rejected failed: {metric_err}")
                 raise
 
             except BrokerError as e:
@@ -205,6 +231,11 @@ class ExecutionEngine:
                     execution['end_time'] = datetime.now()
                     self.execution_history.append(execution)
                     self.failed_orders += 1
+                    if self.metrics_registry is not None:
+                        try:
+                            self.metrics_registry.record_order_rejected(str(last_error)[:50], self._broker_label())
+                        except Exception as metric_err:
+                            logger.error(f"Metrics record_order_rejected failed: {metric_err}")
                     raise BrokerError(f"Order execution failed after {self.max_retries} attempts: {last_error}")
 
         # Should not reach here
