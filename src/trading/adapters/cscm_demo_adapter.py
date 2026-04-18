@@ -347,9 +347,8 @@ class CSCMDemoAdapter:
         """Check if we should rebalance now."""
         now = tz.now()
 
-        # Check market hours if enabled
-        if self.market_hours_only and not self._is_market_hours():
-            return False
+        # NOTE: Market hours gating is handled by run_once(), which allows
+        # rebalance days through even when market_hours_only is True.
 
         # Check if it's rebalance day
         if not self.signals.should_rebalance(now):
