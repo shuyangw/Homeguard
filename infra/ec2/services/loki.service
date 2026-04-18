@@ -1,0 +1,19 @@
+[Unit]
+Description=Loki Log Aggregator
+After=network.target
+
+[Service]
+Type=simple
+User=loki
+Group=loki
+ExecStart=/usr/local/bin/loki -config.file=/etc/homeguard/loki.yaml
+Restart=on-failure
+RestartSec=10
+MemoryMax=300M
+OOMScoreAdjust=300
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=loki
+
+[Install]
+WantedBy=multi-user.target
