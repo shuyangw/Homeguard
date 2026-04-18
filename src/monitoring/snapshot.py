@@ -6,7 +6,6 @@ Can be read by external tools when Grafana/VictoriaMetrics are down.
 """
 
 import json
-import os
 import time
 import threading
 from pathlib import Path
@@ -72,23 +71,28 @@ class SnapshotWriter:
 
 
 def read_snapshot(snapshot_dir: str,
-                  max_age_seconds: float = 120.0) -> Optional[dict]:
+                  max_age_seconds: float = 120.0,
+                  strategy: Optional[str] = None) -> Optional[dict]:
     """
     Read the most recent snapshot from a directory.
 
     Args:
         snapshot_dir: Directory containing snapshot files
         max_age_seconds: Maximum age before snapshot is considered stale
+        strategy: If given, filter to that strategy's snapshot only
+                  (e.g. ``strategy='omr'`` reads ``omr_snapshot.json``).
+                  If None, returns the most-recent snapshot across all
+                  strategies in the directory.
 
     Returns:
-        Parsed snapshot dict, or None if stale/missing
+        Parsed snapshot dict, or None if stale/missing/corrupt
     """
     snapshot_dir = Path(snapshot_dir)
     if not snapshot_dir.exists():
         return None
 
-    # Find most recent snapshot file
-    snapshots = sorted(snapshot_dir.glob('*_snapshot.json'),
+    pattern = f'{strategy}_snapshot.json' if strategy else '*_snapshot.json'
+    snapshots = sorted(snapshot_dir.glob(pattern),
                        key=lambda p: p.stat().st_mtime, reverse=True)
     if not snapshots:
         return None
@@ -98,5 +102,9 @@ def read_snapshot(snapshot_dir: str,
     if age > max_age_seconds:
         return None
 
-    with open(latest) as f:
-        return json.load(f)
+    try:
+        with open(latest) as f:
+            return json.load(f)
+    except (OSError, json.JSONDecodeError) as e:
+        logger.error(f"Failed to read snapshot {latest}: {e}")
+        return None

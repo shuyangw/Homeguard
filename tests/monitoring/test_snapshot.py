@@ -48,3 +48,29 @@ class TestSnapshotWriter:
 
             files = os.listdir(tmpdir)
             assert any(f.startswith('ramp_snapshot') for f in files)
+
+    def test_strategy_filter(self):
+        """read_snapshot(strategy='omr') must not return another strategy's snapshot."""
+        omr_reg = MetricsRegistry(strategy='omr')
+        ramp_reg = MetricsRegistry(strategy='ramp')
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            SnapshotWriter(omr_reg, snapshot_dir=tmpdir).write_once()
+            time.sleep(0.01)  # ensure ramp has newer mtime
+            SnapshotWriter(ramp_reg, snapshot_dir=tmpdir).write_once()
+
+            # Unfiltered: latest is ramp
+            assert read_snapshot(tmpdir)['strategy'] == 'ramp'
+            # Filtered: picks omr even though ramp is newer
+            assert read_snapshot(tmpdir, strategy='omr')['strategy'] == 'omr'
+            # Missing strategy: None
+            assert read_snapshot(tmpdir, strategy='cscm') is None
+
+    def test_corrupt_snapshot_returns_none(self):
+        """A malformed JSON file must return None, not raise."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            bad_file = os.path.join(tmpdir, 'broken_snapshot.json')
+            with open(bad_file, 'w') as f:
+                f.write('{not valid json')
+
+            assert read_snapshot(tmpdir) is None
