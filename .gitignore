@@ -142,6 +142,7 @@ gui_config/  # legacy; now under artifacts/gui/
 !tsconfig.json
 !examples/**/*.json
 !tests/**/*.json
+!config/monitoring/grafana/dashboards/*.json
 
 # ============================================================================
 # USER-SPECIFIC FILES
