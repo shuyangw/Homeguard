@@ -11,6 +11,7 @@ WorkingDirectory=/home/ec2-user/Homeguard
 Environment="PATH=/home/ec2-user/Homeguard/venv/bin:/usr/local/bin:/usr/bin:/bin"
 Environment="METRICS_PORT=8082"
 Environment="ENABLE_METRICS=true"
+Environment="USE_STREAMING=true"
 ExecStart=/home/ec2-user/Homeguard/venv/bin/python scripts/trading/run_live_paper_trading.py --strategy ramp
 Restart=always
 RestartSec=10
