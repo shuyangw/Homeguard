@@ -6,6 +6,7 @@ All operations are protected by a single lock for simplicity --
 contention is negligible at 15-second scrape intervals.
 """
 
+import json
 import threading
 import time
 from typing import Dict, Optional, Any
@@ -162,21 +163,21 @@ class MetricsRegistry:
                 'timestamp': time.time(),
                 'gauges': {
                     name: {
-                        str(dict(lk) if lk else '{}'): v
+                        json.dumps(dict(lk), sort_keys=True) if lk else '{}': v
                         for lk, v in label_values.items()
                     }
                     for name, label_values in self._gauges.items()
                 },
                 'counters': {
                     name: {
-                        str(dict(lk) if lk else '{}'): v
+                        json.dumps(dict(lk), sort_keys=True) if lk else '{}': v
                         for lk, v in label_values.items()
                     }
                     for name, label_values in self._counters.items()
                 },
                 'histograms': {
                     name: {
-                        str(dict(lk) if lk else '{}'): h.copy()
+                        json.dumps(dict(lk), sort_keys=True) if lk else '{}': h.copy()
                         for lk, h in label_values.items()
                     }
                     for name, label_values in self._histograms.items()
