@@ -1,0 +1,12 @@
+[Unit]
+Description=Homeguard Weekly QuantStats Report
+
+[Service]
+Type=oneshot
+User=ec2-user
+WorkingDirectory=/home/ec2-user/Homeguard
+Environment="PATH=/home/ec2-user/Homeguard/venv/bin:/usr/local/bin:/usr/bin:/bin"
+ExecStart=/home/ec2-user/Homeguard/venv/bin/python scripts/monitoring/weekly_report.py
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=homeguard-weekly-report
