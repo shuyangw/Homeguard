@@ -404,6 +404,7 @@ class LiveTradingRunner:
         self.enable_intraday_prefetch: bool = enable_intraday_prefetch  # Toggle for intraday pre-fetching
         self.assume_market_open: bool = assume_market_open  # Bypass market open check for testing
         self.metrics_registry = metrics_registry  # Optional MetricsRegistry for monitoring
+        self._metrics_tick_counter = 0  # Throttles broker.get_account() calls
 
         # Setup logging directory
         if log_dir is None:
@@ -656,10 +657,15 @@ class LiveTradingRunner:
                         update_websocket_metrics,
                     )
                     try:
-                        account = self.adapter.broker.get_account()
-                        if account:
-                            broker_name = getattr(self.adapter, 'broker_name', 'unknown')
-                            update_portfolio_metrics(self.metrics_registry, account, broker_name)
+                        # Portfolio gauges need a REST call per update -- throttle to
+                        # every 4 ticks (~60s at check_interval=15s) so ENABLE_METRICS
+                        # doesn't 4x the broker API load.
+                        self._metrics_tick_counter += 1
+                        if self._metrics_tick_counter % 4 == 1:
+                            account = self.adapter.broker.get_account()
+                            if account:
+                                broker_name = getattr(self.adapter, 'broker_name', 'unknown')
+                                update_portfolio_metrics(self.metrics_registry, account, broker_name)
                         update_market_status(self.metrics_registry, self._is_market_open())
                         update_process_metrics(self.metrics_registry)
 
@@ -1109,19 +1115,25 @@ def main():
         from src.monitoring import MetricsRegistry, start_metrics_server
         from src.monitoring.snapshot import SnapshotWriter
 
-        # Port assignment: 8080 + strategy index
         strategy_ports = {'omr': 8081, 'ramp': 8082, 'mp': 8083, 'cscm': 8084}
-        metrics_port = int(os.getenv(
-            'METRICS_PORT',
-            str(strategy_ports.get(args.strategy, 8085))
-        ))
+        metrics_port_env = os.getenv('METRICS_PORT')
+        if metrics_port_env:
+            metrics_port = int(metrics_port_env)
+        elif args.strategy in strategy_ports:
+            metrics_port = strategy_ports[args.strategy]
+        else:
+            raise ValueError(
+                f"Strategy '{args.strategy}' has no default metrics port. "
+                f"Set METRICS_PORT env var or add to strategy_ports table."
+            )
 
         metrics_registry = MetricsRegistry(strategy=args.strategy)
         start_metrics_server(metrics_registry, port=metrics_port)
 
-        # Start snapshot writer
+        # Snapshot writer -- separate dir from trading state JSONs to avoid
+        # filename collisions or accidental cleanup of durable state.
         from src.settings import get_local_storage_dir
-        snapshot_dir = os.path.join(get_local_storage_dir(), 'state')
+        snapshot_dir = os.path.join(get_local_storage_dir(), 'metrics_snapshots')
         SnapshotWriter(metrics_registry, snapshot_dir=snapshot_dir).start_background()
 
         logger.info(f"Metrics enabled on port {metrics_port}")
