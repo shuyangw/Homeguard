@@ -302,8 +302,8 @@ class MetricsRegistry:
                                {'strategy': self.strategy})
             except (ImportError, AttributeError):
                 pass
-        except Exception:
-            pass  # Non-critical metric
+        except (OSError, IOError, ValueError):
+            pass  # Non-critical metric: /proc parse or unexpected I/O
 
     def update_ramp_cache(self, age_seconds: float, hit: bool) -> None:
         self.set_gauge('hg_ramp_cache_age_seconds', age_seconds)
