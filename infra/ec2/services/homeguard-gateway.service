@@ -20,8 +20,10 @@ ExecStart=/opt/ibc/scripts/ibcstart.sh 1037 -g \
     --ibc-ini=/home/ec2-user/ibc-config.ini \
     --java-path=/usr/lib/jvm/bellsoft-java17-full.aarch64/bin
 
-Restart=on-failure
-RestartSec=30
+Restart=always
+RestartSec=60
+StartLimitBurst=5
+StartLimitIntervalSec=600
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=homeguard-gateway
