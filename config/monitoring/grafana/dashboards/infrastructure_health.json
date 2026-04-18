@@ -32,7 +32,7 @@
       "targets": [
         {
           "datasource": {"type": "prometheus", "uid": "victoriametrics"},
-          "expr": "hg_broker_heartbeat_age_seconds",
+          "expr": "time() - hg_broker_last_heartbeat_timestamp",
           "legendFormat": "{{broker}}",
           "refId": "A"
         }
@@ -54,7 +54,7 @@
           "refId": "A"
         }
       ],
-      "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []},
+      "fieldConfig": {"defaults": {"unit": "cps"}, "overrides": []},
       "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "single"}}
     },
     {

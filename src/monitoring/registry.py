@@ -254,8 +254,10 @@ class MetricsRegistry:
                          {'strategy': self.strategy, 'reason': reason, 'broker': broker})
 
     def update_broker_heartbeat(self, broker: str) -> None:
-        """Record successful broker API call (resets heartbeat age to 0)."""
-        self.set_gauge('hg_broker_heartbeat_age_seconds', 0.0,
+        """Record successful broker API call by stamping the current Unix time.
+        Consumers compute age in PromQL via `time() - hg_broker_last_heartbeat_timestamp`.
+        """
+        self.set_gauge('hg_broker_last_heartbeat_timestamp', time.time(),
                        {'broker': broker})
 
     def update_websocket(self, provider: str, connected: bool,

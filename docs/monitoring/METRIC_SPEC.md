@@ -59,7 +59,7 @@ Typical cardinality: 20-40 series during market hours.
 | Metric | Type | Labels | Source |
 |--------|------|--------|--------|
 | `hg_broker_reconnect_total` | counter | `broker` | broker client hook |
-| `hg_broker_heartbeat_age_seconds` | gauge | `broker` | last successful call |
+| `hg_broker_last_heartbeat_timestamp` | gauge (unix-seconds) | `broker` | last successful call; consumers compute age as `time() - value` |
 | `hg_websocket_connected` | gauge (0/1) | `provider` | LiveDataProvider.is_connected() |
 | `hg_websocket_symbols_subscribed` | gauge | `provider` | hub state |
 | `hg_market_open` | gauge (0/1) | -- | synthetic, gates alerts |

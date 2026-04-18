@@ -236,11 +236,13 @@ class TestHighLevelUpdates:
         assert reg.get_gauge('hg_market_open') == 0.0
 
     def test_update_broker_heartbeat(self):
+        import time
         reg = MetricsRegistry(strategy='omr')
         reg.update_broker_heartbeat('alpaca')
-        age = reg.get_gauge('hg_broker_heartbeat_age_seconds', {'broker': 'alpaca'})
-        assert age is not None
-        assert age >= 0.0
+        ts = reg.get_gauge('hg_broker_last_heartbeat_timestamp', {'broker': 'alpaca'})
+        assert ts is not None
+        # Gauge stores Unix epoch; age (time() - ts) must be non-negative and small
+        assert 0.0 <= (time.time() - ts) < 5.0
 
     def test_update_process_rss(self):
         reg = MetricsRegistry(strategy='omr')

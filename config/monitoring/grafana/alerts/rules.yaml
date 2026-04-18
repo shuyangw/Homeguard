@@ -24,7 +24,7 @@ groups:
           description: "Drawdown exceeding 9%. Check if auto-stop triggered."
 
       - alert: IBGatewayDown
-        expr: max(hg_broker_heartbeat_age_seconds{broker="ibkr"}) > 120 and max(hg_market_open) == 1
+        expr: (time() - max(hg_broker_last_heartbeat_timestamp{broker="ibkr"})) > 120 and max(hg_market_open) == 1
         for: 2m
         labels:
           severity: critical
