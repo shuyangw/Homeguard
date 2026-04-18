@@ -29,34 +29,45 @@ class _MetricsHandler(BaseHTTPRequestHandler):
     registry: 'MetricsRegistry' = None  # type: ignore
 
     def do_GET(self):
-        if self.path == '/metrics':
-            body = self.registry.prometheus_format()
-            self.send_response(200)
-            self.send_header('Content-Type',
-                             'text/plain; version=0.0.4; charset=utf-8')
-            self.send_header('Content-Length', str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
+        try:
+            if self.path == '/metrics':
+                body = self.registry.prometheus_format()
+                self.send_response(200)
+                self.send_header('Content-Type',
+                                 'text/plain; version=0.0.4; charset=utf-8')
+                self.send_header('Content-Length', str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
 
-        elif self.path == '/health':
-            data = {
-                'status': 'ok',
-                'strategy': self.registry.strategy,
-                'uptime_seconds': round(time.time() - self.registry._created_at, 1),
-            }
-            body = json.dumps(data).encode('utf-8')
-            self.send_response(200)
-            self.send_header('Content-Type', 'application/json')
-            self.send_header('Content-Length', str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
+            elif self.path == '/health':
+                data = {
+                    'status': 'ok',
+                    'strategy': self.registry.strategy,
+                    'uptime_seconds': round(time.time() - self.registry._created_at, 1),
+                }
+                body = json.dumps(data).encode('utf-8')
+                self.send_response(200)
+                self.send_header('Content-Type', 'application/json')
+                self.send_header('Content-Length', str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
 
-        else:
-            self.send_error(404)
+            else:
+                self.send_error(404)
+        except Exception as e:
+            logger.error(f"[metrics-server] handler error on {self.path}: {e}")
+            try:
+                self.send_error(500)
+            except Exception:
+                pass  # Connection may already be broken
 
-    def log_message(self, format, *args):
-        """Suppress default stderr logging from http.server."""
+    def log_request(self, code='-', size='-'):
+        """Suppress successful access logs (would flood at scrape interval)."""
         pass
+
+    def log_error(self, format, *args):
+        """Route server errors through the Homeguard logger."""
+        logger.error(f"[metrics-server] {format % args}")
 
 
 def start_metrics_server(
