@@ -251,6 +251,10 @@ class MomentumLiveAdapter(StrategyAdapter):
         logger.info(f"[MP]   Rebalance time: 3:55 PM EST")
         logger.info(f"[MP]   Portfolio health checks: ENABLED")
 
+    @property
+    def broker_name(self) -> str:
+        return self._broker_name
+
     def _load_sp500_symbols(self) -> List[str]:
         """Load S&P 500 symbols from CSV, excluding leveraged ETFs."""
         from pathlib import Path

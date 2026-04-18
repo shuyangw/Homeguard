@@ -419,6 +419,10 @@ class RAMPLiveAdapter(StrategyAdapter):
         logger.info(f"[RAMP]   Portfolio health checks: ENABLED")
         logger.info("[RAMP]   Regime-specific parameters loaded")
 
+    @property
+    def broker_name(self) -> str:
+        return self._broker_name
+
     def _load_sp500_symbols(self) -> List[str]:
         """Load S&P 500 symbols from CSV, excluding leveraged ETFs."""
         from pathlib import Path

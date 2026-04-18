@@ -235,6 +235,10 @@ class OMRLiveAdapter(StrategyAdapter):
         logger.info(f"[OMR]   Entry: 3:50 PM | Exit: Next day 9:31 AM")
         logger.info(f"[OMR]   Portfolio health checks: ENABLED")
 
+    @property
+    def broker_name(self) -> str:
+        return self._broker_name
+
     def preload_historical_data(self) -> None:
         """
         Pre-load historical data and train Bayesian model if needed.
