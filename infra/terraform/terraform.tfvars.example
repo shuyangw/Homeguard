@@ -28,8 +28,8 @@ git_branch   = "main"
 
 # ===== INSTANCE CONFIGURATION =====
 
-# Instance type (t4g.small = $12/month, t4g.medium = $24/month)
-instance_type = "t4g.small"
+# Instance type (t4g.medium = $24/month, t4g.small = $12/month)
+instance_type = "t4g.medium"
 
 # Root volume size in GB (8 GB = $0.64/month)
 root_volume_size = 8

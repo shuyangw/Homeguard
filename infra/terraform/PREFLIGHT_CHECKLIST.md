@@ -130,10 +130,10 @@ git ls-remote https://github.com/shuyangw/Homeguard.git
 ### ✅ 8. Understand Costs
 
 **Monthly costs** (default configuration):
-- EC2 t4g.small: $12.26
+- EC2 t4g.medium: $24.53
 - EBS 8 GB: $0.64
 - Data transfer: ~$0.10
-- **Total: ~$13/month**
+- **Total: ~$25/month** (~$12/month with market-hours scheduling)
 
 **Optional additions**:
 - Elastic IP: $0 (if instance running), $3.60/month (if stopped)

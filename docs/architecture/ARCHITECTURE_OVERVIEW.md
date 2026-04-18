@@ -804,7 +804,7 @@ python -m gui
   - See [MODULE_REFERENCE.md](MODULE_REFERENCE.md#trading-system-layer) for details
 
 - [+] **Live trading integration** - Paper trading deployed to AWS EC2 with automated scheduling (November 2025)
-  - EC2 instance with Python 3.11 (t4g.small ARM64)
+  - EC2 instance with Python 3.11 (t4g.medium ARM64, 4 GB RAM)
   - Lambda-powered auto-start/stop (9 AM - 4:30 PM ET Mon-Fri)
   - **Multi-strategy architecture** (December 2025):
     - `homeguard-omr.service`: Overnight Mean Reversion strategy

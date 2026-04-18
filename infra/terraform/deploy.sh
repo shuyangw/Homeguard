@@ -80,11 +80,11 @@ echo "Deployment Plan Summary"
 echo "=========================================="
 echo ""
 echo "Review the plan above. This will create:"
-echo "  - EC2 instance (t4g.small)"
+echo "  - EC2 instance (t4g.medium)"
 echo "  - Security group"
 echo "  - EBS volume (8 GB)"
 echo ""
-echo "Estimated monthly cost: ~\$13"
+echo "Estimated monthly cost: ~\$25 (24/7), ~\$12 (market hours)"
 echo ""
 read -p "Continue with deployment? (yes/no): " -r
 echo

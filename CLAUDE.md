@@ -29,7 +29,7 @@ visualization/   QuantStats tearsheets, matplotlib/plotly charts
 - Live trading: Strategy -> ExecutionEngine -> AlpacaBroker (REST) or IBKR (TCP) -> state JSON
 - Data: Alpaca REST (primary) -> yfinance (fallback) -> Parquet cache (last resort)
 - Streaming: Alpaca WebSocket -> LiveDataProvider -> live strategies
-- Infra: Terraform -> EC2 t4g.small ARM64 + Lambda/EventBridge (market hours start/stop)
+- Infra: Terraform -> EC2 t4g.medium ARM64 + Lambda/EventBridge (market hours start/stop)
 
 Full component graph with edges/protocols: `docs/architecture/composer_diagram.json`
 

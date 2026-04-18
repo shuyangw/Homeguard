@@ -19,7 +19,7 @@ architecture supports mix-and-match: e.g., IBKR for execution, Alpaca for data.
 - IBKRDataProvider (DataProviderInterface) + IBKRStreamingProvider (StreamingProviderInterface)
 - IBKRBroker (stocks + options -- first OptionsTradingInterface implementor)
 - Config-driven broker routing (strategy -> broker assignment)
-- EC2 Gateway deployment (IB Gateway + IBC + Xvfb on t4g.small ARM64)
+- EC2 Gateway deployment (IB Gateway + IBC + Xvfb on t4g.medium ARM64)
 
 ## 3. What NOT To Do
 
@@ -346,7 +346,7 @@ Loader that:
 ### Architecture
 
 ```
-EC2 t4g.small (ARM64, Amazon Linux 2023, 2GB RAM)
+EC2 t4g.medium (ARM64, Amazon Linux 2023, 4GB RAM)
 +-- Xvfb :1 (virtual display)
 |   +-- IB Gateway (renders login UI into virtual framebuffer)
 |       +-- Listening on localhost:4002 (paper) or :4001 (live)
@@ -372,10 +372,10 @@ Current usage          ~750 MB
 IB Gateway             ~300-500 MB
 Xvfb                   ~10 MB
 ---------------------------------
-Total                  ~1,060-1,260 MB / 2,048 MB
+Total                  ~1,060-1,260 MB / 4,096 MB
 ```
 
-Monitor with htop. Upgrade to t4g.medium (~$14/mo) if memory pressure appears.
+Upgraded to t4g.medium (4 GB) in April 2026 to support multi-strategy deployment.
 
 ### Systemd integration
 

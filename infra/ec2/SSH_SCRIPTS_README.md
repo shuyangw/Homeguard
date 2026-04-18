@@ -305,7 +305,7 @@ sudo journalctl -u homeguard-trading -f | grep "TRADE"
 
 ⚠️ **IP Address Changes**
 - If your IP changes, update `terraform.tfvars` and run `terraform apply`
-- Current allowed IP: 73.68.21.247/32
+- Current allowed IP: see `terraform.tfvars` for latest CIDR
 
 ---
 

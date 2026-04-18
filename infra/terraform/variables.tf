@@ -60,7 +60,7 @@ variable "alpaca_secret" {
 variable "instance_type" {
   description = "EC2 instance type"
   type        = string
-  default     = "t4g.small"
+  default     = "t4g.medium"
 
   validation {
     condition     = can(regex("^t4g\\.", var.instance_type))

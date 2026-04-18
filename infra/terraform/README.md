@@ -8,7 +8,7 @@ This Terraform module deploys the Homeguard trading bot to AWS EC2 with automate
 - ✅ **ARM64 optimized** - t4g instances (40% cheaper than x86)
 - ✅ **Production-ready** - systemd service, auto-restart, log rotation
 - ✅ **Secure** - IMDSv2, SSH-only access, encrypted EBS volumes
-- ✅ **Cost-optimized** - ~$13/month for complete infrastructure
+- ✅ **Cost-optimized** - ~$25/month for complete infrastructure (~$12/month with market-hours scheduling)
 - ✅ **Optional features** - CloudWatch, SNS alerts, Elastic IP
 - ✅ **Discord bot addon** - Optional read-only observability via natural language
 
@@ -112,7 +112,7 @@ terraform plan
 ```
 
 This shows what will be created:
-- EC2 instance (t4g.small)
+- EC2 instance (t4g.medium)
 - Security group (SSH access)
 - EBS volume (8 GB)
 
@@ -158,13 +158,13 @@ tail -f ~/logs/trading_$(date +%Y%m%d).log
 
 | Instance | vCPUs | RAM | Cost/Month | Use Case |
 |----------|-------|-----|------------|----------|
-| **t4g.small** | 2 | 2 GB | $12.26 | Trading only (recommended) |
-| **t4g.medium** | 2 | 4 GB | $24.53 | Trading + occasional backtests |
+| t4g.small | 2 | 2 GB | $12.26 | Trading only (single strategy) |
+| **t4g.medium** | 2 | 4 GB | $24.53 | Multi-strategy trading (recommended) |
 | **t4g.large** | 2 | 8 GB | $49.06 | Heavy backtesting |
 
 Set in `terraform.tfvars`:
 ```hcl
-instance_type = "t4g.small"
+instance_type = "t4g.medium"
 ```
 
 ### Storage
@@ -284,10 +284,10 @@ terraform destroy
 
 | Resource | Specification | Cost/Month |
 |----------|--------------|------------|
-| EC2 Instance | t4g.small | $12.26 |
+| EC2 Instance | t4g.medium | $24.53 |
 | EBS Volume | 8 GB GP3 | $0.64 |
 | Data Transfer | Minimal | $0.10 |
-| **Total** | | **$13.00** |
+| **Total** | | **$25.27** |
 
 ### With Optional Features
 
@@ -431,7 +431,7 @@ terraform show
 # View estimated costs
 terraform output estimated_monthly_cost
 
-# Ensure you're using t4g.small
+# Ensure you're using the expected instance type
 terraform output | grep instance_type
 ```
 
@@ -538,7 +538,7 @@ rm -rf .terraform terraform.tfstate*
 
 This Terraform module creates:
 
-- ✅ **EC2 instance** (t4g.small, Amazon Linux 2023 ARM64)
+- ✅ **EC2 instance** (t4g.medium, Amazon Linux 2023 ARM64)
 - ✅ **Security group** (SSH access only)
 - ✅ **EBS volume** (8 GB GP3, encrypted)
 - ✅ **Automated setup** (installs Python, clones repo, creates systemd services)
@@ -691,7 +691,7 @@ After deployment:
 ## Cost Optimization Tips
 
 1. **✅ Automated scheduling** - Already configured! Lambda stops instance after market close (saves ~46%)
-2. **Use t4g.small** (not t3.small) - 40% cheaper ARM instances
+2. **Use t4g family** (not t3) - 40% cheaper ARM instances
 3. **Keep default 8 GB volume** - sufficient for trading only
 4. **Elastic IP** included - no additional cost when instance running, minimal when stopped
 5. **Start with local logs** - systemd journal sufficient for most needs
@@ -699,9 +699,9 @@ After deployment:
 7. **Monitor costs** - Check AWS billing dashboard regularly
 
 **Current Setup Savings**:
-- Running only market hours: ~$7/month (vs ~$13/month 24/7)
-- t4g.small ARM: 40% cheaper than equivalent x86 instance
-- **Total monthly cost: ~$7.00**
+- Running only market hours: ~$12/month (vs ~$25/month 24/7)
+- t4g.medium ARM: 40% cheaper than equivalent x86 instance
+- **Total monthly cost: ~$12/month** (with market-hours scheduling)
 
 ---
 

@@ -149,13 +149,13 @@ This documentation is organized by topic for easy navigation. Select the categor
 - [**Alpaca Paper Trading Guide**](guides/ALPACA_PAPER_TRADING_GUIDE.md) - Alpaca-specific setup and monitoring
 
 **Key Features**:
-- [+] EC2 instance with Python 3.11 (Amazon Linux 2023, t4g.small ARM64)
+- [+] EC2 instance with Python 3.11 (Amazon Linux 2023, t4g.medium ARM64)
 - [+] Lambda-powered auto-start (9:00 AM ET) and auto-stop (4:30 PM ET) Monday-Friday
 - [+] Systemd service with auto-restart on failure
 - [+] SSH management scripts for status checks, logs, and restarts
 - [+] Automated 6-point health monitoring
 - [+] Infrastructure as code (Terraform)
-- [+] ~$7/month cost (46% savings vs 24/7 operation)
+- [+] ~$12/month cost with market-hours scheduling
 
 **Current Deployment**:
 - **Instance IP**: See `.env` file (`EC2_IP` variable)
@@ -319,10 +319,10 @@ When adding new documentation:
 
 **2025-11-15** (AWS Deployment & Infrastructure):
 - [+] **Complete AWS EC2 production deployment**
-  - EC2 instance with t4g.small ARM64 (Python 3.11)
+  - EC2 instance with t4g.medium ARM64 (Python 3.11, 4 GB RAM)
   - Lambda-powered automated scheduling (9 AM start, 4:30 PM stop ET Mon-Fri)
   - Systemd service with auto-restart capabilities
-  - ~$7/month total cost (46% savings vs 24/7)
+  - ~$12/month total cost with market-hours scheduling
 - [+] Created 10 SSH management scripts for easy monitoring (infra/ec2/)
 - [+] Automated 6-point health check system
 - [+] Complete infrastructure documentation (8 comprehensive docs)

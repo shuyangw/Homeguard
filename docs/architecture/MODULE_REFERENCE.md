@@ -2879,7 +2879,7 @@ BrokerInterface               <- Composite: Account + MarketHours + MarketData +
 
 #### `infra/terraform/main.tf`
 **Purpose**: Core infrastructure definition
-- EC2 instance (t4g.small ARM64)
+- EC2 instance (t4g.medium ARM64)
 - Security group (SSH access only)
 - Elastic IP (static IP address)
 - EBS volume (8 GB encrypted)
@@ -2968,7 +2968,7 @@ BrokerInterface               <- Composite: Account + MarketHours + MarketData +
 - Infrastructure diagrams
 - Resource breakdown (16 resources)
 - Daily operation flow
-- Cost breakdown (~$7/month)
+- Cost breakdown (~$12/month)
 - Management commands
 
 #### `infra/terraform/README.md`
@@ -2999,7 +2999,7 @@ BrokerInterface               <- Composite: Account + MarketHours + MarketData +
 - **10 management scripts**: Windows & Linux/Mac versions (5 each)
 - **1 systemd service**: Auto-restart trading bot
 - **4 documentation files**: Complete setup and monitoring guides
-- **Cost**: ~$7/month with automated scheduling
+- **Cost**: ~$12/month with automated scheduling
 - **Uptime**: Monday-Friday 9 AM - 4:30 PM ET (automated)
 
 ---
@@ -3040,7 +3040,7 @@ BrokerInterface               <- Composite: Account + MarketHours + MarketData +
   - SSH management scripts (10 scripts for Windows & Linux/Mac)
   - Systemd service with auto-restart
   - Comprehensive infrastructure documentation (4 guides)
-  - ~$7/month AWS deployment with 46% cost savings vs 24/7
+  - ~$12/month AWS deployment with 46% cost savings vs 24/7
 
 **Recent Additions** (2025-11-14):
 - Live trading system (16 new modules)
