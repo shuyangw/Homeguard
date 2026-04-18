@@ -150,6 +150,12 @@ variable "create_cloudwatch_alarms" {
   default     = false
 }
 
+variable "enable_cloudwatch_agent" {
+  description = "Install CloudWatch Agent for memory/disk/swap metrics. Creates IAM role, instance profile, and memory/swap alarms."
+  type        = bool
+  default     = false
+}
+
 variable "enable_scheduled_start_stop" {
   description = "Enable automated start/stop of EC2 instance during market hours (saves ~70% on EC2 costs). Requires Elastic IP for static IP address when stopped. Starts at 9:00 AM ET, stops at 4:30 PM ET on weekdays."
   type        = bool

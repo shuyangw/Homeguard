@@ -81,6 +81,7 @@ resource "aws_instance" "homeguard_trading" {
   key_name      = var.key_pair_name
 
   vpc_security_group_ids = [aws_security_group.homeguard_trading.id]
+  iam_instance_profile   = var.enable_cloudwatch_agent ? aws_iam_instance_profile.ec2_cloudwatch[0].name : null
 
   # Root volume configuration
   root_block_device {
@@ -121,8 +122,9 @@ resource "aws_instance" "homeguard_trading" {
 
   lifecycle {
     ignore_changes = [
-      ami,  # Don't recreate if AMI updates
-      user_data  # Don't recreate if user data changes
+      ami,                  # Don't recreate if AMI updates
+      user_data,            # Don't recreate if user data changes
+      iam_instance_profile  # Attached via AWS CLI, don't recreate
     ]
   }
 }
