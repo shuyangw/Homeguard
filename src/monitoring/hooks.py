@@ -23,7 +23,7 @@ def update_portfolio_metrics(
     broker_name: str,
 ) -> None:
     """Update portfolio gauges from a broker account dict."""
-    if not registry:
+    if registry is None:
         return
     equity = float(account.get('portfolio_value', 0))
     cash = float(account.get('cash', 0))
@@ -37,7 +37,7 @@ def update_market_status(
     is_open: bool,
 ) -> None:
     """Update market open/closed gauge."""
-    if not registry:
+    if registry is None:
         return
     registry.update_market_open(is_open)
 
@@ -46,7 +46,7 @@ def update_process_metrics(
     registry: Optional['MetricsRegistry'],
 ) -> None:
     """Update process-level metrics (RSS)."""
-    if not registry:
+    if registry is None:
         return
     registry.update_process_rss()
 
@@ -59,7 +59,7 @@ def update_strategy_metrics(
     capital_allocated: float,
 ) -> None:
     """Update strategy-level gauges after a run_once cycle."""
-    if not registry:
+    if registry is None:
         return
     registry.update_strategy(
         realized_pnl=realized_pnl,
@@ -79,7 +79,7 @@ def update_position_metrics(
 
     Each position dict must have 'symbol', 'quantity', and 'unrealized_pnl'.
     """
-    if not registry:
+    if registry is None:
         return
     for pos in positions:
         registry.update_position(
@@ -96,6 +96,6 @@ def update_websocket_metrics(
     symbols: int,
 ) -> None:
     """Update WebSocket connectivity gauges."""
-    if not registry:
+    if registry is None:
         return
     registry.update_websocket(provider, connected, symbols)
