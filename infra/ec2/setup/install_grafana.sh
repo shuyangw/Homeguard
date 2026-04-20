@@ -24,8 +24,18 @@ REPO
     echo "  Added Grafana yum repo"
 fi
 
-# Install or update
-sudo dnf install -y grafana
+# Install or update (pin to target version to avoid surprise upgrades to Grafana 13+)
+sudo dnf install -y "grafana-${GRAFANA_VERSION}"
+
+# Workaround: Grafana 11.4.0 aarch64 rpm ships Loki datasource with an empty
+# dist/ subdirectory but no dist/plugin.json. The plugin finder silently skips
+# the entire plugin directory. Copy plugin.json into dist/ so it gets discovered.
+LOKI_PLUGIN_DIR="/usr/share/grafana/public/app/plugins/datasource/loki"
+if [ -f "${LOKI_PLUGIN_DIR}/plugin.json" ] && [ ! -f "${LOKI_PLUGIN_DIR}/dist/plugin.json" ]; then
+    sudo mkdir -p "${LOKI_PLUGIN_DIR}/dist"
+    sudo cp "${LOKI_PLUGIN_DIR}/plugin.json" "${LOKI_PLUGIN_DIR}/dist/plugin.json"
+    echo "  Patched Loki plugin.json into dist/ (rpm packaging bug workaround)"
+fi
 
 # Configure grafana.ini for localhost binding
 sudo sed -i 's/^;http_addr =.*/http_addr = 127.0.0.1/' "${CONFIG_DIR}/grafana.ini"
