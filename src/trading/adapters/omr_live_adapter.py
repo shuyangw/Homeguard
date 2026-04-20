@@ -119,6 +119,7 @@ class OMRLiveAdapter(StrategyAdapter):
         regime_detector: Optional[MarketRegimeDetector] = None,
         bayesian_model: Optional[BayesianReversionModel] = None,
         data_provider: Optional[Union["DataProviderInterface", "LiveDataProvider"]] = None,
+        max_capital_usd: Optional[float] = None,
         *,
         broker_name: str,
     ):
@@ -202,6 +203,9 @@ class OMRLiveAdapter(StrategyAdapter):
 
         self.min_probability = min_probability
         self.min_expected_return = min_expected_return
+        self.max_capital_usd = max_capital_usd
+        if max_capital_usd is not None:
+            logger.info(f"[OMR] Capital cap: ${max_capital_usd:,.0f} per strategy")
 
         # Store references for training
         self._bayesian_model = bayesian_model
@@ -645,11 +649,12 @@ class OMRLiveAdapter(StrategyAdapter):
             return
 
         buying_power = float(account['buying_power'])
+        sizing_base = min(buying_power, self.max_capital_usd) if self.max_capital_usd else buying_power
 
         for signal in signals:
             try:
                 # Calculate position size
-                position_value = buying_power * self.position_size
+                position_value = sizing_base * self.position_size
                 qty = int(position_value / signal.price)
 
                 if qty <= 0:

@@ -877,7 +877,7 @@ def create_triple_ma_adapter(broker, symbols, fast=20, medium=50, slow=200, posi
     )
 
 
-def create_omr_adapter(broker, symbols=None, min_probability=None, min_return=None, position_size=None, max_positions=None, omr_config=None, data_provider=None, *, broker_name: str):
+def create_omr_adapter(broker, symbols=None, min_probability=None, min_return=None, position_size=None, max_positions=None, omr_config=None, data_provider=None, max_capital_usd=None, *, broker_name: str):
     """
     Create Overnight Mean Reversion adapter.
 
@@ -897,6 +897,8 @@ def create_omr_adapter(broker, symbols=None, min_probability=None, min_return=No
         if data_provider is not None:
             adapter_params['data_provider'] = data_provider
             logger.info(f"  Using data provider: {data_provider.name}")
+        if max_capital_usd is not None:
+            adapter_params['max_capital_usd'] = max_capital_usd
         return OMRLiveAdapter(broker=broker, broker_name=broker_name, **adapter_params)
 
     # Fallback to individual parameters (for testing)
@@ -909,7 +911,8 @@ def create_omr_adapter(broker, symbols=None, min_probability=None, min_return=No
         min_expected_return=min_return if min_return is not None else 0.002,
         max_positions=max_positions if max_positions is not None else 3,
         position_size=position_size if position_size is not None else 0.05,
-        data_provider=data_provider
+        data_provider=data_provider,
+        max_capital_usd=max_capital_usd,
     )
 
 
@@ -944,13 +947,14 @@ def create_mp_adapter(broker, position_size=0.065, top_n=10, data_provider=None,
     )
 
 
-def create_ramp_adapter(broker, data_provider=None, *, broker_name: str):
+def create_ramp_adapter(broker, data_provider=None, initial_capital=None, *, broker_name: str):
     """
     Create Regime-Aware Momentum Protection adapter.
 
     Args:
         broker: Broker interface
         data_provider: Optional data provider with fallback chain (Alpaca -> yfinance)
+        initial_capital: Optional cap on strategy allocation (USD). If None, uses full account equity.
 
     Returns:
         RAMPLiveAdapter instance
@@ -958,11 +962,14 @@ def create_ramp_adapter(broker, data_provider=None, *, broker_name: str):
     logger.info("Creating RAMP adapter with regime detection")
     if data_provider is not None:
         logger.info(f"  Using data provider: {data_provider.name}")
+    if initial_capital is not None:
+        logger.info(f"  Capital cap: ${initial_capital:,.0f}")
     return RAMPLiveAdapter(
         broker=broker,
         broker_name=broker_name,
         symbols=None,  # Uses S&P 500 by default
-        data_provider=data_provider
+        data_provider=data_provider,
+        initial_capital=initial_capital,
     )
 
 
@@ -1085,6 +1092,13 @@ def main():
         type=int,
         default=3,
         help='Maximum concurrent positions (default: 3)'
+    )
+
+    parser.add_argument(
+        '--initial-capital',
+        type=float,
+        default=None,
+        help='Cap strategy allocation at this USD amount (default: use full account equity)'
     )
 
     # Execution mode
@@ -1361,6 +1375,7 @@ def main():
                 broker,
                 omr_config=omr_config,  # Use production config
                 data_provider=data_provider,  # Alpaca -> yfinance fallback
+                max_capital_usd=args.initial_capital,
                 broker_name=broker_name
             )
         elif args.strategy == 'mp':
@@ -1377,6 +1392,7 @@ def main():
             adapter = create_ramp_adapter(
                 broker,
                 data_provider=data_provider,  # Alpaca -> yfinance fallback
+                initial_capital=args.initial_capital,
                 broker_name=broker_name
             )
         elif args.strategy == 'multi':

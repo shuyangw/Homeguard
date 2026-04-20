@@ -97,6 +97,13 @@ def main():
         help='Show current strategy status and exit'
     )
 
+    parser.add_argument(
+        '--initial-capital',
+        type=float,
+        default=None,
+        help='Cap strategy allocation at this USD amount (default: use full account balance)'
+    )
+
     args = parser.parse_args()
 
     # Load environment variables
@@ -156,7 +163,8 @@ def main():
             go_to_cash_in_bear=go_to_cash_in_bear,
             broker=broker,
             paper=args.paper,
-            signal_logger=signal_logger
+            signal_logger=signal_logger,
+            max_capital_usd=args.initial_capital,
         )
 
         logger.info(f"Universe: {len(universe)} symbols")

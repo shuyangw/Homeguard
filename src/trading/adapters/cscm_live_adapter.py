@@ -84,7 +84,8 @@ class CSCMLiveAdapter:
         go_to_cash_in_bear: bool = True,
         broker: Optional[CryptoBrokerRouter] = None,
         paper: bool = True,
-        signal_logger=None
+        signal_logger=None,
+        max_capital_usd: Optional[float] = None,
     ):
         """
         Initialize CSCM live adapter.
@@ -108,6 +109,9 @@ class CSCMLiveAdapter:
         self.rebalance_day = rebalance_day
         self.go_to_cash_in_bear = go_to_cash_in_bear
         self.paper = paper
+        self.max_capital_usd = max_capital_usd
+        if max_capital_usd is not None:
+            logger.info(f"[CSCM] Capital cap: ${max_capital_usd:,.0f} per strategy")
 
         # Initialize signal generator
         self.signals = CSCMSignals(
@@ -353,6 +357,10 @@ class CSCMLiveAdapter:
 
         logger.info(f"[CSCM] Total portfolio value: ${total_value:,.2f}")
 
+        sizing_base = min(total_value, self.max_capital_usd) if self.max_capital_usd else total_value
+        if self.max_capital_usd and sizing_base < total_value:
+            logger.info(f"[CSCM] Capped sizing base at ${sizing_base:,.2f} (max_capital_usd)")
+
         # Close positions not in target
         for symbol in list(current_positions.keys()):
             if target_positions.get(symbol, 0) == 0:
@@ -369,7 +377,7 @@ class CSCMLiveAdapter:
             if weight == 0:
                 continue
 
-            target_value = total_value * weight
+            target_value = sizing_base * weight
             current_qty = current_positions.get(symbol, Decimal('0'))
 
             try:

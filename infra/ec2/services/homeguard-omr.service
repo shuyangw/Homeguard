@@ -11,7 +11,7 @@ WorkingDirectory=/home/ec2-user/Homeguard
 Environment="PATH=/home/ec2-user/Homeguard/venv/bin:/usr/local/bin:/usr/bin:/bin"
 Environment="METRICS_PORT=8081"
 Environment="ENABLE_METRICS=true"
-ExecStart=/home/ec2-user/Homeguard/venv/bin/python scripts/trading/run_live_paper_trading.py --strategy omr
+ExecStart=/home/ec2-user/Homeguard/venv/bin/python scripts/trading/run_live_paper_trading.py --strategy omr --initial-capital 100000
 Restart=always
 RestartSec=10
 StandardOutput=journal
