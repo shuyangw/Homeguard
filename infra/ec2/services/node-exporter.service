@@ -1,0 +1,22 @@
+[Unit]
+Description=Prometheus Node Exporter - Host system metrics
+After=network.target
+
+[Service]
+Type=simple
+User=node_exporter
+Group=node_exporter
+ExecStart=/usr/local/bin/node_exporter \
+  --web.listen-address=127.0.0.1:9100 \
+  --collector.filesystem.mount-points-exclude=^/(sys|proc|dev|run|var/lib/docker)($|/) \
+  --collector.netdev.device-exclude=^(veth.*|docker.*|lo)$
+Restart=on-failure
+RestartSec=10
+MemoryMax=100M
+LimitNOFILE=65536
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=node-exporter
+
+[Install]
+WantedBy=multi-user.target
