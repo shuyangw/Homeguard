@@ -25,20 +25,20 @@
     },
     {
       "id": 2,
-      "title": "Drawdown %",
+      "title": "Drawdown % by Strategy",
       "type": "timeseries",
       "gridPos": {"x": 12, "y": 0, "w": 12, "h": 8},
       "datasource": {"type": "prometheus", "uid": "victoriametrics"},
       "targets": [
         {
           "datasource": {"type": "prometheus", "uid": "victoriametrics"},
-          "expr": "max(hg_portfolio_drawdown_pct)",
-          "legendFormat": "Drawdown %",
+          "expr": "hg_portfolio_drawdown_pct",
+          "legendFormat": "{{job}}",
           "refId": "A"
         }
       ],
       "fieldConfig": {"defaults": {"unit": "percent"}, "overrides": []},
-      "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "single"}}
+      "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi"}}
     },
     {
       "id": 3,
@@ -49,13 +49,19 @@
       "targets": [
         {
           "datasource": {"type": "prometheus", "uid": "victoriametrics"},
-          "expr": "max(hg_portfolio_day_pnl_usd)",
-          "legendFormat": "Day P&L",
+          "expr": "sum(hg_portfolio_day_pnl_usd)",
+          "legendFormat": "Total",
           "refId": "A"
+        },
+        {
+          "datasource": {"type": "prometheus", "uid": "victoriametrics"},
+          "expr": "hg_portfolio_day_pnl_usd",
+          "legendFormat": "{{job}}",
+          "refId": "B"
         }
       ],
       "fieldConfig": {"defaults": {"unit": "currencyUSD"}, "overrides": []},
-      "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "single"}}
+      "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi"}}
     },
     {
       "id": 4,
