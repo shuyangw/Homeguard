@@ -259,9 +259,17 @@ class IBKRDataProvider(DataProviderInterface):
         if 'date' in df.columns:
             df = df.set_index('date')
 
-        # Ensure ET timezone (matching AlpacaBroker contract)
+        # ib_async returns date objects for daily bars (plain Index, no .tz)
+        # and tz-aware datetimes for intraday. Coerce to DatetimeIndex before
+        # any timezone arithmetic.
+        if not isinstance(df.index, pd.DatetimeIndex):
+            df.index = pd.to_datetime(df.index)
+
+        # Ensure ET timezone (matching AlpacaBroker contract). Daily bars are
+        # naive market-close snapshots -> localize directly to ET. Intraday
+        # bars arrive in UTC -> convert.
         if df.index.tz is None:
-            df.index = df.index.tz_localize('UTC').tz_convert(ET)
+            df.index = df.index.tz_localize(ET)
         else:
             df.index = df.index.tz_convert(ET)
 
