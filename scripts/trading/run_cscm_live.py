@@ -79,8 +79,18 @@ def _emit_metrics_tick(adapter, metrics_registry, state) -> None:
     )
 
     broker = adapter.broker
-    # Resolve the *actual* broker name from the router slot (primary/secondary
-    # is the routing slot, not the broker). Fall back to class name or 'crypto'.
+
+    # ---- Portfolio ---- (call get_account first to materialize lazy router brokers)
+    equity = 0.0
+    account = None
+    try:
+        account = broker.get_account()
+    except Exception as e:
+        logger.error(f"[CSCM-metrics] broker.get_account failed: {e}")
+
+    # Resolve actual broker name now that the router has picked an active broker.
+    # `_active_broker_name` is the slot ('primary'/'secondary'); map to the
+    # underlying instance's class name (coinbase/alpaca).
     active_slot = getattr(broker, '_active_broker_name', None)
     active_broker = None
     if active_slot == 'primary':
@@ -98,15 +108,9 @@ def _emit_metrics_tick(adapter, metrics_registry, state) -> None:
     else:
         broker_name = 'crypto'
 
-    # ---- Portfolio ----
-    equity = 0.0
-    try:
-        account = broker.get_account()
-        if account:
-            update_portfolio_metrics(metrics_registry, account, broker_name)
-            equity = float(account.get('portfolio_value', 0) or 0)
-    except Exception as e:
-        logger.error(f"[CSCM-metrics] broker.get_account failed: {e}")
+    if account:
+        update_portfolio_metrics(metrics_registry, account, broker_name)
+        equity = float(account.get('portfolio_value', 0) or 0)
 
     # ---- Drawdown + day PnL (in-process tracking, since Coinbase has no last_equity) ----
     try:
