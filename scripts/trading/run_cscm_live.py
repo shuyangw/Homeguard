@@ -88,15 +88,22 @@ def _emit_metrics_tick(adapter, metrics_registry, state) -> None:
     except Exception as e:
         logger.error(f"[CSCM-metrics] broker.get_account failed: {e}")
 
-    # Resolve actual broker name now that the router has picked an active broker.
-    # `_active_broker_name` is the slot ('primary'/'secondary'); map to the
-    # underlying instance's class name (coinbase/alpaca).
-    active_slot = getattr(broker, '_active_broker_name', None)
-    active_broker = None
-    if active_slot == 'primary':
-        active_broker = getattr(broker, '_primary', None)
-    elif active_slot == 'secondary':
-        active_broker = getattr(broker, '_secondary', None)
+    # Resolve actual broker name. The router's `_active_broker_name` is only
+    # the *slot* ('primary'/'secondary') and is NOT updated on silent
+    # failover inside _try_with_failover. Walk the slots manually: prefer the
+    # active slot, but fall through to whichever slot actually has a broker
+    # (mirrors router._active_broker logic).
+    active_slot = getattr(broker, '_active_broker_name', 'primary')
+    primary_broker = getattr(broker, '_primary', None)
+    secondary_broker = getattr(broker, '_secondary', None)
+    if active_slot == 'primary' and primary_broker is not None:
+        active_broker = primary_broker
+    elif secondary_broker is not None:
+        active_broker = secondary_broker
+    elif primary_broker is not None:
+        active_broker = primary_broker
+    else:
+        active_broker = None
     if active_broker is not None:
         cls_name = active_broker.__class__.__name__.lower()
         if 'coinbase' in cls_name:
