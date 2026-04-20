@@ -22,7 +22,10 @@ project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 
 import os
+import json
 import argparse
+import threading
+import time as time_module
 from dotenv import load_dotenv
 
 # Set process title for easy identification in ps/htop
@@ -34,6 +37,141 @@ except ImportError:
 
 from src.trading.adapters.cscm_live_adapter import CSCMLiveAdapter
 from src.utils.logger import logger
+
+
+STRATEGY_NAME = 'cscm'
+METRICS_EMIT_INTERVAL_SECONDS = 30
+
+
+def _compute_today_realized_pnl(strategy: str) -> float:
+    """Sum today's realized PnL for `strategy` by scanning the trade-log JSONL."""
+    try:
+        from src.utils.trading_logger import get_trade_log_writer
+        writer = get_trade_log_writer()
+        log_file = writer._get_log_file()
+        if not log_file.exists():
+            return 0.0
+        total = 0.0
+        with open(log_file, 'r', encoding='utf-8') as f:
+            for line in f:
+                try:
+                    row = json.loads(line)
+                except Exception:
+                    continue
+                if (row.get('strategy') == strategy
+                        and row.get('trade_type') == 'exit'
+                        and row.get('pnl_dollars') is not None):
+                    total += float(row['pnl_dollars'])
+        return total
+    except Exception as e:
+        logger.error(f"[CSCM-metrics] realized PnL aggregation failed: {e}")
+        return 0.0
+
+
+def _emit_metrics_tick(adapter, metrics_registry, state) -> None:
+    """Emit one metrics snapshot for CSCM (portfolio, positions, strategy aggregates)."""
+    from src.monitoring.hooks import (
+        update_portfolio_metrics,
+        update_market_status,
+        update_process_metrics,
+        update_position_metrics,
+        update_strategy_metrics,
+    )
+
+    broker = adapter.broker
+    broker_name = getattr(broker, '_active_broker_name', 'crypto')
+
+    # ---- Portfolio ----
+    equity = 0.0
+    try:
+        account = broker.get_account()
+        if account:
+            update_portfolio_metrics(metrics_registry, account, broker_name)
+            equity = float(account.get('portfolio_value', 0) or 0)
+    except Exception as e:
+        logger.error(f"[CSCM-metrics] broker.get_account failed: {e}")
+
+    # ---- Drawdown + day PnL (in-process tracking, since Coinbase has no last_equity) ----
+    try:
+        if equity > state['peak_equity']:
+            state['peak_equity'] = equity
+        drawdown_pct = 0.0 if state['peak_equity'] <= 0 else (
+            (equity - state['peak_equity']) / state['peak_equity'] * 100.0
+        )
+        metrics_registry.update_drawdown(drawdown_pct)
+
+        if state['session_open_equity'] is None and equity > 0:
+            state['session_open_equity'] = equity
+        day_pnl = equity - (state['session_open_equity'] or equity)
+        metrics_registry.update_day_pnl(day_pnl)
+    except Exception as e:
+        logger.error(f"[CSCM-metrics] derived portfolio metrics failed: {e}")
+
+    # ---- Per-position + strategy aggregates ----
+    try:
+        owned = adapter.state_manager.get_positions(STRATEGY_NAME) or {}
+
+        positions = []
+        unrealized = 0.0
+        capital = 0.0
+        for symbol, info in owned.items():
+            qty = float(info.get('qty', 0) or 0)
+            entry_price = float(info.get('entry_price', 0) or 0)
+            current_price = 0.0
+            try:
+                quote = broker.get_crypto_quote(symbol)
+                current_price = float(quote.get('last', 0) or 0)
+            except Exception as quote_err:
+                logger.error(f"[CSCM-metrics] quote failed for {symbol}: {quote_err}")
+
+            pos_unrealized = (current_price - entry_price) * qty if (current_price and entry_price) else 0.0
+            market_value = current_price * qty
+
+            positions.append({
+                'symbol': symbol,
+                'quantity': qty,
+                'unrealized_pnl': pos_unrealized,
+            })
+            unrealized += pos_unrealized
+            capital += abs(market_value)
+
+        update_position_metrics(metrics_registry, positions)
+
+        realized = _compute_today_realized_pnl(STRATEGY_NAME)
+        update_strategy_metrics(
+            metrics_registry,
+            realized_pnl=realized,
+            unrealized_pnl=unrealized,
+            positions=len(positions),
+            capital_allocated=capital,
+        )
+    except Exception as e:
+        logger.error(f"[CSCM-metrics] position/strategy metrics failed: {e}")
+
+    # ---- Market status (crypto = always open) + process RSS ----
+    try:
+        update_market_status(metrics_registry, True)
+        update_process_metrics(metrics_registry)
+    except Exception as e:
+        logger.error(f"[CSCM-metrics] market/process metrics failed: {e}")
+
+
+def _start_metrics_sidecar(adapter, metrics_registry) -> threading.Thread:
+    """Start daemon thread that emits CSCM metrics periodically."""
+    state = {'peak_equity': 0.0, 'session_open_equity': None}
+
+    def _loop():
+        while True:
+            try:
+                _emit_metrics_tick(adapter, metrics_registry, state)
+            except Exception as e:
+                logger.error(f"[CSCM-metrics] tick failed: {e}")
+            time_module.sleep(METRICS_EMIT_INTERVAL_SECONDS)
+
+    thread = threading.Thread(target=_loop, name='cscm-metrics-sidecar', daemon=True)
+    thread.start()
+    logger.info(f"[CSCM-metrics] sidecar started (interval={METRICS_EMIT_INTERVAL_SECONDS}s)")
+    return thread
 
 
 def load_config(config_path: str = None) -> dict:
@@ -174,6 +312,23 @@ def main():
         logger.info(f"Rebalance Day: {rebalance_day}")
         logger.info(f"Go to Cash in Bear: {go_to_cash_in_bear}")
         logger.info("")
+
+        # Initialize metrics registry if enabled (mirrors run_live_paper_trading.py)
+        if os.getenv('ENABLE_METRICS', 'false').lower() in ('true', '1', 'yes'):
+            from src.monitoring import MetricsRegistry, start_metrics_server
+            from src.monitoring.snapshot import SnapshotWriter
+            from src.settings import get_local_storage_dir
+
+            metrics_port = int(os.getenv('METRICS_PORT', '8084'))
+            metrics_registry = MetricsRegistry(strategy=STRATEGY_NAME)
+            start_metrics_server(metrics_registry, port=metrics_port)
+
+            snapshot_dir = os.path.join(get_local_storage_dir(), 'metrics_snapshots')
+            SnapshotWriter(metrics_registry, snapshot_dir=snapshot_dir).start_background()
+
+            _start_metrics_sidecar(adapter, metrics_registry)
+
+            logger.info(f"Metrics enabled on port {metrics_port}")
 
         if args.status:
             # Show status and exit

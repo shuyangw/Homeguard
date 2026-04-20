@@ -637,22 +637,68 @@ class LiveTradingRunner:
         self.metrics_registry.update_day_pnl(day_pnl)
 
     def _emit_position_and_strategy_metrics(self, update_position_metrics, update_strategy_metrics) -> None:
-        """Emit per-position and strategy-aggregate gauges from a broker positions fetch."""
+        """Emit per-position and strategy-aggregate gauges from a broker positions fetch.
+
+        Filters broker positions by `state_manager.get_positions(strategy)` so OMR and
+        RAMP (which share an Alpaca account) each report only their own attributed
+        unrealized PnL and capital.
+        """
         try:
-            positions = self.adapter.broker.get_positions() or []
+            all_positions = self.adapter.broker.get_positions() or []
         except Exception as e:
             logger.error(f"Metrics: broker.get_positions failed: {e}")
-            positions = []
+            all_positions = []
+
+        strategy = self.metrics_registry.strategy
+        owned_symbols: set = set()
+        try:
+            sm = getattr(self.adapter, 'state_manager', None)
+            if sm is not None:
+                owned_symbols = set(sm.get_positions(strategy).keys())
+        except Exception as e:
+            logger.error(f"Metrics: state_manager.get_positions failed: {e}")
+
+        if owned_symbols:
+            positions = [p for p in all_positions if p.get('symbol') in owned_symbols]
+        else:
+            # Fallback preserves pre-attribution behavior if state manager is unavailable.
+            positions = all_positions
+
         update_position_metrics(self.metrics_registry, positions)
         unrealized = sum(float(p.get('unrealized_pnl', 0)) for p in positions)
         capital = sum(abs(float(p.get('market_value', 0))) for p in positions)
+        realized = self._compute_today_realized_pnl(strategy)
         update_strategy_metrics(
             self.metrics_registry,
-            realized_pnl=0.0,  # v1: state_manager integration deferred
+            realized_pnl=realized,
             unrealized_pnl=unrealized,
             positions=len(positions),
             capital_allocated=capital,
         )
+
+    def _compute_today_realized_pnl(self, strategy: str) -> float:
+        """Sum today's realized PnL for `strategy` by scanning the trade-log JSONL."""
+        try:
+            from src.utils.trading_logger import get_trade_log_writer
+            writer = get_trade_log_writer()
+            log_file = writer._get_log_file()
+            if not log_file.exists():
+                return 0.0
+            total = 0.0
+            with open(log_file, 'r', encoding='utf-8') as f:
+                for line in f:
+                    try:
+                        row = json.loads(line)
+                    except Exception:
+                        continue
+                    if (row.get('strategy') == strategy
+                            and row.get('trade_type') == 'exit'
+                            and row.get('pnl_dollars') is not None):
+                        total += float(row['pnl_dollars'])
+            return total
+        except Exception as e:
+            logger.error(f"Metrics: realized PnL aggregation failed: {e}")
+            return 0.0
 
     def _emit_strategy_specific_metrics(self) -> None:
         """Emit regime + RAMP cache-age gauges. No-op for non-RAMP adapters."""

@@ -30,6 +30,7 @@ from src.data.providers.binance import BinanceDataProvider
 from src.strategies.advanced.cscm_signals import CSCMSignals, CSCMRiskSignals
 from src.trading.brokers.crypto_router import CryptoBrokerRouter
 from src.trading.brokers.interfaces import OrderSide, OrderType
+from src.trading.state.strategy_state_manager import StrategyStateManager
 from src.utils.logger import get_logger
 from src.utils.timezone import tz
 from src.utils.trading_logger import get_trade_log_writer
@@ -138,6 +139,9 @@ class CSCMLiveAdapter:
         self._last_rebalance: Optional[datetime] = None
         self._current_positions: Dict[str, Decimal] = {}
         self._trade_log_writer = None
+
+        # Shared state manager (enables per-strategy attribution + metrics)
+        self.state_manager = StrategyStateManager()
 
         # Load saved state
         self._load_state()
@@ -366,9 +370,10 @@ class CSCMLiveAdapter:
             if target_positions.get(symbol, 0) == 0:
                 try:
                     logger.info(f"[CSCM] Closing position: {symbol}")
+                    closed_qty = float(current_positions.get(symbol, 0))
                     order = self.broker.close_crypto_position(symbol)
                     orders.append(order)
-                    self._log_trade(order, 'close')
+                    self._log_close(symbol, closed_qty, order)
                 except Exception as e:
                     logger.error(f"[CSCM] Failed to close {symbol}: {e}")
 
@@ -402,7 +407,7 @@ class CSCMLiveAdapter:
                         order_type=OrderType.MARKET
                     )
                     orders.append(order)
-                    self._log_trade(order, 'buy')
+                    self._log_buy(symbol, float(qty_diff), float(current_price), order)
 
                 elif qty_diff < 0:
                     # Sell
@@ -415,7 +420,7 @@ class CSCMLiveAdapter:
                         order_type=OrderType.MARKET
                     )
                     orders.append(order)
-                    self._log_trade(order, 'sell')
+                    self._log_partial_sell(symbol, float(sell_qty), float(current_price), order)
 
             except Exception as e:
                 logger.error(f"[CSCM] Failed to rebalance {symbol}: {e}")
@@ -429,25 +434,84 @@ class CSCMLiveAdapter:
         logger.info(f"[CSCM] Rebalance complete: {len(orders)} orders executed")
         return orders
 
-    def _log_trade(self, order: Dict, action: str) -> None:
-        """Log trade to trading log."""
+    def _log_buy(self, symbol: str, qty: float, price: float, order: Dict) -> None:
+        """Log a buy fill, persist to trade log, and update state manager."""
+        order_id = order.get('order_id') if isinstance(order, dict) else None
+        fill_price = float(order.get('filled_avg_price') or price) if isinstance(order, dict) else price
         try:
-            if self._trade_log_writer is None:
-                self._trade_log_writer = get_trade_log_writer(STRATEGY_NAME)
-
-            self._trade_log_writer.log_trade(
-                symbol=order.get('symbol', ''),
-                action=action,
-                quantity=float(order.get('quantity', 0)),
-                price=float(order.get('filled_avg_price', 0)),
-                order_id=order.get('order_id', ''),
-                metadata={
-                    'order_type': order.get('order_type', ''),
-                    'status': order.get('status', ''),
-                }
+            get_trade_log_writer().log_entry(
+                strategy=STRATEGY_NAME,
+                symbol=symbol,
+                qty=qty,
+                price=fill_price,
+                order_id=order_id,
+                metadata={'broker': 'crypto'},
             )
         except Exception as e:
-            logger.warning(f"[CSCM] Failed to log trade: {e}")
+            logger.warning(f"[CSCM] Trade-log entry failed (non-blocking): {e}")
+        try:
+            self.state_manager.add_or_update_position(
+                STRATEGY_NAME, symbol, qty, fill_price, order_id, broker='crypto'
+            )
+        except Exception as e:
+            logger.warning(f"[CSCM] State-manager update failed (non-blocking): {e}")
+
+    def _log_partial_sell(self, symbol: str, qty: float, price: float, order: Dict) -> None:
+        """Log a partial sell, record realized PnL, and decrement state manager qty."""
+        order_id = order.get('order_id') if isinstance(order, dict) else None
+        fill_price = float(order.get('filled_avg_price') or price) if isinstance(order, dict) else price
+        position_info = {}
+        try:
+            position_info = self.state_manager.get_positions(STRATEGY_NAME).get(symbol, {}) or {}
+        except Exception as e:
+            logger.warning(f"[CSCM] State lookup failed for {symbol} (non-blocking): {e}")
+        try:
+            get_trade_log_writer().log_exit(
+                strategy=STRATEGY_NAME,
+                symbol=symbol,
+                qty=qty,
+                exit_price=fill_price,
+                order_id=order_id,
+                entry_price=position_info.get('entry_price'),
+                entry_time=position_info.get('entry_time'),
+                metadata={'broker': 'crypto', 'partial': True},
+            )
+        except Exception as e:
+            logger.warning(f"[CSCM] Trade-log exit failed (non-blocking): {e}")
+        try:
+            # Decrement state qty (negative delta) while preserving entry price/time.
+            self.state_manager.add_or_update_position(
+                STRATEGY_NAME, symbol, -qty, fill_price, order_id
+            )
+        except Exception as e:
+            logger.warning(f"[CSCM] State-manager decrement failed (non-blocking): {e}")
+
+    def _log_close(self, symbol: str, qty: float, order: Dict) -> None:
+        """Log a full close, record realized PnL, and remove from state manager."""
+        order_id = order.get('order_id') if isinstance(order, dict) else None
+        fill_price = float(order.get('filled_avg_price') or 0) if isinstance(order, dict) else 0.0
+        position_info = {}
+        try:
+            position_info = self.state_manager.get_positions(STRATEGY_NAME).get(symbol, {}) or {}
+        except Exception as e:
+            logger.warning(f"[CSCM] State lookup failed for {symbol} (non-blocking): {e}")
+        try:
+            get_trade_log_writer().log_exit(
+                strategy=STRATEGY_NAME,
+                symbol=symbol,
+                qty=qty,
+                exit_price=fill_price,
+                order_id=order_id,
+                entry_price=position_info.get('entry_price'),
+                entry_time=position_info.get('entry_time'),
+                metadata={'broker': 'crypto'},
+            )
+        except Exception as e:
+            logger.warning(f"[CSCM] Trade-log exit failed (non-blocking): {e}")
+        try:
+            self.state_manager.remove_position(STRATEGY_NAME, symbol)
+        except Exception as e:
+            logger.warning(f"[CSCM] State-manager remove failed (non-blocking): {e}")
 
     def get_status(self) -> Dict:
         """Get current strategy status."""

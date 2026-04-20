@@ -171,7 +171,9 @@ class StrategyStateManager:
                 self._toggle = {
                     'strategies': {
                         'omr': {'enabled': True, 'shutdown_requested': False},
-                        'mp': {'enabled': False, 'shutdown_requested': False}
+                        'mp': {'enabled': False, 'shutdown_requested': False},
+                        'ramp': {'enabled': True, 'shutdown_requested': False},
+                        'cscm': {'enabled': True, 'shutdown_requested': False},
                     },
                     'last_modified': tz.iso_timestamp(),
                     'modified_by': 'auto'
@@ -278,7 +280,9 @@ class StrategyStateManager:
                     'execution_lock': None,
                     'strategies': {
                         'omr': {'positions': {}, 'last_execution': None},
-                        'mp': {'positions': {}, 'last_execution': None}
+                        'mp': {'positions': {}, 'last_execution': None},
+                        'ramp': {'positions': {}, 'last_execution': None},
+                        'cscm': {'positions': {}, 'last_execution': None},
                     }
                 }
                 self._save_state()
@@ -840,7 +844,7 @@ class StrategyStateManager:
             'strategies': {}
         }
 
-        for strategy in ['omr', 'mp']:
+        for strategy in ['omr', 'mp', 'ramp', 'cscm']:
             toggle = self._toggle.get('strategies', {}).get(strategy, {})
             state = self._state.get('strategies', {}).get(strategy, {})
 
