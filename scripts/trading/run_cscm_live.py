@@ -79,7 +79,24 @@ def _emit_metrics_tick(adapter, metrics_registry, state) -> None:
     )
 
     broker = adapter.broker
-    broker_name = getattr(broker, '_active_broker_name', 'crypto')
+    # Resolve the *actual* broker name from the router slot (primary/secondary
+    # is the routing slot, not the broker). Fall back to class name or 'crypto'.
+    active_slot = getattr(broker, '_active_broker_name', None)
+    active_broker = None
+    if active_slot == 'primary':
+        active_broker = getattr(broker, '_primary', None)
+    elif active_slot == 'secondary':
+        active_broker = getattr(broker, '_secondary', None)
+    if active_broker is not None:
+        cls_name = active_broker.__class__.__name__.lower()
+        if 'coinbase' in cls_name:
+            broker_name = 'coinbase'
+        elif 'alpaca' in cls_name:
+            broker_name = 'alpaca'
+        else:
+            broker_name = cls_name
+    else:
+        broker_name = 'crypto'
 
     # ---- Portfolio ----
     equity = 0.0
