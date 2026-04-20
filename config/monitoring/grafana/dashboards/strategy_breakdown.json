@@ -90,6 +90,109 @@
       ],
       "fieldConfig": {"defaults": {"unit": "currencyUSD"}, "overrides": []},
       "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "single"}}
+    },
+    {
+      "id": 6,
+      "title": "Current Positions",
+      "type": "table",
+      "gridPos": {"x": 12, "y": 16, "w": 12, "h": 8},
+      "datasource": {"type": "prometheus", "uid": "victoriametrics"},
+      "targets": [
+        {
+          "datasource": {"type": "prometheus", "uid": "victoriametrics"},
+          "expr": "hg_position_qty",
+          "format": "table",
+          "instant": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {"type": "prometheus", "uid": "victoriametrics"},
+          "expr": "hg_position_unrealized_pnl_usd",
+          "format": "table",
+          "instant": true,
+          "refId": "B"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "__name__": true,
+              "job": true,
+              "instance": true,
+              "Time 1": true,
+              "Time 2": true,
+              "__name__ 1": true,
+              "__name__ 2": true,
+              "job 1": true,
+              "job 2": true,
+              "instance 1": true,
+              "instance 2": true
+            },
+            "renameByName": {
+              "Value #A": "Quantity",
+              "Value #B": "Unrealized PnL",
+              "symbol": "Symbol",
+              "strategy": "Strategy"
+            },
+            "indexByName": {
+              "Strategy": 0,
+              "Symbol": 1,
+              "Quantity": 2,
+              "Unrealized PnL": 3
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {"unit": "short", "custom": {"align": "auto"}},
+        "overrides": [
+          {
+            "matcher": {"id": "byName", "options": "Unrealized PnL"},
+            "properties": [
+              {"id": "unit", "value": "currencyUSD"},
+              {
+                "id": "custom.cellOptions",
+                "value": {"type": "color-text"}
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {"color": "red", "value": null},
+                    {"color": "green", "value": 0}
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {"showHeader": true, "cellHeight": "sm"}
+    },
+    {
+      "id": 7,
+      "title": "Per-Symbol Unrealized PnL",
+      "type": "timeseries",
+      "gridPos": {"x": 0, "y": 24, "w": 24, "h": 8},
+      "datasource": {"type": "prometheus", "uid": "victoriametrics"},
+      "targets": [
+        {
+          "datasource": {"type": "prometheus", "uid": "victoriametrics"},
+          "expr": "hg_position_unrealized_pnl_usd",
+          "legendFormat": "{{strategy}}:{{symbol}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "currencyUSD"}, "overrides": []},
+      "options": {"legend": {"displayMode": "table", "placement": "right", "calcs": ["lastNotNull", "min", "max"]}, "tooltip": {"mode": "multi"}}
     }
   ],
   "refresh": "30s",
