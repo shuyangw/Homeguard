@@ -124,3 +124,11 @@ class StockTradingInterface(OrderManagementInterface):
             BrokerConnectionError: If broker connection fails
         """
         pass
+
+    def get_positions(self) -> List[Dict]:
+        """Backward-compat alias for get_stock_positions()."""
+        return self.get_stock_positions()
+
+    def get_position(self, symbol: str) -> Optional[Dict]:
+        """Backward-compat alias for get_stock_position()."""
+        return self.get_stock_position(symbol)
