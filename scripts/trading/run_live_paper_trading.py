@@ -658,9 +658,10 @@ class LiveTradingRunner:
         """Emit regime + RAMP cache-age gauges. No-op for non-RAMP adapters."""
         if self.adapter.__class__.__name__ != 'RAMPLiveAdapter':
             return
-        # Regime state code
-        strategy = getattr(self.adapter, 'strategy', None)
-        regime_name = getattr(strategy, '_current_regime', None) if strategy else None
+        # Regime state code -- RAMP stores it on the inner RAMPSignals instance
+        # exposed as adapter._ramp_signals, not on the wrapper at adapter.strategy.
+        ramp_signals = getattr(self.adapter, '_ramp_signals', None)
+        regime_name = getattr(ramp_signals, '_current_regime', None) if ramp_signals else None
         if regime_name:
             try:
                 from src.strategies.advanced.market_regime_detector import MarketRegimeDetector
