@@ -405,6 +405,8 @@ class LiveTradingRunner:
         self.assume_market_open: bool = assume_market_open  # Bypass market open check for testing
         self.metrics_registry = metrics_registry  # Optional MetricsRegistry for monitoring
         self._metrics_tick_counter = 0  # Throttles broker.get_account() calls
+        self._peak_equity: float = 0.0  # Rolling peak since process start (for drawdown)
+        self._session_open_equity: Optional[float] = None  # Set on first tick after market open
 
         # Setup logging directory
         if log_dir is None:
@@ -613,6 +615,76 @@ class LiveTradingRunner:
             import traceback
             traceback.print_exc()
 
+    def _emit_derived_portfolio_metrics(self, account: dict) -> None:
+        """Emit drawdown and day-P&L gauges from a freshly fetched account dict."""
+        equity = float(account.get('portfolio_value', 0))
+        if equity > self._peak_equity:
+            self._peak_equity = equity
+        drawdown_pct = 0.0 if self._peak_equity <= 0 else (
+            (equity - self._peak_equity) / self._peak_equity * 100.0
+        )
+        self.metrics_registry.update_drawdown(drawdown_pct)
+
+        # Alpaca account exposes `last_equity` (prior session close). Fall back
+        # to an in-process open-of-session snapshot if that field isn't present.
+        last_equity = float(account.get('last_equity') or 0)
+        if last_equity > 0:
+            day_pnl = equity - last_equity
+        else:
+            if self._session_open_equity is None and self._is_market_open():
+                self._session_open_equity = equity
+            day_pnl = equity - (self._session_open_equity or equity)
+        self.metrics_registry.update_day_pnl(day_pnl)
+
+    def _emit_position_and_strategy_metrics(self, update_position_metrics, update_strategy_metrics) -> None:
+        """Emit per-position and strategy-aggregate gauges from a broker positions fetch."""
+        try:
+            positions = self.adapter.broker.get_positions() or []
+        except Exception as e:
+            logger.error(f"Metrics: broker.get_positions failed: {e}")
+            positions = []
+        update_position_metrics(self.metrics_registry, positions)
+        unrealized = sum(float(p.get('unrealized_pnl', 0)) for p in positions)
+        capital = sum(abs(float(p.get('market_value', 0))) for p in positions)
+        update_strategy_metrics(
+            self.metrics_registry,
+            realized_pnl=0.0,  # v1: state_manager integration deferred
+            unrealized_pnl=unrealized,
+            positions=len(positions),
+            capital_allocated=capital,
+        )
+
+    def _emit_strategy_specific_metrics(self) -> None:
+        """Emit regime + RAMP cache-age gauges. No-op for non-RAMP adapters."""
+        if self.adapter.__class__.__name__ != 'RAMPLiveAdapter':
+            return
+        # Regime state code
+        strategy = getattr(self.adapter, 'strategy', None)
+        regime_name = getattr(strategy, '_current_regime', None) if strategy else None
+        if regime_name:
+            try:
+                from src.strategies.advanced.market_regime_detector import MarketRegimeDetector
+                regime_code = MarketRegimeDetector.REGIMES.get(regime_name, 0)
+                self.metrics_registry.update_regime(
+                    state_code=regime_code,
+                    sma_20=0.0, sma_50=0.0, sma_200=0.0,
+                    time_in_state_seconds=0.0,
+                )
+            except Exception as e:
+                logger.error(f"Metrics: regime emit failed: {e}")
+        # RAMP cache age
+        try:
+            from src.trading.adapters.ramp_live_adapter import CACHE_DIR, CACHE_FILE_PREFIX
+            if CACHE_DIR.exists():
+                cache_files = sorted(
+                    CACHE_DIR.glob(f'{CACHE_FILE_PREFIX}_*.pkl'), reverse=True
+                )
+                if cache_files:
+                    age_sec = time.time() - cache_files[0].stat().st_mtime
+                    self.metrics_registry.update_ramp_cache(age_sec, hit=False)
+        except Exception as e:
+            logger.error(f"Metrics: RAMP cache emit failed: {e}")
+
     def _check_for_end_of_day(self) -> bool:
         """Check if it's end of trading day (4:00 PM EST)."""
         # Get current time in EST
@@ -655,6 +727,8 @@ class LiveTradingRunner:
                         update_market_status,
                         update_process_metrics,
                         update_websocket_metrics,
+                        update_position_metrics,
+                        update_strategy_metrics,
                     )
                     try:
                         # Portfolio gauges need a REST call per update -- throttle to
@@ -666,8 +740,13 @@ class LiveTradingRunner:
                             if account:
                                 broker_name = getattr(self.adapter, 'broker_name', 'unknown')
                                 update_portfolio_metrics(self.metrics_registry, account, broker_name)
+                                self._emit_derived_portfolio_metrics(account)
+                                self._emit_position_and_strategy_metrics(
+                                    update_position_metrics, update_strategy_metrics
+                                )
                         update_market_status(self.metrics_registry, self._is_market_open())
                         update_process_metrics(self.metrics_registry)
+                        self._emit_strategy_specific_metrics()
 
                         # WebSocket status if streaming
                         if hasattr(self.adapter, 'data_provider') and self.adapter.data_provider:
