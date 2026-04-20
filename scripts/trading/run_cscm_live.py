@@ -88,28 +88,33 @@ def _emit_metrics_tick(adapter, metrics_registry, state) -> None:
     except Exception as e:
         logger.error(f"[CSCM-metrics] broker.get_account failed: {e}")
 
-    # Resolve actual broker name. The router's `_active_broker_name` is only
-    # the *slot* ('primary'/'secondary') and is NOT updated on silent
-    # failover inside _try_with_failover. Walk the slots manually: prefer the
-    # active slot, but fall through to whichever slot actually has a broker
-    # (mirrors router._active_broker logic).
-    active_slot = getattr(broker, '_active_broker_name', 'primary')
-    primary_broker = getattr(broker, '_primary', None)
-    secondary_broker = getattr(broker, '_secondary', None)
-    if active_slot == 'primary' and primary_broker is not None:
-        active_broker = primary_broker
-    elif secondary_broker is not None:
-        active_broker = secondary_broker
-    elif primary_broker is not None:
-        active_broker = primary_broker
+    # Resolve actual broker name. For a bare broker (e.g. DemoBroker) inspect
+    # the class directly. For a CryptoBrokerRouter, walk the slots: the
+    # `_active_broker_name` field only tracks the *slot* ('primary'/'secondary')
+    # and is NOT updated on silent failover inside _try_with_failover, so we
+    # mirror router._active_broker's fall-through logic.
+    if hasattr(broker, '_primary') or hasattr(broker, '_secondary'):
+        active_slot = getattr(broker, '_active_broker_name', 'primary')
+        primary_broker = getattr(broker, '_primary', None)
+        secondary_broker = getattr(broker, '_secondary', None)
+        if active_slot == 'primary' and primary_broker is not None:
+            active_broker = primary_broker
+        elif secondary_broker is not None:
+            active_broker = secondary_broker
+        elif primary_broker is not None:
+            active_broker = primary_broker
+        else:
+            active_broker = None
     else:
-        active_broker = None
+        active_broker = broker
     if active_broker is not None:
         cls_name = active_broker.__class__.__name__.lower()
         if 'coinbase' in cls_name:
             broker_name = 'coinbase'
         elif 'alpaca' in cls_name:
             broker_name = 'alpaca'
+        elif 'demo' in cls_name:
+            broker_name = 'demo'
         else:
             broker_name = cls_name
     else:
@@ -297,7 +302,17 @@ def main():
 
         # Setup broker based on selection
         broker = None
-        if args.broker != 'auto':
+        use_demo = os.getenv('CSCM_USE_DEMO_BROKER', '').lower() in ('1', 'true', 'yes')
+        if use_demo:
+            from src.trading.demo import DemoBroker
+            initial_cash = float(args.initial_capital) if args.initial_capital else 100000.0
+            broker = DemoBroker(initial_cash=initial_cash)
+            broker.start_streaming(universe)
+            logger.info(
+                f"[CSCM] Using DemoBroker (Binance streaming, "
+                f"${initial_cash:,.0f} initial cash, {len(universe)} symbols)"
+            )
+        elif args.broker != 'auto':
             if args.broker == 'coinbase':
                 from src.trading.brokers.coinbase_broker import CoinbaseBroker
                 broker_instance = CoinbaseBroker()

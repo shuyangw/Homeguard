@@ -557,6 +557,25 @@ class DemoBroker(CryptoTradingInterface):
             "execution_config": self._execution_sim.get_config(),
         }
 
+    def get_account(self) -> Dict:
+        """Broker-compatible account dict (matches CryptoBrokerRouter.get_account shape)."""
+        prices = self._get_prices()
+        snapshot = self._portfolio.get_portfolio_snapshot(prices)
+        cash = float(snapshot.get("cash", 0.0))
+        total_value = float(snapshot.get("total_value", cash))
+        return {
+            "portfolio_value": total_value,
+            "cash": cash,
+            "buying_power": cash,
+            "last_equity": total_value,
+            "status": "ACTIVE",
+            "currency": "USD",
+        }
+
+    def test_connection(self) -> bool:
+        """Always available — no external broker to reach."""
+        return True
+
     def reset_portfolio(self, initial_cash: float = 10000.0) -> None:
         """Reset portfolio to initial state."""
         self._portfolio.reset(initial_cash=initial_cash)

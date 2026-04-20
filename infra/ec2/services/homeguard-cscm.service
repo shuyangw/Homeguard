@@ -11,6 +11,7 @@ WorkingDirectory=/home/ec2-user/Homeguard
 Environment="PATH=/home/ec2-user/Homeguard/venv/bin:/usr/local/bin:/usr/bin:/bin"
 Environment="ENABLE_METRICS=true"
 Environment="METRICS_PORT=8084"
+Environment="CSCM_USE_DEMO_BROKER=true"
 ExecStart=/home/ec2-user/Homeguard/venv/bin/python scripts/trading/run_cscm_live.py --initial-capital 100000
 Restart=always
 RestartSec=10
