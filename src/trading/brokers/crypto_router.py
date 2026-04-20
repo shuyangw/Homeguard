@@ -21,6 +21,7 @@ For paper trading, use:
     broker = DemoBroker(initial_cash=10000.0)
 """
 
+import os
 from decimal import Decimal
 from typing import Dict, List, Optional
 
@@ -110,8 +111,12 @@ class CryptoBrokerRouter(CryptoTradingInterface, AccountInterface):
         if self._secondary is None:
             try:
                 from src.trading.brokers.alpaca_crypto_broker import AlpacaCryptoBroker
-                self._secondary = AlpacaCryptoBroker(paper=False)
-                logger.info("[Router] Initialized Alpaca as secondary broker")
+                # Default to paper; opt into live via ALPACA_CRYPTO_LIVE=1
+                use_paper = os.getenv('ALPACA_CRYPTO_LIVE', '').lower() not in ('1', 'true', 'yes')
+                self._secondary = AlpacaCryptoBroker(paper=use_paper)
+                logger.info(
+                    f"[Router] Initialized Alpaca as secondary broker (paper={use_paper})"
+                )
             except Exception as e:
                 logger.warning(f"[Router] Failed to initialize Alpaca: {e}")
 
