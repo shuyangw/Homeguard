@@ -750,8 +750,8 @@ class LiveTradingRunner:
                         self._emit_strategy_specific_metrics()
 
                         # WebSocket status if streaming
-                        if hasattr(self.adapter, 'data_provider') and self.adapter.data_provider:
-                            dp = self.adapter.data_provider
+                        dp = getattr(self.adapter, '_data_provider', None) or getattr(self.adapter, 'data_provider', None)
+                        if dp is not None:
                             if hasattr(dp, 'is_connected'):
                                 feed = os.getenv('STREAMING_FEED', 'iex')
                                 connected = dp.is_connected()
