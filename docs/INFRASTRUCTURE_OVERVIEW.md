@@ -1,11 +1,11 @@
 # Homeguard Trading Bot - Infrastructure Overview
 
-**Deployment Date**: November 15, 2025
+**Last Updated**: 2026-04-20
 **Region**: us-east-1 (N. Virginia)
-**Total Resources**: 16
-**Monthly Cost**: ~$7.00
+**Instance**: t4g.medium ARM64 (4 GB RAM) running Amazon Linux 2023
+**Estimated Monthly Cost**: ~$15-18 (see breakdown below)
 
-> **Note**: This document uses placeholders for sensitive values. Replace with your actual values from `.env` or `terraform output`.
+> Placeholders like `<YOUR_EC2_IP>`, `<YOUR_INSTANCE_ID>` are resolved from `.env` or `terraform output`.
 
 ---
 
@@ -13,510 +13,285 @@
 
 | Component | Status | Details |
 |-----------|--------|---------|
-| **EC2 Instance** | [+] Running | `<YOUR_INSTANCE_ID>` (t4g.small) |
+| **EC2 Instance** | [+] Running | `<YOUR_INSTANCE_ID>` (t4g.medium, 4 GB RAM) |
+| **Root Volume** | [+] Active | 50 GB gp3 (encrypted) |
 | **Public IP** | [+] Active | `<YOUR_EC2_IP>` (Elastic IP) |
-| **Scheduled Start/Stop** | [+] Enabled | 9:00 AM - 4:30 PM ET (Mon-Fri) |
-| **Security** | [+] Active | SSH from `<YOUR_IP_CIDR>` only |
-| **Trading Bot** | [+] Running | systemd service active |
-| **Management Scripts** | [+] Available | 10 scripts in `infra/ec2/` |
-| **Health Monitoring** | [+] Configured | Automated 6-point health check |
+| **Remote Access** | [+] Tailscale | SSH and Grafana via Tailnet; public SSH restricted to `<YOUR_IP_CIDR>` |
+| **Scheduled Start/Stop** | [+] Enabled | 9:00 AM - 4:30 PM ET Mon-Fri (equities). CSCM runs weekly Sun 00:00 UTC. |
+| **Trading Services** | [+] Running | OMR, RAMP, CSCM under `homeguard-trading.target` |
+| **Monitoring Stack** | [+] Running | VictoriaMetrics + Grafana + Loki + Promtail + node_exporter |
+
+---
+
+## Runtime Topology on EC2
+
+All services run as systemd units on the single `t4g.medium` instance.
+
+### Strategy services (trading)
+
+| Unit | Strategy | Metrics Port | Schedule | Broker |
+|------|----------|--------------|----------|--------|
+| `homeguard-omr.service` | Overnight Mean Reversion | `8081` | Entry 3:50 PM, exit 9:31 AM ET | Alpaca paper |
+| `homeguard-ramp.service` | Regime-Aware Momentum Protection | `8082` | Rebalance 3:55 PM ET | Alpaca paper |
+| `homeguard-cscm.service` | Cross-Sectional Crypto Momentum | `8084` | Rebalance weekly Sun 00:00 UTC | DemoBroker (Binance WS prices, simulated fills) |
+| `homeguard-trading.target` | Target aggregating the three above | - | - | - |
+
+Legacy `homeguard-mp.service` (port 8083) exists but is superseded by RAMP; kept only as a fallback for ad-hoc reruns and is not started by `homeguard-trading.target`.
+
+**Environment flags per service:**
+- `METRICS_PORT` — per-strategy Prometheus scrape port
+- `ENABLE_METRICS=true` — starts the `MetricsRegistry` HTTP thread
+- `USE_STREAMING=true` (RAMP only) — WebSocket live bars from Alpaca
+- `CSCM_USE_DEMO_BROKER=true` (CSCM only) — forces the DemoBroker path
+
+### Monitoring services
+
+| Unit | Role | Port | Data Path |
+|------|------|------|-----------|
+| `victoria-metrics.service` | TSDB (Prometheus-compatible) | `8428` | `/var/lib/victoria-metrics` |
+| `grafana-server.service` | Dashboards + alerts | `3000` | `/var/lib/grafana` |
+| `loki.service` | Log aggregator | `3100` | `/var/lib/loki` |
+| `promtail.service` | Ships journald → Loki | - | - |
+| `node-exporter.service` | Host CPU/mem/disk metrics | `9100` | - |
+| `homeguard-snapshot.timer` | JSON metrics snapshot fallback | - | `/home/ec2-user/stock_data/metrics_snapshots/` |
+| `homeguard-weekly-report.timer` | QuantStats weekly report | - | Sunday 00:30 UTC |
+| `tailscaled.service` | Mesh VPN for remote access | - | - |
+
+**Retention:**
+- VictoriaMetrics: 90 days
+- Loki: 14 days (configurable in `config/monitoring/loki/config.yaml`)
+- Trade log JSONL: rolls daily under `/home/ec2-user/logs/trades_YYYYMMDD.jsonl`, retained indefinitely (small, append-only)
+
+### Observability services (pre-existing)
+
+| Unit | Role |
+|------|------|
+| `homeguard-discord.service` | Read-only Discord observability bot (Claude-powered) |
+| `homeguard-gateway.service` | IBKR IB Gateway for options/equity orders via `ib_async` |
+| `homeguard-xvfb.service` | Virtual framebuffer for the headless IB Gateway GUI |
 
 ---
 
 ## Infrastructure Diagram
 
 ```
-┌─────────────────────────────────────────────────────────────────────┐
-│                         AWS Account (us-east-1)                     │
-└─────────────────────────────────────────────────────────────────────┘
+                  Tailnet (Tailscale VPN)
+                  --------------------
+                  |  Operator laptop  |
+                  --------------------
+                           |
+                  (tailnet IP, 100.x.y.z)
+                           |
+                           v
++--------------------------------------------------------------------+
+|    EC2 t4g.medium (ARM64, 4 GB RAM) - Amazon Linux 2023            |
+|    <YOUR_INSTANCE_ID>  /  <YOUR_EC2_IP>                            |
+|                                                                    |
+|   +------------------------+   +-------------------------------+   |
+|   |  STRATEGY SERVICES     |   |  MONITORING STACK             |   |
+|   |  (homeguard-trading)   |   |                               |   |
+|   |  homeguard-omr   :8081 |-->|  victoria-metrics :8428       |   |
+|   |  homeguard-ramp  :8082 |-->|   (scrapes every 15s)         |   |
+|   |  homeguard-cscm  :8084 |-->|                               |   |
+|   +------------------------+   |  grafana-server   :3000       |   |
+|             |                  |  loki             :3100       |   |
+|             v                  |  promtail  (journald shipper) |   |
+|   +------------------------+   |  node-exporter    :9100       |   |
+|   |  TRADE / STATE         |   +-------------------------------+   |
+|   |  /home/ec2-user/logs/  |               |                       |
+|   |    trades_YYYYMMDD.jsonl               v                       |
+|   |  /home/ec2-user/stock_data/   Weekly QuantStats report         |
+|   |    metrics_snapshots/         (timer: Sun 00:30 UTC)           |
+|   +------------------------+                                       |
+|                                                                    |
+|   Root volume: 50 GB gp3 (encrypted, delete_on_termination=false)  |
++--------------------------------------------------------------------+
+                           |
+                           |  egress: Alpaca REST+WS, yfinance, IBKR Gateway,
+                           |          Binance WS (CSCM), Anthropic API (Discord),
+                           |          GitHub
+                           v
+```
 
-┌─────────────────────────────────────────────────────────────────────┐
-│                      COMPUTE & NETWORKING                           │
-├─────────────────────────────────────────────────────────────────────┤
-│                                                                     │
-│  ┌──────────────────────────────────────────────────────┐          │
-│  │  Security Group: homeguard-trading-bot-sg            │          │
-│  │  <YOUR_SECURITY_GROUP_ID>                            │          │
-│  ├──────────────────────────────────────────────────────┤          │
-│  │  Inbound:  SSH (22) from <YOUR_IP_CIDR>             │          │
-│  │  Outbound: ALL traffic to 0.0.0.0/0                 │          │
-│  └──────────────────────────────────────────────────────┘          │
-│                            │                                        │
-│                            ▼                                        │
-│  ┌──────────────────────────────────────────────────────┐          │
-│  │  EC2 Instance: homeguard-trading-bot                 │          │
-│  │  <YOUR_INSTANCE_ID>                                  │          │
-│  ├──────────────────────────────────────────────────────┤          │
-│  │  Type:     t4g.small (ARM64)                         │          │
-│  │  AMI:      Amazon Linux 2023                         │          │
-│  │  State:    running                                   │          │
-│  │  Key Pair: homeguard-trading                         │          │
-│  ├──────────────────────────────────────────────────────┤          │
-│  │  Attached Storage:                                   │          │
-│  │  ├─ 8 GB gp3 EBS (encrypted)                        │          │
-│  │  └─ Delete on termination: false                    │          │
-│  ├──────────────────────────────────────────────────────┤          │
-│  │  Running Services:                                   │          │
-│  │  └─ homeguard-trading.service (systemd)             │          │
-│  │     └─ Python trading bot (OMR strategy)            │          │
-│  └──────────────────────────────────────────────────────┘          │
-│                            │                                        │
-│                            ▼                                        │
-│  ┌──────────────────────────────────────────────────────┐          │
-│  │  Elastic IP: homeguard-trading-bot-eip               │          │
-│  │  <YOUR_EC2_IP>                                       │          │
-│  │  (Static IP - persists when instance stopped)       │          │
-│  └──────────────────────────────────────────────────────┘          │
-│                                                                     │
-└─────────────────────────────────────────────────────────────────────┘
+Lambda + EventBridge control-plane (unchanged):
 
-┌─────────────────────────────────────────────────────────────────────┐
-│                    SERVERLESS SCHEDULING                            │
-├─────────────────────────────────────────────────────────────────────┤
-│                                                                     │
-│  ┌──────────────────────────────────────────────────────┐          │
-│  │  IAM Role: homeguard-ec2-scheduler-role              │          │
-│  ├──────────────────────────────────────────────────────┤          │
-│  │  Permissions:                                        │          │
-│  │  ├─ ec2:StartInstances                              │          │
-│  │  ├─ ec2:StopInstances                               │          │
-│  │  ├─ ec2:DescribeInstances                           │          │
-│  │  └─ logs:* (CloudWatch Logs)                        │          │
-│  └──────────────────────────────────────────────────────┘          │
-│                            │                                        │
-│          ┌─────────────────┴──────────────────┐                    │
-│          ▼                                    ▼                    │
-│  ┌──────────────────┐              ┌──────────────────┐            │
-│  │  Lambda Function │              │  Lambda Function │            │
-│  │  START Instance  │              │  STOP Instance   │            │
-│  ├──────────────────┤              ├──────────────────┤            │
-│  │  Name:           │              │  Name:           │            │
-│  │  homeguard-      │              │  homeguard-      │            │
-│  │  start-instance  │              │  stop-instance   │            │
-│  ├──────────────────┤              ├──────────────────┤            │
-│  │  Runtime:        │              │  Runtime:        │            │
-│  │  Python 3.11     │              │  Python 3.11     │            │
-│  ├──────────────────┤              ├──────────────────┤            │
-│  │  Triggered by:   │              │  Triggered by:   │            │
-│  │  EventBridge     │              │  EventBridge     │            │
-│  │  9:00 AM ET      │              │  4:30 PM ET      │            │
-│  │  (Mon-Fri)       │              │  (Mon-Fri)       │            │
-│  └──────────────────┘              └──────────────────┘            │
-│          ▲                                    ▲                    │
-│          │                                    │                    │
-│  ┌──────────────────┐              ┌──────────────────┐            │
-│  │  EventBridge     │              │  EventBridge     │            │
-│  │  Rule (START)    │              │  Rule (STOP)     │            │
-│  ├──────────────────┤              ├──────────────────┤            │
-│  │  Schedule:       │              │  Schedule:       │            │
-│  │  cron(0 14 ?     │              │  cron(30 21 ?    │            │
-│  │  * MON-FRI *)    │              │  * MON-FRI *)    │            │
-│  │                  │              │                  │            │
-│  │  14:00 UTC =     │              │  21:30 UTC =     │            │
-│  │  9:00 AM ET      │              │  4:30 PM ET      │            │
-│  └──────────────────┘              └──────────────────┘            │
-│                                                                     │
-└─────────────────────────────────────────────────────────────────────┘
+```
+EventBridge cron                    EventBridge cron
+ 0 14 ? * MON-FRI *                  30 21 ? * MON-FRI *
+   (9:00 AM ET)                        (4:30 PM ET)
+       |                                  |
+       v                                  v
+  Lambda: homeguard-start-instance   Lambda: homeguard-stop-instance
+       |                                  |
+       +----------+          +------------+
+                  v          v
+              ec2:StartInstances / ec2:StopInstances
+```
 
-┌─────────────────────────────────────────────────────────────────────┐
-│                      MONITORING & LOGGING                           │
-├─────────────────────────────────────────────────────────────────────┤
-│                                                                     │
-│  ┌──────────────────────────────────────────────────────┐          │
-│  │  CloudWatch Log Group                                │          │
-│  │  /aws/lambda/homeguard-start-instance                │          │
-│  │  Retention: 90 days                                  │          │
-│  └──────────────────────────────────────────────────────┘          │
-│                                                                     │
-│  ┌──────────────────────────────────────────────────────┐          │
-│  │  CloudWatch Log Group                                │          │
-│  │  /aws/lambda/homeguard-stop-instance                 │          │
-│  │  Retention: 90 days                                  │          │
-│  └──────────────────────────────────────────────────────┘          │
-│                                                                     │
-│  ┌──────────────────────────────────────────────────────┐          │
-│  │  Local Logs (on EC2 instance)                        │          │
-│  │  ~/logs/trading_YYYYMMDD.log                         │          │
-│  │  (Flushed to disk at 4:00 PM ET daily)              │          │
-│  └──────────────────────────────────────────────────────┘          │
-│                                                                     │
-└─────────────────────────────────────────────────────────────────────┘
+Lambda schedule only applies to equity-trading hours (OMR, RAMP). CSCM runs on a weekly cadence; the instance is already up during its Sunday tick because Lambda doesn't stop it on weekends (or we manually keep it up — see "CSCM note" below).
 
-┌─────────────────────────────────────────────────────────────────────┐
-│                     EXTERNAL CONNECTIONS                            │
-├─────────────────────────────────────────────────────────────────────┤
-│                                                                     │
-│  EC2 Instance connects to:                                         │
-│  ├─ Alpaca API (paper.api.alpaca.markets) - Trading                │
-│  ├─ Yahoo Finance - Market data downloads                          │
-│  ├─ GitHub - Code repository updates                               │
-│  └─ AWS services - CloudWatch, Systems Manager                     │
-│                                                                     │
-└─────────────────────────────────────────────────────────────────────┘
+---
+
+## Resource Breakdown
+
+### Compute
+1. **EC2 Instance** (`aws_instance.homeguard_trading`)
+   - Type: **t4g.medium** (ARM64, 2 vCPU, 4 GB RAM)
+   - AMI: Amazon Linux 2023 (ARM64)
+   - Upgrade from t4g.small was needed after IB Gateway + monitoring stack pushed memory pressure above the 2 GB limit.
+
+2. **EBS Volume**
+   - **50 GB gp3**, encrypted, delete_on_termination=false
+   - Was 8 GB; expanded to 50 GB on 2026-04-20 (online via `modify-volume` + `growpart` + `xfs_growfs`).
+   - Sized for VM (90d × ~630 series ≈ 200 MB), Loki (~200 MB headroom), trade logs, IB Gateway working set, and ~40 GB free for growth.
+
+3. **Elastic IP** — static IP persisted across restarts.
+
+### Networking
+4. **Security Group** `homeguard-trading-bot-sg`
+   - Ingress: `22/tcp` from `<YOUR_IP_CIDR>` only. Grafana/VM/Loki are NOT exposed publicly — access routes through Tailscale.
+   - Egress: all.
+
+### Serverless Scheduling
+5-6. **Start/Stop Lambdas** (Python 3.11) triggered by EventBridge cron — unchanged from original deployment.
+
+### IAM / Logging / Alerts
+- Lambda execution role with `ec2:StartInstances`, `ec2:StopInstances`, CloudWatch Logs.
+- CloudWatch log groups for Lambda (90d retention).
+- Optional CloudWatch Agent for host metrics is **disabled**; node_exporter + VM replaces it.
+- Optional SNS topic for Lambda failure alerts (off by default).
+
+---
+
+## Remote Access
+
+Primary path: **Tailscale**. The EC2 host and the operator laptop join the same tailnet. Grafana and SSH are bound to the tailnet address only — no public ingress required beyond the `<YOUR_IP_CIDR>` SSH fallback.
+
+Grafana URL (tailnet-only): `http://<ec2-tailnet-ip>:3000`
+VictoriaMetrics UI: `http://<ec2-tailnet-ip>:8428/vmui`
+
+Public SSH fallback still works via Elastic IP:
+```bash
+ssh -i ~/.ssh/homeguard-trading.pem ec2-user@<YOUR_EC2_IP>
 ```
 
 ---
 
-## Resource Breakdown by Category
+## Cost Estimate
 
-### Compute (2 resources)
-1. **EC2 Instance** (`aws_instance.homeguard_trading`)
-   - ID: `<YOUR_INSTANCE_ID>`
-   - Type: t4g.small
-   - State: running
-   - Cost: $2.65/month (157 hrs/month scheduled)
+| Component | Notes | Monthly |
+|-----------|-------|---------|
+| EC2 t4g.medium | ~157 hrs/month at $0.0336/hr (Lambda-scheduled) | $5.29 |
+| EBS 50 GB gp3 | $0.08/GB | $4.00 |
+| Elastic IP | charged when instance is stopped | $3.60 |
+| Lambda invocations | free tier | ~$0.01 |
+| CloudWatch Logs (Lambda only) | ~10 MB | ~$0.01 |
+| Data transfer | ~100 MB out | $0.10 |
+| Tailscale | free tier (personal plan) | $0.00 |
+| **Total** | | **~$13/mo** |
 
-2. **EBS Volume** (attached to instance)
-   - Size: 8 GB
-   - Type: gp3 (encrypted)
-   - Cost: $0.64/month
+*Adjust upward if the instance starts running 24/7 (e.g. for CSCM's Sunday tick) — t4g.medium 24/7 ≈ $24/mo on compute alone.*
 
-### Networking (2 resources)
-3. **Security Group** (`aws_security_group.homeguard_trading`)
-   - ID: `<YOUR_SECURITY_GROUP_ID>`
-   - Rules: SSH from `<YOUR_IP_CIDR>`
-
-4. **Elastic IP** (`aws_eip.homeguard_trading`)
-   - IP: `<YOUR_EC2_IP>`
-   - Cost: $3.60/month (when stopped)
-
-### Serverless Functions (2 resources)
-5. **Start Instance Lambda** (`aws_lambda_function.start_instance`)
-   - Function: homeguard-start-instance
-   - Runtime: Python 3.11
-   - Trigger: 9:00 AM ET (Mon-Fri)
-
-6. **Stop Instance Lambda** (`aws_lambda_function.stop_instance`)
-   - Function: homeguard-stop-instance
-   - Runtime: Python 3.11
-   - Trigger: 4:30 PM ET (Mon-Fri)
-
-### Event Scheduling (4 resources)
-7. **Start Schedule** (`aws_cloudwatch_event_rule.start_instance`)
-   - Cron: 0 14 ? * MON-FRI *
-
-8. **Stop Schedule** (`aws_cloudwatch_event_rule.stop_instance`)
-   - Cron: 30 21 ? * MON-FRI *
-
-9. **Start Target** (`aws_cloudwatch_event_target.start_instance`)
-   - Links rule to Lambda
-
-10. **Stop Target** (`aws_cloudwatch_event_target.stop_instance`)
-    - Links rule to Lambda
-
-### IAM Permissions (4 resources)
-11. **IAM Role** (`aws_iam_role.ec2_scheduler`)
-    - Role: homeguard-ec2-scheduler-role
-
-12. **IAM Policy** (`aws_iam_role_policy.ec2_scheduler_policy`)
-    - Permissions: EC2 start/stop, CloudWatch logs
-
-13. **Start Lambda Permission** (`aws_lambda_permission.allow_eventbridge_start`)
-    - Allows EventBridge to invoke start Lambda
-
-14. **Stop Lambda Permission** (`aws_lambda_permission.allow_eventbridge_stop`)
-    - Allows EventBridge to invoke stop Lambda
-
-### Logging (2 resources)
-15. **Start Lambda Logs** (`aws_cloudwatch_log_group.start_instance_logs`)
-    - Path: /aws/lambda/homeguard-start-instance
-    - Retention: 90 days
-
-16. **Stop Lambda Logs** (`aws_cloudwatch_log_group.stop_instance_logs`)
-    - Path: /aws/lambda/homeguard-stop-instance
-    - Retention: 90 days
+**CSCM note:** the Lambda stop schedule only fires Mon-Fri 4:30 PM ET, so the instance is still up on Saturdays and Sundays to catch CSCM's Sunday 00:00 UTC rebalance. If you adopt a tighter schedule, ensure the instance is started before that tick or move CSCM to its own schedule.
 
 ---
 
 ## Daily Operation Flow
 
-### Monday - Friday
+### Monday-Friday
 
-**9:00 AM ET**:
-1. EventBridge triggers start Lambda
-2. Lambda checks instance state
-3. If stopped -> starts instance
-4. Instance boots (~30 seconds)
-5. Systemd auto-starts trading bot
-6. Bot begins market monitoring
+- **9:00 AM ET** — EventBridge → start Lambda → EC2 boot (~30s). systemd brings up `homeguard-trading.target`, monitoring stack, IB Gateway.
+- **9:30 AM ET** — equity market opens. OMR exits overnight positions shortly after open.
+- **3:50 PM ET** — OMR enters overnight positions.
+- **3:55 PM ET** — RAMP rebalances via IBKR historical bars + Alpaca trading.
+- **4:00 PM ET** — market closes. Monitoring stack continues collecting.
+- **4:30 PM ET** — EventBridge → stop Lambda → graceful shutdown. EBS + Elastic IP persist.
 
-**9:30 AM ET**:
-- Market opens
-- Bot starts executing OMR strategy
-- Places trades via Alpaca API
-
-**4:00 PM ET**:
-- Market closes
-- Bot stops trading
-- Logs flush to disk
-- Bot continues monitoring
-
-**4:30 PM ET**:
-1. EventBridge triggers stop Lambda
-2. Lambda checks instance state
-3. If running -> stops instance
-4. Instance shuts down gracefully
-5. Elastic IP preserved
-6. All data saved to EBS
-
-### Saturday - Sunday
-- Instance remains stopped
-- No scheduled starts
-- No trading activity
-- Minimal costs (EBS + Elastic IP only)
+### Weekends (Sat-Sun)
+- Instance remains up (not scheduled to stop) so CSCM can fire at Sun 00:00 UTC.
+- CSCM rebalance runs: pulls crypto prices from DemoBroker (Binance WS), applies cross-sectional momentum + BTC regime filter, executes simulated fills through DemoBroker's simulated slippage + fees.
+- `homeguard-weekly-report.timer` fires Sun 00:30 UTC: generates QuantStats HTML report from the trade log JSONL and posts a summary.
 
 ---
 
-## Cost Breakdown
+## Management
 
-| Component | Hours/Month | Rate | Monthly Cost |
-|-----------|-------------|------|--------------|
-| EC2 t4g.small | 157.5 | $0.0168/hr | $2.65 |
-| EBS 8 GB gp3 | 730 | $0.08/GB | $0.64 |
-| Elastic IP (stopped) | ~572.5 | $0.005/hr | $3.60 |
-| Lambda invocations | 42 | Free tier | $0.01 |
-| CloudWatch Logs | ~10 MB | $0.50/GB | $0.01 |
-| Data transfer | ~100 MB | $0.09/GB | $0.10 |
-| **TOTAL** | | | **~$7.00** |
+### SSH / ops scripts
+Location: `infra/ec2/` (Windows `.bat` + Unix `.sh`):
 
----
+| Script | Purpose |
+|--------|---------|
+| `connect.{bat,sh}` | SSH into instance |
+| `check_bot.{bat,sh}` | Check all homeguard-* service statuses |
+| `view_logs.{bat,sh}` | Stream `journalctl` for the trading target |
+| `restart_bot.{bat,sh}` | Restart `homeguard-trading.target` |
+| `daily_health_check.{bat,sh}` | 6-point health check |
+| `local_start_instance.bat` / `local_stop_instance.bat` | Manual EC2 start/stop |
 
-## Connection Information
+SSH aliases configured on `.ssh/config`: `bot-status`, `bot-logs`, `bot-logs-recent`, `bot-update`, `bot-restart`.
 
-**SSH Access**:
+### systemd commands
+
 ```bash
-ssh -i ~/.ssh/homeguard-trading.pem ec2-user@<YOUR_EC2_IP>
+# Whole trading stack
+sudo systemctl status homeguard-trading.target
+sudo systemctl restart homeguard-trading.target
+
+# Individual strategy
+sudo systemctl restart homeguard-omr
+sudo journalctl -u homeguard-ramp -f
+
+# Monitoring stack
+sudo systemctl status victoria-metrics grafana-server loki promtail node-exporter
 ```
 
-**Public IP**: `<YOUR_EC2_IP>` (static - see `.env` for actual value)
-**Public DNS**: `<YOUR_PUBLIC_DNS>` (available from AWS Console or `terraform output`)
-**Instance ID**: `<YOUR_INSTANCE_ID>` (see `.env` for actual value)
-**Security Group**: `<YOUR_SECURITY_GROUP_ID>` (see `terraform output`)
-
----
-
-## Quick Commands
-
-### Check Infrastructure Status
+### Code updates
 ```bash
-# List all resources
-terraform state list
-
-# Show all outputs
-terraform output
-
-# Get specific output
-terraform output instance_public_ip
-terraform output instance_state
-```
-
-### Monitor Instance
-```bash
-# Check if instance is running (use EC2_INSTANCE_ID from .env)
-aws ec2 describe-instances --instance-ids <YOUR_INSTANCE_ID> --query 'Reservations[0].Instances[0].State.Name'
-
-# View Lambda logs
-aws logs tail /aws/lambda/homeguard-start-instance --follow
-aws logs tail /aws/lambda/homeguard-stop-instance --follow
-```
-
-### Manual Control
-```bash
-# Manually start instance (use EC2_INSTANCE_ID from .env)
-aws ec2 start-instances --instance-ids <YOUR_INSTANCE_ID>
-
-# Manually stop instance
-aws ec2 stop-instances --instance-ids <YOUR_INSTANCE_ID>
-
-# SSH to instance (use EC2_IP from .env)
-ssh -i ~/.ssh/homeguard-trading.pem ec2-user@<YOUR_EC2_IP>
-
-# Check bot status
-sudo systemctl status homeguard-trading
-
-# View trading logs
-tail -f ~/logs/trading_$(date +%Y%m%d).log
-```
-
----
-
-## Management Tools
-
-### SSH Quick-Access Scripts
-
-Pre-configured scripts for easy instance management (Windows & Linux/Mac):
-
-**Location**: `infra/ec2/`
-
-| Script | Purpose | Usage |
-|--------|---------|-------|
-| `connect.bat` / `connect.sh` | SSH into instance | Double-click or run directly |
-| `check_bot.bat` / `check_bot.sh` | Check bot status + recent activity | Shows systemd status + last 10 log lines |
-| `view_logs.bat` / `view_logs.sh` | Stream live bot logs | Real-time log monitoring (Ctrl+C to stop) |
-| `restart_bot.bat` / `restart_bot.sh` | Restart trading bot service | Restarts systemd service and shows status |
-| `daily_health_check.bat` / `daily_health_check.sh` | Automated 6-point health check | Instance state, bot status, errors, resources |
-| `view_logs_plain.bat` | View logs without ANSI colors | For Windows CMD compatibility |
-
-**Windows Quick Start**:
-```bash
-# From repository root
-infra\ec2\check_bot.bat
-infra\ec2\view_logs.bat
-infra\ec2\daily_health_check.bat
-```
-
-**Linux/Mac Quick Start**:
-```bash
-# From repository root
-infra/ec2/check_bot.sh
-infra/ec2/view_logs.sh
-infra/ec2/daily_health_check.sh
-```
-
-### Health Monitoring
-
-**Comprehensive Health Check Cheatsheet**: See [`HEALTH_CHECK_CHEATSHEET.md`](HEALTH_CHECK_CHEATSHEET.md) for:
-- Daily health check routine (morning, during market, after close)
-- Common issues and quick fixes
-- Advanced monitoring commands
-- Lambda scheduler health checks
-- Git repository sync verification
-
-**6-Point Daily Health Check** (automated script):
-1. Instance State (running/stopped)
-2. Bot Service Status (active/failed)
-3. Recent Errors (last hour)
-4. Resource Usage (memory/CPU)
-5. Last Activity (recent logs)
-6. Market Status (open/closed)
-
-### Bot Service Management
-
-The trading bot runs as a systemd service with auto-restart capabilities:
-
-```bash
-# Service status
-sudo systemctl status homeguard-trading
-
-# Start service
-sudo systemctl start homeguard-trading
-
-# Stop service
-sudo systemctl stop homeguard-trading
-
-# Restart service
-sudo systemctl restart homeguard-trading
-
-# View service logs (live)
-sudo journalctl -u homeguard-trading -f
-
-# View service logs (last 50 lines)
-sudo journalctl -u homeguard-trading -n 50
-
-# View errors only
-sudo journalctl -u homeguard-trading -p err
-```
-
-**Service Configuration**:
-- **File**: `/etc/systemd/system/homeguard-trading.service`
-- **Auto-restart**: Enabled (10-second delay between restarts)
-- **Resource Limits**: 1GB RAM max, 150% CPU quota
-- **Logging**: systemd journal + file logs
-- **User**: ec2-user (non-root)
-
-### Discord Bot Service (Optional)
-
-The Discord monitoring bot runs as a separate systemd service for observability:
-
-```bash
-# Service status
-sudo systemctl status homeguard-discord
-
-# Start/stop/restart
-sudo systemctl start homeguard-discord
-sudo systemctl stop homeguard-discord
-sudo systemctl restart homeguard-discord
-
-# View logs
-sudo journalctl -u homeguard-discord -f
-```
-
-**Service Configuration**:
-- **File**: `/etc/systemd/system/homeguard-discord.service`
-- **Purpose**: Read-only observability via Discord
-- **Auto-restart**: Enabled (10-second delay)
-- **Security**: Read-only filesystem access, no privilege escalation
-- **Dependencies**: discord.py, anthropic
-
-**Important**: The Discord bot is fully isolated from the trading bot. Discord bot failures have zero impact on trading operations.
-
-**Management Scripts**:
-- `infra/ec2/discord_bot_status.bat` - Check status
-- `infra/ec2/discord_bot_restart.bat` - Restart service
-- `infra/ec2/discord_bot_logs.bat` - View logs
-
-### Code Updates
-
-To update the bot code on EC2:
-
-```bash
-# Method 1: Using SSH script
-infra\ec2\connect.bat   # or connect.sh
-
-# Then on the instance:
-cd ~/Homeguard
-git pull
-sudo systemctl restart homeguard-trading
-
-# Method 2: Remote one-liner (use EC2_IP from .env)
 ssh -i ~/.ssh/homeguard-trading.pem ec2-user@<YOUR_EC2_IP> \
-  "cd ~/Homeguard && git pull && sudo systemctl restart homeguard-trading"
+  "cd ~/Homeguard && git pull && sudo systemctl restart homeguard-trading.target"
 ```
 
-### Log Locations
+Dashboard JSON changes under `config/monitoring/grafana/dashboards/` require copying to `/var/lib/grafana/dashboards/homeguard/` and reloading `grafana-server`.
 
-**On EC2 Instance**:
-- **Systemd logs**: `sudo journalctl -u homeguard-trading`
-- **File logs**: `~/logs/live_trading/paper/trading_YYYYMMDD.log`
-- **Service file**: `/etc/systemd/system/homeguard-trading.service`
-- **Environment**: `~/Homeguard/.env` (credentials)
+### Log locations on EC2
 
-**On AWS**:
-- **Lambda start logs**: `/aws/lambda/homeguard-start-instance`
-- **Lambda stop logs**: `/aws/lambda/homeguard-stop-instance`
+| What | Where |
+|------|-------|
+| Strategy stdout | `journalctl -u homeguard-{omr,ramp,cscm}` → Loki via Promtail |
+| Trade events (JSONL) | `/home/ec2-user/logs/trades_YYYYMMDD.jsonl` |
+| Metrics snapshots (JSON) | `/home/ec2-user/stock_data/metrics_snapshots/{strategy}_snapshot.json` |
+| VictoriaMetrics data | `/var/lib/victoria-metrics/` |
+| Loki data | `/var/lib/loki/` |
+| Grafana data + dashboards | `/var/lib/grafana/` |
+| Lambda start/stop logs | CloudWatch: `/aws/lambda/homeguard-{start,stop}-instance` |
+
+**Note:** `data/trading/logs/snapshots/portfolio_history.csv` is legacy (last write 2026-03-25). `PortfolioLogger`/`PortfolioSnapshotWorker` are no longer wired into the runners; the metrics snapshot + VictoriaMetrics replaces them. Either re-wire or delete those modules in a future cleanup.
 
 ---
 
 ## Security Summary
 
-**Network Security**:
-- [+] SSH restricted to single IP (`<YOUR_IP_CIDR>` - your home/office IP)
-- [+] No inbound ports except SSH (22)
-- [+] Outbound traffic allowed (for API calls)
-
-**Data Security**:
-- [+] EBS volume encrypted at rest
-- [+] IMDSv2 required (metadata service protection)
-- [+] Alpaca credentials in environment variables (not code)
-- [+] Key pair required for SSH access
-
-**IAM Security**:
-- [+] Lambda has minimal permissions (EC2 start/stop only)
-- [+] No root credentials stored
-- [+] Service-specific roles
+- **Network**: SSH restricted to `<YOUR_IP_CIDR>`. Grafana/VM/Loki bound to tailnet (100.x.y.z) — no public ingress on 3000/8428/3100.
+- **Data at rest**: EBS encrypted, IAM least-privilege on Lambda role, IMDSv2 required.
+- **Secrets**: `.env` on instance (Alpaca, Discord, Anthropic keys, IBKR config). Not committed.
+- **Tailscale**: separate auth plane; compromised Tailnet key is scoped only to the tailnet devices and revocable from the admin console.
 
 ---
 
-## Architecture Highlights
+## Terraform state
 
-**Automated**: Fully hands-off operation during trading week
-**Cost-Optimized**: Runs only during market hours (46% savings)
-**Resilient**: Auto-restart on failure, data persists across reboots
-**Monitorable**: CloudWatch logs, systemd logs, trading logs
-**Secure**: Minimal attack surface, encrypted storage, restricted access
+| File | Role |
+|------|------|
+| `infra/terraform/main.tf` | Instance, security group, Elastic IP, optional SNS/CloudWatch |
+| `infra/terraform/variables.tf` | `instance_type=t4g.medium`, `root_volume_size=50` (both defaults) |
+| `infra/terraform/scheduled_start_stop.tf` | Lambda + EventBridge cron |
+| `infra/terraform/monitoring.tf` | Optional CloudWatch Agent (off by default) |
+| `infra/terraform/outputs.tf` | EC2 ID, public IP, DNS |
+
+The monitoring stack (VM, Grafana, Loki, Promtail, node_exporter, Tailscale) is **not** managed by Terraform — it's installed idempotently via `infra/ec2/setup/install_*.sh`, with service units in `infra/ec2/services/*.service`. That's intentional: these are OS-level daemons, not AWS resources, and bootstrapping them via Terraform would obscure the config files under `config/monitoring/`.
 
 ---
 
-**Last Updated**: November 15, 2025
-**Managed by**: Terraform
-**Configuration**: `infra/terraform/terraform.tfvars`
+**Managed by**: Terraform (AWS resources) + setup scripts under `infra/ec2/setup/` (instance services)
+**Monitoring design spec**: `docs/superpowers/specs/2026-04-18-monitoring-system-design.md`
+**Metric naming contract**: `docs/monitoring/METRIC_SPEC.md`

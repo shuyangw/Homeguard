@@ -69,13 +69,13 @@ variable "instance_type" {
 }
 
 variable "root_volume_size" {
-  description = "Size of root EBS volume in GB"
+  description = "Size of root EBS volume in GB. Sized for monitoring stack (VictoriaMetrics 90d retention, Loki logs, Grafana) plus trading state."
   type        = number
-  default     = 8
+  default     = 50
 
   validation {
-    condition     = var.root_volume_size >= 8 && var.root_volume_size <= 100
-    error_message = "Root volume size must be between 8 and 100 GB."
+    condition     = var.root_volume_size >= 8 && var.root_volume_size <= 200
+    error_message = "Root volume size must be between 8 and 200 GB."
   }
 }
 

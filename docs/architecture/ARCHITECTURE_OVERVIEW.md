@@ -804,15 +804,27 @@ python -m gui
   - See [MODULE_REFERENCE.md](MODULE_REFERENCE.md#trading-system-layer) for details
 
 - [+] **Live trading integration** - Paper trading deployed to AWS EC2 with automated scheduling (November 2025)
-  - EC2 instance with Python 3.11 (t4g.medium ARM64, 4 GB RAM)
-  - Lambda-powered auto-start/stop (9 AM - 4:30 PM ET Mon-Fri)
-  - **Multi-strategy architecture** (December 2025):
-    - `homeguard-omr.service`: Overnight Mean Reversion strategy
-    - `homeguard-mp.service`: Momentum Protection strategy
-    - `homeguard-trading.target`: Systemd target to manage both services together
-    - Each strategy runs in its own process with distinct name (visible in ps/htop)
+  - EC2 instance with Python 3.11 (t4g.medium ARM64, 4 GB RAM, 50 GB gp3 EBS)
+  - Lambda-powered auto-start/stop (9 AM - 4:30 PM ET Mon-Fri; weekend up for CSCM Sun 00:00 UTC tick)
+  - **Multi-strategy architecture** (updated April 2026):
+    - `homeguard-omr.service`: Overnight Mean Reversion (Alpaca, metrics port 8081)
+    - `homeguard-ramp.service`: Regime-Aware Momentum Protection (Alpaca, metrics port 8082)
+    - `homeguard-cscm.service`: Cross-Sectional Crypto Momentum (DemoBroker + Binance WS streaming, metrics port 8084)
+    - `homeguard-trading.target`: Systemd target managing all three strategy services
+    - Each strategy runs in its own process with its own MetricsRegistry + HTTP exporter on a unique port
   - SSH management scripts (Windows .bat and Unix .sh) with `.env`-based configuration
   - See [Infrastructure Overview](../INFRASTRUCTURE_OVERVIEW.md) for details
+
+- [+] **Self-hosted monitoring stack** - VictoriaMetrics + Grafana + Loki on the trading host (April 2026)
+  - `victoriametrics.service` (port 8428, 90d retention): scrapes each strategy's in-process metrics exporter every 15s
+  - `grafana-server.service` (port 3000): auto-provisioned dashboards (Portfolio Overview, Strategy Breakdown, Incident Review)
+  - `loki.service` (port 3100, 14d retention) + `promtail.service`: ships systemd journal to Loki for correlated log views
+  - `node_exporter.service` (port 9100): host CPU/memory/disk/network metrics
+  - Tailscale VPN for operator access (no public exposure of Grafana/VM/Loki)
+  - `homeguard-weekly-report.timer` (Sun 00:30 UTC): QuantStats tearsheet rendered from VictoriaMetrics equity series
+  - Metric naming contract in [docs/monitoring/METRIC_SPEC.md](../monitoring/METRIC_SPEC.md)
+  - Design spec: [docs/superpowers/specs/2026-04-18-monitoring-system-design.md](../superpowers/specs/2026-04-18-monitoring-system-design.md)
+  - Installed via `infra/ec2/setup/install_{victoriametrics,grafana,loki,node_exporter,tailscale}.sh` (not managed by Terraform)
 
 - [+] **Strategy reorganization** - Separated production vs research strategies (December 2025)
   - Production strategies in `src/strategies/advanced/`: OMR, MP, RAMP
@@ -853,6 +865,6 @@ python -m gui
 
 ---
 
-**Last Updated**: 2025-12-15
+**Last Updated**: 2026-04-20
 **Maintainers**: Update this doc when adding/removing/moving major modules
 **Review Frequency**: After any architectural changes
