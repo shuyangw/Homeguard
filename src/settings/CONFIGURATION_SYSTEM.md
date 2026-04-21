@@ -68,8 +68,7 @@ src/settings/
 **Platform Paths** (from `settings.ini`):
 | Platform | Storage |
 |----------|---------|
-| Windows | `F:\Stock_Data` |
-| macOS | `/Users/shuyangw/Library/CloudStorage/Dropbox/cs/stonk/data` |
+| Windows | `H:\Stock_Data` |
 | Linux/EC2 | `/home/ec2-user/stock_data` |
 
 **Usage**:
@@ -78,8 +77,7 @@ from src.settings import get_local_storage_dir, get_output_dir
 
 # Get platform-appropriate paths
 data_dir = get_local_storage_dir()
-# Windows: F:\Stock_Data
-# macOS: /Users/.../stonk/data
+# Windows: H:\Stock_Data
 # EC2: /home/ec2-user/stock_data
 
 output_dir = get_output_dir()
@@ -261,20 +259,22 @@ from src.settings import (
 ### settings.ini Structure
 
 ```ini
-[os]
-environment = windows  # or macos, linux
+[windows]
+local_storage_dir = H:\Stock_Data
+options_data_dir = H:\Stock_Data\options
+output_dir = H:\Homeguard_Output
+discord_bot_log_dir = H:\Homeguard_Output\discord_bot
+api_threads = 8
 
-[directories]
-local_storage_dir = F:\Stock_Data
-output_dir = output/
-log_output_dir = logs/
-backtest_results_dir = output/backtests/
-live_trading_dir = data/trading/
-models_dir = data/models/
-discord_bot_log_dir = logs/discord_bot/
+[linux]
+local_storage_dir = /home/ec2-user/stock_data
+options_data_dir = /home/ec2-user/options_data
+output_dir = /home/ec2-user/logs
+discord_bot_log_dir = /home/ec2-user/logs/discord_bot
+api_threads = 8
 
-[tearsheet]
-frequency = weekly  # or daily, monthly
+[tearsheets]
+frequency = H  # full, H (hourly), D (daily), W (weekly)
 ```
 
 ### Example YAML Config

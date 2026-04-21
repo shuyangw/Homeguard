@@ -57,8 +57,7 @@ Data is stored in Hive-partitioned format by timeframe:
 
 | Platform | Path |
 |----------|------|
-| Windows | `F:\Stock_Data` |
-| macOS | `/Users/shuyangw/Library/CloudStorage/Dropbox/cs/stonk/data` |
+| Windows | `H:\Stock_Data` |
 | Linux/EC2 | `/home/ec2-user/stock_data` |
 
 Always use `from src.settings import get_local_storage_dir` to get the correct path.

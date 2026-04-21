@@ -51,7 +51,7 @@ The OpEx Pinning & Release Strategy exploits gamma hedging dynamics near monthly
 
 ### What We Have
 
-ThetaData 1-minute options data stored at `E:\OptionsData\options_1min\`:
+ThetaData 1-minute options data stored at `H:\Stock_Data\options\options_1min\`:
 - **Symbols**: SPY, QQQ, IWM, AAPL, AMZN, GOOGL, META, MSFT, NVDA, TSLA, AMD, NFLX, BA, DIS, JPM, V, XOM
 - **Date Range**: Nov 2024 - Dec 2025 (~13 months)
 - **Format**: Partitioned parquet (`root={symbol}/year={YYYY}/month={MM}/day_{DD}.parquet`)

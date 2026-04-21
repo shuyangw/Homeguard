@@ -282,7 +282,7 @@ trades = aapl_portfolio.trades.records_readable
 A: No, only one backtest can run at a time in the GUI. Wait for completion or cancel the current run.
 
 **Q: Where are the exported files saved?**
-A: Files are saved to the directory specified in `settings.ini` under `log_output_dir` for your OS (Windows, macOS, or Linux).
+A: Files are saved to the directory specified in `settings.ini` under `output_dir` for your OS (Windows or Linux).
 
 **Q: Can I customize the theme (dark mode)?**
 A: Not yet. Dark mode support is planned for Phase 5. Current version uses light theme only.

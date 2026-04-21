@@ -282,10 +282,13 @@ from src.data.providers import (
 ### Storage Paths (from settings.ini)
 
 ```ini
-[storage]
-local_storage_dir = F:\Stock_Data  # Windows
-# local_storage_dir = /Users/shuyangw/Library/CloudStorage/Dropbox/cs/stonk/data  # macOS
-# local_storage_dir = /home/ec2-user/stock_data  # EC2
+[windows]
+local_storage_dir = H:\Stock_Data
+options_data_dir  = H:\Stock_Data\options
+output_dir        = H:\Homeguard_Output
+
+[linux]
+local_storage_dir = /home/ec2-user/stock_data  # EC2
 ```
 
 ### Directory Structure

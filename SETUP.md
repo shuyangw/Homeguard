@@ -32,22 +32,21 @@ Edit `settings.ini` and update paths for your system:
 **Windows:**
 ```ini
 [windows]
-local_storage_dir = C:\Your\Preferred\Path\Stock_Data
-api_threads = 16
-```
-
-**macOS:**
-```ini
-[macos]
-local_storage_dir = /Users/your_username/data/stock_data
-api_threads = 6
+local_storage_dir   = H:\Stock_Data
+options_data_dir    = H:\Stock_Data\options
+output_dir          = H:\Homeguard_Output
+discord_bot_log_dir = H:\Homeguard_Output\discord_bot
+api_threads         = 8
 ```
 
 **Linux:**
 ```ini
 [linux]
-local_storage_dir = /home/your_username/stock_data
-api_threads = 8
+local_storage_dir   = /home/ec2-user/stock_data
+options_data_dir    = /home/ec2-user/options_data
+output_dir          = /home/ec2-user/logs
+discord_bot_log_dir = /home/ec2-user/logs/discord_bot
+api_threads         = 8
 ```
 
 **WARNING: Never commit `settings.ini` to Git!** It contains personal paths and is in `.gitignore`.

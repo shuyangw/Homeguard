@@ -160,13 +160,10 @@ RUN_ALL_BASIC.bat --visualize --verbosity 1
 
 ```ini
 [windows]
-log_output_dir = C:\Users\username\Dropbox\cs\stonk\logs
-
-[macos]
-log_output_dir = /Users/username/Dropbox/cs/stonk/logs
+output_dir = H:\Homeguard_Output
 
 [linux]
-log_output_dir = /home/username/stonk/logs
+output_dir = /home/ec2-user/logs
 ```
 
 ### Verbosity Levels
