@@ -1,9 +1,13 @@
 """Check S&P 500 coverage in local Alpaca data."""
+import sys
 import pandas as pd
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / 'src'))
+from settings import get_local_storage_dir
+
 sp500_file = Path(__file__).parent.parent / 'config/universes' / 'sp500-2025.csv'
-local_data = Path(r'F:\Stock_Data\equities_1min')
+local_data = get_local_storage_dir() / 'equities_1min'
 
 sp500 = pd.read_csv(sp500_file)['Symbol'].tolist()
 # Directories are named "symbol=AAPL" (hive partitioning)

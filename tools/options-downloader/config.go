@@ -3,7 +3,7 @@ package main
 const (
 	thetaBaseURL       = "http://localhost:25503/v3"
 	defaultStartDate   = "2012-06-01"
-	defaultOutputDir   = `E:\OptionsData`
+	defaultOutputDir   = `H:\Stock_Data\options`
 	defaultConcurrency = 8
 	defaultTimeout     = 300 // seconds
 	maxRetries         = 3

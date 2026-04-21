@@ -1,8 +1,8 @@
-r"""
+"""
 Error logging utility for GUI application.
 
-Logs all errors, warnings, and info messages to:
-C:\Users\qwqw1\Dropbox\cs\stonk\homeguard_gui_logs
+Logs all errors, warnings, and info messages to <output_dir>/homeguard_gui_logs
+where <output_dir> is resolved from settings.ini per the current OS.
 """
 
 import logging
@@ -12,9 +12,11 @@ from pathlib import Path
 from datetime import datetime
 from typing import Optional
 
+from src.settings import get_output_dir
 
-# Log directory
-LOG_DIR = Path(r"C:\Users\qwqw1\Dropbox\cs\stonk\homeguard_gui_logs")
+
+# Log directory (resolved from settings.ini at import time)
+LOG_DIR = get_output_dir() / "homeguard_gui_logs"
 
 # Create logger instance
 _gui_logger: Optional[logging.Logger] = None

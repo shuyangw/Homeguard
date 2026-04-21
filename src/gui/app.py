@@ -13,7 +13,7 @@ from gui.workers.gui_controller import GUIBacktestController
 from gui.optimization.runner import OptimizationRunner
 from src.backtesting.engine.backtest_engine import BacktestEngine
 from src.backtesting.engine.results_aggregator import ResultsAggregator
-from gui.utils.error_logger import log_error, log_info, log_exception
+from gui.utils.error_logger import log_error, log_info, log_exception, get_log_directory
 from gui.utils.run_history import RunHistory
 from utils.cache_manager import CacheManager
 
@@ -626,7 +626,7 @@ def main(page: ft.Page):
         log_exception(e, "Fatal error starting GUI")
         # Show error in page
         error_text = ft.Text(
-            f"Fatal Error: {str(e)}\n\nCheck logs at: C:\\Users\\qwqw1\\Dropbox\\cs\\stonk\\homeguard_gui_logs",
+            f"Fatal Error: {str(e)}\n\nCheck logs at: {get_log_directory()}",
             color=ft.Colors.RED,
             size=14
         )

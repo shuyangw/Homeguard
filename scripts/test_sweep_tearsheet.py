@@ -14,6 +14,7 @@ from backtesting.engine.backtest_engine import BacktestEngine
 from backtesting.optimization.sweep_runner import SweepRunner
 from backtesting.base.strategy import LongOnlyStrategy
 from backtesting.utils.indicators import Indicators
+from settings import get_output_dir
 from utils import logger
 
 
@@ -82,7 +83,7 @@ def main():
     logger.blank()
 
     # Run sweep with full reports
-    output_dir = Path("c:/Users/qwqw1/Dropbox/cs/stonk/logs") / "test_sweep_tearsheet"
+    output_dir = get_output_dir() / "test_sweep_tearsheet"
 
     df = runner.run_and_report(
         strategy=strategy,
