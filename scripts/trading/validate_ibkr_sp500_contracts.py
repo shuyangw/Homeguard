@@ -53,17 +53,18 @@ QUICK_SAMPLE = [
 
 
 def load_universe(csv_path: Path) -> List[str]:
-    """Load ticker column from a CSV of (_, name, ticker) rows."""
+    """Load ticker column from a CSV of (_, name, ticker) rows.
+
+    Skips the header if the last column looks like a column name
+    ('Symbol', 'Ticker', or anything non-alphanumeric-uppercase).
+    """
+    _HEADER_NAMES = {"TICKER", "SYMBOL", "TICKERS", "SYMBOLS"}
     with csv_path.open() as f:
         reader = csv.reader(f)
-        # Skip header if present
         first = next(reader, None)
-        if first and first[-1].strip().upper() == "TICKER":
-            pass  # header consumed
-        else:
-            # Not a header -- yield the first row too
-            if first:
-                yield first[-1].strip()
+        if first and first[-1].strip().upper() not in _HEADER_NAMES:
+            # Not a header we recognize -- treat as data
+            yield first[-1].strip()
         for row in reader:
             if not row:
                 continue

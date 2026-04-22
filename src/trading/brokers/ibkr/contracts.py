@@ -279,7 +279,9 @@ class ContractResolver:
         contracts = self._conn.run_sync(
             self._conn.ib.qualifyContractsAsync(contract)
         )
-        if not contracts:
+        if not contracts or contracts[0] is None:
+            # qualifyContractsAsync returns [None] for ambiguous contracts
+            # (multiple matches across exchanges) -- treat the same as empty.
             raise SymbolNotFoundError(
                 f"Cannot resolve contract: {contract.symbol} "
                 f"secType={contract.secType}"
