@@ -609,6 +609,25 @@ class RAMPLiveAdapter(StrategyAdapter):
 
             logger.info(f"[RAMP] Downloaded {len(prices_df.columns)} symbols, {len(prices_df)} days via {source_name}")
 
+            # Guard against poisoning the disk cache with an incomplete today-row.
+            # If preload runs at 9:30 AM ET, Alpaca returns partial/missing daily
+            # bars for most symbols (the daily bar isn't final until 4 PM close).
+            # Persisting a <80% valid today-row causes fetch_todays_closes to
+            # trust stale data at rebalance time. Drop the row here; rebalance
+            # will refetch via streaming buffer or REST at 3:55 PM.
+            if len(prices_df) > 0:
+                last_idx = prices_df.index[-1]
+                last_date_val = last_idx.date() if hasattr(last_idx, 'date') else last_idx
+                today_date = end_date.date() if hasattr(end_date, 'date') else end_date
+                if last_date_val == today_date:
+                    valid_pct = prices_df.iloc[-1].notna().sum() / len(prices_df.columns) * 100 if len(prices_df.columns) else 0
+                    if valid_pct < 80.0:
+                        logger.warning(
+                            f"[RAMP] Today's row only {valid_pct:.0f}% valid at preload; "
+                            f"dropping so rebalance can refetch complete data later"
+                        )
+                        prices_df = prices_df.iloc[:-1]
+
             # Fetch SPY via the same historical source (Alpaca when available, broker fallback)
             spy_data = historical_source.get_historical_bars(
                 symbol='SPY',
@@ -751,14 +770,31 @@ class RAMPLiveAdapter(StrategyAdapter):
             prices_df = self._data_cache['prices']
             today = tz.now().date()
 
-            # Check if we already have today's data
+            # Check if we already have today's data AND it's >= 80% complete.
+            # A row can exist for "today" but be mostly NaN if the preload ran
+            # right at market open (09:30 ET) before daily bars had populated.
+            # Trusting such a row leads to signal-gen operating on incomplete
+            # data and a silent near-total absence of positions.
             if len(prices_df) > 0:
                 last_date = prices_df.index[-1]
                 if hasattr(last_date, 'date'):
                     last_date = last_date.date()
                 if last_date == today:
-                    logger.info("[RAMP] Already have today's data in cache")
-                    return True
+                    last_row = prices_df.iloc[-1]
+                    valid_pct = last_row.notna().sum() / len(last_row) * 100 if len(last_row) else 0
+                    if valid_pct >= 80.0:
+                        logger.info(
+                            f"[RAMP] Today's data already in cache ({valid_pct:.0f}% valid)"
+                        )
+                        return True
+                    logger.warning(
+                        f"[RAMP] Today's cache row is only {valid_pct:.0f}% valid "
+                        f"({last_row.notna().sum()}/{len(last_row)}) -- refetching"
+                    )
+                    # Drop the incomplete today-row before refetching so the
+                    # fresh values append cleanly.
+                    prices_df = prices_df.iloc[:-1]
+                    self._data_cache['prices'] = prices_df
 
             logger.info(f"[RAMP] Fetching today's closes for {len(self.symbols)} symbols...")
 
