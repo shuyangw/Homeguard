@@ -41,6 +41,7 @@ from src.utils.logger import logger
 
 STRATEGY_NAME = 'cscm'
 METRICS_EMIT_INTERVAL_SECONDS = 30
+DEFAULT_INITIAL_CAPITAL_USD = 100000.0
 
 
 def _compute_today_realized_pnl(strategy: str) -> float:
@@ -189,9 +190,15 @@ def _emit_metrics_tick(adapter, metrics_registry, state) -> None:
         logger.error(f"[CSCM-metrics] market/process metrics failed: {e}")
 
 
-def _start_metrics_sidecar(adapter, metrics_registry) -> threading.Thread:
+def _start_metrics_sidecar(adapter, metrics_registry, initial_capital_usd: float) -> threading.Thread:
     """Start daemon thread that emits CSCM metrics periodically."""
+    from src.monitoring.hooks import update_strategy_initial_capital
+
     state = {'peak_equity': 0.0, 'session_open_equity': None}
+
+    # Emit static starting-capital gauge once at startup so dashboards can show it
+    # alongside the dynamic deployed-capital series.
+    update_strategy_initial_capital(metrics_registry, initial_capital_usd)
 
     def _loop():
         while True:
@@ -203,7 +210,10 @@ def _start_metrics_sidecar(adapter, metrics_registry) -> threading.Thread:
 
     thread = threading.Thread(target=_loop, name='cscm-metrics-sidecar', daemon=True)
     thread.start()
-    logger.info(f"[CSCM-metrics] sidecar started (interval={METRICS_EMIT_INTERVAL_SECONDS}s)")
+    logger.info(
+        f"[CSCM-metrics] sidecar started "
+        f"(interval={METRICS_EMIT_INTERVAL_SECONDS}s, initial_capital=${initial_capital_usd:,.0f})"
+    )
     return thread
 
 
@@ -369,7 +379,8 @@ def main():
             snapshot_dir = os.path.join(get_local_storage_dir(), 'metrics_snapshots')
             SnapshotWriter(metrics_registry, snapshot_dir=snapshot_dir).start_background()
 
-            _start_metrics_sidecar(adapter, metrics_registry)
+            initial_capital_usd = float(args.initial_capital or DEFAULT_INITIAL_CAPITAL_USD)
+            _start_metrics_sidecar(adapter, metrics_registry, initial_capital_usd)
 
             logger.info(f"Metrics enabled on port {metrics_port}")
 

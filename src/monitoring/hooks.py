@@ -70,6 +70,16 @@ def update_strategy_metrics(
     )
 
 
+def update_strategy_initial_capital(
+    registry: Optional['MetricsRegistry'],
+    initial_capital_usd: float,
+) -> None:
+    """Report the strategy's starting/budgeted capital (emit once at startup)."""
+    if registry is None:
+        return
+    registry.update_strategy_initial_capital(initial_capital_usd)
+
+
 def update_position_metrics(
     registry: Optional['MetricsRegistry'],
     positions: list,

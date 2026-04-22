@@ -217,6 +217,11 @@ class MetricsRegistry:
         self.set_gauge('hg_strategy_signal_symbols_missing', float(symbols_missing),
                        {'strategy': self.strategy})
 
+    def update_strategy_initial_capital(self, initial_capital_usd: float) -> None:
+        """Report the strategy's starting/budgeted capital (static per session)."""
+        self.set_gauge('hg_strategy_initial_capital_usd', float(initial_capital_usd),
+                       {'strategy': self.strategy})
+
     def update_position(self, symbol: str, qty: float,
                         unrealized_pnl: float) -> None:
         """Update per-position gauges."""

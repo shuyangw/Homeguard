@@ -20,7 +20,7 @@
           "refId": "A"
         }
       ],
-      "fieldConfig": {"defaults": {"unit": "currencyUSD"}, "overrides": []},
+      "fieldConfig": {"defaults": {"unit": "currencyUSD", "min": 0}, "overrides": []},
       "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "single"}}
     },
     {
@@ -37,7 +37,21 @@
           "refId": "A"
         }
       ],
-      "fieldConfig": {"defaults": {"unit": "percent"}, "overrides": []},
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "max": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "red", "value": null},
+              {"color": "yellow", "value": -20},
+              {"color": "green", "value": -5}
+            ]
+          }
+        },
+        "overrides": []
+      },
       "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi"}}
     },
     {
@@ -108,6 +122,6 @@
   "timezone": "browser",
   "title": "Homeguard Incident Review",
   "uid": "homeguard-incident",
-  "version": 1,
+  "version": 2,
   "weekStart": ""
 }

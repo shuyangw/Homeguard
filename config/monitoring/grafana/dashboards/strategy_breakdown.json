@@ -20,7 +20,7 @@
           "refId": "A"
         }
       ],
-      "fieldConfig": {"defaults": {"unit": "currencyUSD"}, "overrides": []},
+      "fieldConfig": {"defaults": {"unit": "currencyUSD", "custom": {"axisCenteredZero": true}}, "overrides": []},
       "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "single"}}
     },
     {
@@ -37,7 +37,7 @@
           "refId": "A"
         }
       ],
-      "fieldConfig": {"defaults": {"unit": "currencyUSD"}, "overrides": []},
+      "fieldConfig": {"defaults": {"unit": "currencyUSD", "custom": {"axisCenteredZero": true}}, "overrides": []},
       "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "single"}}
     },
     {
@@ -54,7 +54,7 @@
           "refId": "A"
         }
       ],
-      "fieldConfig": {"defaults": {"unit": "none"}, "overrides": []},
+      "fieldConfig": {"defaults": {"unit": "short", "min": 0, "decimals": 0}, "overrides": []},
       "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "single"}}
     },
     {
@@ -71,12 +71,26 @@
           "refId": "A"
         }
       ],
-      "fieldConfig": {"defaults": {"unit": "s"}, "overrides": []},
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "yellow", "value": 60},
+              {"color": "red", "value": 300}
+            ]
+          }
+        },
+        "overrides": []
+      },
       "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "single"}}
     },
     {
       "id": 5,
-      "title": "Capital Allocated by Strategy",
+      "title": "Strategy Capital (Deployed vs Starting)",
       "type": "timeseries",
       "gridPos": {"x": 0, "y": 16, "w": 12, "h": 8},
       "datasource": {"type": "prometheus", "uid": "victoriametrics"},
@@ -84,12 +98,29 @@
         {
           "datasource": {"type": "prometheus", "uid": "victoriametrics"},
           "expr": "hg_strategy_capital_allocated_usd",
-          "legendFormat": "{{strategy}}",
+          "legendFormat": "{{strategy}} deployed",
           "refId": "A"
+        },
+        {
+          "datasource": {"type": "prometheus", "uid": "victoriametrics"},
+          "expr": "hg_strategy_initial_capital_usd",
+          "legendFormat": "{{strategy}} starting",
+          "refId": "B"
         }
       ],
-      "fieldConfig": {"defaults": {"unit": "currencyUSD"}, "overrides": []},
-      "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "single"}}
+      "fieldConfig": {
+        "defaults": {"unit": "currencyUSD", "min": 0},
+        "overrides": [
+          {
+            "matcher": {"id": "byRegexp", "options": ".* starting"},
+            "properties": [
+              {"id": "custom.lineStyle", "value": {"fill": "dash", "dash": [10, 10]}},
+              {"id": "custom.fillOpacity", "value": 0}
+            ]
+          }
+        ]
+      },
+      "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi"}}
     },
     {
       "id": 6,
@@ -191,7 +222,7 @@
           "refId": "A"
         }
       ],
-      "fieldConfig": {"defaults": {"unit": "currencyUSD"}, "overrides": []},
+      "fieldConfig": {"defaults": {"unit": "currencyUSD", "custom": {"axisCenteredZero": true}}, "overrides": []},
       "options": {"legend": {"displayMode": "table", "placement": "right", "calcs": ["lastNotNull", "min", "max"]}, "tooltip": {"mode": "multi"}}
     }
   ],
@@ -204,6 +235,6 @@
   "timezone": "browser",
   "title": "Strategy Breakdown",
   "uid": "homeguard-strategies",
-  "version": 1,
+  "version": 2,
   "weekStart": ""
 }

@@ -20,7 +20,7 @@
           "refId": "A"
         }
       ],
-      "fieldConfig": {"defaults": {"unit": "currencyUSD"}, "overrides": []},
+      "fieldConfig": {"defaults": {"unit": "currencyUSD", "min": 0}, "overrides": []},
       "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "single"}}
     },
     {
@@ -37,7 +37,21 @@
           "refId": "A"
         }
       ],
-      "fieldConfig": {"defaults": {"unit": "percent"}, "overrides": []},
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "max": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "red", "value": null},
+              {"color": "yellow", "value": -20},
+              {"color": "green", "value": -5}
+            ]
+          }
+        },
+        "overrides": []
+      },
       "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi"}}
     },
     {
@@ -60,7 +74,7 @@
           "refId": "B"
         }
       ],
-      "fieldConfig": {"defaults": {"unit": "currencyUSD"}, "overrides": []},
+      "fieldConfig": {"defaults": {"unit": "currencyUSD", "custom": {"axisCenteredZero": true}}, "overrides": []},
       "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi"}}
     },
     {
@@ -73,11 +87,31 @@
         {
           "datasource": {"type": "prometheus", "uid": "victoriametrics"},
           "expr": "max(hg_regime_state_code)",
-          "legendFormat": "Regime Code",
+          "legendFormat": "Regime",
           "refId": "A"
         }
       ],
-      "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []},
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "max": 4,
+          "decimals": 0,
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {"text": "STRONG_BULL", "color": "green", "index": 0},
+                "1": {"text": "WEAK_BULL", "color": "light-green", "index": 1},
+                "2": {"text": "SIDEWAYS", "color": "yellow", "index": 2},
+                "3": {"text": "UNPREDICTABLE", "color": "orange", "index": 3},
+                "4": {"text": "BEAR", "color": "red", "index": 4}
+              }
+            }
+          ]
+        },
+        "overrides": []
+      },
       "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "single"}}
     }
   ],
@@ -90,6 +124,6 @@
   "timezone": "browser",
   "title": "Portfolio Overview",
   "uid": "homeguard-portfolio",
-  "version": 1,
+  "version": 2,
   "weekStart": ""
 }
