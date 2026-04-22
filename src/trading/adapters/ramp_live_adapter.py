@@ -669,6 +669,22 @@ class RAMPLiveAdapter(StrategyAdapter):
             import traceback
             traceback.print_exc()
 
+    def _pick_rest_source(self):
+        """Pick the REST source for historical / intraday bar fetches.
+
+        Honors the architecture invariant -- Alpaca for data, IBKR for
+        execution. Prefer self._data_provider (Alpaca) when it exposes
+        get_historical_bars; fall back to self.broker only if no
+        data_provider with historical capability is configured.
+
+        Returns:
+            Tuple of (source, human_readable_name) where source has
+            `get_historical_bars`.
+        """
+        if self._data_provider is not None and hasattr(self._data_provider, 'get_historical_bars'):
+            return self._data_provider, getattr(self._data_provider, 'name', 'data_provider')
+        return self.broker, f"broker ({type(self.broker).__name__})"
+
     def _fetch_vix_data(self, lookback_days: int = 400) -> Optional[pd.DataFrame]:
         """
         Fetch VIX data via VIXProvider with multi-source fallback.
@@ -746,57 +762,57 @@ class RAMPLiveAdapter(StrategyAdapter):
 
             logger.info(f"[RAMP] Fetching today's closes for {len(self.symbols)} symbols...")
 
+            # Defined once so both streaming and REST paths can use them.
+            today_start = tz.now().replace(hour=0, minute=0, second=0, microsecond=0)
+            today_end = tz.now()
+
             todays_prices = {}
             failed = 0
+            streaming_attempted = False
 
-            # Check if we have LiveDataProvider (streaming)
+            # 1) Try the streaming buffer first -- zero API cost if it's been filling.
             if self._data_provider is not None and isinstance(self._data_provider, StreamingProviderInterface):
-                logger.info("[RAMP] Using LiveDataProvider streaming buffer for today's closes...")
+                streaming_attempted = True
+                logger.info("[RAMP] Reading today's closes from streaming buffer...")
 
                 for symbol in self.symbols:
                     try:
-                        # Get latest bar from buffer (no API call)
                         latest_bar = self._data_provider.get_bars(symbol, n=1)
-
                         if latest_bar is not None and not latest_bar.empty:
-                            # Ensure columns are lowercase
                             latest_bar.columns = [c.lower() if isinstance(c, str) else str(c).lower() for c in latest_bar.columns]
                             if 'close' in latest_bar.columns:
                                 todays_prices[symbol] = latest_bar['close'].iloc[-1]
                         else:
                             failed += 1
                     except Exception as e:
-                        logger.error(f"[RAMP] Error getting bar from provider for {symbol}: {e}")
+                        logger.error(f"[RAMP] Streaming read error for {symbol}: {e}")
                         failed += 1
                         continue
 
-                logger.info(f"[RAMP] Retrieved {len(todays_prices)}/{len(self.symbols)} symbols from streaming buffer ({failed} failed)")
+                streaming_rate = len(todays_prices) / len(self.symbols) * 100 if self.symbols else 0
+                logger.info(
+                    f"[RAMP] Streaming buffer: {len(todays_prices)}/{len(self.symbols)} "
+                    f"({streaming_rate:.1f}%, {failed} missed)"
+                )
 
-            # Check fetch success rate (CRITICAL - this was silently failing before!)
-            success_rate = len(todays_prices) / len(self.symbols) * 100 if self.symbols else 0
-            if success_rate < 80.0:
-                logger.error(f"[RAMP] CRITICAL DATA LOSS: Only {success_rate:.1f}% fetch success from streaming!")
-                logger.error(f"[RAMP] Retrieved: {len(todays_prices)}, Failed: {failed}, Expected: {len(self.symbols)}")
-                failed_symbols = set(self.symbols) - set(todays_prices.keys())
-                sample_failed = list(failed_symbols)[:20]
-                logger.error(f"[RAMP] Sample failed symbols: {sample_failed}")
-
-                if success_rate < 50.0:
-                    logger.error("[RAMP] Less than 50% data - falling back to broker API for today's closes")
-                    # Fall through to broker API fallback below
+            # 2) Fall back to REST if streaming wasn't used or returned <50% success.
+            # Architecture invariant: prefer data_provider (Alpaca) for data; broker
+            # (IBKR) is a last resort only when no data_provider is configured.
+            streaming_rate = len(todays_prices) / len(self.symbols) * 100 if self.symbols else 0
+            if streaming_rate < 50.0:
+                if streaming_attempted:
+                    logger.warning(
+                        f"[RAMP] Streaming success <50% ({streaming_rate:.1f}%) -- REST fallback"
+                    )
                     todays_prices = {}
                     failed = 0
 
-            else:
-                # Fall back to broker API polling (original behavior)
-                logger.info("[RAMP] No LiveDataProvider, fetching from broker API...")
-
-                today_start = tz.now().replace(hour=0, minute=0, second=0, microsecond=0)
-                today_end = tz.now()
+                rest_source, source_name = self._pick_rest_source()
+                logger.info(f"[RAMP] Fetching today's closes via {source_name}...")
 
                 for symbol in self.symbols:
                     try:
-                        df = self.broker.get_historical_bars(
+                        df = rest_source.get_historical_bars(
                             symbol=symbol,
                             start=today_start,
                             end=today_end,
@@ -805,25 +821,26 @@ class RAMPLiveAdapter(StrategyAdapter):
                         if df is not None and not df.empty:
                             df.columns = [c.lower() if isinstance(c, str) else str(c).lower() for c in df.columns]
                             if 'close' in df.columns:
-                                # Get the last (most recent) close price
                                 todays_prices[symbol] = df['close'].iloc[-1]
                     except Exception:
                         failed += 1
                         continue
 
-                logger.info(f"[RAMP] Fetched {len(todays_prices)}/{len(self.symbols)} symbols from broker API ({failed} failed)")
+                rest_rate = len(todays_prices) / len(self.symbols) * 100 if self.symbols else 0
+                logger.info(
+                    f"[RAMP] REST fetch via {source_name}: "
+                    f"{len(todays_prices)}/{len(self.symbols)} ({rest_rate:.1f}%)"
+                )
 
-                # Check fetch success rate for broker API path
-                success_rate = len(todays_prices) / len(self.symbols) * 100 if self.symbols else 0
-                if success_rate < 80.0:
-                    logger.error(f"[RAMP] CRITICAL DATA LOSS: Only {success_rate:.1f}% fetch success from broker API!")
-                    logger.error(f"[RAMP] Retrieved: {len(todays_prices)}, Failed: {failed}, Expected: {len(self.symbols)}")
-                    failed_symbols = set(self.symbols) - set(todays_prices.keys())
-                    sample_failed = list(failed_symbols)[:20]
-                    logger.error(f"[RAMP] Sample failed symbols: {sample_failed}")
+            # 3) Final data-loss check.
+            final_rate = len(todays_prices) / len(self.symbols) * 100 if self.symbols else 0
+            if final_rate < 80.0:
+                logger.error(f"[RAMP] CRITICAL DATA LOSS: Only {final_rate:.1f}% fetch success")
+                failed_symbols = set(self.symbols) - set(todays_prices.keys())
+                logger.error(f"[RAMP] Sample failed symbols: {list(failed_symbols)[:20]}")
 
             if not todays_prices:
-                logger.error("[RAMP] Failed to fetch any today's prices")
+                logger.error("[RAMP] Failed to fetch any today's prices from streaming or REST")
                 return False
 
             # Create today's row and append to historical data
@@ -832,10 +849,11 @@ class RAMPLiveAdapter(StrategyAdapter):
             # Append to existing prices DataFrame
             new_prices_df = pd.concat([prices_df, today_row.to_frame().T])
 
-            # Fetch today's SPY
+            # Fetch today's SPY via the same REST source (Alpaca when available).
             spy_close = None
             try:
-                spy_df = self.broker.get_historical_bars(
+                spy_source, _ = self._pick_rest_source()
+                spy_df = spy_source.get_historical_bars(
                     symbol='SPY',
                     start=today_start,
                     end=today_end,
