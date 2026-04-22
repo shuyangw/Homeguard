@@ -550,25 +550,36 @@ class RAMPLiveAdapter(StrategyAdapter):
                 logger.success(f"[RAMP] Loaded from disk cache: {len(prices_df.columns)} symbols, {len(prices_df)} days")
                 return
 
-            # No valid cache - fetch from Alpaca (slow path)
-            logger.info("[RAMP] No valid disk cache - fetching from Alpaca...")
+            # No valid cache - fetch historical data.
+            # Prefer the data_provider (Alpaca) when it exposes historical; fall back to
+            # the execution broker only if data_provider lacks get_historical_bars.
+            # Architectural invariant: data acquisition belongs to the data_provider
+            # (Alpaca), execution belongs to the broker (IBKR). See
+            # src/streaming/alpaca_market_data.py for the unified data surface.
+            if self._data_provider is not None and hasattr(self._data_provider, 'get_historical_bars'):
+                historical_source = self._data_provider
+                source_name = getattr(self._data_provider, 'name', 'data_provider')
+            else:
+                historical_source = self.broker
+                source_name = f"broker ({type(self.broker).__name__})"
+            logger.info(f"[RAMP] No valid disk cache - fetching historical via {source_name}...")
 
             end_date = tz.now()
             start_date = end_date - timedelta(days=self.data_lookback_days)
 
-            # Fetch historical data for all symbols via Alpaca
+            # Fetch historical data for all symbols
             logger.info(f"[RAMP] Fetching {len(self.symbols)} symbols from {start_date.date()} to {end_date.date()}")
 
             prices_dict = {}
             failed_symbols = []
 
-            # Batch fetch from Alpaca (in chunks to avoid API limits)
+            # Batch fetch (in chunks to avoid API limits)
             batch_size = 50
             for i in range(0, len(self.symbols), batch_size):
                 batch = self.symbols[i:i + batch_size]
                 for symbol in batch:
                     try:
-                        df = self.broker.get_historical_bars(
+                        df = historical_source.get_historical_bars(
                             symbol=symbol,
                             start=start_date,
                             end=end_date,
@@ -587,7 +598,7 @@ class RAMPLiveAdapter(StrategyAdapter):
                     logger.info(f"[RAMP] Fetched {min(i + batch_size, len(self.symbols))}/{len(self.symbols)} symbols...")
 
             if not prices_dict:
-                logger.error("[RAMP] Failed to download historical price data from Alpaca")
+                logger.error(f"[RAMP] Failed to download historical price data from {source_name}")
                 return
 
             # Create prices DataFrame
@@ -596,10 +607,10 @@ class RAMPLiveAdapter(StrategyAdapter):
             if failed_symbols:
                 logger.warning(f"[RAMP] Failed to fetch {len(failed_symbols)} symbols: {failed_symbols[:10]}...")
 
-            logger.info(f"[RAMP] Downloaded {len(prices_df.columns)} symbols, {len(prices_df)} days via Alpaca")
+            logger.info(f"[RAMP] Downloaded {len(prices_df.columns)} symbols, {len(prices_df)} days via {source_name}")
 
-            # Fetch SPY via Alpaca
-            spy_data = self.broker.get_historical_bars(
+            # Fetch SPY via the same historical source (Alpaca when available, broker fallback)
+            spy_data = historical_source.get_historical_bars(
                 symbol='SPY',
                 start=start_date,
                 end=end_date,

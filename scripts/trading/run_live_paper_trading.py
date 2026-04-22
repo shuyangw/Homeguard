@@ -1338,13 +1338,15 @@ def main():
 
         logger.info("")
         if use_streaming:
-            # Create LiveDataProvider (streaming via WebSocket)
+            # Create AlpacaMarketData (unified Alpaca historical + streaming).
+            # Architectural invariant: data comes from Alpaca, execution from the
+            # routed broker (e.g. IBKR). See src/streaming/alpaca_market_data.py.
             logger.info("=" * 80)
-            logger.info("STREAMING DATA ENABLED")
+            logger.info("STREAMING DATA ENABLED (Alpaca historical + Alpaca streaming)")
             logger.info("=" * 80)
-            logger.info(f"Creating LiveDataProvider with {streaming_feed.upper()} feed...")
+            logger.info(f"Creating AlpacaMarketData with {streaming_feed.upper()} feed...")
 
-            from src.streaming import LiveDataProvider
+            from src.streaming.alpaca_market_data import AlpacaMarketData
 
             # Collect all symbols from enabled strategies
             all_symbols = []
@@ -1373,11 +1375,11 @@ def main():
             logger.info(f"Total unique symbols: {len(all_symbols)}")
             logger.info("Starting WebSocket connection...")
 
-            # Create streaming provider
-            data_provider = LiveDataProvider(
+            # Create unified Alpaca market data (historical REST + streaming WebSocket)
+            data_provider = AlpacaMarketData(
                 api_key=api_key,
                 secret_key=secret_key,
-                feed=streaming_feed
+                feed=streaming_feed,
             )
 
             # Start WebSocket and subscribe to all symbols
@@ -1385,6 +1387,7 @@ def main():
 
             logger.success(f"Streaming enabled: {len(all_symbols)} symbols")
             logger.info(f"Feed: {streaming_feed.upper()}")
+            logger.info("Historical data source: Alpaca REST (via AlpacaMarketData)")
             logger.info("=" * 80)
             logger.info("")
         else:
