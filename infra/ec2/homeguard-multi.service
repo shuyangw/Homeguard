@@ -1,17 +1,21 @@
 [Unit]
-Description=Homeguard Multi-Strategy Trading Bot (OMR + RAMP with Shared Streaming)
-After=network.target
+Description=Homeguard Multi-Strategy Trading Bot (pinned to RAMP)
+After=network.target homeguard-gateway.service
+Wants=homeguard-gateway.service
 
 [Service]
 Type=simple
 User=ec2-user
 WorkingDirectory=/home/ec2-user/Homeguard
 Environment="PATH=/home/ec2-user/Homeguard/venv/bin:/usr/local/bin:/usr/bin:/bin"
+Environment="ENABLE_METRICS=true"
+Environment="METRICS_PORT=8082"
 ExecStart=/home/ec2-user/Homeguard/venv/bin/python scripts/trading/run_live_paper_trading.py --strategy ramp
 Restart=always
 RestartSec=30
 StandardOutput=journal
 StandardError=journal
+SyslogIdentifier=homeguard-multi
 
 [Install]
 WantedBy=multi-user.target
