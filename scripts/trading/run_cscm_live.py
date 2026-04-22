@@ -142,25 +142,24 @@ def _emit_metrics_tick(adapter, metrics_registry, state) -> None:
         logger.error(f"[CSCM-metrics] derived portfolio metrics failed: {e}")
 
     # ---- Per-position + strategy aggregates ----
+    # Read from the broker (source of truth for crypto holdings). The shared
+    # StrategyStateManager is only populated by stock strategies (OMR/MP/RAMP);
+    # CSCM's DemoBroker/Coinbase/Alpaca persist positions in their own stores.
     try:
-        owned = adapter.state_manager.get_positions(STRATEGY_NAME) or {}
+        broker_positions = []
+        try:
+            broker_positions = broker.get_crypto_positions() or []
+        except Exception as pos_err:
+            logger.error(f"[CSCM-metrics] broker.get_crypto_positions failed: {pos_err}")
 
         positions = []
         unrealized = 0.0
         capital = 0.0
-        for symbol, info in owned.items():
-            qty = float(info.get('qty', 0) or 0)
-            entry_price = float(info.get('entry_price', 0) or 0)
-            current_price = 0.0
-            try:
-                quote = broker.get_crypto_quote(symbol)
-                current_price = float(quote.get('last', 0) or 0)
-            except Exception as quote_err:
-                logger.error(f"[CSCM-metrics] quote failed for {symbol}: {quote_err}")
-
-            pos_unrealized = (current_price - entry_price) * qty if (current_price and entry_price) else 0.0
-            market_value = current_price * qty
-
+        for pos in broker_positions:
+            symbol = pos.get('symbol')
+            qty = float(pos.get('quantity', 0) or 0)
+            pos_unrealized = float(pos.get('unrealized_pnl', 0) or 0)
+            market_value = float(pos.get('market_value', 0) or 0)
             positions.append({
                 'symbol': symbol,
                 'quantity': qty,
