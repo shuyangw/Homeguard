@@ -47,6 +47,7 @@ from src.trading.brokers.ibkr.connection import IBKRConnectionManager
 from src.trading.brokers.ibkr.contracts import ContractResolver
 from src.trading.brokers.ibkr.data_download import IBKRDataProvider
 from src.trading.brokers.ibkr.pacing import PacingManager
+from src.trading.brokers.ibkr.symbols import from_ibkr_symbol
 from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -655,7 +656,7 @@ class IBKRBroker(
 
         return {
             'order_id': str(order.orderId),
-            'symbol': trade.contract.symbol,
+            'symbol': from_ibkr_symbol(trade.contract.symbol),
             'quantity': int(order.totalQuantity),
             'side': 'buy' if order.action == 'BUY' else 'sell',
             'order_type': order.orderType.lower() if order.orderType else 'market',
@@ -672,7 +673,7 @@ class IBKRBroker(
         qty = int(pos.position)
         avg_cost = float(pos.avgCost)
         return {
-            'symbol': pos.contract.symbol,
+            'symbol': from_ibkr_symbol(pos.contract.symbol),
             'quantity': qty,
             'avg_entry_price': avg_cost,
             'current_price': None,
@@ -685,12 +686,13 @@ class IBKRBroker(
     def _translate_option_position(self, pos) -> Dict:
         """Translate IBKR position to standardized options position dict."""
         c = pos.contract
-        contract_id = f"{c.symbol}_{c.lastTradeDateOrContractMonth}_{c.strike}_{c.right}"
+        underlying = from_ibkr_symbol(c.symbol)
+        contract_id = f"{underlying}_{c.lastTradeDateOrContractMonth}_{c.strike}_{c.right}"
         opt_type = 'call' if c.right == 'C' else 'put'
 
         return {
             'contract_id': contract_id,
-            'underlying': c.symbol,
+            'underlying': underlying,
             'expiration': c.lastTradeDateOrContractMonth,
             'strike': float(c.strike),
             'option_type': opt_type,

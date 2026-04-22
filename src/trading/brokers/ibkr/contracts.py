@@ -25,6 +25,7 @@ from typing import Dict, List, Optional, Tuple
 from ib_async import Contract, Future, Index, Option, Stock
 
 from src.trading.brokers.ibkr.connection import IBKRConnectionManager
+from src.trading.brokers.ibkr.symbols import to_ibkr_symbol
 from src.trading.brokers.interfaces.base import SymbolNotFoundError
 
 from src.utils.logger import get_logger
@@ -61,12 +62,13 @@ class ContractResolver:
         Uses SMART routing by default (best execution across exchanges).
         Caches the resolved conId for subsequent calls.
         """
-        key = f"STK:{symbol}:{exchange}:{currency}"
+        ibkr_symbol = to_ibkr_symbol(symbol)
+        key = f"STK:{ibkr_symbol}:{exchange}:{currency}"
         cached = self._get_cached(key)
         if cached:
             return cached
 
-        contract = Stock(symbol, exchange, currency)
+        contract = Stock(ibkr_symbol, exchange, currency)
         qualified = self._qualify(contract)
         self._set_cached(key, qualified)
         return qualified
