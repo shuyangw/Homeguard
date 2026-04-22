@@ -148,9 +148,11 @@ Detailed overfitting thresholds and backtest integrity rules: `.claude/rules/str
 
 | Strategy | Service | Schedule | Description |
 |----------|---------|----------|-------------|
-| **OMR** | `homeguard-omr` | Entry 3:50 PM, Exit 9:31 AM | Overnight mean reversion on leveraged ETFs |
-| **RAMP** | `homeguard-ramp` | Rebalance 3:55 PM | Regime-aware momentum protection on S&P 500 |
+| **OMR** | `homeguard-multi` | Entry 3:50 PM, Exit 9:31 AM | Overnight mean reversion on leveraged ETFs (disabled in `strategy_toggle.yaml`) |
+| **RAMP** | `homeguard-multi` | Rebalance 3:55 PM | Regime-aware momentum protection on S&P 500 (IBKR paper, enabled) |
 | **CSCM** | `homeguard-cscm` | Weekly (Sunday 0:00 UTC) | Cross-sectional crypto momentum with BTC regime filter |
+
+`homeguard-multi` runs `scripts/trading/run_live_paper_trading.py --strategy multi`, which picks up enabled strategies from `config/trading/strategy_toggle.yaml` and routes each to its broker per `config/trading/broker_routing.yaml`. The standalone `homeguard-omr` / `homeguard-ramp` unit files still exist but are `disabled` and should not be enabled — they have been superseded by `homeguard-multi`.
 
 **RAMP Strategy Details** (Deployed 2025-12-08):
 - Universe: S&P 500 stocks, dynamic 1/N position sizing
