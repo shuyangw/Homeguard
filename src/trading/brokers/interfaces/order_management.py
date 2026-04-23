@@ -77,3 +77,15 @@ class OrderManagementInterface(ABC):
             BrokerConnectionError: If broker connection fails
         """
         pass
+
+    def get_open_orders(self) -> List[Dict]:
+        """
+        Get all currently open (pending) orders.
+
+        Default implementation delegates to `get_orders(status=OrderStatus.PENDING)`.
+        Brokers may override for better filtering semantics (e.g. Alpaca's
+        QueryOrderStatus.OPEN includes partially-filled orders too).
+
+        Used by PortfolioHealthChecker to count pending orders before entry.
+        """
+        return self.get_orders(status=OrderStatus.PENDING)
