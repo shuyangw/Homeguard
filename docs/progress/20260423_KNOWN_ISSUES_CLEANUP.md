@@ -55,7 +55,7 @@ shared fixture didn't exist.
   `src/trading/brokers/ibkr/connection.py:33-149`.
 
 ## Commits
-- (to be filled in after commit)
+- `a742f7f` fix: clean up known issues from 2026-04-23 grafana/ibkr session
 
 ## Known Issues / Remaining Work
 
