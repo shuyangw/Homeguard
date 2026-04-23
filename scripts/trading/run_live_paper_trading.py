@@ -1294,10 +1294,10 @@ def main():
         # Verify connection
         account = broker.get_account()
         if not account:
-            logger.error("Failed to connect to Alpaca")
+            logger.error(f"Failed to connect to {broker_name}")
             return 1
 
-        logger.success("Connected to Alpaca Paper Trading")
+        logger.success(f"Connected to {broker_name}")
         logger.info(f"  Account: {account['account_id']}")
         logger.info(f"  Buying Power: ${account['buying_power']:,.2f}")
         logger.info(f"  Portfolio Value: ${account['portfolio_value']:,.2f}")

@@ -10,6 +10,11 @@ WorkingDirectory=/home/ec2-user/Homeguard
 Environment="PATH=/home/ec2-user/Homeguard/venv/bin:/usr/local/bin:/usr/bin:/bin"
 Environment="ENABLE_METRICS=true"
 Environment="METRICS_PORT=8082"
+# Kill orphaned run_live_paper_trading.py processes from prior crashed
+# instances before starting. Without this, a zombie from a disabled
+# homeguard-{omr,mp,ramp} unit can keep the Alpaca WS slot and cause the
+# new process to hit the free-tier "1 concurrent WS per key" 429.
+ExecStartPre=-/bin/bash -c '/usr/bin/pkill -9 -f "run_live_paper_trading.py" || true'
 # Wait up to 120s for IBKR gateway to bind port 4002. Without this, a fresh
 # boot races the Java+IBC login (~10s) and the broker factory falls back to
 # Alpaca on ConnectionRefusedError.
@@ -17,6 +22,8 @@ ExecStartPre=/bin/bash -c 'for i in $(seq 1 60); do /usr/sbin/ss -ltn sport = :4
 ExecStart=/home/ec2-user/Homeguard/venv/bin/python scripts/trading/run_live_paper_trading.py --strategy ramp
 Restart=always
 RestartSec=30
+KillMode=mixed
+TimeoutStopSec=30
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=homeguard-multi

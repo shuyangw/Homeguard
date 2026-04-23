@@ -20,10 +20,28 @@ from src.trading.brokers.interfaces.base import (
 )
 
 
+_IBKR_ENV_KEYS = (
+    "IBKR_HOST",
+    "IBKR_PORT",
+    "IBKR_CLIENT_ID",
+    "IBKR_ACCOUNT",
+    "IBKR_READONLY",
+    "IBKR_TIMEOUT",
+    "IBKR_MARKET_DATA_TYPE",
+)
+
+
+def _clean_ibkr_env(monkeypatch):
+    """Remove IBKR_* env vars so a sourced .env can't override explicit kwargs."""
+    for env_key in _IBKR_ENV_KEYS:
+        monkeypatch.delenv(env_key, raising=False)
+
+
 class TestIBKRConfig:
 
     def test_defaults(self, monkeypatch, tmp_path):
         """Test class defaults when no YAML config is present."""
+        _clean_ibkr_env(monkeypatch)
         monkeypatch.chdir(tmp_path)
         config = IBKRConfig()
         assert config.host == "127.0.0.1"
@@ -31,13 +49,15 @@ class TestIBKRConfig:
         assert config.client_id == 1
         assert config.readonly is False
 
-    def test_paper_detection(self):
+    def test_paper_detection(self, monkeypatch):
+        _clean_ibkr_env(monkeypatch)
         assert IBKRConfig(port=4002).is_paper is True
         assert IBKRConfig(port=7497).is_paper is True
         assert IBKRConfig(port=4001).is_paper is False
         assert IBKRConfig(port=7496).is_paper is False
 
-    def test_gateway_type_label(self):
+    def test_gateway_type_label(self, monkeypatch):
+        _clean_ibkr_env(monkeypatch)
         assert "Gateway" in IBKRConfig(port=4002).gateway_type
         assert "paper" in IBKRConfig(port=4002).gateway_type
         assert "TWS" in IBKRConfig(port=7496).gateway_type
