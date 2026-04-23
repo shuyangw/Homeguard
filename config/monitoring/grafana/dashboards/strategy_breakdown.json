@@ -9,6 +9,7 @@
     {
       "id": 1,
       "title": "Realized P&L by Strategy",
+      "description": "Today's realized P&L per strategy, aggregated from the trade-log JSONL (sum of `pnl_dollars` where `trade_type == 'exit'` and `strategy == <s>`). Resets each trading day. Does NOT include mark-to-market on open positions (see Unrealized panel). Updated every ~30s by the strategy sidecar.",
       "type": "timeseries",
       "gridPos": {"x": 0, "y": 0, "w": 12, "h": 8},
       "datasource": {"type": "prometheus", "uid": "victoriametrics"},
@@ -26,6 +27,7 @@
     {
       "id": 2,
       "title": "Unrealized P&L by Strategy",
+      "description": "Mark-to-market P&L across all currently-open positions per strategy. Derived from `(current_price - avg_entry_price) * qty`, summed per strategy. Source: `hg_strategy_unrealized_pnl_usd`, emitted per-tick. Zero when the strategy is fully in cash. Y-axis centered on $0.",
       "type": "timeseries",
       "gridPos": {"x": 12, "y": 0, "w": 12, "h": 8},
       "datasource": {"type": "prometheus", "uid": "victoriametrics"},
@@ -43,6 +45,7 @@
     {
       "id": 3,
       "title": "Position Count by Strategy",
+      "description": "Number of open positions per strategy. Source: `hg_strategy_positions_count` = `len(broker.get_crypto_positions())` for CSCM / `len(state_manager.get_positions(strategy))` for OMR/RAMP/MP. Zero = strategy is flat (full cash).",
       "type": "timeseries",
       "gridPos": {"x": 0, "y": 8, "w": 12, "h": 8},
       "datasource": {"type": "prometheus", "uid": "victoriametrics"},
@@ -60,6 +63,7 @@
     {
       "id": 4,
       "title": "Signal Freshness (seconds)",
+      "description": "Seconds elapsed since the strategy last completed a sidecar metrics tick. Computed as `time() - hg_strategy_last_signal_timestamp`. Green < 60s, yellow 60-300s, red > 300s. If the line climbs monotonically past the red threshold, the strategy process is hung or blocked on I/O.",
       "type": "timeseries",
       "gridPos": {"x": 12, "y": 8, "w": 12, "h": 8},
       "datasource": {"type": "prometheus", "uid": "victoriametrics"},
@@ -91,6 +95,7 @@
     {
       "id": 5,
       "title": "Strategy Capital (Deployed vs Starting)",
+      "description": "Solid line = capital deployed into open positions (`hg_strategy_capital_allocated_usd` = sum of position market values). Dashed line = strategy's starting capital budget (`hg_strategy_initial_capital_usd`, emitted once at startup). The gap between the two lines is idle cash. If deployed stays near zero but the strategy is meant to be active, something is gating rebalances (BEAR regime, trailing stop, momentum filter).",
       "type": "timeseries",
       "gridPos": {"x": 0, "y": 16, "w": 12, "h": 8},
       "datasource": {"type": "prometheus", "uid": "victoriametrics"},
@@ -125,6 +130,7 @@
     {
       "id": 6,
       "title": "Current Positions",
+      "description": "Instant snapshot of every open position across all strategies. Columns: Strategy, Symbol, Quantity, Unrealized PnL (color-coded red/green by sign). Source: `hg_position_qty` and `hg_position_unrealized_pnl_usd` with the `symbol` and `strategy` labels, merged by Grafana. A position closes -> row disappears on next scrape.",
       "type": "table",
       "gridPos": {"x": 12, "y": 16, "w": 12, "h": 8},
       "datasource": {"type": "prometheus", "uid": "victoriametrics"},
@@ -211,6 +217,7 @@
     {
       "id": 7,
       "title": "Per-Symbol Unrealized PnL",
+      "description": "Unrealized P&L attributed to each individual open position over time, legend-formatted as `strategy:symbol`. Source: `hg_position_unrealized_pnl_usd` per symbol. Use this to see which position is driving a strategy's aggregate P&L.",
       "type": "timeseries",
       "gridPos": {"x": 0, "y": 24, "w": 24, "h": 8},
       "datasource": {"type": "prometheus", "uid": "victoriametrics"},
@@ -235,6 +242,6 @@
   "timezone": "browser",
   "title": "Strategy Breakdown",
   "uid": "homeguard-strategies",
-  "version": 2,
+  "version": 3,
   "weekStart": ""
 }

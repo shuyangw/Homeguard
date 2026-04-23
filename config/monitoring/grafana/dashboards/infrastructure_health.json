@@ -9,6 +9,7 @@
     {
       "id": 1,
       "title": "WebSocket Connected",
+      "description": "Streaming market-data provider connection status per provider (0 = disconnected / red, 1 = connected / green). Source: `hg_websocket_connected{provider}` from `LiveDataProvider.is_connected()`. Meaningful only during market hours -- outside hours, streaming is idle and this gauge reflects the last state before disconnect.",
       "type": "timeseries",
       "gridPos": {"x": 0, "y": 0, "w": 12, "h": 8},
       "datasource": {"type": "prometheus", "uid": "victoriametrics"},
@@ -43,6 +44,7 @@
     {
       "id": 2,
       "title": "Broker Heartbeat Age (s)",
+      "description": "Seconds since the last successful broker API call per broker. Computed as `time() - hg_broker_last_heartbeat_timestamp{broker}`. Each successful `broker.get_account()` etc. stamps the gauge. Green < 60s, yellow 60-300s, red > 300s. Useful for detecting broker outages or stuck strategy processes.",
       "type": "timeseries",
       "gridPos": {"x": 12, "y": 0, "w": 12, "h": 8},
       "datasource": {"type": "prometheus", "uid": "victoriametrics"},
@@ -74,6 +76,7 @@
     {
       "id": 3,
       "title": "Order Rejection Rate (5m)",
+      "description": "Per-second rate of order rejections over a 5-minute rolling window, from `rate(hg_orders_rejected_total[5m])`. A flat zero line is healthy -- non-zero means a broker is rejecting orders (check Incident Review dashboard for `reason` label breakdown). `noValue: 0` makes the panel render a flat line even when no rejections have occurred yet, so 'no data' does not look identical to 'healthy'.",
       "type": "timeseries",
       "gridPos": {"x": 0, "y": 8, "w": 12, "h": 8},
       "datasource": {"type": "prometheus", "uid": "victoriametrics"},
@@ -85,12 +88,13 @@
           "refId": "A"
         }
       ],
-      "fieldConfig": {"defaults": {"unit": "cps"}, "overrides": []},
+      "fieldConfig": {"defaults": {"unit": "cps", "noValue": "0"}, "overrides": []},
       "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "single"}}
     },
     {
       "id": 4,
       "title": "Process RSS by Strategy",
+      "description": "Resident memory (bytes) per strategy Python process. Source: `hg_process_rss_bytes{strategy}` -- each sidecar reads its own `/proc/self/status`. Stable flat lines are normal. Slow monotonic growth over days = potential leak. Sudden drops followed by a restart = OOM kill (check MemoryMax in the systemd unit).",
       "type": "timeseries",
       "gridPos": {"x": 12, "y": 8, "w": 12, "h": 8},
       "datasource": {"type": "prometheus", "uid": "victoriametrics"},
@@ -108,6 +112,7 @@
     {
       "id": 5,
       "title": "RAMP Cache Age (s)",
+      "description": "Seconds since RAMP's historical-bars pickle was last refreshed. Source: `hg_ramp_cache_age_seconds` = `time() - getmtime(~/.homeguard/cache/ramp_historical_cache_YYYYMMDD.pkl)`. RAMP refreshes this cache once per trading day on first tick after market open, so a monotonic climb from 0 -> 24h IS EXPECTED overnight. Green < 24h (normal within/across session), yellow 24-48h (missed a session), red > 48h (stale -- RAMP isn't refreshing).",
       "type": "timeseries",
       "gridPos": {"x": 0, "y": 16, "w": 12, "h": 8},
       "datasource": {"type": "prometheus", "uid": "victoriametrics"},
@@ -127,8 +132,8 @@
             "mode": "absolute",
             "steps": [
               {"color": "green", "value": null},
-              {"color": "yellow", "value": 3600},
-              {"color": "red", "value": 86400}
+              {"color": "yellow", "value": 86400},
+              {"color": "red", "value": 172800}
             ]
           }
         },
@@ -146,6 +151,6 @@
   "timezone": "browser",
   "title": "Infrastructure Health",
   "uid": "homeguard-infra",
-  "version": 2,
+  "version": 3,
   "weekStart": ""
 }

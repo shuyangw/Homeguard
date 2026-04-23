@@ -8,24 +8,48 @@
   "panels": [
     {
       "id": 1,
-      "title": "Equity Curve",
+      "title": "Equity Curve by Strategy",
+      "description": "Current equity (cash + positions) per live strategy over time, with starting capital as a dashed reference line. Source: `hg_strategy_equity_usd` (solid) = broker.get_account().portfolio_value emitted per-tick by the strategy sidecar. `hg_strategy_initial_capital_usd` (dashed) is the session's starting budget, emitted once at startup. Log Y-axis accommodates strategies with different funding sizes (e.g. CSCM ~$100k vs RAMP IBKR paper ~$1M). If a strategy line stops updating, that strategy's process is hung.",
       "type": "timeseries",
       "gridPos": {"x": 0, "y": 0, "w": 12, "h": 8},
       "datasource": {"type": "prometheus", "uid": "victoriametrics"},
       "targets": [
         {
           "datasource": {"type": "prometheus", "uid": "victoriametrics"},
-          "expr": "max(hg_portfolio_equity_usd) by (broker)",
-          "legendFormat": "{{broker}}",
+          "expr": "hg_strategy_equity_usd",
+          "legendFormat": "{{strategy}} equity",
           "refId": "A"
+        },
+        {
+          "datasource": {"type": "prometheus", "uid": "victoriametrics"},
+          "expr": "hg_strategy_initial_capital_usd",
+          "legendFormat": "{{strategy}} starting",
+          "refId": "B"
         }
       ],
-      "fieldConfig": {"defaults": {"unit": "currencyUSD", "min": 0}, "overrides": []},
-      "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "single"}}
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD",
+          "custom": {
+            "scaleDistribution": {"type": "log", "log": 10}
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {"id": "byRegexp", "options": ".* starting"},
+            "properties": [
+              {"id": "custom.lineStyle", "value": {"fill": "dash", "dash": [10, 10]}},
+              {"id": "custom.fillOpacity", "value": 0}
+            ]
+          }
+        ]
+      },
+      "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi"}}
     },
     {
       "id": 2,
       "title": "Drawdown % by Strategy",
+      "description": "Peak-to-trough drawdown per strategy as a percentage of peak equity. Source: `hg_portfolio_drawdown_pct`, computed in each strategy's sidecar from (equity - peak_equity) / peak_equity * 100. Always <= 0 by construction (clamped at max=0). Green > -5%, yellow -5% to -20%, red < -20%. Flat 0 line = strategy is at all-time high or no samples yet.",
       "type": "timeseries",
       "gridPos": {"x": 12, "y": 0, "w": 12, "h": 8},
       "datasource": {"type": "prometheus", "uid": "victoriametrics"},
@@ -57,6 +81,7 @@
     {
       "id": 3,
       "title": "Day P&L (USD)",
+      "description": "Intra-day P&L per strategy plus a summed 'Total' line. Source: `hg_portfolio_day_pnl_usd` = current_equity - session_open_equity, reset each trading session. Y-axis centered on zero so losses display symmetrically below. Non-zero only when strategies are actively trading or holding positions whose mark-to-market moves.",
       "type": "timeseries",
       "gridPos": {"x": 0, "y": 8, "w": 12, "h": 8},
       "datasource": {"type": "prometheus", "uid": "victoriametrics"},
@@ -80,6 +105,7 @@
     {
       "id": 4,
       "title": "Regime State Code",
+      "description": "Current market regime as classified by MarketRegimeDetector (src/strategies/advanced/market_regime_detector.py). Values: 1=STRONG_BULL (low vol, positive momentum), 2=WEAK_BULL, 3=SIDEWAYS, 4=UNPREDICTABLE (elevated vol, ambiguous trend), 5=BEAR. Only emitted by RAMP -- CSCM uses a simpler BTC>SMA gate, not this detector.",
       "type": "timeseries",
       "gridPos": {"x": 12, "y": 8, "w": 12, "h": 8},
       "datasource": {"type": "prometheus", "uid": "victoriametrics"},
@@ -94,18 +120,18 @@
       "fieldConfig": {
         "defaults": {
           "unit": "short",
-          "min": 0,
-          "max": 4,
+          "min": 1,
+          "max": 5,
           "decimals": 0,
           "mappings": [
             {
               "type": "value",
               "options": {
-                "0": {"text": "STRONG_BULL", "color": "green", "index": 0},
-                "1": {"text": "WEAK_BULL", "color": "light-green", "index": 1},
-                "2": {"text": "SIDEWAYS", "color": "yellow", "index": 2},
-                "3": {"text": "UNPREDICTABLE", "color": "orange", "index": 3},
-                "4": {"text": "BEAR", "color": "red", "index": 4}
+                "1": {"text": "STRONG_BULL", "color": "green", "index": 0},
+                "2": {"text": "WEAK_BULL", "color": "light-green", "index": 1},
+                "3": {"text": "SIDEWAYS", "color": "yellow", "index": 2},
+                "4": {"text": "UNPREDICTABLE", "color": "orange", "index": 3},
+                "5": {"text": "BEAR", "color": "red", "index": 4}
               }
             }
           ]
@@ -124,6 +150,6 @@
   "timezone": "browser",
   "title": "Portfolio Overview",
   "uid": "homeguard-portfolio",
-  "version": 2,
+  "version": 3,
   "weekStart": ""
 }

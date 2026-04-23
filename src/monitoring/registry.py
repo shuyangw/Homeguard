@@ -222,6 +222,15 @@ class MetricsRegistry:
         self.set_gauge('hg_strategy_initial_capital_usd', float(initial_capital_usd),
                        {'strategy': self.strategy})
 
+    def update_strategy_equity(self, equity_usd: float) -> None:
+        """Report the strategy's current equity = broker.get_account().portfolio_value.
+
+        Each strategy currently owns its whole broker, so broker equity == strategy
+        equity. Emitted per-tick alongside other strategy gauges.
+        """
+        self.set_gauge('hg_strategy_equity_usd', float(equity_usd),
+                       {'strategy': self.strategy})
+
     def update_position(self, symbol: str, qty: float,
                         unrealized_pnl: float) -> None:
         """Update per-position gauges."""

@@ -80,6 +80,16 @@ def update_strategy_initial_capital(
     registry.update_strategy_initial_capital(initial_capital_usd)
 
 
+def update_strategy_equity(
+    registry: Optional['MetricsRegistry'],
+    equity_usd: float,
+) -> None:
+    """Report the strategy's current equity (cash + positions). Emit per-tick."""
+    if registry is None:
+        return
+    registry.update_strategy_equity(equity_usd)
+
+
 def update_position_metrics(
     registry: Optional['MetricsRegistry'],
     positions: list,

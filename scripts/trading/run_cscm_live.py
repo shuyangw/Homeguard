@@ -77,6 +77,7 @@ def _emit_metrics_tick(adapter, metrics_registry, state) -> None:
         update_process_metrics,
         update_position_metrics,
         update_strategy_metrics,
+        update_strategy_equity,
     )
 
     broker = adapter.broker
@@ -124,6 +125,7 @@ def _emit_metrics_tick(adapter, metrics_registry, state) -> None:
     if account:
         update_portfolio_metrics(metrics_registry, account, broker_name)
         equity = float(account.get('portfolio_value', 0) or 0)
+        update_strategy_equity(metrics_registry, equity)
 
     # ---- Drawdown + day PnL (in-process tracking, since Coinbase has no last_equity) ----
     try:

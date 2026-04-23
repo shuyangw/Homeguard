@@ -9,6 +9,7 @@
     {
       "id": 1,
       "title": "Portfolio Equity",
+      "description": "Per-broker portfolio equity, same series as Portfolio Overview dashboard but scoped here for incident correlation. Source: `max(hg_portfolio_equity_usd) by (broker)`. Use in conjunction with the service-log panel below to correlate equity anomalies with log events.",
       "type": "timeseries",
       "gridPos": {"x": 0, "y": 0, "w": 12, "h": 8},
       "datasource": {"type": "prometheus", "uid": "victoriametrics"},
@@ -26,6 +27,7 @@
     {
       "id": 2,
       "title": "Drawdown % by Strategy",
+      "description": "Same metric as Portfolio Overview drawdown, but kept here so incident correlation uses a single tab. Source: `hg_portfolio_drawdown_pct` per strategy. Always <= 0. Green > -5%, yellow -5% to -20%, red < -20%.",
       "type": "timeseries",
       "gridPos": {"x": 12, "y": 0, "w": 12, "h": 8},
       "datasource": {"type": "prometheus", "uid": "victoriametrics"},
@@ -57,6 +59,7 @@
     {
       "id": 3,
       "title": "Order Fill Rate (5m)",
+      "description": "Per-second rate of order fills over a 5-minute rolling window, by broker. Source: `sum(rate(hg_orders_filled_total[5m])) by (broker)`. Spikes are normal at rebalance times. Sustained zero during expected trading windows indicates stuck execution. `noValue: 0` renders a flat zero line when the counter has never incremented (distinguishable from a broken metric pipeline).",
       "type": "timeseries",
       "gridPos": {"x": 0, "y": 8, "w": 12, "h": 8},
       "datasource": {"type": "prometheus", "uid": "victoriametrics"},
@@ -68,12 +71,13 @@
           "refId": "A"
         }
       ],
-      "fieldConfig": {"defaults": {"unit": "cps"}, "overrides": []},
+      "fieldConfig": {"defaults": {"unit": "cps", "noValue": "0"}, "overrides": []},
       "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "single"}}
     },
     {
       "id": 4,
       "title": "Order Reject Rate (5m)",
+      "description": "Per-second rate of order rejections over a 5-minute rolling window, broken down by `reason` label (e.g. insufficient_funds, bad_symbol). Source: `sum(rate(hg_orders_rejected_total[5m])) by (reason)`. Flat zero is healthy. Non-zero warrants investigation via the service-log panel below. `noValue: 0` ensures 'no rejections' and 'broken pipeline' don't look identical.",
       "type": "timeseries",
       "gridPos": {"x": 12, "y": 8, "w": 12, "h": 8},
       "datasource": {"type": "prometheus", "uid": "victoriametrics"},
@@ -85,12 +89,13 @@
           "refId": "A"
         }
       ],
-      "fieldConfig": {"defaults": {"unit": "cps"}, "overrides": []},
+      "fieldConfig": {"defaults": {"unit": "cps", "noValue": "0"}, "overrides": []},
       "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "single"}}
     },
     {
       "id": 5,
       "title": "Homeguard Service Logs",
+      "description": "Live tail of every systemd unit matching `homeguard-*`, backed by Loki (promtail scrapes journald and ships to 127.0.0.1:3100). Use for correlating log lines (errors, restarts, rebalance decisions) with metric anomalies in the panels above. Promtail `max_age: 12h` means fresh sessions don't backfill older entries.",
       "type": "logs",
       "gridPos": {"x": 0, "y": 16, "w": 24, "h": 12},
       "datasource": {"type": "loki", "uid": "loki"},
@@ -122,6 +127,6 @@
   "timezone": "browser",
   "title": "Homeguard Incident Review",
   "uid": "homeguard-incident",
-  "version": 2,
+  "version": 3,
   "weekStart": ""
 }

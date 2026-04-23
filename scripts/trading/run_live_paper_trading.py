@@ -776,6 +776,7 @@ class LiveTradingRunner:
                         update_websocket_metrics,
                         update_position_metrics,
                         update_strategy_metrics,
+                        update_strategy_equity,
                     )
                     try:
                         # Portfolio gauges need a REST call per update -- throttle to
@@ -787,6 +788,10 @@ class LiveTradingRunner:
                             if account:
                                 broker_name = getattr(self.adapter, 'broker_name', 'unknown')
                                 update_portfolio_metrics(self.metrics_registry, account, broker_name)
+                                update_strategy_equity(
+                                    self.metrics_registry,
+                                    float(account.get('portfolio_value', 0) or 0),
+                                )
                                 self._emit_derived_portfolio_metrics(account)
                                 self._emit_position_and_strategy_metrics(
                                     update_position_metrics, update_strategy_metrics

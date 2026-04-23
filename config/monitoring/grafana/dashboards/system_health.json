@@ -9,6 +9,7 @@
     {
       "id": 1,
       "title": "CPU Usage (%)",
+      "description": "EC2 host CPU utilization as a percentage (100 - idle). Source: `node_cpu_seconds_total` from node_exporter. Averaged across all cores over a 5-minute window. Green < 70%, yellow 70-90%, red > 90%. Sustained high usage suggests a strategy is compute-bound (regime detection, big-universe scans).",
       "type": "timeseries",
       "gridPos": {"x": 0, "y": 0, "w": 12, "h": 8},
       "datasource": {"type": "prometheus", "uid": "victoriametrics"},
@@ -41,6 +42,7 @@
     {
       "id": 2,
       "title": "Memory Usage (%)",
+      "description": "EC2 host memory usage as a percentage of total RAM. Source: `100 * (1 - MemAvailable / MemTotal)` from node_exporter. Excludes filesystem caches from 'used'. Green < 75%, yellow 75-90%, red > 90%. Ties to `MemoryMax` limits on each systemd unit if you need to diagnose per-strategy pressure.",
       "type": "timeseries",
       "gridPos": {"x": 12, "y": 0, "w": 12, "h": 8},
       "datasource": {"type": "prometheus", "uid": "victoriametrics"},
@@ -73,6 +75,7 @@
     {
       "id": 3,
       "title": "Memory Breakdown",
+      "description": "Absolute bytes split across Used (MemTotal - MemAvailable), Cached (filesystem cache, reclaimable), and Free. Source: node_exporter `node_memory_*`. Use to distinguish genuine memory pressure from harmless cache growth.",
       "type": "timeseries",
       "gridPos": {"x": 0, "y": 8, "w": 12, "h": 8},
       "datasource": {"type": "prometheus", "uid": "victoriametrics"},
@@ -102,6 +105,7 @@
     {
       "id": 4,
       "title": "Load Average",
+      "description": "Linux 1/5/15-minute load averages. Source: `node_load1`, `node_load5`, `node_load15`. Load > CPU core count sustained means the host is oversubscribed. t4g.medium has 2 vCPUs so loads > 2 are worth investigating.",
       "type": "timeseries",
       "gridPos": {"x": 12, "y": 8, "w": 12, "h": 8},
       "datasource": {"type": "prometheus", "uid": "victoriametrics"},
@@ -131,6 +135,7 @@
     {
       "id": 5,
       "title": "Disk Usage by Mount (%)",
+      "description": "Disk usage per mountpoint excluding tmpfs/overlay/squashfs. Source: `node_filesystem_size_bytes` / `node_filesystem_avail_bytes`. Green < 80%, yellow 80-90%, red > 90%. `/` filling up is most often journald (see `journalctl --disk-usage`) or VictoriaMetrics data (retention 90d).",
       "type": "timeseries",
       "gridPos": {"x": 0, "y": 16, "w": 12, "h": 8},
       "datasource": {"type": "prometheus", "uid": "victoriametrics"},
@@ -163,6 +168,7 @@
     {
       "id": 6,
       "title": "Network Throughput",
+      "description": "Per-interface rx/tx throughput in bytes-per-second (5m rate). Source: `rate(node_network_receive_bytes_total)` and `rate(node_network_transmit_bytes_total)`. Steady baseline = monitoring + Alpaca WebSocket. Spikes = rebalance windows or historical-data backfills.",
       "type": "timeseries",
       "gridPos": {"x": 12, "y": 16, "w": 12, "h": 8},
       "datasource": {"type": "prometheus", "uid": "victoriametrics"},
@@ -186,6 +192,7 @@
     {
       "id": 7,
       "title": "Uptime",
+      "description": "Seconds since last EC2 boot. Source: `time() - node_boot_time_seconds`. Unexpectedly low = instance was rebooted (check CloudWatch for auto-stop/start windows).",
       "type": "stat",
       "gridPos": {"x": 0, "y": 24, "w": 6, "h": 6},
       "datasource": {"type": "prometheus", "uid": "victoriametrics"},
@@ -203,6 +210,7 @@
     {
       "id": 8,
       "title": "CPU Cores",
+      "description": "Logical CPU core count detected by node_exporter. t4g.medium = 2 cores. Use to contextualize load-average readings.",
       "type": "stat",
       "gridPos": {"x": 6, "y": 24, "w": 6, "h": 6},
       "datasource": {"type": "prometheus", "uid": "victoriametrics"},
@@ -220,6 +228,7 @@
     {
       "id": 9,
       "title": "Total RAM",
+      "description": "Total physical memory. Source: `node_memory_MemTotal_bytes`. t4g.medium = 4 GiB.",
       "type": "stat",
       "gridPos": {"x": 12, "y": 24, "w": 6, "h": 6},
       "datasource": {"type": "prometheus", "uid": "victoriametrics"},
@@ -237,6 +246,7 @@
     {
       "id": 10,
       "title": "Disk I/O",
+      "description": "Per-device read/write throughput in bytes-per-second (5m rate). Source: `rate(node_disk_{read,written}_bytes_total)`. Large write spikes correlate with VictoriaMetrics compaction or strategy state snapshots.",
       "type": "timeseries",
       "gridPos": {"x": 18, "y": 24, "w": 6, "h": 6},
       "datasource": {"type": "prometheus", "uid": "victoriametrics"},
@@ -267,6 +277,6 @@
   "timezone": "browser",
   "title": "System Health",
   "uid": "homeguard-system",
-  "version": 1,
+  "version": 2,
   "weekStart": ""
 }

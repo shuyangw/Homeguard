@@ -26,6 +26,7 @@ VictoriaMetrics deduplicates identical samples. Grafana uses `max by (broker)`.
 | `hg_strategy_positions_count` | gauge | `strategy` | StrategyStateManager |
 | `hg_strategy_capital_allocated_usd` | gauge | `strategy` | sum of market value of open positions (deployed capital) |
 | `hg_strategy_initial_capital_usd` | gauge | `strategy` | starting/budgeted capital, emitted once at process startup |
+| `hg_strategy_equity_usd` | gauge | `strategy` | current equity = broker.get_account().portfolio_value (cash + positions); emitted per-tick |
 | `hg_strategy_last_signal_timestamp` | gauge | `strategy` | adapter run_once hook |
 | `hg_strategy_signal_symbols_missing` | gauge | `strategy` | adapter data fetch |
 
