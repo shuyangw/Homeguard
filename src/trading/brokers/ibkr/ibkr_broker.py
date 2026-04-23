@@ -108,10 +108,13 @@ class IBKRBroker(
             raise BrokerConnectionError(f"IBKR API error: {e}")
 
     async def _fetch_account(self, account_id: str) -> Dict:
+        # ib.accountSummaryAsync() is idempotent: it subscribes via
+        # reqAccountSummary only if the internal cache is empty, then returns
+        # cached values on every subsequent call. Calling reqAccountSummaryAsync
+        # explicitly here (and every get_account tick) opened a fresh server-side
+        # subscription per call, tripping IBKR error 322 "Maximum number of
+        # account summary requests exceeded" after the first one.
         ib = self._conn.ib
-        await ib.reqAccountSummaryAsync()
-        await asyncio.sleep(0.5)
-
         values = await ib.accountSummaryAsync(account_id)
         result = {
             'account_id': account_id,
