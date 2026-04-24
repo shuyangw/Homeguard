@@ -154,14 +154,23 @@ def main() -> int:
     # which conflicts with the running homeguard-multi service. This test
     # needs its own clientId. We also skip Alpaca broker construction so
     # missing ALPACA_*_KEY env vars don't block the run.
+    #
+    # IBKRConfig loads config/ibkr.yaml and lets env vars override, but
+    # kwarg-overrides-yaml doesn't work as documented in pydantic v2
+    # mode='before'. Set env vars to get a guaranteed clientId/port.
+    import os as _os
+    _os.environ['IBKR_CLIENT_ID'] = str(args.client_id)
+    _os.environ['IBKR_PORT'] = str(args.port)
     step(1, f"connect to IBKR paper directly (clientId={args.client_id})")
     try:
-        config = IBKRConfig(port=args.port, client_id=args.client_id, readonly=False)
+        config = IBKRConfig()  # reads env-overridden values
+        if config.client_id != args.client_id:
+            fail(1, f"IBKRConfig ignored IBKR_CLIENT_ID env: got {config.client_id}")
         broker = IBKRBroker(config=config)
         broker.start()
     except Exception as e:
         fail(1, f"IBKRBroker.start() raised: {e}")
-    ok(f"connected (clientId={args.client_id})")
+    ok(f"connected (clientId={config.client_id})")
 
     # --- step 2: account
     step(2, "fetch account + baseline positions")
