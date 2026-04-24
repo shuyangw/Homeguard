@@ -192,9 +192,14 @@ class ExecutionEngine:
                     except Exception as e:
                         logger.error(f"Metrics record_order_filled failed: {e}")
 
+                # filled_avg_price is None when wait_for_fill=False and the
+                # order is still pending -- default to 0.0 before formatting
+                # so the log line never crashes with NoneType.__format__.
+                filled_qty = order.get('filled_qty', 0) or 0
+                filled_avg_price = order.get('filled_avg_price', 0) or 0
                 logger.success(
                     f"Order executed successfully: {order['order_id']} | "
-                    f"Filled {order.get('filled_qty', 0)} @ ${order.get('filled_avg_price', 0):.2f} | "
+                    f"Filled {filled_qty} @ ${filled_avg_price:.2f} | "
                     f"Duration: {execution['duration']:.2f}s"
                 )
 
