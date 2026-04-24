@@ -14,7 +14,7 @@ Environment="METRICS_PORT=8082"
 # boot races the Java+IBC login (~10s) and the broker factory falls back to
 # Alpaca on ConnectionRefusedError.
 ExecStartPre=/bin/bash -c 'for i in $(seq 1 60); do /usr/sbin/ss -ltn sport = :4002 | grep -q :4002 && exit 0; sleep 2; done; echo "gateway 4002 did not bind in 120s"; exit 1'
-ExecStart=/home/ec2-user/Homeguard/venv/bin/python scripts/trading/run_live_paper_trading.py --strategy ramp
+ExecStart=/home/ec2-user/Homeguard/venv/bin/python scripts/trading/run_live_paper_trading.py --strategy ramp --initial-capital 100000
 Restart=always
 RestartSec=30
 StandardOutput=journal
