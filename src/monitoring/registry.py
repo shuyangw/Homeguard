@@ -223,10 +223,13 @@ class MetricsRegistry:
                        {'strategy': self.strategy})
 
     def update_strategy_equity(self, equity_usd: float) -> None:
-        """Report the strategy's current equity = broker.get_account().portfolio_value.
+        """Report the strategy's current equity in USD.
 
-        Each strategy currently owns its whole broker, so broker equity == strategy
-        equity. Emitted per-tick alongside other strategy gauges.
+        The caller is responsible for computing equity as
+        `initial_capital + attributed_unrealized_pnl` for the strategy's tagged
+        positions. Passing broker.get_account().portfolio_value overstates equity
+        when multiple strategies share a broker account (e.g. OMR + RAMP both on
+        IBKR paper). See run_live_paper_trading._compute_strategy_equity.
         """
         self.set_gauge('hg_strategy_equity_usd', float(equity_usd),
                        {'strategy': self.strategy})

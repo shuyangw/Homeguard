@@ -636,6 +636,43 @@ class LiveTradingRunner:
             day_pnl = equity - (self._session_open_equity or equity)
         self.metrics_registry.update_day_pnl(day_pnl)
 
+    def _compute_strategy_equity(self, initial_capital: float, account: dict) -> float:
+        """Compute equity attributed to this strategy, in USD.
+
+        Formula: initial_capital + sum(unrealized_pnl) for strategy-tagged positions.
+
+        Rationale: strategies share a broker account (e.g. OMR + RAMP both on IBKR
+        paper). Reporting the full broker portfolio_value overstates each strategy's
+        footprint -- the dashboard would show $1M for every strategy sharing a $1M
+        account. Instead, anchor to the strategy's own capital budget and add its
+        attributed P&L.
+
+        With zero positions this returns initial_capital unchanged; as positions
+        accumulate P&L the line diverges accordingly.
+        """
+        strategy = self.metrics_registry.strategy
+        try:
+            all_positions = self.adapter.broker.get_positions() or []
+        except Exception as e:
+            logger.error(f"Metrics: broker.get_positions for equity failed: {e}")
+            return initial_capital
+
+        owned_symbols: set = set()
+        try:
+            sm = getattr(self.adapter, 'state_manager', None)
+            if sm is not None:
+                owned_symbols = set(sm.get_positions(strategy).keys())
+        except Exception as e:
+            logger.error(f"Metrics: state_manager.get_positions for equity failed: {e}")
+
+        if not owned_symbols:
+            # No tracked positions yet -- all capital sits as cash budget.
+            return initial_capital
+
+        tagged = [p for p in all_positions if p.get('symbol') in owned_symbols]
+        pnl = sum(float(p.get('unrealized_pnl', 0) or 0) for p in tagged)
+        return initial_capital + pnl
+
     def _emit_position_and_strategy_metrics(self, update_position_metrics, update_strategy_metrics) -> None:
         """Emit per-position and strategy-aggregate gauges from a broker positions fetch.
 
@@ -788,9 +825,27 @@ class LiveTradingRunner:
                             if account:
                                 broker_name = getattr(self.adapter, 'broker_name', 'unknown')
                                 update_portfolio_metrics(self.metrics_registry, account, broker_name)
+
+                                # Strategy equity should reflect the strategy's own
+                                # capital budget + P&L of its tagged positions, not
+                                # the full broker account value (which is shared
+                                # across all strategies on that broker). Prefer
+                                # adapter.initial_capital; fall back to broker
+                                # portfolio value only if the adapter doesn't
+                                # expose a capital cap.
+                                strategy_initial_capital = getattr(
+                                    self.adapter, 'initial_capital', None
+                                )
+                                if strategy_initial_capital is None:
+                                    strategy_equity = float(account.get('portfolio_value', 0) or 0)
+                                else:
+                                    strategy_equity = self._compute_strategy_equity(
+                                        initial_capital=float(strategy_initial_capital),
+                                        account=account,
+                                    )
                                 update_strategy_equity(
                                     self.metrics_registry,
-                                    float(account.get('portfolio_value', 0) or 0),
+                                    strategy_equity,
                                 )
                                 self._emit_derived_portfolio_metrics(account)
                                 self._emit_position_and_strategy_metrics(
