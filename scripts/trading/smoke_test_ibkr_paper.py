@@ -85,7 +85,13 @@ from src.utils.logger import logger
 
 
 VALID_PENDING = {'pending', 'PendingSubmit', 'PreSubmitted', 'Submitted'}
-VALID_CANCELLED = {'cancelled', 'Cancelled', 'ApiCancelled'}
+# 'pendingcancel' / 'PendingCancel' = cancel request received by broker,
+# final state not yet confirmed. Accepted here because our smoke test wants
+# to prove the cancel path works end-to-end, not that the exchange has
+# finalized. IBKR typically transitions PendingCancel -> Cancelled within
+# ~1s after market-hours, and immediately when market is closed.
+VALID_CANCELLED = {'cancelled', 'Cancelled', 'ApiCancelled',
+                   'pendingcancel', 'PendingCancel'}
 
 
 # --------------------------------------------------------------- helpers
