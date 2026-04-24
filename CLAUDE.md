@@ -144,6 +144,27 @@ Detailed overfitting thresholds and backtest integrity rules: `.claude/rules/str
 - **Timezone handling** - ALWAYS use `from src.utils.timezone import tz` and `tz.now()` instead of `datetime.now()`. EC2 instances run in UTC.
 - Details: [`.claude/live_trading.md`](.claude/live_trading.md)
 
+### IBKR Smoke Test (RUN AFTER ANY TRADING-CHAIN CHANGE)
+
+**`scripts/trading/smoke_test_ibkr_paper.py`** -- end-to-end validation of the live trading call chain against IBKR paper.
+
+**When to run:** after ANY change to `IBKRBroker`, `AlpacaBroker`, `ExecutionEngine`, `BrokerInterface` / `StockTradingInterface` / `OrderManagementInterface`, `broker_routing.yaml`, `IBKRConfig`, or any live adapter's order-submission path. ~25s, idempotent, safe after-hours.
+
+```bash
+# On EC2 (typical, after a deploy):
+ssh ec2 'cd ~/Homeguard && source venv/bin/activate && python scripts/trading/smoke_test_ibkr_paper.py'
+
+# Modes: --mode direct (broker only) | engine (ExecutionEngine only) | full (default, both)
+```
+
+**What it validates:**
+- **Part 1** (`--mode direct`): `IBKRBroker.place_stock_order` / `get_order` / `cancel_order` lifecycle directly
+- **Part 2** (`--mode engine`, default `full`): `ExecutionEngine.execute_order` / `cancel_order` -- the EXACT call chain RAMP/OMR/MP use in prod. This is the layer where the 2026-04-24 silent-failure regression lived (`ExecutionEngine` calling deprecated `broker.place_order` on `IBKRBroker` which lacks the shim).
+
+Uses clientId=99 by default (the running `homeguard-multi` service holds clientId=10). Limit prices are 50%/200% of market so orders never fill. Every order placed is cancelled before exit and clean state is verified.
+
+**Companion contract test** (auto-runs in pytest, no IBKR connection needed): `tests/trading/brokers/test_broker_contract.py` parametrizes over `(AlpacaBroker, IBKRBroker)` × every method `ExecutionEngine` calls. Catches "broker missing required method" regressions at commit time -- this would have caught the 2026-04-24 bug before deploy.
+
 ## Production Strategies (EC2)
 
 | Strategy | Service | Schedule | Description |
