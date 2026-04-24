@@ -35,7 +35,8 @@ project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 
 from src.trading.brokers.interfaces import OrderSide, OrderType, TimeInForce
-from src.trading.config.broker_routing import load_broker_routing
+from src.trading.brokers.ibkr.config import IBKRConfig
+from src.trading.brokers.ibkr.ibkr_broker import IBKRBroker
 from src.utils.logger import logger
 
 
@@ -134,26 +135,33 @@ def main() -> int:
                         help='Stock symbol to trade (default: SPY)')
     parser.add_argument('--qty', type=int, default=1,
                         help='Share quantity per order (default: 1)')
-    parser.add_argument('--strategy', default='ramp',
-                        help='Strategy name for broker routing (default: ramp)')
+    parser.add_argument('--client-id', type=int, default=99,
+                        help='IBKR clientId for this test connection. Must differ '
+                             'from the running service (default 10) to avoid TWS '
+                             'error 326 "client id already in use". Default: 99.')
+    parser.add_argument('--port', type=int, default=4002,
+                        help='IBKR gateway port (default: 4002 for paper)')
     args = parser.parse_args()
 
     logger.info("=" * 70)
     logger.info(f"IBKR PAPER SMOKE TEST")
-    logger.info(f"  strategy={args.strategy}  symbol={args.symbol}  qty={args.qty}")
+    logger.info(f"  symbol={args.symbol}  qty={args.qty}  "
+                f"port={args.port}  clientId={args.client_id}")
     logger.info("=" * 70)
 
-    # --- step 1: routing
-    step(1, "load broker routing + resolve strategy broker")
+    # --- step 1: direct IBKR connect
+    # We bypass broker_routing.yaml intentionally: routing pins clientId=10
+    # which conflicts with the running homeguard-multi service. This test
+    # needs its own clientId. We also skip Alpaca broker construction so
+    # missing ALPACA_*_KEY env vars don't block the run.
+    step(1, f"connect to IBKR paper directly (clientId={args.client_id})")
     try:
-        routing = load_broker_routing()
-        broker = routing[args.strategy]
-        broker_name = routing.get_broker_name(args.strategy)
+        config = IBKRConfig(port=args.port, client_id=args.client_id, readonly=False)
+        broker = IBKRBroker(config=config)
+        broker.start()
     except Exception as e:
-        fail(1, f"load_broker_routing failed: {e}")
-    if broker_name != 'ibkr':
-        fail(1, f"expected broker=ibkr for strategy={args.strategy}, got {broker_name!r}")
-    ok(f"routed {args.strategy} -> {broker_name} ({type(broker).__name__})")
+        fail(1, f"IBKRBroker.start() raised: {e}")
+    ok(f"connected (clientId={args.client_id})")
 
     # --- step 2: account
     step(2, "fetch account + baseline positions")
@@ -244,6 +252,14 @@ def main() -> int:
     if leftover:
         fail(9, f"test orders still open: {leftover}")
     ok(f"no lingering open orders from this test run")
+
+    # --- step 10: cleanup
+    step(10, "disconnect IBKR cleanly")
+    try:
+        broker.stop()
+        ok("broker.stop() completed")
+    except Exception as e:
+        logger.warning(f"  broker.stop() raised (non-fatal): {e}")
 
     logger.success("\n" + "=" * 70)
     logger.success("=== SMOKE TEST PASSED ===")
