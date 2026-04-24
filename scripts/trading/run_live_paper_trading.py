@@ -1248,9 +1248,10 @@ def main():
     logger.info("LIVE PAPER TRADING SETUP")
     logger.info("=" * 80)
     logger.info(f"Strategy: {args.strategy}")
-    logger.info(f"Universe: {args.universe} ({len(symbols)} symbols)")
-    logger.info(f"Position size: {args.position_size:.1%}")
-    logger.info(f"Max positions: {args.max_positions}")
+    logger.info(f"CLI universe arg: {args.universe} ({len(symbols)} symbols)")
+    logger.info(f"CLI position size: {args.position_size:.1%}")
+    logger.info(f"CLI max positions: {args.max_positions}")
+    logger.info("(Strategy runtime may override these -- see regime logs during rebalance)")
     logger.info(f"Mode: {'Run once' if args.once else 'Continuous'}")
     logger.info("=" * 80)
 

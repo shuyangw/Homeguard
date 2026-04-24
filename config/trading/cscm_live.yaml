@@ -12,6 +12,9 @@
 
 # Symbol Universe
 # Major crypto assets tradeable on Coinbase and Alpaca
+# Note: MKR/USD removed 2026-04-24 -- not available on Alpaca (CSCM's
+# failover broker) and failing hourly from Binance. See
+# docs/progress/20260424_MKR_DROP_AND_GATEWAY_REDEPLOY.md.
 universe:
   - BTC/USD
   - ETH/USD
@@ -24,7 +27,6 @@ universe:
   - BCH/USD
   - UNI/USD
   - AAVE/USD
-  - MKR/USD
   - SUSHI/USD
 
 # Strategy Parameters (optimized from backtest)

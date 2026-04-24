@@ -80,6 +80,15 @@ class BrokerFactory:
             broker.start()
             return broker
 
+        elif broker_type in ['coinbase', 'cb']:
+            from .coinbase_broker import CoinbaseBroker
+            logger.info("Creating CoinbaseBroker instance")
+            return CoinbaseBroker(
+                api_key=config.get('api_key'),
+                api_secret=config.get('api_secret'),
+                paper=config.get('paper', False),
+            )
+
         elif broker_type in ['tdameritrade', 'tda', 'td_ameritrade']:
             # Future implementation
             logger.error("TD Ameritrade not implemented yet")
@@ -92,7 +101,7 @@ class BrokerFactory:
             logger.error(f"Unsupported broker type: {broker_type}")
             raise ValueError(
                 f"Unsupported broker type: {broker_type}. "
-                f"Supported types: 'alpaca', 'ib', 'tdameritrade'"
+                f"Supported types: 'alpaca', 'ib', 'coinbase', 'tdameritrade'"
             )
 
     @staticmethod
@@ -205,6 +214,7 @@ class BrokerFactory:
         """
         return [
             'alpaca',  # Alpaca Markets (implemented)
-            'ib',  # Interactive Brokers (planned)
+            'ib',  # Interactive Brokers (implemented)
+            'coinbase',  # Coinbase Advanced Trade (implemented)
             'tdameritrade',  # TD Ameritrade (planned)
         ]
