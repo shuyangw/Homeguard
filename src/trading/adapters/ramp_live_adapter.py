@@ -310,6 +310,7 @@ class RAMPLiveAdapter(StrategyAdapter):
         spy_dd_threshold: float = -0.05,
         slippage_per_share: float = 0.01,
         data_provider: Optional[Union["DataProviderInterface", "LiveDataProvider"]] = None,
+        metrics_registry: Optional[Any] = None,
         *,
         broker_name: str
     ):
@@ -388,6 +389,10 @@ class RAMPLiveAdapter(StrategyAdapter):
         self.spy_dd_threshold = spy_dd_threshold
         self.slippage_per_share = slippage_per_share
         self._broker_name = broker_name
+        # Optional metrics registry -- when provided, rebalance errors increment
+        # hg_strategy_rebalance_errors_total{strategy,phase}. Sidecars pass this
+        # in so silent order-submission failures surface on dashboards.
+        self._metrics_registry = metrics_registry
 
         # Store reference to RAMP signals
         self._ramp_signals = ramp_signals
@@ -1247,6 +1252,11 @@ class RAMPLiveAdapter(StrategyAdapter):
                                 self.state_manager.remove_position(STRATEGY_NAME, symbol)
                     except Exception as e:
                         logger.error(f"[RAMP] Error selling {symbol}: {e}")
+                        if self._metrics_registry is not None:
+                            try:
+                                self._metrics_registry.inc_rebalance_error('sell')
+                            except Exception:
+                                pass  # never let metric emission break trading
 
             # Execute buys
             # Dynamic 1/N position sizing based on INITIAL CAPITAL (not portfolio value)
@@ -1351,11 +1361,21 @@ class RAMPLiveAdapter(StrategyAdapter):
 
                 except Exception as e:
                     logger.error(f"[RAMP] Error buying {symbol}: {e}")
+                    if self._metrics_registry is not None:
+                        try:
+                            self._metrics_registry.inc_rebalance_error('buy')
+                        except Exception:
+                            pass  # never let metric emission break trading
 
             logger.info("[RAMP] Rebalance execution complete")
 
         except Exception as e:
             logger.error(f"[RAMP] Error in _execute_rebalance: {e}")
+            if self._metrics_registry is not None:
+                try:
+                    self._metrics_registry.inc_rebalance_error('other')
+                except Exception:
+                    pass
 
     def get_schedule(self) -> Dict[str, any]:
         """

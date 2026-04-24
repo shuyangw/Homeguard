@@ -270,6 +270,17 @@ class MetricsRegistry:
         self.inc_counter('hg_orders_rejected_total',
                          {'strategy': self.strategy, 'reason': reason, 'broker': broker})
 
+    def inc_rebalance_error(self, phase: str = 'other') -> None:
+        """Record a rebalance step failure.
+
+        Phase values: 'buy', 'sell', 'close', 'reconcile', 'other'. Useful
+        signal that a rebalance attempt fired but individual orders failed --
+        e.g. the 2026-04-24 incident where RAMP called a missing broker
+        method and 12 consecutive buy orders silently errored out.
+        """
+        self.inc_counter('hg_strategy_rebalance_errors_total',
+                         {'strategy': self.strategy, 'phase': phase})
+
     def update_broker_heartbeat(self, broker: str) -> None:
         """Record successful broker API call by stamping the current Unix time.
         Consumers compute age in PromQL via `time() - hg_broker_last_heartbeat_timestamp`.

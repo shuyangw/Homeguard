@@ -1053,7 +1053,7 @@ def create_mp_adapter(broker, position_size=0.065, top_n=10, data_provider=None,
     )
 
 
-def create_ramp_adapter(broker, data_provider=None, initial_capital=None, *, broker_name: str):
+def create_ramp_adapter(broker, data_provider=None, initial_capital=None, metrics_registry=None, *, broker_name: str):
     """
     Create Regime-Aware Momentum Protection adapter.
 
@@ -1061,6 +1061,9 @@ def create_ramp_adapter(broker, data_provider=None, initial_capital=None, *, bro
         broker: Broker interface
         data_provider: Optional data provider with fallback chain (Alpaca -> yfinance)
         initial_capital: Optional cap on strategy allocation (USD). If None, uses full account equity.
+        metrics_registry: Optional MetricsRegistry -- when provided, the adapter increments
+                          hg_strategy_rebalance_errors_total on individual order failures so
+                          silent multi-symbol rebalance breakage shows up on dashboards.
 
     Returns:
         RAMPLiveAdapter instance
@@ -1076,6 +1079,7 @@ def create_ramp_adapter(broker, data_provider=None, initial_capital=None, *, bro
         symbols=None,  # Uses S&P 500 by default
         data_provider=data_provider,
         initial_capital=initial_capital,
+        metrics_registry=metrics_registry,
     )
 
 
@@ -1503,6 +1507,7 @@ def main():
                 broker,
                 data_provider=data_provider,  # Alpaca -> yfinance fallback
                 initial_capital=args.initial_capital,
+                metrics_registry=metrics_registry,
                 broker_name=broker_name
             )
         elif args.strategy == 'multi':
@@ -1524,7 +1529,7 @@ def main():
             elif 'mp' in enabled:
                 adapter = create_mp_adapter(broker, data_provider=data_provider, broker_name=broker_name)
             elif 'ramp' in enabled:
-                adapter = create_ramp_adapter(broker, data_provider=data_provider, broker_name=broker_name)
+                adapter = create_ramp_adapter(broker, data_provider=data_provider, metrics_registry=metrics_registry, broker_name=broker_name)
             else:
                 logger.error("No supported strategy enabled")
                 return 1

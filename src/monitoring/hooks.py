@@ -90,6 +90,16 @@ def update_strategy_equity(
     registry.update_strategy_equity(equity_usd)
 
 
+def inc_rebalance_error(
+    registry: Optional['MetricsRegistry'],
+    phase: str = 'other',
+) -> None:
+    """Increment rebalance-error counter. No-op when registry is None."""
+    if registry is None:
+        return
+    registry.inc_rebalance_error(phase)
+
+
 def update_position_metrics(
     registry: Optional['MetricsRegistry'],
     positions: list,

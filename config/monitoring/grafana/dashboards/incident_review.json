@@ -93,11 +93,43 @@
       "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "single"}}
     },
     {
+      "id": 6,
+      "title": "Rebalance Errors (5m)",
+      "description": "Per-second rate of rebalance-step failures over a 5-minute rolling window, by strategy and phase (buy, sell, close, reconcile, other). Source: `sum(rate(hg_strategy_rebalance_errors_total[5m])) by (strategy, phase)`. Counter increments whenever an individual order within a rebalance raises -- e.g. the 2026-04-24 incident where RAMP's 12 consecutive buy orders failed with 'IBKRBroker has no attribute place_order'. Healthy = flat zero. Any non-zero spike means symbols RAMP/OMR/MP tried to trade weren't actually traded.",
+      "type": "timeseries",
+      "gridPos": {"x": 0, "y": 16, "w": 24, "h": 6},
+      "datasource": {"type": "prometheus", "uid": "victoriametrics"},
+      "targets": [
+        {
+          "datasource": {"type": "prometheus", "uid": "victoriametrics"},
+          "expr": "sum(rate(hg_strategy_rebalance_errors_total[5m])) by (strategy, phase)",
+          "legendFormat": "{{strategy}} {{phase}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "cps",
+          "noValue": "0",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "yellow", "value": 0.001},
+              {"color": "red", "value": 0.1}
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi"}}
+    },
+    {
       "id": 5,
       "title": "Homeguard Service Logs",
       "description": "Live tail of every systemd unit matching `homeguard-*`, backed by Loki (promtail scrapes journald and ships to 127.0.0.1:3100). Use for correlating log lines (errors, restarts, rebalance decisions) with metric anomalies in the panels above. Promtail `max_age: 12h` means fresh sessions don't backfill older entries.",
       "type": "logs",
-      "gridPos": {"x": 0, "y": 16, "w": 24, "h": 12},
+      "gridPos": {"x": 0, "y": 22, "w": 24, "h": 12},
       "datasource": {"type": "loki", "uid": "loki"},
       "targets": [
         {
@@ -127,6 +159,6 @@
   "timezone": "browser",
   "title": "Homeguard Incident Review",
   "uid": "homeguard-incident",
-  "version": 3,
+  "version": 4,
   "weekStart": ""
 }

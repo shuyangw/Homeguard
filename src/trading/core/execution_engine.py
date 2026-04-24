@@ -313,7 +313,7 @@ class ExecutionEngine:
 
         try:
             # Get current position
-            position = self.broker.get_position(symbol)
+            position = self.broker.get_stock_position(symbol)
             if not position:
                 logger.warning(f"No position found for {symbol}")
                 return {'status': ExecutionStatus.FAILED, 'error': 'No position'}
@@ -344,7 +344,7 @@ class ExecutionEngine:
         Returns:
             List of execution results
         """
-        positions = self.broker.get_positions()
+        positions = self.broker.get_stock_positions()
         logger.info(f"Closing {len(positions)} positions")
 
         results = []
@@ -389,8 +389,10 @@ class ExecutionEngine:
         if order_type == OrderType.STOP_LIMIT and (limit_price is None or stop_price is None):
             raise InvalidOrderError("Both limit and stop prices required for STOP_LIMIT orders")
 
-        # Place order via broker
-        return self.broker.place_order(
+        # Place order via broker. Using place_stock_order (not the deprecated
+        # place_order shim on BrokerInterface) so this works uniformly across
+        # AlpacaBroker and IBKRBroker -- the latter does not inherit the shim.
+        return self.broker.place_stock_order(
             symbol=symbol,
             quantity=quantity,
             side=side,
