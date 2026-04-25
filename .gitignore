@@ -267,6 +267,10 @@ docs/*
 !docs/troubleshooting/
 !docs/troubleshooting/**
 
+# KEEP: Reference docs (developer/operator references)
+!docs/reference/
+!docs/reference/**
+
 # KEEP: Guidelines (backtesting standards, coding guidelines)
 !docs/guidelines/
 !docs/guidelines/**
