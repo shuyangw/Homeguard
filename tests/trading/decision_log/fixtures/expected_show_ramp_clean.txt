@@ -1,0 +1,28 @@
++-- ramp | 2026-04-24 15:55:56 | scheduled_rebalance --+
+| decision_id: 7c2f9d | git: 9533ec0 | broker: ibkr    |
++-----------------------------------------------------+
+
+Trigger fired 0.84s after schedule (15:55).
+
+Preconditions:                                   ALL PASS
+  [+] strategy_enabled        [+] shutdown_requested
+  [+] execution_lock_acquired [+] health_check (buying_power=$1,012,341)
+  [+] data_freshness (96.2% valid, source=rest_alpaca)
+
+Inputs:
+  regime         WEAK_BULL (75.0% confidence)
+  vix            19.40                          spy_dd  -2.3%
+  universe       503 symbols                    completeness 96.2%
+  top 5 momentum NCLH +0.42 | BF.B +0.20 | DOC +0.17 | LUV +0.15 | DOW +0.09
+
+Logic:
+  Target 10 positions x $10,000 each = $100,000 (100% of initial_capital)
+  Buy:  NCLH BF.B DOC LUV DOW
+
+Executions:                                      1 / 1 filled
+  [+] NCLH    buy 526   @ $19.07  fill_price=$19.07  order=ibkr-12345
+
+Post-state:
+  Positions:   1 RAMP-tagged
+  Cash:        $89,970.00 / $100,000.00 budget
+  Strategy equity: $99,970.00
