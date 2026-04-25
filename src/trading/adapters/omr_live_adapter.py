@@ -108,6 +108,14 @@ class OMRLiveAdapter(StrategyAdapter):
     Positions are entered at 3:50 PM and exited next day at 9:31 AM.
     """
 
+    # Class-level constants used by StrategyAdapter base helpers
+    STRATEGY_NAME: str = 'omr'
+    STRATEGY_VERSION: int = 1
+
+    # Persists across entry -> exit within one session so the exit record
+    # can reference its corresponding entry via parent_decision_id.
+    _last_entry_decision_id: Optional[str] = None
+
     def __init__(
         self,
         broker: BrokerInterface,
@@ -720,60 +728,87 @@ class OMRLiveAdapter(StrategyAdapter):
                 logger.error(f"[OMR] Error executing signal for {signal.symbol}: {e}")
                 continue
 
-    def run_once(self) -> None:
-        """
-        Run one iteration of the strategy with portfolio health checks.
+    def run_once(self, action: str = "entry") -> None:
+        """Run one iteration: entry (15:50 ET) or exit (09:31 ET).
 
-        Overrides base class to add:
-        - Fresh intraday data fetch at execution time (3:50 PM)
-        - Pre-entry health validation
-        - Execution lock for multi-strategy coordination
-        - Position tracking per strategy
+        Both paths emit a DecisionRecord.  The exit record references the
+        preceding entry via parent_decision_id.
+
+        Args:
+            action: "entry" to enter overnight positions (default),
+                    "exit" to close overnight positions at market open.
         """
+        if action == "exit":
+            self._run_exit()
+        else:
+            self._run_entry()
+
+    def _run_entry(self) -> None:
+        """Entry path: generate signals and enter overnight positions (15:50 ET).
+
+        Emits a DecisionRecord with trigger.kind="scheduled_entry".
+        Stores the decision_id so the subsequent exit record can link back.
+        """
+        import traceback as _tb
+
         logger.info("[OMR] " + "=" * 60)
-        logger.info(f"[OMR] Running {self.__class__.__name__} at {tz.now()}")
+        logger.info(f"[OMR] Running entry at {tz.now()}")
         logger.info("[OMR] " + "=" * 60)
 
+        rec = self._begin_decision("scheduled_entry", schedule_time="15:50")
+        had_lock = False
         try:
-            # Check if strategy is enabled
-            if not self.state_manager.is_enabled(STRATEGY_NAME):
-                logger.warning("[OMR] Strategy is DISABLED - skipping execution")
-                return
+            # ---- Preconditions ----
+            with self._stage(rec, "preconditions"):
+                from src.trading.decision_log.record import GateResult as _GR
 
-            # Check if shutdown requested
-            if self.state_manager.is_shutdown_requested(STRATEGY_NAME):
-                logger.warning("[OMR] Shutdown requested - skipping new entries")
-                return
+                # Check enabled/shutdown BEFORE acquiring lock (preserves original OMR behavior)
+                rec.preconditions.strategy_enabled = _GR(
+                    passed=self.state_manager.is_enabled(STRATEGY_NAME), details={}
+                )
+                if not rec.preconditions.strategy_enabled.passed:
+                    logger.warning("[OMR] Strategy is DISABLED - skipping execution")
+                    return
 
-            # Refresh intraday data at 3:50 PM execution time
-            logger.info("[OMR] Refreshing intraday data for 3:50 PM execution...")
-            self.prefetch_intraday_data()
+                rec.preconditions.shutdown_requested = _GR(
+                    passed=not self.state_manager.is_shutdown_requested(STRATEGY_NAME), details={}
+                )
+                if not rec.preconditions.shutdown_requested.passed:
+                    logger.warning("[OMR] Shutdown requested - skipping new entries")
+                    return
 
-            # Acquire execution lock (blocks if another strategy is executing)
-            if not self.state_manager.acquire_execution_lock(STRATEGY_NAME):
-                logger.error("[OMR] Failed to acquire execution lock - another strategy is running")
-                return
+                # Now acquire the execution lock
+                rec.preconditions.execution_lock_acquired = _GR(
+                    passed=self.state_manager.acquire_execution_lock(STRATEGY_NAME), details={}
+                )
+                if not rec.preconditions.execution_lock_acquired.passed:
+                    logger.error("[OMR] Failed to acquire execution lock - another strategy is running")
+                    return
+                had_lock = True
 
-            try:
-                # Sync state with broker (detect external position changes)
+                # Sync state with broker
                 broker_positions = {p['symbol']: int(p['quantity']) for p in self.broker.get_positions()}
                 changes = self.state_manager.sync_with_broker(self._broker_name, broker_positions)
                 if changes['removed']:
                     logger.info(f"[OMR] Detected closed positions: {changes['removed']}")
 
-                # CRITICAL: Portfolio health check before entry
-                # Use strategy_name='omr' to only count OMR positions for max_positions check
+                # Health check gate
+                from src.trading.decision_log.record import GateResult
                 logger.info("[OMR] Running pre-entry portfolio health check...")
                 health_result = self.health_checker.check_before_entry(
                     required_capital=None,
                     allow_existing_positions=True,
-                    strategy_name='omr'
+                    strategy_name=STRATEGY_NAME,
                 )
-
+                rec.preconditions.health_check = GateResult(
+                    passed=health_result.passed,
+                    details={"warnings_count": len(health_result.warnings)},
+                    error="; ".join(health_result.errors) if health_result.errors else None,
+                )
                 if not health_result.passed:
                     logger.error("[OMR] Portfolio health check FAILED - BLOCKING ENTRY")
-                    for error in health_result.errors:
-                        logger.error(f"[OMR]   - {error}")
+                    for err in health_result.errors:
+                        logger.error(f"[OMR]   - {err}")
                     return
 
                 if health_result.warnings:
@@ -782,73 +817,122 @@ class OMRLiveAdapter(StrategyAdapter):
                         logger.warning(f"[OMR]   - {warning}")
 
                 logger.success("[OMR] Portfolio health check PASSED - proceeding with entry")
-                logger.info("")
 
-                # Call parent's run_once() for normal strategy execution
-                super().run_once()
+                # Data freshness gate (intraday cache presence is a proxy)
+                from src.trading.decision_log.record import GateResult as _GR
+                intraday_ready = (
+                    self._intraday_cache is not None and len(self._intraday_cache) > 0
+                )
+                rec.preconditions.data_freshness = _GR(
+                    passed=True,  # not blocking; OMR refreshes inside inputs stage
+                    details={"intraday_cache_populated": intraday_ready},
+                )
 
-                # Update last execution timestamp
+            # ---- Inputs ----
+            with self._stage(rec, "inputs"):
+                logger.info("[OMR] Refreshing intraday data for 3:50 PM execution...")
+                self.prefetch_intraday_data()
+                rec.inputs = self._build_decision_inputs()
+
+            # ---- Logic ----
+            with self._stage(rec, "logic"):
+                market_data = self.fetch_market_data()
+                signals = self.strategy.generate_signals(market_data, tz.now())
+                rec.logic_decisions = self._build_decision_logic(signals)
+
+            # ---- Execution ----
+            with self._stage(rec, "execution"):
+                self.execute_signals(signals)
+
+            # ---- Post-state ----
+            with self._stage(rec, "post_state"):
+                rec.post_state = self._snapshot_post_state()
                 self.state_manager.update_last_execution(STRATEGY_NAME)
-
-            finally:
-                # Always release execution lock
-                self.state_manager.release_execution_lock(STRATEGY_NAME)
+                # Store for the subsequent exit record to link back
+                self._last_entry_decision_id = rec.decision_id
 
         except Exception as e:
-            logger.error(f"[OMR] Error in run_once: {e}")
-            import traceback
-            traceback.print_exc()
+            from src.trading.decision_log.record import ErrorInfo
+            rec.error = ErrorInfo(
+                type=type(e).__name__,
+                message=str(e),
+                traceback=_tb.format_exc(),
+                stage=getattr(rec, "_current_stage", "unknown"),
+            )
+            logger.error(f"[OMR] Error in _run_entry: {e}")
+            _tb.print_exc()
+            raise
+        finally:
+            try:
+                if had_lock:
+                    self.state_manager.release_execution_lock(STRATEGY_NAME)
+            finally:
+                self._write_decision(rec)
 
-    def get_schedule(self) -> Dict[str, any]:
+    def _run_exit(self) -> None:
+        """Exit path: close overnight positions at market open (09:31 ET).
+
+        Emits a DecisionRecord with trigger.kind="scheduled_exit".
+        Links back to the preceding entry via parent_decision_id.
         """
-        Get scheduling configuration.
+        import traceback as _tb
 
-        OMR requires TWO execution times:
-        - 3:50 PM EST: Generate signals and enter positions
-        - 9:31 AM EST: Close overnight positions
+        logger.info("[OMR] " + "=" * 60)
+        logger.info(f"[OMR] Running exit at {tz.now()}")
+        logger.info("[OMR] " + "=" * 60)
 
-        Returns:
-            Schedule dict with entry and exit times
-        """
-        return {
-            'execution_times': [
-                {'time': '15:50', 'action': 'entry'},   # 3:50 PM - Enter positions
-                {'time': '09:31', 'action': 'exit'}     # 9:31 AM - Exit positions
-            ],
-            'market_hours_only': True,
-            'strategy_type': 'overnight'  # Indicates overnight holding
-        }
+        rec = self._begin_decision("scheduled_exit", schedule_time="09:31")
+        # Link to the prior entry if we have one
+        if self._last_entry_decision_id is not None:
+            rec.parent_decision_id = self._last_entry_decision_id
 
-    def close_overnight_positions(self) -> None:
-        """
-        Close overnight positions at market open (9:31 AM).
-
-        Should be called at 9:31 AM to exit positions entered at 3:50 PM.
-        Uses execution lock for multi-strategy coordination.
-        """
+        had_lock = False
         try:
             now = tz.now()
             if now.time() < time(9, 30) or now.time() > time(9, 35):
                 logger.warning(
-                    f"[OMR] close_overnight_positions called at {now.time()}, "
-                    "expected 9:31 AM"
+                    f"[OMR] _run_exit called at {now.time()}, expected 09:31"
                 )
 
-            # Acquire execution lock for closing
-            if not self.state_manager.acquire_execution_lock(STRATEGY_NAME):
-                logger.error("[OMR] Failed to acquire execution lock for closing positions")
-                # Still attempt to close - safety is more important than coordination
-                logger.warning("[OMR] Proceeding with close despite lock failure (safety priority)")
+            # ---- Preconditions ----
+            with self._stage(rec, "preconditions"):
+                from src.trading.decision_log.record import GateResult as _GR
 
-            try:
-                # CRITICAL: Portfolio health check before exit
+                # Check enabled/shutdown BEFORE acquiring lock (safety: still close if enabled)
+                rec.preconditions.strategy_enabled = _GR(
+                    passed=self.state_manager.is_enabled(STRATEGY_NAME), details={}
+                )
+                # Note: for exit we do NOT block on disabled - safety requires closing positions
+                # We still record the gate but proceed regardless
+
+                rec.preconditions.shutdown_requested = _GR(
+                    passed=not self.state_manager.is_shutdown_requested(STRATEGY_NAME), details={}
+                )
+
+                # Acquire lock - proceed even if it fails (safety priority for exit)
+                lock_acquired = self.state_manager.acquire_execution_lock(STRATEGY_NAME)
+                rec.preconditions.execution_lock_acquired = _GR(
+                    passed=lock_acquired, details={}
+                )
+                if not lock_acquired:
+                    logger.error("[OMR] Failed to acquire execution lock for closing positions")
+                    logger.warning("[OMR] Proceeding with close despite lock failure (safety priority)")
+                else:
+                    had_lock = True
+
+                # Health check (non-blocking for exit - safety first)
+                from src.trading.decision_log.record import GateResult
                 logger.info("[OMR] Running pre-exit portfolio health check...")
                 health_result = self.health_checker.check_before_exit()
-
+                rec.preconditions.health_check = GateResult(
+                    passed=health_result.passed,
+                    details={"warnings_count": len(health_result.warnings)},
+                    error="; ".join(health_result.errors) if health_result.errors else None,
+                )
                 if not health_result.passed:
                     logger.error("[OMR] Portfolio health check FAILED - CRITICAL ERRORS DETECTED")
-                    for error in health_result.errors:
-                        logger.error(f"[OMR]   - {error}")
+                    for err in health_result.errors:
+                        logger.error(f"[OMR]   - {err}")
                     logger.warning("[OMR] Attempting to close positions despite errors (safety measure)")
 
                 if health_result.warnings:
@@ -856,29 +940,44 @@ class OMRLiveAdapter(StrategyAdapter):
                     for warning in health_result.warnings:
                         logger.warning(f"[OMR]   - {warning}")
 
-                # Get OMR's tracked positions from state manager
-                omr_positions = self.state_manager.get_positions(STRATEGY_NAME)
+                from src.trading.decision_log.record import GateResult as _GR
+                rec.preconditions.data_freshness = _GR(passed=True, details={})
 
-                # Get all broker positions
+            # ---- Inputs ----
+            with self._stage(rec, "inputs"):
+                rec.inputs = self._build_decision_inputs()
+
+            # ---- Logic / Execution ----
+            with self._stage(rec, "logic"):
+                omr_positions = self.state_manager.get_positions(STRATEGY_NAME)
                 broker_positions = self.broker.get_positions()
 
-                if not broker_positions:
-                    logger.info("[OMR] No overnight positions to close")
-                    return
-
-                # Filter to only close OMR's positions (not MP's)
                 positions_to_close = []
-                for pos in broker_positions:
-                    symbol = pos['symbol']
-                    # Close if it's tracked by OMR OR if it's a leveraged ETF (OMR's universe)
-                    if symbol in omr_positions or ETFUniverse.is_leveraged(symbol):
-                        positions_to_close.append(pos)
-                    else:
-                        # Check if another strategy owns it
-                        owner = self.state_manager.symbol_owned_by_other(STRATEGY_NAME, symbol)
-                        if owner:
-                            logger.info(f"[OMR] Skipping {symbol} - owned by {owner}")
+                if broker_positions:
+                    for pos in broker_positions:
+                        symbol = pos['symbol']
+                        if symbol in omr_positions or ETFUniverse.is_leveraged(symbol):
+                            positions_to_close.append(pos)
+                        else:
+                            owner = self.state_manager.symbol_owned_by_other(STRATEGY_NAME, symbol)
+                            if owner:
+                                logger.info(f"[OMR] Skipping {symbol} - owned by {owner}")
 
+                close_symbols = [p['symbol'] for p in positions_to_close]
+                from src.trading.decision_log.record import LogicDecisions
+                rec.logic_decisions = LogicDecisions(
+                    top_n=0,
+                    target_symbols=[],
+                    target_weights={},
+                    target_value_usd={},
+                    reduce_exposure=False,
+                    exposure_pct=0.0,
+                    exit_signals=close_symbols,
+                    hold_signals=[],
+                    skip_reasons={},
+                )
+
+            with self._stage(rec, "execution"):
                 logger.info(f"[OMR] Closing {len(positions_to_close)} overnight positions at market open")
 
                 for position in positions_to_close:
@@ -908,8 +1007,7 @@ class OMRLiveAdapter(StrategyAdapter):
                         if order:
                             logger.success(f"[OMR] Close order placed: {order.get('order_id', 'UNKNOWN')}")
 
-                            # Log trade exit to persistent trade log BEFORE removing position
-                            # Get entry info from state manager while it still exists
+                            # Log trade exit (non-blocking)
                             try:
                                 position_info = self.state_manager.get_positions(STRATEGY_NAME).get(symbol, {})
                                 trade_logger = get_trade_log_writer()
@@ -927,7 +1025,6 @@ class OMRLiveAdapter(StrategyAdapter):
                             except Exception as log_err:
                                 logger.error(f"[OMR] Trade logging failed (non-blocking): {log_err}")
 
-                            # Remove from state tracking
                             self.state_manager.remove_position(STRATEGY_NAME, symbol)
                         else:
                             logger.error(f"[OMR] Failed to close {symbol}")
@@ -938,11 +1035,140 @@ class OMRLiveAdapter(StrategyAdapter):
 
                 logger.info("[OMR] Overnight position closing complete")
 
-            finally:
-                self.state_manager.release_execution_lock(STRATEGY_NAME)
+            # ---- Post-state ----
+            with self._stage(rec, "post_state"):
+                rec.post_state = self._snapshot_post_state()
+                # Note: update_last_execution is intentionally omitted for exit;
+                # the exit is a close-positions operation, not a new decision cycle.
 
         except Exception as e:
-            logger.error(f"[OMR] Error in close_overnight_positions: {e}")
+            from src.trading.decision_log.record import ErrorInfo
+            rec.error = ErrorInfo(
+                type=type(e).__name__,
+                message=str(e),
+                traceback=_tb.format_exc(),
+                stage=getattr(rec, "_current_stage", "unknown"),
+            )
+            logger.error(f"[OMR] Error in _run_exit: {e}")
+            _tb.print_exc()
+            raise
+        finally:
+            try:
+                if had_lock:
+                    self.state_manager.release_execution_lock(STRATEGY_NAME)
+            finally:
+                self._write_decision(rec)
+
+    def get_schedule(self) -> Dict[str, any]:
+        """
+        Get scheduling configuration.
+
+        OMR requires TWO execution times:
+        - 3:50 PM EST: Generate signals and enter positions
+        - 9:31 AM EST: Close overnight positions
+
+        Returns:
+            Schedule dict with entry and exit times
+        """
+        return {
+            'execution_times': [
+                {'time': '15:50', 'action': 'entry'},   # 3:50 PM - Enter positions
+                {'time': '09:31', 'action': 'exit'}     # 9:31 AM - Exit positions
+            ],
+            'market_hours_only': True,
+            'strategy_type': 'overnight'  # Indicates overnight holding
+        }
+
+    def close_overnight_positions(self) -> None:
+        """Close overnight positions at market open (09:31 AM).
+
+        Backward-compatible wrapper - delegates to run_once(action="exit").
+        """
+        self.run_once(action="exit")
+
+    # ------------------------------------------------------------------
+    # Decision-log helpers (mirrors RAMP's _build_decision_inputs etc.)
+    # ------------------------------------------------------------------
+
+    def _build_decision_inputs(self):
+        """Build StrategyInputs for the decision record."""
+        from src.trading.decision_log.record import StrategyInputs
+
+        universe_size = len(self.symbols) if self.symbols else 0
+        intraday_ready = (
+            self._intraday_cache is not None and len(self._intraday_cache) > 0
+        )
+        return StrategyInputs(
+            regime=None,
+            regime_confidence=None,
+            regime_params=None,
+            vix=None,
+            spy_drawdown_pct=None,
+            universe_size=universe_size,
+            data_completeness_pct=100.0 if intraday_ready else 0.0,
+            cache_source="intraday_cache" if intraday_ready else "none",
+            momentum_scores={},
+            extra={},
+        )
+
+    def _build_decision_logic(self, signals):
+        """Build LogicDecisions from a list of signals."""
+        from src.trading.decision_log.record import LogicDecisions
+
+        buy = [s for s in signals if getattr(s, "direction", None) == "BUY"]
+        sell = [s for s in signals if getattr(s, "direction", None) in ("SELL", "SHORT")]
+        hold = [s for s in signals if getattr(s, "direction", None) == "HOLD"]
+
+        return LogicDecisions(
+            top_n=0,
+            target_symbols=[s.symbol for s in buy],
+            target_weights={
+                s.symbol: float(getattr(s, "confidence", 0.0))
+                for s in buy
+            },
+            target_value_usd={},
+            reduce_exposure=False,
+            exposure_pct=1.0,
+            exit_signals=[s.symbol for s in sell],
+            hold_signals=[s.symbol for s in hold],
+            skip_reasons={},
+        )
+
+    def _snapshot_post_state(self):
+        """Build PostState reflecting positions and equity after execution."""
+        from src.trading.decision_log.record import PostState, PositionSnapshot
+
+        omr_positions = self.state_manager.get_positions(STRATEGY_NAME)
+        broker_pos_list = self.broker.get_positions() or []
+        broker_positions = {p.get("symbol"): p for p in broker_pos_list}
+
+        positions_after: dict = {}
+        for sym in omr_positions.keys():
+            bp = broker_positions.get(sym)
+            if bp:
+                positions_after[sym] = PositionSnapshot(
+                    qty=float(bp.get("quantity", 0)),
+                    avg_price=float(bp.get("avg_entry_price", 0)),
+                    unrealized_pnl=float(bp.get("unrealized_pnl", 0) or 0),
+                )
+
+        try:
+            account = self.broker.get_account()
+            cash_after = float(account.get("cash", 0) or 0)
+        except Exception:
+            cash_after = 0.0
+
+        initial = float(getattr(self, "initial_capital", 0.0) or 0.0)
+        equity_after = initial + sum(
+            p.unrealized_pnl for p in positions_after.values()
+        )
+
+        return PostState(
+            positions_after=positions_after,
+            cash_after=cash_after,
+            strategy_equity_after=equity_after,
+            state_writes=[],
+        )
 
 
 if __name__ == "__main__":
