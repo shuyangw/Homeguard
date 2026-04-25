@@ -147,6 +147,8 @@ class MomentumLiveAdapter(StrategyAdapter):
     Positions are held until next day's 3:55 PM rebalance.
     """
 
+    STRATEGY_NAME: str = STRATEGY_NAME  # class attribute for StrategyAdapter base helpers
+
     def __init__(
         self,
         broker: BrokerInterface,
@@ -615,60 +617,59 @@ class MomentumLiveAdapter(StrategyAdapter):
             return {}
 
     def run_once(self) -> None:
-        """
-        Run one iteration of the strategy with portfolio health checks.
+        """Run one iteration of the strategy with portfolio health checks.
 
-        Includes:
-        - Fresh data fetch at execution time (3:55 PM)
-        - Toggle/shutdown checks
-        - Execution lock for multi-strategy coordination
-        - Position tracking per strategy
+        Emits a DecisionRecord at end (clean run, blocked, or errored).
         """
+        import traceback
+
         logger.info("[MP] " + "=" * 60)
         logger.info(f"[MP] Running {self.__class__.__name__} at {tz.now()}")
         logger.info("[MP] " + "=" * 60)
 
+        # Fetch today's closes before lock acquisition - preserves original run_once ordering
+        # (original code fetched data before acquiring the execution lock)
+        logger.info("[MP] Fetching today's closes for 3:55 PM execution...")
+        self.fetch_todays_closes()
+
+        rec = self._begin_decision("scheduled_rebalance", schedule_time="15:55")
+        had_lock = False
         try:
-            # Check if strategy is enabled
-            if not self.state_manager.is_enabled(STRATEGY_NAME):
-                logger.warning("[MP] Strategy is DISABLED - skipping execution")
-                return
+            # ---- Preconditions ----
+            with self._stage(rec, "preconditions"):
+                if not self._check_common_preconditions(rec):
+                    if not rec.preconditions.strategy_enabled.passed:
+                        logger.warning("[MP] Strategy is DISABLED - skipping execution")
+                    elif not rec.preconditions.shutdown_requested.passed:
+                        logger.warning("[MP] Shutdown requested - skipping new entries")
+                    elif not rec.preconditions.execution_lock_acquired.passed:
+                        logger.error("[MP] Failed to acquire execution lock - another strategy is running")
+                    return
+                had_lock = True
 
-            # Check if shutdown requested
-            if self.state_manager.is_shutdown_requested(STRATEGY_NAME):
-                logger.warning("[MP] Shutdown requested - skipping new entries")
-                return
-
-            # Fetch today's closes only (lightweight, ~30s vs ~2min for full fetch)
-            # This appends today's prices to the 9:30 AM historical cache
-            logger.info("[MP] Fetching today's closes for 3:55 PM execution...")
-            self.fetch_todays_closes()
-
-            # Acquire execution lock (blocks if another strategy is executing)
-            if not self.state_manager.acquire_execution_lock(STRATEGY_NAME):
-                logger.error("[MP] Failed to acquire execution lock - another strategy is running")
-                return
-
-            try:
                 # Sync state with broker (detect external position changes)
                 broker_positions = {p['symbol']: int(p['quantity']) for p in self.broker.get_positions()}
                 changes = self.state_manager.sync_with_broker(self._broker_name, broker_positions)
                 if changes['removed']:
                     logger.info(f"[MP] Detected closed positions: {changes['removed']}")
 
-                # Portfolio health check before entry
-                # Use strategy_name='mp' to only count MP positions for max_positions check
+                # Strategy-specific health check
+                from src.trading.decision_log.record import GateResult
                 logger.info("[MP] Running pre-entry portfolio health check...")
                 health_result = self.health_checker.check_before_entry(
                     required_capital=None,
                     allow_existing_positions=True,
-                    strategy_name=STRATEGY_NAME
+                    strategy_name=STRATEGY_NAME,
                 )
-
+                rec.preconditions.health_check = GateResult(
+                    passed=health_result.passed,
+                    details={"warnings_count": len(health_result.warnings)},
+                    error="; ".join(health_result.errors) if health_result.errors else None,
+                )
                 if not health_result.passed:
                     logger.error("[MP] Portfolio health check FAILED - BLOCKING ENTRY")
-                    for error in health_result.errors:
-                        logger.error(f"[MP]   - {error}")
+                    for err in health_result.errors:
+                        logger.error(f"[MP]   - {err}")
                     return
 
                 if health_result.warnings:
@@ -678,52 +679,173 @@ class MomentumLiveAdapter(StrategyAdapter):
 
                 logger.success("[MP] Portfolio health check PASSED - proceeding with rebalance")
 
-                # Get MP's own positions from state manager
-                mp_positions = self.state_manager.get_positions(STRATEGY_NAME)
+                # Data freshness gate
+                cache_complete = self._estimate_cache_freshness()
+                rec.preconditions.data_freshness = GateResult(
+                    passed=cache_complete >= 0.80,
+                    details={"valid_pct": cache_complete * 100},
+                )
 
-                # Update current positions in signal generator (using broker positions for value)
+            # ---- Inputs ----
+            with self._stage(rec, "inputs"):
+                rec.inputs = self._build_decision_inputs()
+
+            # ---- Logic ----
+            with self._stage(rec, "logic"):
+                mp_positions = self.state_manager.get_positions(STRATEGY_NAME)
                 positions = self.broker.get_positions()
                 current_positions = {}
                 for pos in positions:
                     symbol = pos.get('symbol')
-                    # Only include if tracked by MP or not owned by another strategy
                     owner = self.state_manager.symbol_owned_by_other(STRATEGY_NAME, symbol)
                     if symbol in mp_positions or owner is None:
                         value = float(pos.get('market_value', 0))
                         current_positions[symbol] = value
-
                 self.strategy.set_current_positions(current_positions)
 
-                # Fetch market data
                 market_data = self.fetch_market_data()
-
                 if not market_data:
                     logger.error("[MP] No market data available")
                     return
 
-                # Generate signals
                 signals = self.strategy.generate_signals(market_data, tz.now())
 
-                # Log risk signals
                 if signals:
                     risk_exposure = signals[0].metadata.get('risk_exposure', 1.0) if signals[0].metadata else 1.0
                     if risk_exposure < 1.0:
                         logger.warning(f"[MP] Risk signals active - exposure reduced to {risk_exposure:.0%}")
 
-                # Execute trades
+                rec.logic_decisions = self._build_decision_logic(signals)
+
+            # ---- Execution ----
+            with self._stage(rec, "execution"):
                 self._execute_rebalance(signals, current_positions)
 
-                # Update last execution timestamp
+            # ---- Post-state ----
+            with self._stage(rec, "post_state"):
+                rec.post_state = self._snapshot_post_state()
                 self.state_manager.update_last_execution(STRATEGY_NAME)
 
-            finally:
-                # Always release execution lock
-                self.state_manager.release_execution_lock(STRATEGY_NAME)
-
         except Exception as e:
+            from src.trading.decision_log.record import ErrorInfo
+            rec.error = ErrorInfo(
+                type=type(e).__name__,
+                message=str(e),
+                traceback=traceback.format_exc(),
+                stage=getattr(rec, "_current_stage", "unknown"),
+            )
             logger.error(f"[MP] Error in run_once: {e}")
-            import traceback
             traceback.print_exc()
+            raise
+        finally:
+            try:
+                if had_lock:
+                    self.state_manager.release_execution_lock(STRATEGY_NAME)
+            finally:
+                self._write_decision(rec)
+
+    def _estimate_cache_freshness(self) -> float:
+        """Fraction of universe symbols with valid data on the cache's last row."""
+        if self._data_cache is None or "prices" not in self._data_cache:
+            return 0.0
+        prices = self._data_cache["prices"]
+        if len(prices) == 0:
+            return 0.0
+        last_row = prices.iloc[-1]
+        if len(last_row) == 0:
+            return 0.0
+        return float(last_row.notna().sum()) / float(len(last_row))
+
+    def _build_decision_inputs(self):
+        """Build StrategyInputs for the decision record."""
+        from src.trading.decision_log.record import StrategyInputs
+
+        cache_completeness = self._estimate_cache_freshness() * 100
+
+        momentum_scores: dict = {}
+        try:
+            scores = self._momentum_signals.calculate_momentum_scores(
+                self._data_cache["prices"] if self._data_cache else None
+            )
+            if scores is not None:
+                momentum_scores = {
+                    s: (None if pd.isna(v) else float(v)) for s, v in scores.items()
+                }
+        except Exception:
+            pass
+
+        return StrategyInputs(
+            regime=None,
+            regime_confidence=None,
+            regime_params=None,
+            vix=None,
+            spy_drawdown_pct=None,
+            universe_size=len(self.symbols) if self.symbols else 0,
+            data_completeness_pct=cache_completeness,
+            cache_source="memory_cache",
+            momentum_scores=momentum_scores,
+            extra={},
+        )
+
+    def _build_decision_logic(self, signals):
+        """Build LogicDecisions from a list of signals."""
+        from src.trading.decision_log.record import LogicDecisions
+
+        buy = [s for s in signals if getattr(s, "direction", None) == "BUY"]
+        sell = [s for s in signals if getattr(s, "direction", None) == "SELL"]
+        hold = [s for s in signals if getattr(s, "direction", None) == "HOLD"]
+
+        target_symbols = [s.symbol for s in buy]
+        target_weights = {
+            s.symbol: float(s.metadata.get("weight", 0.0)) if s.metadata else 0.0
+            for s in buy
+        }
+        target_value_usd = {
+            sym: w * self.initial_capital for sym, w in target_weights.items()
+        }
+        return LogicDecisions(
+            top_n=self.top_n if hasattr(self, "top_n") else 10,
+            target_symbols=target_symbols,
+            target_weights=target_weights,
+            target_value_usd=target_value_usd,
+            reduce_exposure=False,
+            exposure_pct=1.0,
+            exit_signals=[s.symbol for s in sell],
+            hold_signals=[s.symbol for s in hold],
+            skip_reasons={},
+        )
+
+    def _snapshot_post_state(self):
+        """Build PostState reflecting positions and equity after execution."""
+        from src.trading.decision_log.record import PostState, PositionSnapshot
+
+        mp_positions = self.state_manager.get_positions(STRATEGY_NAME)
+        broker_positions = {
+            p.get("symbol"): p for p in (self.broker.get_positions() or [])
+        }
+        positions_after: dict = {}
+        for sym in mp_positions.keys():
+            bp = broker_positions.get(sym)
+            if bp:
+                positions_after[sym] = PositionSnapshot(
+                    qty=float(bp.get("quantity", 0)),
+                    avg_price=float(bp.get("avg_entry_price", 0)),
+                    unrealized_pnl=float(bp.get("unrealized_pnl", 0) or 0),
+                )
+        try:
+            account = self.broker.get_account()
+            cash_after = float(account.get("cash", 0) or 0)
+        except Exception:
+            cash_after = 0.0
+        equity_after = self.initial_capital + sum(
+            p.unrealized_pnl for p in positions_after.values()
+        )
+        return PostState(
+            positions_after=positions_after,
+            cash_after=cash_after,
+            strategy_equity_after=equity_after,
+            state_writes=[],
+        )
 
     def _execute_rebalance(
         self,
