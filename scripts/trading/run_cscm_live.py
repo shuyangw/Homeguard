@@ -35,7 +35,7 @@ try:
 except ImportError:
     pass
 
-from src.trading.adapters.cscm_live_adapter import CSCMLiveAdapter
+from src.trading.adapters.cscm_live_adapter import CSCMLiveAdapter, _maybe_emit_decision  # noqa: F401
 from src.utils.logger import logger
 
 

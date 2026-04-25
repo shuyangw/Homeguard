@@ -45,6 +45,154 @@ CACHE_DIR = Path.home() / '.homeguard' / 'cache'
 CACHE_FILE = CACHE_DIR / 'cscm_state.pkl'
 
 
+def _resolve_broker_name(broker) -> str:
+    """Return a human-readable broker name from a broker or CryptoBrokerRouter."""
+    if hasattr(broker, '_primary') or hasattr(broker, '_secondary'):
+        active_slot = getattr(broker, '_active_broker_name', 'primary')
+        primary_broker = getattr(broker, '_primary', None)
+        secondary_broker = getattr(broker, '_secondary', None)
+        if active_slot == 'primary' and primary_broker is not None:
+            active_broker = primary_broker
+        elif secondary_broker is not None:
+            active_broker = secondary_broker
+        elif primary_broker is not None:
+            active_broker = primary_broker
+        else:
+            active_broker = None
+    else:
+        active_broker = broker
+    if active_broker is None:
+        return 'crypto'
+    cls_name = active_broker.__class__.__name__.lower()
+    if 'coinbase' in cls_name:
+        return 'coinbase'
+    if 'alpaca' in cls_name:
+        return 'alpaca'
+    if 'demo' in cls_name:
+        return 'demo'
+    return cls_name
+
+
+def _maybe_emit_decision(
+    *,
+    risk_signals,
+    target_positions: dict,
+    executed: list,
+    account: dict,
+    broker_name: str,
+    initial_capital: float,
+) -> None:
+    """Emit one DecisionRecord per CSCM rebalance attempt.
+
+    `executed` is a list of tuples:
+        (symbol, action, status, fill_price_or_None, order_id_or_None, reason_or_None)
+
+    Decision-log failures are never fatal -- all exceptions are swallowed.
+    """
+    try:
+        from src.trading.decision_log import (
+            begin_decision, write_decision, stage,
+        )
+        from src.trading.decision_log.record import (
+            GateResult, StrategyInputs, LogicDecisions, Execution, PostState,
+        )
+
+        rec = begin_decision(
+            strategy="cscm",
+            trigger_kind="scheduled_rebalance",
+            schedule_time="Sunday 00:00 UTC",
+            broker_name=broker_name,
+            data_provider="binance-streaming",
+            initial_capital_usd=initial_capital,
+            strategy_version=1,
+        )
+        try:
+            with stage(rec, "preconditions"):
+                ok = GateResult(passed=True, details={})
+                rec.preconditions.strategy_enabled = ok
+                rec.preconditions.shutdown_requested = ok
+                rec.preconditions.execution_lock_acquired = ok
+                rec.preconditions.health_check = ok
+                rec.preconditions.data_freshness = ok
+                rec.preconditions.all_passed = True
+
+            with stage(rec, "inputs"):
+                rec.inputs = StrategyInputs(
+                    regime=risk_signals.regime,
+                    regime_confidence=None,
+                    regime_params=None,
+                    vix=None,
+                    spy_drawdown_pct=None,
+                    universe_size=len(risk_signals.momentum_scores or {}),
+                    data_completeness_pct=100.0,
+                    cache_source="binance-streaming",
+                    momentum_scores=dict(risk_signals.momentum_scores or {}),
+                    extra={
+                        "btc_price": risk_signals.btc_price,
+                        "btc_sma": risk_signals.btc_sma,
+                        "is_rebalance_day": risk_signals.is_rebalance_day,
+                        "reduce_exposure": risk_signals.reduce_exposure,
+                        "exposure_pct": risk_signals.exposure_pct,
+                        "top_symbols": list(risk_signals.top_symbols or []),
+                    },
+                )
+
+            with stage(rec, "logic"):
+                target_symbols = [s for s, w in target_positions.items() if w > 0]
+                target_value_usd = {
+                    s: w * initial_capital for s, w in target_positions.items() if w > 0
+                }
+                rec.logic_decisions = LogicDecisions(
+                    top_n=len(target_symbols),
+                    target_symbols=target_symbols,
+                    target_weights={s: w for s, w in target_positions.items() if w > 0},
+                    target_value_usd=target_value_usd,
+                    reduce_exposure=bool(risk_signals.reduce_exposure),
+                    exposure_pct=float(risk_signals.exposure_pct),
+                    exit_signals=[],
+                    hold_signals=[],
+                    skip_reasons={},
+                )
+
+            with stage(rec, "execution"):
+                for sym, action, status, fill_price, order_id, reason in executed:
+                    rec.executions.append(Execution(
+                        symbol=sym,
+                        action=action,
+                        target_qty=0,
+                        target_value_usd=target_value_usd.get(sym, 0.0),
+                        status=status,
+                        fill_price=fill_price,
+                        filled_qty=None,
+                        order_id=order_id,
+                        reason=reason,
+                    ))
+
+            with stage(rec, "post_state"):
+                rec.post_state = PostState(
+                    positions_after={},
+                    cash_after=float(account.get("cash", 0) or 0),
+                    strategy_equity_after=float(account.get("portfolio_value", 0) or 0),
+                    state_writes=[],
+                )
+        except Exception as e:
+            import traceback
+            from src.trading.decision_log.record import ErrorInfo
+            rec.error = ErrorInfo(
+                type=type(e).__name__,
+                message=str(e),
+                traceback=traceback.format_exc(),
+                stage=getattr(rec, "_current_stage", "unknown"),
+            )
+        finally:
+            write_decision(rec)
+    except Exception as outer_e:
+        try:
+            logger.error(f"[decision_log] _maybe_emit_decision failed: {outer_e}")
+        except Exception:
+            pass
+
+
 class CSCMLiveAdapter:
     """
     Live trading adapter for CSCM strategy.
@@ -329,17 +477,6 @@ class CSCMLiveAdapter:
         logger.info(f"[CSCM] BTC: ${risk_signals.btc_price:,.2f} (SMA: ${risk_signals.btc_sma:,.2f})")
         logger.info(f"[CSCM] Top symbols: {risk_signals.top_symbols}")
 
-        # Log rebalance decision
-        if self._signal_logger:
-            self._signal_logger.log_rebalance(
-                regime=risk_signals.regime,
-                btc_price=risk_signals.btc_price,
-                btc_sma=risk_signals.btc_sma,
-                top_symbols=risk_signals.top_symbols,
-                momentum_scores=risk_signals.momentum_scores,
-                target_positions=target_positions,
-            )
-
         # Get current positions and balance
         current_positions = self._get_current_positions()
         available_balance = self._get_account_balance()
@@ -349,6 +486,7 @@ class CSCMLiveAdapter:
 
         # Calculate trades needed
         orders = []
+        executed = []  # decision-log bookkeeping: (symbol, action, status, fill_price, order_id, reason)
         total_value = available_balance
 
         # Add current position values
@@ -374,8 +512,12 @@ class CSCMLiveAdapter:
                     order = self.broker.close_crypto_position(symbol)
                     orders.append(order)
                     self._log_close(symbol, closed_qty, order)
+                    fill_price = float(order.get('filled_avg_price') or 0) if isinstance(order, dict) else None
+                    order_id = order.get('order_id') if isinstance(order, dict) else None
+                    executed.append((symbol, "sell", "filled", fill_price, order_id, None))
                 except Exception as e:
                     logger.error(f"[CSCM] Failed to close {symbol}: {e}")
+                    executed.append((symbol, "sell", "error", None, None, str(e)))
 
         # Open/adjust positions in target
         for symbol, weight in target_positions.items():
@@ -395,6 +537,7 @@ class CSCMLiveAdapter:
 
                 # Skip small adjustments (< 5% of target)
                 if abs(qty_diff) < target_qty * Decimal('0.05'):
+                    executed.append((symbol, "hold", "skipped", float(current_price), None, "adjustment < 5% threshold"))
                     continue
 
                 if qty_diff > 0:
@@ -408,6 +551,9 @@ class CSCMLiveAdapter:
                     )
                     orders.append(order)
                     self._log_buy(symbol, float(qty_diff), float(current_price), order)
+                    fill_price = float(order.get('filled_avg_price') or current_price) if isinstance(order, dict) else float(current_price)
+                    order_id = order.get('order_id') if isinstance(order, dict) else None
+                    executed.append((symbol, "buy", "filled", fill_price, order_id, None))
 
                 elif qty_diff < 0:
                     # Sell
@@ -421,15 +567,35 @@ class CSCMLiveAdapter:
                     )
                     orders.append(order)
                     self._log_partial_sell(symbol, float(sell_qty), float(current_price), order)
+                    fill_price = float(order.get('filled_avg_price') or current_price) if isinstance(order, dict) else float(current_price)
+                    order_id = order.get('order_id') if isinstance(order, dict) else None
+                    executed.append((symbol, "sell", "filled", fill_price, order_id, None))
 
             except Exception as e:
                 logger.error(f"[CSCM] Failed to rebalance {symbol}: {e}")
+                executed.append((symbol, "buy", "error", None, None, str(e)))
 
         # Mark rebalance complete
         self._last_rebalance = tz.now()
         self.signals.mark_rebalanced(self._last_rebalance)
         self._current_positions = self._get_current_positions()
         self._save_state()
+
+        # Emit decision record (replaces legacy signal_logger.log_rebalance)
+        try:
+            account = self.broker.get_account() or {}
+        except Exception:
+            account = {"portfolio_value": total_value, "cash": available_balance}
+        broker_name = _resolve_broker_name(self.broker)
+        initial_capital = float(self.max_capital_usd or total_value)
+        _maybe_emit_decision(
+            risk_signals=risk_signals,
+            target_positions=target_positions,
+            executed=executed,
+            account=account,
+            broker_name=broker_name,
+            initial_capital=initial_capital,
+        )
 
         logger.info(f"[CSCM] Rebalance complete: {len(orders)} orders executed")
         return orders
