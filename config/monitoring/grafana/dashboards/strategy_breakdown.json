@@ -152,17 +152,17 @@
       ],
       "transformations": [
         {
-          "id": "merge",
-          "options": {}
+          "id": "joinByField",
+          "options": {
+            "byField": "symbol",
+            "mode": "outer"
+          }
         },
         {
           "id": "organize",
           "options": {
             "excludeByName": {
               "Time": true,
-              "__name__": true,
-              "job": true,
-              "instance": true,
               "Time 1": true,
               "Time 2": true,
               "__name__ 1": true,
@@ -170,13 +170,14 @@
               "job 1": true,
               "job 2": true,
               "instance 1": true,
-              "instance 2": true
+              "instance 2": true,
+              "strategy 2": true
             },
             "renameByName": {
               "Value #A": "Quantity",
               "Value #B": "Unrealized PnL",
               "symbol": "Symbol",
-              "strategy": "Strategy"
+              "strategy 1": "Strategy"
             },
             "indexByName": {
               "Strategy": 0,
@@ -242,6 +243,6 @@
   "timezone": "browser",
   "title": "Strategy Breakdown",
   "uid": "homeguard-strategies",
-  "version": 3,
+  "version": 4,
   "weekStart": ""
 }

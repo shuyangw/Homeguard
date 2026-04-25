@@ -1232,6 +1232,14 @@ def main():
         snapshot_dir = os.path.join(get_local_storage_dir(), 'metrics_snapshots')
         SnapshotWriter(metrics_registry, snapshot_dir=snapshot_dir).start_background()
 
+        # Emit static starting-capital gauge so the Strategy Capital dashboard
+        # panel can render the dashed reference line. CSCM does this in its
+        # own sidecar at run_cscm_live.py:202 -- mirror the pattern here for
+        # the stock strategies (RAMP/OMR/MP) running through this runner.
+        if args.initial_capital:
+            from src.monitoring.hooks import update_strategy_initial_capital
+            update_strategy_initial_capital(metrics_registry, float(args.initial_capital))
+
         logger.info(f"Metrics enabled on port {metrics_port}")
 
     try:

@@ -104,8 +104,8 @@
     },
     {
       "id": 4,
-      "title": "Regime State Code",
-      "description": "Current market regime as classified by MarketRegimeDetector (src/strategies/advanced/market_regime_detector.py). Values: 1=STRONG_BULL (low vol, positive momentum), 2=WEAK_BULL, 3=SIDEWAYS, 4=UNPREDICTABLE (elevated vol, ambiguous trend), 5=BEAR. Only emitted by RAMP -- CSCM uses a simpler BTC>SMA gate, not this detector.",
+      "title": "RAMP Regime State Code",
+      "description": "Current US-equities market regime classified by MarketRegimeDetector (src/strategies/advanced/market_regime_detector.py). Values: 1=STRONG_BULL (low vol, positive momentum), 2=WEAK_BULL, 3=SIDEWAYS, 4=UNPREDICTABLE (elevated vol, ambiguous trend), 5=BEAR. **RAMP-only signal** -- CSCM does not contribute to this panel because it uses a binary BTC>SMA40 gate over crypto markets (a fundamentally different regime concept on a different asset class), not the 5-state classifier.",
       "type": "timeseries",
       "gridPos": {"x": 12, "y": 8, "w": 12, "h": 8},
       "datasource": {"type": "prometheus", "uid": "victoriametrics"},
@@ -150,6 +150,6 @@
   "timezone": "browser",
   "title": "Portfolio Overview",
   "uid": "homeguard-portfolio",
-  "version": 3,
+  "version": 4,
   "weekStart": ""
 }
