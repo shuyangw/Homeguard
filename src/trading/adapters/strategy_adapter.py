@@ -5,6 +5,8 @@ Connects pure strategy implementations to live trading infrastructure.
 Handles data fetching, signal generation, and order execution.
 """
 
+import functools
+import subprocess
 from abc import ABC, abstractmethod
 from typing import List, Dict, Optional, TYPE_CHECKING
 from datetime import datetime, timedelta
@@ -20,6 +22,21 @@ from src.trading.core.execution_engine import ExecutionEngine
 from src.trading.core.position_manager import PositionManager
 from src.utils.logger import logger
 from src.utils.timezone import now as get_now_et
+
+
+@functools.lru_cache(maxsize=1)
+def _get_git_sha_cached() -> str:
+    """Return short git SHA, cached for the process lifetime."""
+    try:
+        from pathlib import Path
+        out = subprocess.check_output(
+            ["git", "rev-parse", "--short=7", "HEAD"],
+            cwd=str(Path(__file__).parent),
+            stderr=subprocess.DEVNULL, timeout=2,
+        )
+        return out.decode().strip()
+    except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired, OSError):
+        return ""
 
 
 class StrategyAdapter(ABC):
@@ -93,6 +110,81 @@ class StrategyAdapter(ABC):
         logger.info(f"  Max positions: {max_positions}")
         if data_provider is not None:
             logger.info(f"  Data provider: {data_provider.name}")
+
+    # --- Decision-log helpers (added 2026-04-24) ---
+    # Used by all stock-strategy adapters to emit unified decision records.
+    # See docs/superpowers/specs/2026-04-24-decision-log-observability-design.md
+
+    STRATEGY_VERSION: int = 1  # bump when strategy logic changes meaningfully
+
+    def _begin_decision(self, trigger_kind: str, schedule_time: Optional[str] = None):
+        """Construct a fresh DecisionRecord with identity + trigger fields populated."""
+        from src.trading.decision_log import begin_decision
+        return begin_decision(
+            strategy=self.STRATEGY_NAME,
+            trigger_kind=trigger_kind,
+            schedule_time=schedule_time,
+            broker_name=getattr(self, "_broker_name", "unknown"),
+            data_provider=getattr(getattr(self, "_data_provider", None), "name", "unknown"),
+            initial_capital_usd=float(getattr(self, "initial_capital", 0.0) or 0.0),
+            strategy_version=self.STRATEGY_VERSION,
+            git_sha=_get_git_sha_cached(),
+        )
+
+    def _check_common_preconditions(self, rec) -> bool:
+        """Populate the common precondition gates (enabled, shutdown, lock).
+
+        Strategy-specific gates (health_check, data_freshness) are populated
+        by the subclass after this returns True.
+
+        Returns True if all common gates passed.
+        """
+        from src.trading.decision_log.record import GateResult
+
+        rec.preconditions.strategy_enabled = GateResult(
+            passed=self.state_manager.is_enabled(self.STRATEGY_NAME),
+            details={},
+        )
+        rec.preconditions.shutdown_requested = GateResult(
+            passed=not self.state_manager.is_shutdown_requested(self.STRATEGY_NAME),
+            details={},
+        )
+        rec.preconditions.execution_lock_acquired = GateResult(
+            passed=self.state_manager.acquire_execution_lock(self.STRATEGY_NAME),
+            details={},
+        )
+        passed = all(
+            g.passed for g in (
+                rec.preconditions.strategy_enabled,
+                rec.preconditions.shutdown_requested,
+                rec.preconditions.execution_lock_acquired,
+            )
+        )
+        return passed
+
+    def _stage(self, rec, name: str):
+        """Context manager that tags rec._current_stage. Use inside run_once."""
+        from src.trading.decision_log import stage
+        return stage(rec, name)
+
+    def _write_decision(self, rec) -> None:
+        """Write the decision record to disk. Always called in a finally block."""
+        from src.trading.decision_log import write_decision
+        try:
+            # Update preconditions.all_passed last, after all gates populated
+            p = rec.preconditions
+            p.all_passed = (
+                p.strategy_enabled.passed
+                and p.shutdown_requested.passed
+                and p.execution_lock_acquired.passed
+                and p.health_check.passed
+                and p.data_freshness.passed
+                and all(g.passed for g in p.extra.values())
+            )
+            write_decision(rec)
+        except Exception as e:
+            # Decision-log failures must never break trading.
+            logger.error(f"[decision_log] failed to write record: {e}")
 
     def preload_historical_data(self) -> None:
         """
