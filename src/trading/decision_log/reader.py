@@ -185,3 +185,78 @@ def summary(start: date, end: date) -> Dict[str, StrategySummary]:
             orders_filled=orders_filled, orders_total=orders_total,
         )
     return out
+
+
+def load_legacy_cscm(path: Path) -> Iterator[DecisionRecord]:
+    """Translate a legacy cscm_signals_YYYYMMDD.jsonl file into DecisionRecords.
+
+    The old format had one entry per signal-generation moment; many were
+    non-rebalance hourly checks. We yield one record per 'signal' entry.
+    Executions are empty (the old log didn't capture them); preconditions
+    are marked all_passed=True since the strategy did emit a signal.
+    """
+    from src.trading.decision_log.record import (
+        TriggerInfo, PreconditionResults, GateResult, StrategyInputs,
+        RunMetadata,
+    )
+    if not path.exists():
+        return
+    with path.open() as fh:
+        for line in fh:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                d = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if d.get("type") != "signal":
+                continue
+            ts = d.get("timestamp", "")
+            yield DecisionRecord(
+                schema_version=1,
+                decision_id=f"legacy-{ts}",
+                strategy="cscm",
+                timestamp=ts,
+                trigger=TriggerInfo(
+                    kind="legacy_signal",
+                    schedule_time=None,
+                    actual_fire_time=ts,
+                    delay_seconds=0.0,
+                    consecutive_fire_count=1,
+                ),
+                preconditions=PreconditionResults(
+                    all_passed=True,
+                    strategy_enabled=GateResult(passed=True, details={}),
+                    shutdown_requested=GateResult(passed=True, details={}),
+                    execution_lock_acquired=GateResult(passed=True, details={}),
+                    health_check=GateResult(passed=True, details={}),
+                    data_freshness=GateResult(passed=True, details={}),
+                    extra={},
+                ),
+                inputs=StrategyInputs(
+                    regime=d.get("regime"),
+                    momentum_scores=d.get("momentum_scores", {}),
+                    extra={
+                        "btc_price": d.get("btc_price"),
+                        "btc_sma": d.get("btc_sma"),
+                        "is_rebalance_day": d.get("is_rebalance_day"),
+                        "reduce_exposure": d.get("reduce_exposure"),
+                        "exposure_pct": d.get("exposure_pct"),
+                        "top_symbols": d.get("top_symbols", []),
+                    },
+                ),
+                logic_decisions=None,
+                executions=[],
+                post_state=None,
+                error=None,
+                metadata=RunMetadata(
+                    broker_name="cscm-legacy",
+                    data_provider="cscm-legacy",
+                    git_sha="",
+                    initial_capital_usd=0.0,
+                    strategy_version=0,
+                    process_pid=0,
+                    hostname="legacy",
+                ),
+            )

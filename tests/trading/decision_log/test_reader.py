@@ -162,3 +162,44 @@ class TestSummary:
         assert result["ramp"].errored == 1
         assert result["omr"].triggers == 1
         assert result["omr"].errored == 0
+
+
+class TestLegacyCSCM:
+    def test_legacy_cscm_signal_jsonl_is_translated(self, tmp_decisions_dir, tmp_path, monkeypatch):
+        """Old cscm_signals_YYYYMMDD.jsonl files load as DecisionRecord via legacy path."""
+        from src.trading.decision_log.reader import load_legacy_cscm
+
+        # Old format -- one signal entry per line
+        legacy_dir = tmp_path / "legacy_cscm"
+        legacy_dir.mkdir()
+        legacy_file = legacy_dir / "cscm_signals_20260420.jsonl"
+        legacy_file.write_text(
+            '{"timestamp": "2026-04-20T10:00:56-04:00", "type": "signal", '
+            '"regime": "bullish", "btc_price": 75230.89, "btc_sma": 70932.83, '
+            '"is_rebalance_day": true, "reduce_exposure": false, '
+            '"exposure_pct": 1.0, "top_symbols": ["SUSHI/USD", "ETH/USD", "BTC/USD"], '
+            '"momentum_scores": {"BTC/USD": 0.06, "ETH/USD": 0.07}}\n'
+        )
+
+        records = list(load_legacy_cscm(legacy_file))
+        assert len(records) == 1
+        rec = records[0]
+        assert rec.strategy == "cscm"
+        assert rec.inputs.regime == "bullish"
+        assert rec.inputs.extra["btc_price"] == 75230.89
+        assert rec.inputs.extra["is_rebalance_day"] is True
+        assert rec.inputs.momentum_scores["BTC/USD"] == 0.06
+
+    def test_legacy_cscm_skips_non_signal_entries(self, tmp_path):
+        from src.trading.decision_log.reader import load_legacy_cscm
+        legacy_file = tmp_path / "cscm_signals_20260420.jsonl"
+        legacy_file.write_text(
+            '{"timestamp": "2026-04-20T10:00:00-04:00", "type": "heartbeat"}\n'
+            '{"timestamp": "2026-04-20T10:01:00-04:00", "type": "signal", '
+            '"regime": "bullish", "btc_price": 75000.0, "btc_sma": 70000.0, '
+            '"is_rebalance_day": false, "reduce_exposure": false, '
+            '"exposure_pct": 1.0, "top_symbols": [], "momentum_scores": {}}\n'
+        )
+        records = list(load_legacy_cscm(legacy_file))
+        assert len(records) == 1
+        assert records[0].inputs.regime == "bullish"
