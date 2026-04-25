@@ -31,16 +31,14 @@ class TestStatusLineLogging:
 
             mock_adapter = Mock()
             mock_adapter.broker = mock_broker
+            mock_adapter.__class__.__name__ = 'TESTLiveAdapter'
 
-            # Create trader instance
+            # Create trader instance (strategy_name derived from adapter class name)
             trader = LiveTradingRunner(
                 adapter=mock_adapter,
-                strategy_name='TEST',
-                check_interval=15
+                check_interval=15,
+                log_dir=log_dir,
             )
-
-            # Override log_dir for testing
-            trader.log_dir = log_dir
 
             yield trader
 
@@ -56,43 +54,43 @@ class TestStatusLineLogging:
             # Get the printed message
             call_args = mock_console.print.call_args[0][0]
 
-            # Verify format: [HH:MM:SS] Market: OPEN | Checks: N | Runs: N | Signals: N | Orders: N/N
+            # Verify format: [HH:MM:SS] Market: OPEN | Checks: N | Runs: N
             assert '[' in call_args and ']' in call_args  # Timestamp
             assert 'Market:' in call_args
             assert 'Checks:' in call_args
             assert 'Runs:' in call_args
-            assert 'Signals:' in call_args
-            assert 'Orders:' in call_args
-            assert call_args.count('|') == 4  # 4 separators
+            assert call_args.count('|') == 2  # 2 separators (Signals/Orders removed)
 
     def test_status_line_interval_15_seconds(self, mock_trader):
-        """Test status line appears every 15 seconds."""
-        # Set initial progress log time
-        initial_time = datetime(2025, 11, 21, 10, 0, 0)
-        mock_trader.last_progress_log = initial_time
+        """Test status line respects the check_interval threshold."""
+        # Set last_progress_log so the interval check is active
+        mock_trader.last_progress_log = datetime(2025, 11, 21, 10, 0, 0)
 
-        # Test at 14 seconds - should NOT log
-        with patch('scripts.trading.run_live_paper_trading.datetime') as mock_dt:
-            mock_dt.now.return_value = initial_time + timedelta(seconds=14)
+        # Under 15s elapsed -> tz.seconds_since returns small value -> should NOT log
+        with patch('scripts.trading.run_live_paper_trading.tz') as mock_tz:
+            mock_tz.seconds_since.return_value = 14
+            mock_tz.now.return_value = Mock()
+            mock_tz.now.return_value.strftime.return_value = '10:00:14'
             with patch('scripts.trading.run_live_paper_trading.console') as mock_console:
                 mock_trader._log_minute_progress()
                 assert not mock_console.print.called
 
-        # Test at 15 seconds - SHOULD log
-        with patch('scripts.trading.run_live_paper_trading.datetime') as mock_dt:
-            mock_dt.now.return_value = initial_time + timedelta(seconds=15)
+        # 15s+ elapsed -> tz.seconds_since returns 15 -> SHOULD log
+        with patch('scripts.trading.run_live_paper_trading.tz') as mock_tz:
+            mock_tz.seconds_since.return_value = 15
+            mock_tz.now.return_value = Mock()
+            mock_tz.now.return_value.time.return_value = datetime(2025, 11, 21, 10, 0, 15).time()
+            mock_tz.now.return_value.strftime.return_value = '10:00:15'
+            mock_tz.iso_timestamp.return_value = '2025-11-21T10:00:15'
             with patch('scripts.trading.run_live_paper_trading.console') as mock_console:
                 mock_trader._log_minute_progress()
                 assert mock_console.print.called
 
     def test_status_line_shows_correct_counts(self, mock_trader):
-        """Test status line displays correct check/run/signal/order counts."""
-        # Set session tracker values
-        mock_trader.session_tracker.total_checks = 100
+        """Test status line displays correct check/run counts."""
+        # Set to 99 because _log_minute_progress calls log_check which increments to 100
+        mock_trader.session_tracker.total_checks = 99
         mock_trader.session_tracker.total_runs = 5
-        mock_trader.session_tracker.total_signals = 3
-        mock_trader.session_tracker.total_orders = 2
-        mock_trader.session_tracker.successful_orders = 2
 
         with patch('scripts.trading.run_live_paper_trading.console') as mock_console:
             mock_trader._log_minute_progress(force=True)
@@ -102,8 +100,7 @@ class TestStatusLineLogging:
             # Verify counts appear in output
             assert 'Checks: 100' in call_args
             assert 'Runs: 5' in call_args
-            assert 'Signals: 3' in call_args
-            assert 'Orders: 2/2' in call_args
+            # Signals and Orders counters removed -- decision log is source of truth
 
     def test_status_line_market_status(self, mock_trader):
         """Test status line shows correct market status (OPEN/CLOSED)."""
@@ -149,14 +146,13 @@ class TestPeriodicFlush:
 
             mock_adapter = Mock()
             mock_adapter.broker = mock_broker
+            mock_adapter.__class__.__name__ = 'TESTLiveAdapter'
 
             trader = LiveTradingRunner(
                 adapter=mock_adapter,
-                strategy_name='TEST',
-                check_interval=15
+                check_interval=15,
+                log_dir=log_dir,
             )
-
-            trader.log_dir = log_dir
 
             # Mock the trading logger
             mock_trading_logger = Mock()
@@ -279,13 +275,13 @@ class TestStatusLineIntegration:
 
             mock_adapter = Mock()
             mock_adapter.broker = mock_broker
+            mock_adapter.__class__.__name__ = 'TESTLiveAdapter'
 
             trader = LiveTradingRunner(
                 adapter=mock_adapter,
-                strategy_name='TEST',
-                check_interval=15
+                check_interval=15,
+                log_dir=log_dir,
             )
-            trader.log_dir = log_dir
 
             # Capture console output (this is what appears in journalctl)
             with patch('scripts.trading.run_live_paper_trading.console') as mock_console:

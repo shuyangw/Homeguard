@@ -48,95 +48,18 @@ def test_csv_logging():
 
         logger.success("   Market checks CSV: OK")
 
-        # Test trade logging
-        logger.info("\n2. Testing trade logging...")
-        tracker.log_order(
-            symbol='TQQQ',
-            side='buy',
-            qty=100,
-            price=45.23,
-            success=True,
-            order_id='test123',
-            error=None,
-            order_type='market'
-        )
-
-        tracker.log_order(
-            symbol='SQQQ',
-            side='sell',
-            qty=50,
-            price=12.34,
-            success=False,
-            order_id=None,
-            error='Insufficient funds',
-            order_type='market'
-        )
-
-        # Verify trades CSV
-        trades_file = tracker.trades_log_file
-        assert trades_file.exists(), "Trades CSV not created"
-
-        with open(trades_file, 'r') as f:
-            reader = csv.reader(f)
-            rows = list(reader)
-            assert len(rows) == 3, f"Expected 3 rows (header + 2 trades), got {len(rows)}"
-            assert rows[0] == ['timestamp', 'symbol', 'side', 'qty', 'price',
-                              'order_type', 'status', 'order_id', 'error'], "Invalid header"
-
-            # Check first trade
-            assert rows[1][1] == 'TQQQ', "Symbol mismatch"
-            assert rows[1][2] == 'buy', "Side mismatch"
-            assert rows[1][3] == '100', "Qty mismatch"
-            assert rows[1][4] == '45.23', "Price mismatch"
-            assert rows[1][5] == 'market', "Order type mismatch"
-            assert rows[1][6] == 'SUCCESS', "Status mismatch"
-            assert rows[1][7] == 'test123', "Order ID mismatch"
-            assert rows[1][8] == '', "Error should be empty"
-
-            # Check second trade
-            assert rows[2][1] == 'SQQQ', "Symbol mismatch"
-            assert rows[2][2] == 'sell', "Side mismatch"
-            assert rows[2][3] == '50', "Qty mismatch"
-            assert rows[2][4] == '12.34', "Price mismatch"
-            assert rows[2][6] == 'FAILED', "Status mismatch"
-            assert rows[2][7] == '', "Order ID should be empty"
-            assert rows[2][8] == 'Insufficient funds', "Error mismatch"
-
-        logger.success("   Trades CSV: OK")
-
-        # Test type compatibility
-        logger.info("\n3. Testing type compatibility...")
-
-        # Test with different numeric types
-        tracker.log_order(
-            symbol='SPY',
-            side='buy',
-            qty=int(100),  # Explicit int
-            price=float(450.50),  # Explicit float
-            success=bool(True),  # Explicit bool
-            order_id=str('test456'),  # Explicit str
-            error=None,
-            order_type='limit'
-        )
-
-        with open(trades_file, 'r') as f:
-            reader = csv.reader(f)
-            rows = list(reader)
-            assert len(rows) == 4, "Type compatibility trade not logged"
-            assert rows[3][3] == '100', "Int conversion failed"
-            assert rows[3][4] == '450.5', "Float conversion failed"
-
-        logger.success("   Type compatibility: OK")
+        # Trade logging is now handled by the decision log (Tasks 1-12).
+        # log_order() was removed from TradingSessionTracker in Task 13.
+        logger.info("\n2. Trade logging is sourced from the decision log (deprecated from session tracker).")
+        logger.success("   Trade logging: skipped (decision log is source of truth)")
 
         logger.info("\n" + "="*60)
         logger.success("ALL VALIDATION TESTS PASSED")
         logger.info("="*60)
         logger.info(f"\nCSV Files Created:")
         logger.info(f"  - Market Checks: {market_checks_file.name}")
-        logger.info(f"  - Trades:        {trades_file.name}")
         logger.info(f"\nFormat Validation:")
         logger.success("  - Headers correct")
-        logger.success("  - Data types compatible")
         logger.success("  - CSV format valid")
         logger.success("  - File encoding correct")
 

@@ -56,7 +56,7 @@ from src.trading.config.broker_routing import load_broker_routing
 from src.data.providers import create_data_provider
 from src.trading.state import StrategyStateManager
 from src.strategies.universe import EquityUniverse, ETFUniverse
-from src.utils.logger import logger, get_trading_logger, TradingLogger
+from src.utils.logger import logger, get_trading_logger, TradingLogger, console
 from src.utils.timezone import tz
 from src.utils.trading_logger import cleanup_old_logs
 
@@ -87,12 +87,6 @@ class TradingSessionTracker:
         # Session metrics
         self.total_checks = 0
         self.total_runs = 0
-        self.total_signals = 0
-        self.total_orders = 0
-        self.successful_orders = 0
-        self.failed_orders = 0
-        self.orders_log: List[Dict] = []
-        self.signals_log: List[Dict] = []
         self.minute_progress: List[Dict] = []
 
         # Create session log files with date and time to prevent overwriting
@@ -138,68 +132,14 @@ class TradingSessionTracker:
         # Log to CSV using trading logger
         self.trading_logger.log_market_check(market_open, self.total_checks)
 
-    def log_run(self, signals_count: int):
+    def log_run(self, signals_count: int = 0):
         """Log a strategy run."""
         self.total_runs += 1
-        self.total_signals += signals_count
         self.minute_progress.append({
             'timestamp': tz.iso_timestamp(),
             'type': 'run',
-            'signals': signals_count,
             'total_runs': self.total_runs
         })
-
-    def log_signal(self, symbol: str, direction: str, price: float, confidence: float):
-        """Log a trading signal."""
-        self.signals_log.append({
-            'timestamp': tz.iso_timestamp(),
-            'symbol': symbol,
-            'direction': direction,
-            'price': price,
-            'confidence': confidence
-        })
-
-    def log_order(self, symbol: str, side: str, qty: int, price: float, success: bool, order_id: str = None, error: str = None, order_type: str = 'market'):
-        """Log an order attempt to memory and CSV file."""
-        self.total_orders += 1
-        if success:
-            self.successful_orders += 1
-        else:
-            self.failed_orders += 1
-
-        timestamp = tz.iso_timestamp()
-
-        self.orders_log.append({
-            'timestamp': timestamp,
-            'symbol': symbol,
-            'side': side,
-            'qty': qty,
-            'price': price,
-            'success': success,
-            'order_id': order_id,
-            'error': error
-        })
-
-        self.minute_progress.append({
-            'timestamp': timestamp,
-            'type': 'order',
-            'symbol': symbol,
-            'side': side,
-            'qty': qty,
-            'success': success
-        })
-
-        # Log to CSV and console using trading logger
-        self.trading_logger.log_trade(
-            symbol=symbol,
-            side=side,
-            qty=qty,
-            price=price,
-            status='SUCCESS' if success else 'FAILED',
-            order_type=order_type,
-            order_id=order_id,
-            error=error
-        )
 
     def save_progress(self):
         """Save current progress to file."""
@@ -208,12 +148,6 @@ class TradingSessionTracker:
             'strategy_name': self.strategy_name,
             'total_checks': self.total_checks,
             'total_runs': self.total_runs,
-            'total_signals': self.total_signals,
-            'total_orders': self.total_orders,
-            'successful_orders': self.successful_orders,
-            'failed_orders': self.failed_orders,
-            'orders': self.orders_log,
-            'signals': self.signals_log,
             'minute_progress': self.minute_progress[-100:]  # Last 100 entries
         }
 
@@ -269,107 +203,67 @@ class TradingSessionTracker:
         except Exception as e:
             logger.error(f"Error exporting journalctl logs: {e}")
 
-    def generate_end_of_day_report(self, broker: AlpacaBroker):
-        """Generate end-of-day summary report."""
-        session_end = tz.now()
-        session_duration = (session_end - self.session_start).total_seconds() / 3600  # Hours
+    def generate_end_of_day_report(self, broker) -> None:
+        """Write daily summary, sourcing counts from the decision log."""
+        from datetime import date as _date
+        from src.trading.decision_log.reader import for_date as dl_for_date
 
-        # Get account metrics
-        account = broker.get_account()
-        positions = broker.get_positions()
+        records = dl_for_date(self.strategy_name.lower(), _date.today())
+        triggers = len(records)
+        clean = sum(
+            1 for r in records
+            if r.preconditions.all_passed and r.error is None
+        )
+        blocked = sum(1 for r in records if not r.preconditions.all_passed)
+        errored = sum(1 for r in records if r.error is not None)
+        orders_total = sum(len(r.executions) for r in records)
+        orders_filled = sum(
+            1 for r in records for e in r.executions if e.status == "filled"
+        )
 
-        # Generate markdown report
-        report = []
-        report.append("# Live Paper Trading Session Summary")
-        report.append("")
-        report.append(f"**Date:** {self.session_date}")
-        report.append(f"**Strategy:** {self.strategy_name}")
-        report.append(f"**Session Duration:** {session_duration:.2f} hours")
-        report.append(f"**Session Start:** {self.session_start.strftime('%Y-%m-%d %H:%M:%S')}")
-        report.append(f"**Session End:** {session_end.strftime('%Y-%m-%d %H:%M:%S')}")
-        report.append("")
+        try:
+            account = broker.get_account()
+        except Exception:
+            account = {}
 
-        # Activity Summary
-        report.append("## Activity Summary")
-        report.append("")
-        report.append(f"- **Total Schedule Checks:** {self.total_checks}")
-        report.append(f"- **Strategy Executions:** {self.total_runs}")
-        report.append(f"- **Signals Generated:** {self.total_signals}")
-        report.append(f"- **Orders Placed:** {self.total_orders}")
-        report.append(f"  - Successful: {self.successful_orders}")
-        report.append(f"  - Failed: {self.failed_orders}")
-        report.append(f"  - Success Rate: {(self.successful_orders / self.total_orders * 100) if self.total_orders > 0 else 0:.1f}%")
-        report.append("")
+        session_duration = (tz.now() - self.session_start).total_seconds() / 3600
 
-        # Account Status
-        report.append("## Account Status")
-        report.append("")
-        if account:
-            report.append(f"- **Portfolio Value:** ${account['portfolio_value']:,.2f}")
-            report.append(f"- **Buying Power:** ${account['buying_power']:,.2f}")
-            report.append(f"- **Cash:** ${account['cash']:,.2f}")
-            report.append("")
-
-        # Current Positions
-        report.append("## Current Positions")
-        report.append("")
-        if positions:
-            report.append(f"**Total Positions:** {len(positions)}")
-            report.append("")
-            for pos in positions:
-                pnl = float(pos['unrealized_pnl'])
-                pnl_pct = float(pos['unrealized_pnl_pct']) * 100
-                report.append(f"### {pos['symbol']}")
-                report.append(f"- **Quantity:** {pos['quantity']}")
-                report.append(f"- **Entry Price:** ${float(pos['avg_entry_price']):.2f}")
-                report.append(f"- **Current Price:** ${float(pos['current_price']):.2f}")
-                report.append(f"- **Unrealized P&L:** ${pnl:,.2f} ({pnl_pct:+.2f}%)")
-                report.append(f"- **Market Value:** ${float(pos['market_value']):,.2f}")
-                report.append("")
-        else:
-            report.append("No open positions")
-            report.append("")
-
-        # Orders Summary
-        if self.orders_log:
-            report.append("## Orders Placed")
-            report.append("")
-            report.append("| Time | Symbol | Side | Qty | Price | Status |")
-            report.append("|------|--------|------|-----|-------|--------|")
-            for order in self.orders_log:
-                timestamp = datetime.fromisoformat(order['timestamp']).strftime('%H:%M:%S')
-                status = "SUCCESS" if order['success'] else "FAILED"
-                report.append(f"| {timestamp} | {order['symbol']} | {order['side']} | {order['qty']} | ${order['price']:.2f} | {status} |")
-            report.append("")
-
-        # Signals Summary
-        if self.signals_log:
-            report.append("## Signals Generated")
-            report.append("")
-            report.append("| Time | Symbol | Direction | Price | Confidence |")
-            report.append("|------|--------|-----------|-------|------------|")
-            for signal in self.signals_log:
-                timestamp = datetime.fromisoformat(signal['timestamp']).strftime('%H:%M:%S')
-                report.append(f"| {timestamp} | {signal['symbol']} | {signal['direction']} | ${signal['price']:.2f} | {signal['confidence']:.1%} |")
-            report.append("")
-
-        # Performance Metrics
-        report.append("## Performance Metrics")
-        report.append("")
-        report.append(f"- **Average Signals per Run:** {(self.total_signals / self.total_runs) if self.total_runs > 0 else 0:.2f}")
-        report.append(f"- **Checks per Hour:** {(self.total_checks / session_duration) if session_duration > 0 else 0:.2f}")
-        report.append(f"- **Runs per Hour:** {(self.total_runs / session_duration) if session_duration > 0 else 0:.2f}")
-        report.append("")
-
-        # Footer
-        report.append("---")
-        report.append("")
-        report.append("*Generated by Homeguard Live Paper Trading System*")
-        report.append("")
-
-        # Write report to file
-        with open(self.summary_file, 'w') as f:
-            f.write('\n'.join(report))
+        lines = [
+            "# Live Paper Trading Session Summary",
+            "",
+            f"**Date:** {self.session_date}",
+            f"**Strategy:** {self.strategy_name}",
+            f"**Session Duration:** {session_duration:.2f} hours",
+            f"**Session Start:** {self.session_start.strftime('%Y-%m-%d %H:%M:%S')}",
+            f"**Session End:** {tz.now().strftime('%Y-%m-%d %H:%M:%S')}",
+            "",
+            "## Activity Summary (sourced from decision log)",
+            "",
+            f"- **Total Schedule Checks:** {self.total_checks}",
+            f"- **Strategy Executions:** {self.total_runs}",
+            f"- **Decision Records:** {triggers}",
+            f"  - Clean: {clean}",
+            f"  - Blocked: {blocked}",
+            f"  - Errored: {errored}",
+            f"- **Orders:** {orders_filled}/{orders_total} filled",
+            "",
+            "## Account Status",
+            "",
+            f"- **Portfolio Value:** ${float(account.get('portfolio_value', 0) or 0):,.2f}",
+            f"- **Buying Power:** ${float(account.get('buying_power', 0) or 0):,.2f}",
+            f"- **Cash:** ${float(account.get('cash', 0) or 0):,.2f}",
+            "",
+            "## Performance Metrics",
+            "",
+            f"- **Checks per Hour:** {(self.total_checks / session_duration) if session_duration > 0 else 0:.2f}",
+            f"- **Runs per Hour:** {(self.total_runs / session_duration) if session_duration > 0 else 0:.2f}",
+            "",
+            "---",
+            "",
+            "*Source of truth: decision log (`data/trading/decisions/<strategy>_<date>.jsonl`).*",
+            "",
+        ]
+        self.summary_file.write_text("\n".join(lines), encoding="utf-8")
 
         logger.success(f"End-of-day report saved: {self.summary_file}")
         return self.summary_file
@@ -551,12 +445,9 @@ class LiveTradingRunner:
                     f"[{now_est.strftime('%H:%M:%S')}] "
                     f"Market: {market_status_str} | "
                     f"Checks: {self.session_tracker.total_checks} | "
-                    f"Runs: {self.session_tracker.total_runs} | "
-                    f"Signals: {self.session_tracker.total_signals} | "
-                    f"Orders: {self.session_tracker.successful_orders}/{self.session_tracker.total_orders}"
+                    f"Runs: {self.session_tracker.total_runs}"
                 )
                 # Use Rich console directly for colored output that bypasses logger buffering
-                from src.utils.logger import console
                 console.print(f" [info]{status_msg}[/info]")
 
             except Exception as e:
