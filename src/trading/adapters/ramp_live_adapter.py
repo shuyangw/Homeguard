@@ -299,6 +299,8 @@ class RAMPLiveAdapter(StrategyAdapter):
     - Rule-based crash protection signals
     """
 
+    STRATEGY_NAME = STRATEGY_NAME  # class attribute for StrategyAdapter base helpers
+
     def __init__(
         self,
         broker: BrokerInterface,
@@ -1038,60 +1040,56 @@ class RAMPLiveAdapter(StrategyAdapter):
             return {}
 
     def run_once(self) -> None:
-        """
-        Run one iteration of the strategy with portfolio health checks.
+        """Run one iteration of the strategy with portfolio health checks.
 
-        Includes:
-        - Fresh data fetch at execution time (3:55 PM)
-        - Toggle/shutdown checks
-        - Execution lock for multi-strategy coordination
-        - Position tracking per strategy
+        Emits a DecisionRecord at end (clean run, blocked, or errored).
         """
+        import traceback
+
         logger.info("[RAMP] " + "=" * 60)
         logger.info(f"[RAMP] Running {self.__class__.__name__} at {tz.now()}")
         logger.info("[RAMP] " + "=" * 60)
 
+        rec = self._begin_decision("scheduled_rebalance", schedule_time="15:55")
+        had_lock = False
         try:
-            # Check if strategy is enabled
-            if not self.state_manager.is_enabled(STRATEGY_NAME):
-                logger.warning("[RAMP] Strategy is DISABLED - skipping execution")
-                return
+            # ---- Preconditions ----
+            with self._stage(rec, "preconditions"):
+                if not self._check_common_preconditions(rec):
+                    # Log the specific gate that failed
+                    if not rec.preconditions.strategy_enabled.passed:
+                        logger.warning("[RAMP] Strategy is DISABLED - skipping execution")
+                    elif not rec.preconditions.shutdown_requested.passed:
+                        logger.warning("[RAMP] Shutdown requested - skipping new entries")
+                    elif not rec.preconditions.execution_lock_acquired.passed:
+                        logger.error("[RAMP] Failed to acquire execution lock - another strategy is running")
+                    return
+                had_lock = True
 
-            # Check if shutdown requested
-            if self.state_manager.is_shutdown_requested(STRATEGY_NAME):
-                logger.warning("[RAMP] Shutdown requested - skipping new entries")
-                return
-
-            # Fetch today's closes only (lightweight, ~30s vs ~2min for full fetch)
-            # This appends today's prices to the 9:30 AM historical cache
-            logger.info("[RAMP] Fetching today's closes for 3:55 PM execution...")
-            self.fetch_todays_closes()
-
-            # Acquire execution lock (blocks if another strategy is executing)
-            if not self.state_manager.acquire_execution_lock(STRATEGY_NAME):
-                logger.error("[RAMP] Failed to acquire execution lock - another strategy is running")
-                return
-
-            try:
                 # Sync state with broker (detect external position changes)
                 broker_positions = {p['symbol']: int(p['quantity']) for p in self.broker.get_positions()}
                 changes = self.state_manager.sync_with_broker(self._broker_name, broker_positions)
                 if changes['removed']:
                     logger.info(f"[RAMP] Detected closed positions: {changes['removed']}")
 
-                # Portfolio health check before entry
-                # Use strategy_name='ramp' to only count RAMP positions for max_positions check
+                # Strategy-specific health check
+                from src.trading.decision_log.record import GateResult
+                self.strategy.set_current_positions({})  # baseline before health check
                 logger.info("[RAMP] Running pre-entry portfolio health check...")
                 health_result = self.health_checker.check_before_entry(
                     required_capital=None,
                     allow_existing_positions=True,
-                    strategy_name=STRATEGY_NAME
+                    strategy_name=STRATEGY_NAME,
                 )
-
+                rec.preconditions.health_check = GateResult(
+                    passed=health_result.passed,
+                    details={"warnings_count": len(health_result.warnings)},
+                    error="; ".join(health_result.errors) if health_result.errors else None,
+                )
                 if not health_result.passed:
                     logger.error("[RAMP] Portfolio health check FAILED - BLOCKING ENTRY")
-                    for error in health_result.errors:
-                        logger.error(f"[RAMP]   - {error}")
+                    for err in health_result.errors:
+                        logger.error(f"[RAMP]   - {err}")
                     return
 
                 if health_result.warnings:
@@ -1101,11 +1099,26 @@ class RAMPLiveAdapter(StrategyAdapter):
 
                 logger.success("[RAMP] Portfolio health check PASSED - proceeding with rebalance")
 
-                # Get RAMP's own positions from state manager
-                ramp_positions = self.state_manager.get_positions(STRATEGY_NAME)
+                # Data freshness gate
+                cache_complete = self._estimate_cache_freshness()
+                rec.preconditions.data_freshness = GateResult(
+                    passed=cache_complete >= 0.80,
+                    details={"valid_pct": cache_complete * 100},
+                )
 
-                # Update current positions in signal generator (using broker positions for value)
+            # ---- Inputs ----
+            with self._stage(rec, "inputs"):
+                # Fetch today's closes (lightweight, ~30s vs ~2min for full fetch)
+                # This appends today's prices to the 9:30 AM historical cache
+                logger.info("[RAMP] Fetching today's closes for 3:55 PM execution...")
+                self.fetch_todays_closes()
+                rec.inputs = self._build_decision_inputs()
+
+            # ---- Logic ----
+            with self._stage(rec, "logic"):
+                # Build market_data and current positions
                 positions = self.broker.get_positions()
+                ramp_positions = self.state_manager.get_positions(STRATEGY_NAME)
                 current_positions = {}
                 for pos in positions:
                     symbol = pos.get('symbol')
@@ -1114,17 +1127,13 @@ class RAMPLiveAdapter(StrategyAdapter):
                     if symbol in ramp_positions or owner is None:
                         value = float(pos.get('market_value', 0))
                         current_positions[symbol] = value
-
                 self.strategy.set_current_positions(current_positions)
 
-                # Fetch market data
                 market_data = self.fetch_market_data()
-
                 if not market_data:
                     logger.error("[RAMP] No market data available")
                     return
 
-                # Generate signals
                 signals = self.strategy.generate_signals(market_data, tz.now())
 
                 # Log regime and risk signals
@@ -1136,25 +1145,169 @@ class RAMPLiveAdapter(StrategyAdapter):
                     if risk_exposure < 1.0:
                         logger.warning(f"[RAMP] Risk signals active - exposure reduced to {risk_exposure:.0%}")
 
-                # Execute trades
-                self._execute_rebalance(signals, current_positions)
+                rec.logic_decisions = self._build_decision_logic(signals)
 
-                # Update last execution timestamp
+            # ---- Execution ----
+            with self._stage(rec, "execution"):
+                self._execute_rebalance(signals, current_positions, rec=rec)
+
+            # ---- Post-state ----
+            with self._stage(rec, "post_state"):
+                rec.post_state = self._snapshot_post_state()
                 self.state_manager.update_last_execution(STRATEGY_NAME)
 
-            finally:
-                # Always release execution lock
-                self.state_manager.release_execution_lock(STRATEGY_NAME)
-
         except Exception as e:
+            from src.trading.decision_log.record import ErrorInfo
+            rec.error = ErrorInfo(
+                type=type(e).__name__,
+                message=str(e),
+                traceback=traceback.format_exc(),
+                stage=getattr(rec, "_current_stage", "unknown"),
+            )
             logger.error(f"[RAMP] Error in run_once: {e}")
-            import traceback
             traceback.print_exc()
+            raise
+        finally:
+            try:
+                if had_lock:
+                    self.state_manager.release_execution_lock(STRATEGY_NAME)
+            finally:
+                self._write_decision(rec)
+
+    def _estimate_cache_freshness(self) -> float:
+        """Fraction of universe symbols with valid data on the cache's last row."""
+        if self._data_cache is None or "prices" not in self._data_cache:
+            return 0.0
+        prices = self._data_cache["prices"]
+        if len(prices) == 0:
+            return 0.0
+        last_row = prices.iloc[-1]
+        if len(last_row) == 0:
+            return 0.0
+        return float(last_row.notna().sum()) / float(len(last_row))
+
+    def _build_decision_inputs(self):
+        """Build StrategyInputs for the decision record."""
+        from src.trading.decision_log.record import StrategyInputs
+
+        cache_completeness = self._estimate_cache_freshness() * 100
+        regime, confidence = ("UNKNOWN", 0.0)
+        try:
+            spy_prices = (
+                self._data_cache["SPY"]["close"]
+                if self._data_cache and "SPY" in self._data_cache
+                else None
+            )
+            vix_prices = (
+                self._data_cache["VIX"]["Close"]
+                if self._data_cache and "VIX" in self._data_cache
+                else None
+            )
+            regime, confidence = self._ramp_signals.detect_regime(spy_prices, vix_prices)
+        except Exception:
+            pass
+
+        # Top 30 momentum scores by absolute value (full universe is 503 symbols)
+        momentum_scores: dict = {}
+        try:
+            scores = self._ramp_signals.calculate_momentum_scores(
+                self._data_cache["prices"] if self._data_cache else None
+            )
+            if scores is not None:
+                momentum_scores = {
+                    s: (None if pd.isna(v) else float(v)) for s, v in scores.items()
+                }
+        except Exception:
+            pass
+
+        # Safely fetch regime_params - avoid returning a non-serializable value
+        regime_params = None
+        try:
+            rp = getattr(self._ramp_signals, "regime_params", None)
+            if isinstance(rp, dict):
+                regime_params = rp
+        except Exception:
+            pass
+
+        return StrategyInputs(
+            regime=regime,
+            regime_confidence=float(confidence) if confidence is not None else None,
+            regime_params=regime_params,
+            vix=None,
+            spy_drawdown_pct=None,
+            universe_size=len(self.symbols) if self.symbols else 0,
+            data_completeness_pct=cache_completeness,
+            cache_source="disk_cache",
+            momentum_scores=momentum_scores,
+            extra={},
+        )
+
+    def _build_decision_logic(self, signals):
+        """Build LogicDecisions from a list of signals."""
+        from src.trading.decision_log.record import LogicDecisions
+
+        buy = [s for s in signals if getattr(s, "direction", None) == "BUY"]
+        sell = [s for s in signals if getattr(s, "direction", None) == "SELL"]
+        hold = [s for s in signals if getattr(s, "direction", None) == "HOLD"]
+
+        target_symbols = [s.symbol for s in buy]
+        target_weights = {
+            s.symbol: float(s.metadata.get("weight", 0.0)) if s.metadata else 0.0
+            for s in buy
+        }
+        target_value_usd = {
+            sym: w * self.initial_capital for sym, w in target_weights.items()
+        }
+        return LogicDecisions(
+            top_n=self._ramp_signals.current_top_n,
+            target_symbols=target_symbols,
+            target_weights=target_weights,
+            target_value_usd=target_value_usd,
+            reduce_exposure=False,
+            exposure_pct=1.0,
+            exit_signals=[s.symbol for s in sell],
+            hold_signals=[s.symbol for s in hold],
+            skip_reasons={},
+        )
+
+    def _snapshot_post_state(self):
+        """Build PostState reflecting positions and equity after execution."""
+        from src.trading.decision_log.record import PostState, PositionSnapshot
+
+        ramp_positions = self.state_manager.get_positions(STRATEGY_NAME)
+        broker_positions = {
+            p.get("symbol"): p for p in (self.broker.get_positions() or [])
+        }
+        positions_after: dict = {}
+        for sym in ramp_positions.keys():
+            bp = broker_positions.get(sym)
+            if bp:
+                positions_after[sym] = PositionSnapshot(
+                    qty=float(bp.get("quantity", 0)),
+                    avg_price=float(bp.get("avg_entry_price", 0)),
+                    unrealized_pnl=float(bp.get("unrealized_pnl", 0) or 0),
+                )
+        try:
+            account = self.broker.get_account()
+            cash_after = float(account.get("cash", 0) or 0)
+        except Exception:
+            cash_after = 0.0
+        equity_after = self.initial_capital + sum(
+            p.unrealized_pnl for p in positions_after.values()
+        )
+        return PostState(
+            positions_after=positions_after,
+            cash_after=cash_after,
+            strategy_equity_after=equity_after,
+            state_writes=[],
+        )
 
     def _execute_rebalance(
         self,
         signals: List[Signal],
-        current_positions: Dict[str, float]
+        current_positions: Dict[str, float],
+        *,
+        rec=None
     ) -> None:
         """
         Execute rebalance based on signals.
@@ -1225,6 +1378,22 @@ class RAMPLiveAdapter(StrategyAdapter):
                                 side=OrderSide.SELL,
                                 order_type=OrderType.MARKET
                             )
+
+                            # Append sell execution to decision record
+                            from src.trading.decision_log.record import Execution as _Execution
+                            _exec = _Execution(
+                                symbol=symbol,
+                                action="sell",
+                                target_qty=abs(qty),
+                                target_value_usd=float(pos.get('market_value', 0)),
+                                status="filled" if order else "error",
+                                fill_price=float(order.get("filled_avg_price", 0)) if order else None,
+                                filled_qty=abs(qty) if order else 0,
+                                order_id=order.get("order_id") if order else None,
+                                reason=None if order else "execute_order returned None",
+                            )
+                            if rec is not None:
+                                rec.executions.append(_exec)
 
                             if order:
                                 logger.success(f"[RAMP] Sell order placed: {symbol}")
@@ -1327,6 +1496,22 @@ class RAMPLiveAdapter(StrategyAdapter):
                             side=OrderSide.BUY,
                             order_type=OrderType.MARKET
                         )
+
+                        # Append buy execution to decision record
+                        from src.trading.decision_log.record import Execution as _Execution
+                        _exec = _Execution(
+                            symbol=symbol,
+                            action="buy",
+                            target_qty=shares_to_buy,
+                            target_value_usd=target_value,
+                            status="filled" if order else "error",
+                            fill_price=float(order.get("filled_avg_price", 0)) if order else None,
+                            filled_qty=shares_to_buy if order else 0,
+                            order_id=order.get("order_id") if order else None,
+                            reason=None if order else "execute_order returned None",
+                        )
+                        if rec is not None:
+                            rec.executions.append(_exec)
 
                         if order:
                             logger.success(f"[RAMP] Buy order placed: {symbol}")
