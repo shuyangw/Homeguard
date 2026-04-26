@@ -310,6 +310,7 @@ def main():
         btc_sma_period = config.get('btc_sma_period', CSCMLiveAdapter.DEFAULT_BTC_SMA_PERIOD)
         rebalance_day = config.get('rebalance_day', 'sunday')
         go_to_cash_in_bear = config.get('go_to_cash_in_bear', True)
+        buy_safety_factor = config.get('buy_safety_factor')
 
         # Setup broker based on selection
         broker = None
@@ -357,6 +358,7 @@ def main():
             paper=args.paper,
             signal_logger=signal_logger,
             max_capital_usd=args.initial_capital,
+            buy_safety_factor=buy_safety_factor,
         )
 
         logger.info(f"Universe: {len(universe)} symbols")

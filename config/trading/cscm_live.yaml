@@ -45,6 +45,15 @@ trailing_stop_pct: 0.25     # 25% trailing stop - exit if portfolio drops 25% fr
 # Weighting
 weighting: equal            # 'equal' = 1/N, 'momentum' = momentum-weighted
 
+# Per-fill BUY headroom factor. Each BUY's target notional is multiplied by
+# this before computing target_qty so the actual fill (with broker-applied
+# adverse slippage + fees) still fits within available cash. The rebalance
+# loop also re-reads cash before each BUY so cumulative drift is absorbed
+# by smaller subsequent targets, never starving the final symbol.
+#   0.998 = 20 bps buffer (default; covers DemoBroker's ~12.5 bps drag)
+#   0.995 = 50 bps buffer (use for higher-volatility brokers)
+buy_safety_factor: 0.998
+
 # Broker Settings
 broker:
   primary: coinbase         # Primary broker

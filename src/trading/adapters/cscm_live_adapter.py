@@ -44,6 +44,13 @@ STRATEGY_NAME = 'cscm'
 CACHE_DIR = Path.home() / '.homeguard' / 'cache'
 CACHE_FILE = CACHE_DIR / 'cscm_state.pkl'
 
+# Per-fill BUY headroom factor. Each BUY's target notional is multiplied by this
+# before computing target_qty so the actual fill (with adverse slippage + fees
+# applied by the broker) still fits within available cash. 0.998 = 20 bps buffer;
+# DemoBroker drag empirically ~12.5 bps (5 bps slippage + 10 bps fees), so this
+# leaves ~7 bps margin for randomization. Tunable via cscm_live.yaml.
+DEFAULT_BUY_SAFETY_FACTOR = Decimal('0.998')
+
 
 def _resolve_broker_name(broker) -> str:
     """Return a human-readable broker name from a broker or CryptoBrokerRouter."""
@@ -235,6 +242,7 @@ class CSCMLiveAdapter:
         paper: bool = True,
         signal_logger=None,
         max_capital_usd: Optional[float] = None,
+        buy_safety_factor: Optional[float] = None,
     ):
         """
         Initialize CSCM live adapter.
@@ -261,6 +269,11 @@ class CSCMLiveAdapter:
         self.max_capital_usd = max_capital_usd
         if max_capital_usd is not None:
             logger.info(f"[CSCM] Capital cap: ${max_capital_usd:,.0f} per strategy")
+
+        self.buy_safety_factor = (
+            Decimal(str(buy_safety_factor)) if buy_safety_factor is not None
+            else DEFAULT_BUY_SAFETY_FACTOR
+        )
 
         # Initialize signal generator
         self.signals = CSCMSignals(
@@ -519,7 +532,14 @@ class CSCMLiveAdapter:
                     logger.error(f"[CSCM] Failed to close {symbol}: {e}")
                     executed.append((symbol, "sell", "error", None, None, str(e)))
 
-        # Open/adjust positions in target
+        # ---- Classify each target into hold / sell-down / buy ----
+        # Initial classification uses the snapshot price + sizing_base. Final BUY
+        # sizing happens in Phase D against fresh cash so that cumulative slippage
+        # and fees from earlier fills don't starve the last symbol.
+        holds: List[tuple] = []          # (symbol, current_price)
+        sell_downs: List[tuple] = []     # (symbol, sell_qty, snapshot_price)
+        pending_buys: List[tuple] = []   # (symbol, current_qty, snapshot_price)
+
         for symbol, weight in target_positions.items():
             if weight == 0:
                 continue
@@ -531,49 +551,98 @@ class CSCMLiveAdapter:
                 quote = self.broker.get_crypto_quote(symbol)
                 current_price = quote['last']
                 target_qty = Decimal(str(target_value / current_price))
-
-                # Calculate difference
                 qty_diff = target_qty - current_qty
 
                 # Skip small adjustments (< 5% of target)
                 if abs(qty_diff) < target_qty * Decimal('0.05'):
-                    executed.append((symbol, "hold", "skipped", float(current_price), None, "adjustment < 5% threshold"))
+                    holds.append((symbol, current_price))
                     continue
 
-                if qty_diff > 0:
-                    # Buy
-                    logger.info(f"[CSCM] Buying {qty_diff:.6f} {symbol}")
-                    order = self.broker.place_crypto_order(
-                        symbol=symbol,
-                        quantity=qty_diff,
-                        side=OrderSide.BUY,
-                        order_type=OrderType.MARKET
-                    )
-                    orders.append(order)
-                    self._log_buy(symbol, float(qty_diff), float(current_price), order)
-                    fill_price = float(order.get('filled_avg_price') or current_price) if isinstance(order, dict) else float(current_price)
-                    order_id = order.get('order_id') if isinstance(order, dict) else None
-                    executed.append((symbol, "buy", "filled", fill_price, order_id, None))
-
-                elif qty_diff < 0:
-                    # Sell
-                    sell_qty = abs(qty_diff)
-                    logger.info(f"[CSCM] Selling {sell_qty:.6f} {symbol}")
-                    order = self.broker.place_crypto_order(
-                        symbol=symbol,
-                        quantity=sell_qty,
-                        side=OrderSide.SELL,
-                        order_type=OrderType.MARKET
-                    )
-                    orders.append(order)
-                    self._log_partial_sell(symbol, float(sell_qty), float(current_price), order)
-                    fill_price = float(order.get('filled_avg_price') or current_price) if isinstance(order, dict) else float(current_price)
-                    order_id = order.get('order_id') if isinstance(order, dict) else None
-                    executed.append((symbol, "sell", "filled", fill_price, order_id, None))
+                if qty_diff < 0:
+                    sell_downs.append((symbol, abs(qty_diff), current_price))
+                else:
+                    pending_buys.append((symbol, current_qty, current_price))
 
             except Exception as e:
-                logger.error(f"[CSCM] Failed to rebalance {symbol}: {e}")
+                logger.error(f"[CSCM] Failed to classify {symbol}: {e}")
                 executed.append((symbol, "buy", "error", None, None, str(e)))
+
+        # ---- Phase: holds (just record skip) ----
+        for symbol, current_price in holds:
+            executed.append((symbol, "hold", "skipped", float(current_price), None, "adjustment < 5% threshold"))
+
+        # ---- Phase: sell-downs first (they free cash for subsequent buys) ----
+        for symbol, sell_qty, snapshot_price in sell_downs:
+            try:
+                logger.info(f"[CSCM] Selling {sell_qty:.6f} {symbol}")
+                order = self.broker.place_crypto_order(
+                    symbol=symbol,
+                    quantity=sell_qty,
+                    side=OrderSide.SELL,
+                    order_type=OrderType.MARKET
+                )
+                orders.append(order)
+                self._log_partial_sell(symbol, float(sell_qty), float(snapshot_price), order)
+                fill_price = float(order.get('filled_avg_price') or snapshot_price) if isinstance(order, dict) else float(snapshot_price)
+                order_id = order.get('order_id') if isinstance(order, dict) else None
+                executed.append((symbol, "sell", "filled", fill_price, order_id, None))
+            except Exception as e:
+                logger.error(f"[CSCM] Failed to sell-down {symbol}: {e}")
+                executed.append((symbol, "sell", "error", None, None, str(e)))
+
+        # ---- Phase: buys with sequential cash tracking + safety factor ----
+        # Re-read cash before each fill and divide by remaining slots so the
+        # actual broker drag (slippage + fees) is absorbed by smaller subsequent
+        # targets rather than starving the final symbol. The safety factor adds
+        # per-fill headroom so even the last fill (where target = remaining_cash
+        # / 1) still fits after the broker applies adverse slippage and fees.
+        remaining_buys = len(pending_buys)
+        for symbol, current_qty, snapshot_price in pending_buys:
+            try:
+                # Read fresh available cash from the broker
+                try:
+                    account = self.broker.get_account() or {}
+                    available_cash = float(account.get('cash', 0) or 0)
+                except Exception:
+                    available_cash = float(self._get_account_balance())
+
+                if remaining_buys <= 0 or available_cash <= 0:
+                    executed.append((symbol, "buy", "skipped", float(snapshot_price), None, "insufficient cash for sequential allocation"))
+                    continue  # `finally` decrements remaining_buys
+
+                target_value = (
+                    Decimal(str(available_cash)) * self.buy_safety_factor
+                    / Decimal(remaining_buys)
+                )
+
+                # Re-fetch quote (price may have moved during sell-downs)
+                quote = self.broker.get_crypto_quote(symbol)
+                current_price = quote['last']
+                target_qty = Decimal(str(float(target_value) / current_price))
+                qty_diff = target_qty - current_qty
+
+                if qty_diff <= 0:
+                    # Sell-downs freed enough that no buy is needed for this symbol
+                    executed.append((symbol, "hold", "skipped", float(current_price), None, "no additional buy needed after sell-downs"))
+                    continue  # `finally` decrements remaining_buys
+
+                logger.info(f"[CSCM] Buying {qty_diff:.6f} {symbol}")
+                order = self.broker.place_crypto_order(
+                    symbol=symbol,
+                    quantity=qty_diff,
+                    side=OrderSide.BUY,
+                    order_type=OrderType.MARKET
+                )
+                orders.append(order)
+                self._log_buy(symbol, float(qty_diff), float(current_price), order)
+                fill_price = float(order.get('filled_avg_price') or current_price) if isinstance(order, dict) else float(current_price)
+                order_id = order.get('order_id') if isinstance(order, dict) else None
+                executed.append((symbol, "buy", "filled", fill_price, order_id, None))
+            except Exception as e:
+                logger.error(f"[CSCM] Failed to buy {symbol}: {e}")
+                executed.append((symbol, "buy", "error", None, None, str(e)))
+            finally:
+                remaining_buys = max(remaining_buys - 1, 0)
 
         # Mark rebalance complete
         self._last_rebalance = tz.now()
