@@ -66,11 +66,10 @@ providers:
       foldersFromFilesStructure: false
 DASH
 
-# Copy dashboard JSON files
-sudo mkdir -p /var/lib/grafana/dashboards/homeguard
-if ls ~/Homeguard/config/monitoring/grafana/dashboards/*.json 1>/dev/null 2>&1; then
-    sudo cp ~/Homeguard/config/monitoring/grafana/dashboards/*.json \
-        /var/lib/grafana/dashboards/homeguard/
+# Copy dashboard JSON files (idempotent; reuses the standalone sync script
+# so a single source of truth handles both initial install and ongoing updates).
+if [ -f ~/Homeguard/infra/ec2/sync_grafana_dashboards.sh ]; then
+    bash ~/Homeguard/infra/ec2/sync_grafana_dashboards.sh
 fi
 
 # Install service override

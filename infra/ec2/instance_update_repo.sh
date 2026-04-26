@@ -92,6 +92,15 @@ if [ "$CHANGES_PULLED" = true ]; then
     echo "What changed:"
     git log --oneline $BEFORE_COMMIT..$AFTER_COMMIT
     echo ""
+
+    # Sync Grafana dashboards from the repo to Grafana's provisioning dir.
+    # Idempotent and gated on file-existence so older clones (pre-script) don't break.
+    if [ -f "$REPO_DIR/infra/ec2/sync_grafana_dashboards.sh" ]; then
+        echo "Syncing Grafana dashboards..."
+        bash "$REPO_DIR/infra/ec2/sync_grafana_dashboards.sh" || \
+            echo "⚠️  Dashboard sync failed (non-fatal; pull was successful)"
+        echo ""
+    fi
 else
     echo "✅ Already up to date (no changes)"
     echo ""
