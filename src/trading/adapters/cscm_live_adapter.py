@@ -88,11 +88,19 @@ def _maybe_emit_decision(
     account: dict,
     broker_name: str,
     initial_capital: float,
+    positions_after: Optional[List[dict]] = None,
 ) -> None:
     """Emit one DecisionRecord per CSCM rebalance attempt.
 
     `executed` is a list of tuples:
         (symbol, action, status, fill_price_or_None, order_id_or_None, reason_or_None)
+
+    `positions_after` is an optional list of broker position dicts
+    (the same shape `broker.get_crypto_positions()` returns) used to
+    populate `PostState.positions_after`. CSCM doesn't write to
+    StrategyStateManager (it goes through DemoBroker directly), so
+    the post-state snapshot must come from the broker, not from the
+    state manager.
 
     Decision-log failures are never fatal -- all exceptions are swallowed.
     """
@@ -102,6 +110,7 @@ def _maybe_emit_decision(
         )
         from src.trading.decision_log.record import (
             GateResult, StrategyInputs, LogicDecisions, Execution, PostState,
+            PositionSnapshot,
         )
 
         rec = begin_decision(
@@ -176,8 +185,21 @@ def _maybe_emit_decision(
                     ))
 
             with stage(rec, "post_state"):
+                positions_snapshot: Dict[str, PositionSnapshot] = {}
+                for pos in (positions_after or []):
+                    sym = pos.get("symbol")
+                    if not sym:
+                        continue
+                    try:
+                        positions_snapshot[sym] = PositionSnapshot(
+                            qty=float(pos.get("quantity", 0) or 0),
+                            avg_price=float(pos.get("avg_entry_price") or pos.get("entry_price") or 0),
+                            unrealized_pnl=float(pos.get("unrealized_pnl", 0) or 0),
+                        )
+                    except (TypeError, ValueError):
+                        continue
                 rec.post_state = PostState(
-                    positions_after={},
+                    positions_after=positions_snapshot,
                     cash_after=float(account.get("cash", 0) or 0),
                     strategy_equity_after=float(account.get("portfolio_value", 0) or 0),
                     state_writes=[],
@@ -655,6 +677,11 @@ class CSCMLiveAdapter:
             account = self.broker.get_account() or {}
         except Exception:
             account = {"portfolio_value": total_value, "cash": available_balance}
+        try:
+            positions_after = self.broker.get_crypto_positions() or []
+        except Exception as e:
+            logger.debug(f"[CSCM] Failed to snapshot positions for decision log: {e}")
+            positions_after = []
         broker_name = _resolve_broker_name(self.broker)
         initial_capital = float(self.max_capital_usd or total_value)
         _maybe_emit_decision(
@@ -664,6 +691,7 @@ class CSCMLiveAdapter:
             account=account,
             broker_name=broker_name,
             initial_capital=initial_capital,
+            positions_after=positions_after,
         )
 
         logger.info(f"[CSCM] Rebalance complete: {len(orders)} orders executed")

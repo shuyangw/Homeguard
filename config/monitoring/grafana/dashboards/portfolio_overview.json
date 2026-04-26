@@ -1,5 +1,7 @@
 {
-  "annotations": {"list": []},
+  "annotations": {
+    "list": []
+  },
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 0,
@@ -11,39 +13,62 @@
       "title": "Strategy Status",
       "description": "Single-row-per-strategy snapshot of all live trading strategies. Strategy-agnostic by design -- adding a new strategy adds a row, never a panel. Composed entirely of existing per-strategy metrics; no new emissions required. Columns: Equity ($), Starting capital ($), Deployed ($) = sum of position market values, Idle = Equity - Deployed, Positions = open count, Signal Age = `time() - hg_strategy_last_signal_timestamp` (red >300s indicates a hung process). For strategy-specific 'why not deploying' detail (RAMP regime, CSCM BTC vs SMA40, trailing stops), drill into the decision log via `python -m src.trading.decision_log` or the Service Logs panel on Incident Review.",
       "type": "table",
-      "gridPos": {"x": 0, "y": 0, "w": 24, "h": 6},
-      "datasource": {"type": "prometheus", "uid": "victoriametrics"},
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 6
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "victoriametrics"
+      },
       "targets": [
         {
-          "datasource": {"type": "prometheus", "uid": "victoriametrics"},
+          "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+          },
           "expr": "hg_strategy_equity_usd",
           "format": "table",
           "instant": true,
           "refId": "A"
         },
         {
-          "datasource": {"type": "prometheus", "uid": "victoriametrics"},
+          "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+          },
           "expr": "hg_strategy_initial_capital_usd",
           "format": "table",
           "instant": true,
           "refId": "B"
         },
         {
-          "datasource": {"type": "prometheus", "uid": "victoriametrics"},
+          "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+          },
           "expr": "hg_strategy_capital_allocated_usd",
           "format": "table",
           "instant": true,
           "refId": "C"
         },
         {
-          "datasource": {"type": "prometheus", "uid": "victoriametrics"},
+          "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+          },
           "expr": "hg_strategy_positions_count",
           "format": "table",
           "instant": true,
           "refId": "D"
         },
         {
-          "datasource": {"type": "prometheus", "uid": "victoriametrics"},
+          "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+          },
           "expr": "time() - hg_strategy_last_signal_timestamp",
           "format": "table",
           "instant": true,
@@ -53,16 +78,35 @@
       "transformations": [
         {
           "id": "joinByField",
-          "options": {"byField": "strategy", "mode": "outer"}
+          "options": {
+            "byField": "strategy",
+            "mode": "outer"
+          }
         },
         {
           "id": "organize",
           "options": {
             "excludeByName": {
-              "Time 1": true, "Time 2": true, "Time 3": true, "Time 4": true, "Time 5": true,
-              "__name__ 1": true, "__name__ 2": true, "__name__ 3": true, "__name__ 4": true, "__name__ 5": true,
-              "job 1": true, "job 2": true, "job 3": true, "job 4": true, "job 5": true,
-              "instance 1": true, "instance 2": true, "instance 3": true, "instance 4": true, "instance 5": true
+              "Time 1": true,
+              "Time 2": true,
+              "Time 3": true,
+              "Time 4": true,
+              "Time 5": true,
+              "__name__ 1": true,
+              "__name__ 2": true,
+              "__name__ 3": true,
+              "__name__ 4": true,
+              "__name__ 5": true,
+              "job 1": true,
+              "job 2": true,
+              "job 3": true,
+              "job 4": true,
+              "job 5": true,
+              "instance 1": true,
+              "instance 2": true,
+              "instance 3": true,
+              "instance 4": true,
+              "instance 5": true
             },
             "renameByName": {
               "strategy": "Strategy",
@@ -84,42 +128,152 @@
         }
       ],
       "fieldConfig": {
-        "defaults": {"unit": "short", "custom": {"align": "auto"}},
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "align": "auto"
+          }
+        },
         "overrides": [
-          {"matcher": {"id": "byName", "options": "Equity ($)"}, "properties": [{"id": "unit", "value": "currencyUSD"}, {"id": "decimals", "value": 0}]},
-          {"matcher": {"id": "byName", "options": "Starting ($)"}, "properties": [{"id": "unit", "value": "currencyUSD"}, {"id": "decimals", "value": 0}]},
-          {"matcher": {"id": "byName", "options": "Deployed ($)"}, "properties": [{"id": "unit", "value": "currencyUSD"}, {"id": "decimals", "value": 0}]},
-          {"matcher": {"id": "byName", "options": "Positions"}, "properties": [{"id": "decimals", "value": 0}]},
-          {"matcher": {"id": "byName", "options": "Signal Age (s)"}, "properties": [
-            {"id": "unit", "value": "s"},
-            {"id": "decimals", "value": 0},
-            {"id": "custom.cellOptions", "value": {"type": "color-text"}},
-            {"id": "thresholds", "value": {"mode": "absolute", "steps": [
-              {"color": "green", "value": null},
-              {"color": "yellow", "value": 60},
-              {"color": "red", "value": 300}
-            ]}}
-          ]}
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Equity ($)"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "currencyUSD"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Starting ($)"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "currencyUSD"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Deployed ($)"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "currencyUSD"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Positions"
+            },
+            "properties": [
+              {
+                "id": "decimals",
+                "value": 0
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Signal Age (s)"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "s"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "yellow",
+                      "value": 60
+                    },
+                    {
+                      "color": "red",
+                      "value": 300
+                    }
+                  ]
+                }
+              }
+            ]
+          }
         ]
       },
-      "options": {"showHeader": true, "cellHeight": "sm"}
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      }
     },
     {
       "id": 1,
       "title": "Equity Curve by Strategy",
       "description": "Current equity (cash + positions) per live strategy over time, with starting capital as a dashed reference line. Source: `hg_strategy_equity_usd` (solid) = broker.get_account().portfolio_value emitted per-tick by the strategy sidecar. `hg_strategy_initial_capital_usd` (dashed) is the session's starting budget, emitted once at startup. Log Y-axis accommodates strategies with different funding sizes (e.g. CSCM ~$100k vs RAMP IBKR paper ~$1M). If a strategy line stops updating, that strategy's process is hung.",
       "type": "timeseries",
-      "gridPos": {"x": 0, "y": 6, "w": 12, "h": 8},
-      "datasource": {"type": "prometheus", "uid": "victoriametrics"},
+      "gridPos": {
+        "x": 0,
+        "y": 6,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "victoriametrics"
+      },
       "targets": [
         {
-          "datasource": {"type": "prometheus", "uid": "victoriametrics"},
+          "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+          },
           "expr": "hg_strategy_equity_usd",
           "legendFormat": "{{strategy}} equity",
           "refId": "A"
         },
         {
-          "datasource": {"type": "prometheus", "uid": "victoriametrics"},
+          "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+          },
           "expr": "hg_strategy_initial_capital_usd",
           "legendFormat": "{{strategy}} starting",
           "refId": "B"
@@ -129,31 +283,68 @@
         "defaults": {
           "unit": "currencyUSD",
           "custom": {
-            "scaleDistribution": {"type": "log", "log": 10}
+            "scaleDistribution": {
+              "type": "log",
+              "log": 10
+            }
           }
         },
         "overrides": [
           {
-            "matcher": {"id": "byRegexp", "options": ".* starting"},
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".* starting"
+            },
             "properties": [
-              {"id": "custom.lineStyle", "value": {"fill": "dash", "dash": [10, 10]}},
-              {"id": "custom.fillOpacity", "value": 0}
+              {
+                "id": "custom.lineStyle",
+                "value": {
+                  "fill": "dash",
+                  "dash": [
+                    10,
+                    10
+                  ]
+                }
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 0
+              }
             ]
           }
         ]
       },
-      "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi"}}
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
     },
     {
       "id": 2,
       "title": "Drawdown % by Strategy",
       "description": "Peak-to-trough drawdown per strategy as a percentage of peak equity. Source: `hg_portfolio_drawdown_pct`, computed in each strategy's sidecar from (equity - peak_equity) / peak_equity * 100. Always <= 0 by construction (clamped at max=0). Green > -5%, yellow -5% to -20%, red < -20%. Flat 0 line = strategy is at all-time high or no samples yet.",
       "type": "timeseries",
-      "gridPos": {"x": 12, "y": 6, "w": 12, "h": 8},
-      "datasource": {"type": "prometheus", "uid": "victoriametrics"},
+      "gridPos": {
+        "x": 12,
+        "y": 6,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "victoriametrics"
+      },
       "targets": [
         {
-          "datasource": {"type": "prometheus", "uid": "victoriametrics"},
+          "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+          },
           "expr": "hg_portfolio_drawdown_pct",
           "legendFormat": "{{job}}",
           "refId": "A"
@@ -166,50 +357,108 @@
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              {"color": "red", "value": null},
-              {"color": "yellow", "value": -20},
-              {"color": "green", "value": -5}
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": -20
+              },
+              {
+                "color": "green",
+                "value": -5
+              }
             ]
           }
         },
         "overrides": []
       },
-      "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi"}}
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
     },
     {
       "id": 3,
       "title": "Day P&L (USD)",
       "description": "Intra-day P&L per strategy plus a summed 'Total' line. Source: `hg_portfolio_day_pnl_usd` = current_equity - session_open_equity, reset each trading session. Y-axis centered on zero so losses display symmetrically below. Non-zero only when strategies are actively trading or holding positions whose mark-to-market moves.",
       "type": "timeseries",
-      "gridPos": {"x": 0, "y": 14, "w": 12, "h": 8},
-      "datasource": {"type": "prometheus", "uid": "victoriametrics"},
+      "gridPos": {
+        "x": 0,
+        "y": 14,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "victoriametrics"
+      },
       "targets": [
         {
-          "datasource": {"type": "prometheus", "uid": "victoriametrics"},
+          "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+          },
           "expr": "sum(hg_portfolio_day_pnl_usd)",
           "legendFormat": "Total",
           "refId": "A"
         },
         {
-          "datasource": {"type": "prometheus", "uid": "victoriametrics"},
+          "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+          },
           "expr": "hg_portfolio_day_pnl_usd",
           "legendFormat": "{{job}}",
           "refId": "B"
         }
       ],
-      "fieldConfig": {"defaults": {"unit": "currencyUSD", "custom": {"axisCenteredZero": true}}, "overrides": []},
-      "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi"}}
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD",
+          "custom": {
+            "axisCenteredZero": true
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
     },
     {
       "id": 4,
       "title": "RAMP Regime State Code",
       "description": "Current US-equities market regime classified by MarketRegimeDetector (src/strategies/advanced/market_regime_detector.py). Values: 1=STRONG_BULL (low vol, positive momentum), 2=WEAK_BULL, 3=SIDEWAYS, 4=UNPREDICTABLE (elevated vol, ambiguous trend), 5=BEAR. **RAMP-only signal** -- CSCM does not contribute to this panel because it uses a binary BTC>SMA40 gate over crypto markets (a fundamentally different regime concept on a different asset class), not the 5-state classifier.",
       "type": "timeseries",
-      "gridPos": {"x": 12, "y": 14, "w": 12, "h": 8},
-      "datasource": {"type": "prometheus", "uid": "victoriametrics"},
+      "gridPos": {
+        "x": 12,
+        "y": 14,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "victoriametrics"
+      },
       "targets": [
         {
-          "datasource": {"type": "prometheus", "uid": "victoriametrics"},
+          "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+          },
           "expr": "max(hg_regime_state_code)",
           "legendFormat": "Regime",
           "refId": "A"
@@ -225,25 +474,184 @@
             {
               "type": "value",
               "options": {
-                "1": {"text": "STRONG_BULL", "color": "green", "index": 0},
-                "2": {"text": "WEAK_BULL", "color": "light-green", "index": 1},
-                "3": {"text": "SIDEWAYS", "color": "yellow", "index": 2},
-                "4": {"text": "UNPREDICTABLE", "color": "orange", "index": 3},
-                "5": {"text": "BEAR", "color": "red", "index": 4}
+                "1": {
+                  "text": "STRONG_BULL",
+                  "color": "green",
+                  "index": 0
+                },
+                "2": {
+                  "text": "WEAK_BULL",
+                  "color": "light-green",
+                  "index": 1
+                },
+                "3": {
+                  "text": "SIDEWAYS",
+                  "color": "yellow",
+                  "index": 2
+                },
+                "4": {
+                  "text": "UNPREDICTABLE",
+                  "color": "orange",
+                  "index": 3
+                },
+                "5": {
+                  "text": "BEAR",
+                  "color": "red",
+                  "index": 4
+                }
               }
             }
           ]
         },
         "overrides": []
       },
-      "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "single"}}
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "single"
+        }
+      }
+    },
+    {
+      "id": 11,
+      "title": "Current Positions",
+      "description": "Instant snapshot of every open position across all strategies. Columns: Strategy, Symbol, Quantity, Unrealized PnL (color-coded red/green by sign). Source: `hg_position_qty` and `hg_position_unrealized_pnl_usd` with the `symbol` and `strategy` labels, merged by Grafana. A position closes -> row disappears on next scrape.",
+      "type": "table",
+      "gridPos": {
+        "x": 0,
+        "y": 22,
+        "w": 24,
+        "h": 10
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "victoriametrics"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+          },
+          "expr": "hg_position_qty",
+          "format": "table",
+          "instant": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+          },
+          "expr": "hg_position_unrealized_pnl_usd",
+          "format": "table",
+          "instant": true,
+          "refId": "B"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "joinByField",
+          "options": {
+            "byField": "symbol",
+            "mode": "outer"
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "Time 1": true,
+              "Time 2": true,
+              "__name__ 1": true,
+              "__name__ 2": true,
+              "job 1": true,
+              "job 2": true,
+              "instance 1": true,
+              "instance 2": true,
+              "strategy 2": true
+            },
+            "renameByName": {
+              "Value #A": "Quantity",
+              "Value #B": "Unrealized PnL",
+              "symbol": "Symbol",
+              "strategy 1": "Strategy"
+            },
+            "indexByName": {
+              "Strategy": 0,
+              "Symbol": 1,
+              "Quantity": 2,
+              "Unrealized PnL": 3
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "align": "auto"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Unrealized PnL"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "currencyUSD"
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "red",
+                      "value": null
+                    },
+                    {
+                      "color": "green",
+                      "value": 0
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      }
     }
   ],
   "refresh": "30s",
   "schemaVersion": 39,
-  "tags": ["homeguard"],
-  "templating": {"list": []},
-  "time": {"from": "now-6h", "to": "now"},
+  "tags": [
+    "homeguard"
+  ],
+  "templating": {
+    "list": []
+  },
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
   "timepicker": {},
   "timezone": "browser",
   "title": "Portfolio Overview",

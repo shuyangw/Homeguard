@@ -1,5 +1,7 @@
 {
-  "annotations": {"list": []},
+  "annotations": {
+    "list": []
+  },
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 0,
@@ -11,65 +13,156 @@
       "title": "Realized P&L by Strategy",
       "description": "Today's realized P&L per strategy, aggregated from the trade-log JSONL (sum of `pnl_dollars` where `trade_type == 'exit'` and `strategy == <s>`). Resets each trading day. Does NOT include mark-to-market on open positions (see Unrealized panel). Updated every ~30s by the strategy sidecar.",
       "type": "timeseries",
-      "gridPos": {"x": 0, "y": 0, "w": 12, "h": 8},
-      "datasource": {"type": "prometheus", "uid": "victoriametrics"},
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "victoriametrics"
+      },
       "targets": [
         {
-          "datasource": {"type": "prometheus", "uid": "victoriametrics"},
+          "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+          },
           "expr": "hg_strategy_realized_pnl_usd",
           "legendFormat": "{{strategy}}",
           "refId": "A"
         }
       ],
-      "fieldConfig": {"defaults": {"unit": "currencyUSD", "custom": {"axisCenteredZero": true}}, "overrides": []},
-      "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "single"}}
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD",
+          "custom": {
+            "axisCenteredZero": true
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "single"
+        }
+      }
     },
     {
       "id": 2,
       "title": "Unrealized P&L by Strategy",
       "description": "Mark-to-market P&L across all currently-open positions per strategy. Derived from `(current_price - avg_entry_price) * qty`, summed per strategy. Source: `hg_strategy_unrealized_pnl_usd`, emitted per-tick. Zero when the strategy is fully in cash. Y-axis centered on $0.",
       "type": "timeseries",
-      "gridPos": {"x": 12, "y": 0, "w": 12, "h": 8},
-      "datasource": {"type": "prometheus", "uid": "victoriametrics"},
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "victoriametrics"
+      },
       "targets": [
         {
-          "datasource": {"type": "prometheus", "uid": "victoriametrics"},
+          "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+          },
           "expr": "hg_strategy_unrealized_pnl_usd",
           "legendFormat": "{{strategy}}",
           "refId": "A"
         }
       ],
-      "fieldConfig": {"defaults": {"unit": "currencyUSD", "custom": {"axisCenteredZero": true}}, "overrides": []},
-      "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "single"}}
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD",
+          "custom": {
+            "axisCenteredZero": true
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "single"
+        }
+      }
     },
     {
       "id": 3,
       "title": "Position Count by Strategy",
       "description": "Number of open positions per strategy. Source: `hg_strategy_positions_count` = `len(broker.get_crypto_positions())` for CSCM / `len(state_manager.get_positions(strategy))` for OMR/RAMP/MP. Zero = strategy is flat (full cash).",
       "type": "timeseries",
-      "gridPos": {"x": 0, "y": 8, "w": 12, "h": 8},
-      "datasource": {"type": "prometheus", "uid": "victoriametrics"},
+      "gridPos": {
+        "x": 0,
+        "y": 8,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "victoriametrics"
+      },
       "targets": [
         {
-          "datasource": {"type": "prometheus", "uid": "victoriametrics"},
+          "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+          },
           "expr": "hg_strategy_positions_count",
           "legendFormat": "{{strategy}}",
           "refId": "A"
         }
       ],
-      "fieldConfig": {"defaults": {"unit": "short", "min": 0, "decimals": 0}, "overrides": []},
-      "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "single"}}
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "single"
+        }
+      }
     },
     {
       "id": 4,
       "title": "Signal Freshness (seconds)",
       "description": "Seconds elapsed since the strategy last completed a sidecar metrics tick. Computed as `time() - hg_strategy_last_signal_timestamp`. Green < 60s, yellow 60-300s, red > 300s. If the line climbs monotonically past the red threshold, the strategy process is hung or blocked on I/O.",
       "type": "timeseries",
-      "gridPos": {"x": 12, "y": 8, "w": 12, "h": 8},
-      "datasource": {"type": "prometheus", "uid": "victoriametrics"},
+      "gridPos": {
+        "x": 12,
+        "y": 8,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "victoriametrics"
+      },
       "targets": [
         {
-          "datasource": {"type": "prometheus", "uid": "victoriametrics"},
+          "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+          },
           "expr": "time() - hg_strategy_last_signal_timestamp",
           "legendFormat": "{{strategy}}",
           "refId": "A"
@@ -82,163 +175,171 @@
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              {"color": "green", "value": null},
-              {"color": "yellow", "value": 60},
-              {"color": "red", "value": 300}
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 60
+              },
+              {
+                "color": "red",
+                "value": 300
+              }
             ]
           }
         },
         "overrides": []
       },
-      "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "single"}}
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "single"
+        }
+      }
     },
     {
       "id": 5,
       "title": "Strategy Capital (Deployed vs Starting)",
       "description": "Solid line = capital deployed into open positions (`hg_strategy_capital_allocated_usd` = sum of position market values). Dashed line = strategy's starting capital budget (`hg_strategy_initial_capital_usd`, emitted once at startup). The gap between the two lines is idle cash. If deployed stays near zero but the strategy is meant to be active, something is gating rebalances (BEAR regime, trailing stop, momentum filter).",
       "type": "timeseries",
-      "gridPos": {"x": 0, "y": 16, "w": 12, "h": 8},
-      "datasource": {"type": "prometheus", "uid": "victoriametrics"},
+      "gridPos": {
+        "x": 0,
+        "y": 16,
+        "w": 24,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "victoriametrics"
+      },
       "targets": [
         {
-          "datasource": {"type": "prometheus", "uid": "victoriametrics"},
+          "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+          },
           "expr": "hg_strategy_capital_allocated_usd",
           "legendFormat": "{{strategy}} deployed",
           "refId": "A"
         },
         {
-          "datasource": {"type": "prometheus", "uid": "victoriametrics"},
+          "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+          },
           "expr": "hg_strategy_initial_capital_usd",
           "legendFormat": "{{strategy}} starting",
           "refId": "B"
         }
       ],
       "fieldConfig": {
-        "defaults": {"unit": "currencyUSD", "min": 0},
+        "defaults": {
+          "unit": "currencyUSD",
+          "min": 0
+        },
         "overrides": [
           {
-            "matcher": {"id": "byRegexp", "options": ".* starting"},
-            "properties": [
-              {"id": "custom.lineStyle", "value": {"fill": "dash", "dash": [10, 10]}},
-              {"id": "custom.fillOpacity", "value": 0}
-            ]
-          }
-        ]
-      },
-      "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi"}}
-    },
-    {
-      "id": 6,
-      "title": "Current Positions",
-      "description": "Instant snapshot of every open position across all strategies. Columns: Strategy, Symbol, Quantity, Unrealized PnL (color-coded red/green by sign). Source: `hg_position_qty` and `hg_position_unrealized_pnl_usd` with the `symbol` and `strategy` labels, merged by Grafana. A position closes -> row disappears on next scrape.",
-      "type": "table",
-      "gridPos": {"x": 12, "y": 16, "w": 12, "h": 8},
-      "datasource": {"type": "prometheus", "uid": "victoriametrics"},
-      "targets": [
-        {
-          "datasource": {"type": "prometheus", "uid": "victoriametrics"},
-          "expr": "hg_position_qty",
-          "format": "table",
-          "instant": true,
-          "refId": "A"
-        },
-        {
-          "datasource": {"type": "prometheus", "uid": "victoriametrics"},
-          "expr": "hg_position_unrealized_pnl_usd",
-          "format": "table",
-          "instant": true,
-          "refId": "B"
-        }
-      ],
-      "transformations": [
-        {
-          "id": "joinByField",
-          "options": {
-            "byField": "symbol",
-            "mode": "outer"
-          }
-        },
-        {
-          "id": "organize",
-          "options": {
-            "excludeByName": {
-              "Time": true,
-              "Time 1": true,
-              "Time 2": true,
-              "__name__ 1": true,
-              "__name__ 2": true,
-              "job 1": true,
-              "job 2": true,
-              "instance 1": true,
-              "instance 2": true,
-              "strategy 2": true
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".* starting"
             },
-            "renameByName": {
-              "Value #A": "Quantity",
-              "Value #B": "Unrealized PnL",
-              "symbol": "Symbol",
-              "strategy 1": "Strategy"
-            },
-            "indexByName": {
-              "Strategy": 0,
-              "Symbol": 1,
-              "Quantity": 2,
-              "Unrealized PnL": 3
-            }
-          }
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {"unit": "short", "custom": {"align": "auto"}},
-        "overrides": [
-          {
-            "matcher": {"id": "byName", "options": "Unrealized PnL"},
             "properties": [
-              {"id": "unit", "value": "currencyUSD"},
               {
-                "id": "custom.cellOptions",
-                "value": {"type": "color-text"}
-              },
-              {
-                "id": "thresholds",
+                "id": "custom.lineStyle",
                 "value": {
-                  "mode": "absolute",
-                  "steps": [
-                    {"color": "red", "value": null},
-                    {"color": "green", "value": 0}
+                  "fill": "dash",
+                  "dash": [
+                    10,
+                    10
                   ]
                 }
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 0
               }
             ]
           }
         ]
       },
-      "options": {"showHeader": true, "cellHeight": "sm"}
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
     },
     {
       "id": 7,
       "title": "Per-Symbol Unrealized PnL",
       "description": "Unrealized P&L attributed to each individual open position over time, legend-formatted as `strategy:symbol`. Source: `hg_position_unrealized_pnl_usd` per symbol. Use this to see which position is driving a strategy's aggregate P&L.",
       "type": "timeseries",
-      "gridPos": {"x": 0, "y": 24, "w": 24, "h": 8},
-      "datasource": {"type": "prometheus", "uid": "victoriametrics"},
+      "gridPos": {
+        "x": 0,
+        "y": 24,
+        "w": 24,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "victoriametrics"
+      },
       "targets": [
         {
-          "datasource": {"type": "prometheus", "uid": "victoriametrics"},
+          "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+          },
           "expr": "hg_position_unrealized_pnl_usd",
           "legendFormat": "{{strategy}}:{{symbol}}",
           "refId": "A"
         }
       ],
-      "fieldConfig": {"defaults": {"unit": "currencyUSD", "custom": {"axisCenteredZero": true}}, "overrides": []},
-      "options": {"legend": {"displayMode": "table", "placement": "right", "calcs": ["lastNotNull", "min", "max"]}, "tooltip": {"mode": "multi"}}
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD",
+          "custom": {
+            "axisCenteredZero": true
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": [
+            "lastNotNull",
+            "min",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
     }
   ],
   "refresh": "30s",
   "schemaVersion": 39,
-  "tags": ["homeguard"],
-  "templating": {"list": []},
-  "time": {"from": "now-6h", "to": "now"},
+  "tags": [
+    "homeguard"
+  ],
+  "templating": {
+    "list": []
+  },
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
   "timepicker": {},
   "timezone": "browser",
   "title": "Strategy Breakdown",
