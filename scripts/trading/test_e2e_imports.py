@@ -84,7 +84,6 @@ def test_trading_core():
     tests = [
         ("src.trading.core.execution_engine", ["ExecutionEngine"]),
         ("src.trading.core.position_manager", ["PositionManager"]),
-        ("src.trading.core.paper_trading_bot", ["PaperTradingBot"]),
     ]
 
     failed = []
@@ -113,32 +112,6 @@ def test_trading_adapters():
         ("src.trading.adapters.strategy_adapter", ["StrategyAdapter"]),
         ("src.trading.adapters.omr_live_adapter", ["OMRLiveAdapter"]),
         ("src.trading.adapters.ma_live_adapter", ["MACrossoverLiveAdapter"]),
-    ]
-
-    failed = []
-    for module_path, classes in tests:
-        try:
-            module = __import__(module_path, fromlist=classes)
-            for cls in classes:
-                if not hasattr(module, cls):
-                    raise AttributeError(f"Class {cls} not found in {module_path}")
-            print(f"  [OK] {module_path}")
-        except Exception as e:
-            print(f"  [FAIL] {module_path} - {e}")
-            failed.append((module_path, str(e)))
-
-    print()
-    return failed
-
-
-def test_trading_strategies():
-    """Test live strategy imports."""
-    print("=" * 80)
-    print("TESTING LIVE STRATEGIES")
-    print("=" * 80)
-
-    tests = [
-        ("src.trading.strategies.omr_live_strategy", ["OMRLiveStrategy"]),
     ]
 
     failed = []
@@ -253,7 +226,6 @@ def main():
     all_failures.extend(test_trading_brokers())
     all_failures.extend(test_trading_core())
     all_failures.extend(test_trading_adapters())
-    all_failures.extend(test_trading_strategies())
     all_failures.extend(test_trading_utils())
     all_failures.extend(test_advanced_strategies())
     all_failures.extend(test_logger())

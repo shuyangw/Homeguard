@@ -7,7 +7,7 @@ between brokers (Alpaca, Interactive Brokers, TD Ameritrade, etc.).
 Usage:
     >>> config = {'api_key': 'KEY', 'secret_key': 'SECRET', 'paper': True}
     >>> broker = BrokerFactory.create_broker('alpaca', config)
-    >>> bot = PaperTradingBot(broker=broker, config=trading_config)
+    >>> engine = ExecutionEngine(broker=broker, config=trading_config)
 
 Design Principle:
 - Factory Pattern: Centralized broker creation

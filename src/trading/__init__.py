@@ -5,7 +5,7 @@ Broker-agnostic paper trading system for executing trading strategies.
 
 Architecture:
 - brokers/: Broker abstraction layer (BrokerInterface, implementations)
-- core/: Core trading logic (ExecutionEngine, PaperTradingBot, PositionManager)
+- core/: Core trading logic (ExecutionEngine, PositionManager)
 - schedulers/: Market and strategy timing
 - monitoring/: Logging, performance tracking, alerts
 - utils/: Trading utilities
