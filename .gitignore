@@ -18,6 +18,12 @@ settings.ini
 TODO.md
 .claude-recovery.log
 
+# Strategy enable/shutdown toggle: runtime state modified by the bot at every
+# rebalance / via /toggle Discord command. Don't track. Auto-generated on
+# first run by StrategyStateManager._load_toggle if missing. See template
+# at config/trading/strategy_toggle.example.yaml.
+config/trading/strategy_toggle.yaml
+
 # ============================================================================
 # IDE AND EDITOR FILES
 # ============================================================================

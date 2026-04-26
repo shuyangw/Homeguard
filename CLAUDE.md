@@ -221,6 +221,7 @@ Strategy skill: `.claude/skills/implement-strategy/`
 | App Settings | `settings.ini` | `settings.ini.example` |
 | EC2 Config (IP, instance ID) | `.env` | `.env.example` |
 | IBKR Config (host, port, credentials) | `.env` | `.env.example` |
+| Strategy enable/shutdown toggle (runtime state) | `config/trading/strategy_toggle.yaml` | `config/trading/strategy_toggle.example.yaml` |
 
 Shell scripts: `source infra/ec2/load_env.sh`. Batch scripts: `call infra\ec2\load_env.bat`.
 

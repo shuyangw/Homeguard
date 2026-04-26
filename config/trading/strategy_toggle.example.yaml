@@ -1,0 +1,32 @@
+# Strategy enable/shutdown toggle -- runtime state, not version-controlled.
+#
+# This file is auto-generated on first run by StrategyStateManager
+# (src/trading/state/strategy_state_manager.py:_load_toggle) if missing.
+# Copy this template to strategy_toggle.yaml to seed a known starting state.
+#
+# Modified at runtime by:
+#   - Manual edits (set enabled=false to pause a strategy without restart)
+#   - The /toggle Discord command path
+#   - StrategyStateManager.set_enabled / request_shutdown methods
+#
+# Schema:
+#   strategies.<name>.enabled: bool         # whether the strategy runs at all
+#   strategies.<name>.shutdown_requested: bool  # graceful-stop signal; bot
+#                                                 will exit on next idle tick
+#   last_modified: ISO timestamp (auto-updated by save)
+#   modified_by: free-form identifier of the modifier (auto/api/discord/manual)
+last_modified: '2026-04-26T00:00:00+00:00'
+modified_by: example
+strategies:
+  omr:
+    enabled: true
+    shutdown_requested: false
+  mp:
+    enabled: false
+    shutdown_requested: false
+  ramp:
+    enabled: true
+    shutdown_requested: false
+  cscm:
+    enabled: true
+    shutdown_requested: false
