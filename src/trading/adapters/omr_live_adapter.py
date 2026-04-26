@@ -594,12 +594,6 @@ class OMRLiveAdapter(StrategyAdapter):
             logger.error(f"[OMR] Failed to fetch VIX data: {e}")
             return None
 
-    # Keep old method name as alias for backward compatibility
-    def _fetch_vix_yfinance(self, start_date: str, end_date: str) -> Optional[pd.DataFrame]:
-        """Deprecated: Use _fetch_vix_data() instead. This is kept for compatibility."""
-        logger.warning("[OMR] _fetch_vix_yfinance is deprecated, using _fetch_vix_data with fallback chain")
-        return self._fetch_vix_data(lookback_days=self.data_lookback_days)
-
     def _fetch_intraday_symbol(
         self,
         symbol: str,

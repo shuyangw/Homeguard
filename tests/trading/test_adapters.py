@@ -594,54 +594,6 @@ class TestVIXDataFetching:
     """
 
     @pytest.mark.network
-    def test_fetch_vix_yfinance_returns_data(self, mock_broker):
-        """Test _fetch_vix_yfinance returns non-empty DataFrame."""
-        adapter = OMRLiveAdapter(
-            broker=mock_broker,
-            broker_name='alpaca',
-            symbols=['TQQQ']
-        )
-
-        # Fetch VIX data (actual network call)
-        from datetime import datetime, timedelta
-        end_date = datetime.now()
-        start_date = end_date - timedelta(days=30)
-
-        vix_data = adapter._fetch_vix_yfinance(
-            start_date.strftime('%Y-%m-%d'),
-            end_date.strftime('%Y-%m-%d')
-        )
-
-        assert vix_data is not None, "VIX data should not be None"
-        assert not vix_data.empty, "VIX data should not be empty"
-        assert len(vix_data) > 0, "VIX data should have rows"
-
-    @pytest.mark.network
-    def test_fetch_vix_yfinance_has_required_columns(self, mock_broker):
-        """Test _fetch_vix_yfinance returns DataFrame with OHLCV columns."""
-        adapter = OMRLiveAdapter(
-            broker=mock_broker,
-            broker_name='alpaca',
-            symbols=['TQQQ']
-        )
-
-        from datetime import datetime, timedelta
-        end_date = datetime.now()
-        start_date = end_date - timedelta(days=30)
-
-        vix_data = adapter._fetch_vix_yfinance(
-            start_date.strftime('%Y-%m-%d'),
-            end_date.strftime('%Y-%m-%d')
-        )
-
-        assert vix_data is not None
-
-        # Check for required columns (case-insensitive)
-        columns_lower = [c.lower() if isinstance(c, str) else str(c).lower() for c in vix_data.columns]
-        assert 'close' in columns_lower or 'Close' in vix_data.columns, \
-            f"VIX data should have 'close' column. Got: {list(vix_data.columns)}"
-
-    @pytest.mark.network
     def test_fetch_market_data_normalizes_column_names(self, mock_broker):
         """
         Test fetch_market_data normalizes all column names to lowercase.
@@ -749,49 +701,6 @@ class TestVIXDataFetching:
             _ = vix_df['close'].iloc[-1]
         except KeyError as e:
             pytest.fail(f"Should be able to access vix_data['close']: {e}")
-
-    @pytest.mark.network
-    def test_real_yfinance_vix_integration(self, mock_broker):
-        """
-        End-to-end test: fetch real VIX data and verify column normalization.
-
-        This test makes actual network calls and verifies the complete flow.
-        """
-        adapter = OMRLiveAdapter(
-            broker=mock_broker,
-            broker_name='alpaca',
-            symbols=['TQQQ']
-        )
-
-        from datetime import datetime, timedelta
-        end_date = datetime.now()
-        start_date = end_date - timedelta(days=10)
-
-        # Fetch real VIX data
-        vix_data = adapter._fetch_vix_yfinance(
-            start_date.strftime('%Y-%m-%d'),
-            end_date.strftime('%Y-%m-%d')
-        )
-
-        if vix_data is None or vix_data.empty:
-            pytest.skip("Could not fetch VIX data (network issue or market closed)")
-
-        # Store in cache (simulating preload)
-        adapter._data_cache = {
-            'SPY': vix_data.copy(),  # Use same data for SPY (just for testing)
-            'VIX': vix_data.copy()
-        }
-
-        # Fetch market data (should normalize)
-        market_data = adapter.fetch_market_data()
-
-        # Verify VIX has lowercase columns
-        if 'VIX' in market_data:
-            vix_df = market_data['VIX']
-            columns_str = [str(c).lower() for c in vix_df.columns]
-            assert 'close' in columns_str, \
-                f"After normalization, VIX should have 'close' column. Got: {list(vix_df.columns)}"
-
 
 class TestColumnNormalization:
     """Tests specifically for column name normalization edge cases."""

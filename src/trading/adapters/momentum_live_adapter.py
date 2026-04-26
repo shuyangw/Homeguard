@@ -431,12 +431,6 @@ class MomentumLiveAdapter(StrategyAdapter):
             logger.error(f"[MP] Failed to fetch VIX data: {e}")
             return None
 
-    # Keep old method name as alias for backward compatibility
-    def _fetch_vix_yfinance(self, start_date, end_date) -> Optional[pd.DataFrame]:
-        """Deprecated: Use _fetch_vix_data() instead. This is kept for compatibility."""
-        logger.warning("[MP] _fetch_vix_yfinance is deprecated, using _fetch_vix_data with fallback chain")
-        return self._fetch_vix_data(lookback_days=self.data_lookback_days)
-
     def fetch_todays_closes(self) -> bool:
         """
         Fetch only today's close prices and append to historical cache.
