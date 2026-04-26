@@ -14,8 +14,6 @@ streaming/       LiveDataProvider, Alpaca WebSocket, 500-bar LRU buffer per symb
 backtesting/     BacktestEngine, PortfolioSimulator (Numba JIT), optimization (grid/Bayesian/genetic),
                  regime detection (5 states), walk-forward validation, reporting
 backtesting_v2/  Next-gen backtesting (in development)
-gui/             Flet desktop app, parallel sweep execution (1-16 workers)
-web/             FastAPI backend + React 18/Vite frontend
 discord_bot/     Claude-powered read-only monitoring (slash commands)
 discord_cscm/    CSCM-specific Discord alerts
 screening/       Stock screener via Alpaca + yfinance fundamentals
@@ -262,12 +260,6 @@ After completing a significant implementation session (new features, infra chang
 
 - DataFrame.xs() type hints, VectorBT incomplete stubs, SQL injection prevention
 - Details: [`.claude/type_issues.md`](.claude/type_issues.md)
-
-## Web UI
-
-- Start: `scripts\start_web_ui.bat`
-- Stop: `Ctrl+C` only
-- Details: [`.claude/web_development.md`](.claude/web_development.md)
 
 ## Memory Efficiency - Backtests
 
