@@ -1,6 +1,7 @@
 [Unit]
 Description=Homeguard RAMP Strategy - Regime-Aware Momentum Protection
-After=network.target
+After=network.target homeguard-gateway.service
+Wants=homeguard-gateway.service
 PartOf=homeguard-trading.target
 Conflicts=homeguard-trading.service
 

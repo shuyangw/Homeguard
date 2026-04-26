@@ -1,6 +1,7 @@
 [Unit]
 Description=Homeguard OMR Strategy - Overnight Mean Reversion
-After=network.target
+After=network.target homeguard-gateway.service
+Wants=homeguard-gateway.service
 PartOf=homeguard-trading.target
 Conflicts=homeguard-trading.service
 
