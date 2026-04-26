@@ -84,12 +84,22 @@ def _stub_signals(adapter, target_weights, regime='bullish'):
 
 
 @pytest.fixture
-def broker_with_prices():
-    """DemoBroker with $100k cash, deterministic worst-case slippage, seeded bars."""
+def broker_with_prices(tmp_path, monkeypatch):
+    """DemoBroker with $100k cash, deterministic worst-case slippage, seeded bars.
+
+    CRITICAL: redirects DemoBroker's persistence paths into tmp_path so tests
+    never touch ~/.homeguard/demo/. A prior version of this fixture used the
+    default state dir, which on EC2 is the SAME path production CSCM uses --
+    every test run polluted production positions with fake fixture prices.
+    """
+    # Redirect both the portfolio-state file and the trade-log dir to tmp_path
+    # for the duration of the test.
+    from src.trading.demo.portfolio_state import DemoPortfolioState
+    from src.trading.demo.trade_logger import DemoTradeLogger
+    monkeypatch.setattr(DemoPortfolioState, 'DEFAULT_STATE_DIR', tmp_path)
+    monkeypatch.setattr(DemoTradeLogger, 'DEFAULT_LOG_DIR', tmp_path / 'trades')
+
     broker = DemoBroker(initial_cash=100000.0, slippage_bps=5.0, fee_bps=10.0)
-    # Reset to wipe any persisted state from previous test runs (state file
-    # at ~/.homeguard/demo/state.json is shared across DemoBroker instances).
-    broker.reset_portfolio(initial_cash=100000.0)
     # Force worst-case slippage on every fill -- no randomization.
     broker._execution_sim.randomize_slippage = False
     _seed_broker_prices(broker, PRICES)
