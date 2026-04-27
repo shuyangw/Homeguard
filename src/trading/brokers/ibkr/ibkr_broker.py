@@ -283,9 +283,16 @@ class IBKRBroker(
     # ==================== StockTradingInterface ====================
 
     def get_stock_positions(self) -> List[Dict]:
-        """Get all stock positions in standardized format."""
+        """Get all stock positions in standardized format.
+
+        Uses ib.portfolio() rather than ib.positions() so each position
+        carries marketPrice / marketValue / unrealizedPNL populated by IBKR's
+        internal market-data feed. ib.positions() returns bare contract+qty
+        only, which previously surfaced as None unrealized_pnl/market_value
+        on every position -- breaking Grafana panels and metric attribution.
+        """
         try:
-            positions = self._conn.ib.positions()
+            positions = self._conn.ib.portfolio()
             result = []
             for pos in positions:
                 if pos.contract.secType != 'STK':
@@ -438,9 +445,13 @@ class IBKRBroker(
         return self._data.get_options_chain_data(underlying, exp_str)
 
     def get_options_positions(self) -> List[Dict]:
-        """Get all current options positions."""
+        """Get all current options positions.
+
+        Uses ib.portfolio() (PortfolioItem) for live market_value /
+        unrealized_pnl. See get_stock_positions for details.
+        """
         try:
-            positions = self._conn.ib.positions()
+            positions = self._conn.ib.portfolio()
             result = []
             for pos in positions:
                 if pos.contract.secType != 'OPT':
@@ -672,26 +683,59 @@ class IBKRBroker(
         }
 
     def _translate_stock_position(self, pos) -> Dict:
-        """Translate IBKR position to standardized stock position dict."""
+        """Translate IBKR position to standardized stock position dict.
+
+        Accepts either a `Position` (from ib.positions(): contract + qty +
+        avgCost only) or a `PortfolioItem` (from ib.portfolio(): adds
+        marketPrice, marketValue, unrealizedPNL, averageCost). Reads the
+        market fields via getattr so legacy callers/test fixtures still work.
+        """
         qty = int(pos.position)
-        avg_cost = float(pos.avgCost)
+        # PortfolioItem uses `averageCost`; Position uses `avgCost`.
+        avg_cost = float(getattr(pos, 'averageCost', None) or getattr(pos, 'avgCost', 0))
+
+        market_price_raw = getattr(pos, 'marketPrice', None)
+        market_value_raw = getattr(pos, 'marketValue', None)
+        unrealized_raw = getattr(pos, 'unrealizedPNL', None)
+
+        # IBKR sometimes reports 0.0 placeholders before the first market
+        # data tick; treat 0 as "not yet known" and fall back to None so
+        # downstream callers can distinguish a real $0 from missing data.
+        current_price = float(market_price_raw) if market_price_raw else None
+        market_value = float(market_value_raw) if market_value_raw else None
+        unrealized = float(unrealized_raw) if unrealized_raw is not None else None
+        unrealized_pct = (
+            (unrealized / (avg_cost * abs(qty)) * 100.0)
+            if unrealized is not None and avg_cost and qty
+            else None
+        )
+
         return {
             'symbol': from_ibkr_symbol(pos.contract.symbol),
             'quantity': qty,
             'avg_entry_price': avg_cost,
-            'current_price': None,
-            'market_value': None,
-            'unrealized_pnl': None,
-            'unrealized_pnl_pct': None,
+            'current_price': current_price,
+            'market_value': market_value,
+            'unrealized_pnl': unrealized,
+            'unrealized_pnl_pct': unrealized_pct,
             'side': 'long' if qty > 0 else 'short',
         }
 
     def _translate_option_position(self, pos) -> Dict:
-        """Translate IBKR position to standardized options position dict."""
+        """Translate IBKR position to standardized options position dict.
+
+        Accepts either Position or PortfolioItem; PortfolioItem populates
+        marketPrice/marketValue/unrealizedPNL via IBKR's market data feed.
+        """
         c = pos.contract
         underlying = from_ibkr_symbol(c.symbol)
         contract_id = f"{underlying}_{c.lastTradeDateOrContractMonth}_{c.strike}_{c.right}"
         opt_type = 'call' if c.right == 'C' else 'put'
+
+        avg_cost = float(getattr(pos, 'averageCost', None) or getattr(pos, 'avgCost', 0))
+        market_price_raw = getattr(pos, 'marketPrice', None)
+        market_value_raw = getattr(pos, 'marketValue', None)
+        unrealized_raw = getattr(pos, 'unrealizedPNL', None)
 
         return {
             'contract_id': contract_id,
@@ -700,10 +744,10 @@ class IBKRBroker(
             'strike': float(c.strike),
             'option_type': opt_type,
             'quantity': int(pos.position),
-            'avg_entry_price': float(pos.avgCost),
-            'current_price': None,
-            'market_value': None,
-            'unrealized_pnl': None,
+            'avg_entry_price': avg_cost,
+            'current_price': float(market_price_raw) if market_price_raw else None,
+            'market_value': float(market_value_raw) if market_value_raw else None,
+            'unrealized_pnl': float(unrealized_raw) if unrealized_raw is not None else None,
             'delta': None,
             'gamma': None,
             'theta': None,
