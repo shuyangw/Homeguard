@@ -157,7 +157,7 @@ variable "enable_cloudwatch_agent" {
 }
 
 variable "enable_scheduled_start_stop" {
-  description = "Enable automated start/stop of EC2 instance during market hours (saves ~70% on EC2 costs). Requires Elastic IP for static IP address when stopped. Starts at 9:00 AM ET, stops at 4:30 PM ET on weekdays."
+  description = "Enable automated start/stop of EC2 instance during market hours. Requires Elastic IP for static IP address when stopped. Starts at 8:00 AM ET, stops at 8:00 PM ET on weekdays."
   type        = bool
   default     = false
 }

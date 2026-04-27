@@ -1,6 +1,6 @@
 # Scheduled Start/Stop for EC2 Instance
 # Uses EventBridge Scheduler (DST-aware) instead of EventBridge Rules (UTC-only).
-# Weekday cron runs in America/New_York so the window stays 8:00 AM - 4:30 PM ET
+# Weekday cron runs in America/New_York so the window stays 8:00 AM - 8:00 PM ET
 # year-round across DST transitions. Weekend cron stays UTC because the CSCM
 # Sunday rebalance ticks at 00:00 UTC (not ET).
 
@@ -179,19 +179,21 @@ resource "aws_scheduler_schedule" "start_instance_weekday" {
   }
 }
 
-# EventBridge Scheduler: STOP instance at 4:30 PM ET (Monday-Friday)
-# 30 min after 4:00 PM market close, after RAMP 3:55 PM rebalance completes.
+# EventBridge Scheduler: STOP instance at 8:00 PM ET (Monday-Friday)
+# 4 hours after 4:00 PM market close. Provides extended monitoring window
+# post-RAMP 3:55 PM rebalance and post-OMR 3:50 PM entry; covers any
+# after-hours adapter cleanup, monitoring drill-down, or manual checks.
 resource "aws_scheduler_schedule" "stop_instance_weekday" {
   count = var.enable_scheduled_start_stop ? 1 : 0
 
   name        = "homeguard-stop-instance"
-  description = "Stop trading bot instance at 4:30 PM ET on weekdays (DST-aware)"
+  description = "Stop trading bot instance at 8:00 PM ET on weekdays (DST-aware)"
 
   flexible_time_window {
     mode = "OFF"
   }
 
-  schedule_expression          = "cron(30 16 ? * MON-FRI *)"
+  schedule_expression          = "cron(0 20 ? * MON-FRI *)"
   schedule_expression_timezone = "America/New_York"
 
   target {

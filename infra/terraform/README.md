@@ -542,7 +542,7 @@ This Terraform module creates:
 - ✅ **Security group** (SSH access only)
 - ✅ **EBS volume** (8 GB GP3, encrypted)
 - ✅ **Automated setup** (installs Python, clones repo, creates systemd services)
-- ✅ **Lambda scheduling** (auto-start 9:00 AM, auto-stop 4:30 PM ET Mon-Fri)
+- ✅ **Lambda scheduling** (auto-start 8:00 AM, auto-stop 8:00 PM ET Mon-Fri)
 - ✅ **EventBridge rules** (cron triggers for Lambda functions)
 - ✅ **IAM roles & policies** (Lambda permissions for EC2 control)
 - ✅ **CloudWatch Log Groups** (Lambda execution logs, 90-day retention)
@@ -615,16 +615,16 @@ See [`HEALTH_CHECK_CHEATSHEET.md`](../docs/HEALTH_CHECK_CHEATSHEET.md) for compr
 The deployment includes Lambda functions that automatically manage the instance:
 
 **Start Function** (`homeguard-start-instance`):
-- Triggers: 9:00 AM ET Monday-Friday
+- Triggers: 8:00 AM ET Monday-Friday + Saturday 23:00 UTC (CSCM weekend window)
 - Action: Starts EC2 instance if stopped
 - Logs: `/aws/lambda/homeguard-start-instance` (CloudWatch)
 
 **Stop Function** (`homeguard-stop-instance`):
-- Triggers: 4:30 PM ET Monday-Friday
+- Triggers: 8:00 PM ET Monday-Friday + Sunday 00:10 UTC (CSCM weekend window)
 - Action: Stops EC2 instance if running
 - Logs: `/aws/lambda/homeguard-stop-instance` (CloudWatch)
 
-**Cost Savings**: Running only during market hours (157.5 hrs/month) saves ~46% vs 24/7 operation.
+**Cost Savings**: Running ~12 hrs/weekday + ~70 min weekend window (~262 hrs/month) saves ~64% vs 24/7 operation.
 
 **Verify Scheduling**:
 ```bash

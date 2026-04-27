@@ -60,7 +60,7 @@ alert_email            = ""  # Set your email if create_sns_alerts = true
 create_cloudwatch_alarms = false
 
 # Automated start/stop during market hours
-# Saves ~70% on EC2 costs by running only 9 AM - 4:30 PM ET on weekdays
+# Runs 8 AM - 8 PM ET on weekdays + Sat 11 PM UTC -> Sun 00:10 UTC for CSCM
 # Requires create_elastic_ip = true for static IP when stopped
 # Lambda costs: ~$0.01/month (negligible)
 enable_scheduled_start_stop = false

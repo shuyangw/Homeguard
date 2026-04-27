@@ -2,7 +2,7 @@
 Lambda Function: Stop EC2 Instance
 
 Stops the Homeguard trading bot EC2 instance after market close.
-Triggered by EventBridge rule at 4:30 PM ET on weekdays.
+Triggered by EventBridge rule at 8:00 PM ET on weekdays.
 """
 
 import os

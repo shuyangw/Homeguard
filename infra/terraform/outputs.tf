@@ -110,7 +110,7 @@ output "start_schedule" {
 
 output "stop_schedule" {
   description = "Instance stop schedule (if enabled)"
-  value       = var.enable_scheduled_start_stop ? "4:30 PM ET weekdays (DST-aware); 00:10 UTC Sunday for CSCM" : null
+  value       = var.enable_scheduled_start_stop ? "8:00 PM ET weekdays (DST-aware); 00:10 UTC Sunday for CSCM" : null
 }
 
 output "lambda_start_function" {
