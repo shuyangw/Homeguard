@@ -593,8 +593,11 @@ class LiveTradingRunner:
             positions = all_positions
 
         update_position_metrics(self.metrics_registry, positions)
-        unrealized = sum(float(p.get('unrealized_pnl', 0)) for p in positions)
-        capital = sum(abs(float(p.get('market_value', 0))) for p in positions)
+        # `or 0` rather than .get(k, 0) -- IBKR returns None (not missing key)
+        # for unrealized_pnl/market_value on freshly opened positions before
+        # market data is subscribed.
+        unrealized = sum(float(p.get('unrealized_pnl') or 0) for p in positions)
+        capital = sum(abs(float(p.get('market_value') or 0)) for p in positions)
         realized = self._compute_today_realized_pnl(strategy)
         update_strategy_metrics(
             self.metrics_registry,

@@ -112,10 +112,13 @@ def update_position_metrics(
     if registry is None:
         return
     for pos in positions:
+        # Use `or 0` rather than .get(k, 0) because IBKR can return None
+        # (key present, value None) for unrealized_pnl on freshly opened
+        # positions before market data is subscribed for the symbol.
         registry.update_position(
             symbol=pos['symbol'],
-            qty=float(pos.get('quantity', 0)),
-            unrealized_pnl=float(pos.get('unrealized_pnl', 0)),
+            qty=float(pos.get('quantity') or 0),
+            unrealized_pnl=float(pos.get('unrealized_pnl') or 0),
         )
 
 
