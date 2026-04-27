@@ -1379,6 +1379,12 @@ class RAMPLiveAdapter(StrategyAdapter):
                                 order_type=OrderType.MARKET
                             )
 
+                            # See BUY path for explanation: ExecutionEngine returns
+                            # an `execution` wrapper; broker order is at order['order'].
+                            _inner = (order.get('order') if isinstance(order, dict) else None) or {}
+                            actual_fill_price = float(_inner.get('filled_avg_price') or 0) or float(pos.get('current_price', 0))
+                            actual_order_id = _inner.get('order_id')
+
                             # Append sell execution to decision record
                             from src.trading.decision_log.record import Execution as _Execution
                             _exec = _Execution(
@@ -1387,9 +1393,9 @@ class RAMPLiveAdapter(StrategyAdapter):
                                 target_qty=abs(qty),
                                 target_value_usd=float(pos.get('market_value', 0)),
                                 status="filled" if order else "error",
-                                fill_price=float(order.get("filled_avg_price", 0)) if order else None,
+                                fill_price=actual_fill_price if order else None,
                                 filled_qty=abs(qty) if order else 0,
-                                order_id=order.get("order_id") if order else None,
+                                order_id=actual_order_id if order else None,
                                 reason=None if order else "execute_order returned None",
                             )
                             if rec is not None:
@@ -1403,13 +1409,12 @@ class RAMPLiveAdapter(StrategyAdapter):
                                 try:
                                     position_info = self.state_manager.get_positions(STRATEGY_NAME).get(symbol, {})
                                     trade_logger = get_trade_log_writer()
-                                    fill_price = order.get('filled_avg_price', pos.get('current_price', 0))
                                     trade_logger.log_exit(
                                         strategy=STRATEGY_NAME,
                                         symbol=symbol,
                                         qty=abs(qty),
-                                        exit_price=float(fill_price) if fill_price else float(pos.get('current_price', 0)),
-                                        order_id=order.get('order_id'),
+                                        exit_price=actual_fill_price,
+                                        order_id=actual_order_id,
                                         entry_price=position_info.get('entry_price', float(pos.get('avg_entry_price', 0))),
                                         entry_time=position_info.get('entry_time'),
                                         account_snapshot=self.broker.get_account()
@@ -1497,6 +1502,16 @@ class RAMPLiveAdapter(StrategyAdapter):
                             order_type=OrderType.MARKET
                         )
 
+                        # ExecutionEngine returns an `execution` wrapper; the broker
+                        # order dict (with filled_avg_price, filled_qty, order_id) is
+                        # nested at execution['order']. Reading top-level keys returns
+                        # None/0 and breaks both the decision log AND the state
+                        # manager's recorded avg_entry_price.
+                        _inner = (order.get('order') if isinstance(order, dict) else None) or {}
+                        actual_fill_price = float(_inner.get('filled_avg_price') or 0) or current_price
+                        actual_filled_qty = int(_inner.get('filled_qty') or shares_to_buy)
+                        actual_order_id = _inner.get('order_id')
+
                         # Append buy execution to decision record
                         from src.trading.decision_log.record import Execution as _Execution
                         _exec = _Execution(
@@ -1505,9 +1520,9 @@ class RAMPLiveAdapter(StrategyAdapter):
                             target_qty=shares_to_buy,
                             target_value_usd=target_value,
                             status="filled" if order else "error",
-                            fill_price=float(order.get("filled_avg_price", 0)) if order else None,
-                            filled_qty=shares_to_buy if order else 0,
-                            order_id=order.get("order_id") if order else None,
+                            fill_price=actual_fill_price if order else None,
+                            filled_qty=actual_filled_qty if order else 0,
+                            order_id=actual_order_id if order else None,
                             reason=None if order else "execute_order returned None",
                         )
                         if rec is not None:
@@ -1516,10 +1531,11 @@ class RAMPLiveAdapter(StrategyAdapter):
                         if order:
                             logger.success(f"[RAMP] Buy order placed: {symbol}")
                             # Use add_or_update_position to handle both new positions AND top-ups
-                            # CRITICAL: This prevents state drift when topping up existing positions
-                            order_id = order.get('order_id')
+                            # CRITICAL: This prevents state drift when topping up existing positions.
+                            # Use the actual fill price (not sizing quote) so realized PnL on close
+                            # reflects real broker entry, not the quote-time price.
                             self.state_manager.add_or_update_position(
-                                STRATEGY_NAME, symbol, shares_to_buy, current_price, order_id,
+                                STRATEGY_NAME, symbol, shares_to_buy, actual_fill_price, actual_order_id,
                                 broker=self._broker_name
                             )
 
@@ -1527,13 +1543,13 @@ class RAMPLiveAdapter(StrategyAdapter):
                             # Error handling ensures logging failures don't block trading
                             try:
                                 trade_logger = get_trade_log_writer()
-                                fill_price = order.get('filled_avg_price', current_price)
+                                fill_price = actual_fill_price
                                 trade_logger.log_entry(
                                     strategy=STRATEGY_NAME,
                                     symbol=symbol,
                                     qty=shares_to_buy,
                                     price=float(fill_price) if fill_price else current_price,
-                                    order_id=order_id,
+                                    order_id=actual_order_id,
                                     metadata={
                                         'rank': signal.metadata.get('rank') if signal.metadata else None,
                                         'momentum_score': signal.metadata.get('momentum_score') if signal.metadata else None,
