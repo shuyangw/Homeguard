@@ -561,7 +561,14 @@ class LiveTradingRunner:
             return initial_capital
 
         tagged = [p for p in all_positions if p.get('symbol') in owned_symbols]
-        pnl = sum(float(p.get('unrealized_pnl', 0) or 0) for p in tagged)
+        # Enrich with the PriceOracle (streaming -> broker quote -> portfolio
+        # cache) so unrealized_pnl reflects live prices, not IBKR's delayed
+        # market data. Falls through to the broker's reported value when the
+        # oracle can't resolve a symbol (preserves current behavior).
+        oracle = getattr(self.adapter, '_price_oracle', None)
+        if oracle is not None:
+            tagged = oracle.enrich_positions(tagged)
+        pnl = sum(float(p.get('unrealized_pnl') or 0) for p in tagged)
         return initial_capital + pnl
 
     def _emit_position_and_strategy_metrics(self, update_position_metrics, update_strategy_metrics) -> None:
@@ -591,6 +598,14 @@ class LiveTradingRunner:
         else:
             # Fallback preserves pre-attribution behavior if state manager is unavailable.
             positions = all_positions
+
+        # Enrich with PriceOracle so per-position unrealized_pnl/market_value
+        # reflect live streaming prices rather than IBKR's delayed view.
+        # Provider chain falls through to broker quote/portfolio when streaming
+        # is unavailable, preserving current behavior in that case.
+        oracle = getattr(self.adapter, '_price_oracle', None)
+        if oracle is not None:
+            positions = oracle.enrich_positions(positions)
 
         update_position_metrics(self.metrics_registry, positions)
         # `or 0` rather than .get(k, 0) -- IBKR returns None (not missing key)
