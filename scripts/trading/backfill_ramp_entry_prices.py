@@ -40,6 +40,13 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict
 
+# Make `src.*` importable when run via `python scripts/trading/backfill_...`
+# from the repo root. (When invoked as a module via `-m` this is unnecessary,
+# but the docstring recommends direct invocation.)
+_REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
