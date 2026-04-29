@@ -1271,13 +1271,21 @@ class RAMPLiveAdapter(StrategyAdapter):
         )
 
     def _snapshot_post_state(self):
-        """Build PostState reflecting positions and equity after execution."""
+        """Build PostState reflecting positions and equity after execution.
+
+        Enriches each broker position via the PriceOracle so the recorded
+        unrealized_pnl reflects live (streaming) prices rather than the
+        broker's potentially-delayed view. Falls through to broker values
+        if oracle is unavailable or returns None.
+        """
         from src.trading.decision_log.record import PostState, PositionSnapshot
 
         ramp_positions = self.state_manager.get_positions(STRATEGY_NAME)
-        broker_positions = {
-            p.get("symbol"): p for p in (self.broker.get_positions() or [])
-        }
+        raw_positions = self.broker.get_positions() or []
+        oracle = getattr(self, '_price_oracle', None)
+        if oracle is not None:
+            raw_positions = oracle.enrich_positions(raw_positions)
+        broker_positions = {p.get("symbol"): p for p in raw_positions}
         positions_after: dict = {}
         for sym in ramp_positions.keys():
             bp = broker_positions.get(sym)

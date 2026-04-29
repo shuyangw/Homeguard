@@ -1129,11 +1129,18 @@ class OMRLiveAdapter(StrategyAdapter):
         )
 
     def _snapshot_post_state(self):
-        """Build PostState reflecting positions and equity after execution."""
+        """Build PostState reflecting positions and equity after execution.
+
+        Enriches via PriceOracle so unrealized_pnl reflects live prices.
+        See ramp_live_adapter._snapshot_post_state for rationale.
+        """
         from src.trading.decision_log.record import PostState, PositionSnapshot
 
         omr_positions = self.state_manager.get_positions(STRATEGY_NAME)
         broker_pos_list = self.broker.get_positions() or []
+        oracle = getattr(self, '_price_oracle', None)
+        if oracle is not None:
+            broker_pos_list = oracle.enrich_positions(broker_pos_list)
         broker_positions = {p.get("symbol"): p for p in broker_pos_list}
 
         positions_after: dict = {}

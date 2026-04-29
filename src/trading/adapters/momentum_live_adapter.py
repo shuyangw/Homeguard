@@ -810,13 +810,19 @@ class MomentumLiveAdapter(StrategyAdapter):
         )
 
     def _snapshot_post_state(self):
-        """Build PostState reflecting positions and equity after execution."""
+        """Build PostState reflecting positions and equity after execution.
+
+        Enriches via PriceOracle for live unrealized_pnl. See
+        ramp_live_adapter._snapshot_post_state for rationale.
+        """
         from src.trading.decision_log.record import PostState, PositionSnapshot
 
         mp_positions = self.state_manager.get_positions(STRATEGY_NAME)
-        broker_positions = {
-            p.get("symbol"): p for p in (self.broker.get_positions() or [])
-        }
+        raw_positions = self.broker.get_positions() or []
+        oracle = getattr(self, '_price_oracle', None)
+        if oracle is not None:
+            raw_positions = oracle.enrich_positions(raw_positions)
+        broker_positions = {p.get("symbol"): p for p in raw_positions}
         positions_after: dict = {}
         for sym in mp_positions.keys():
             bp = broker_positions.get(sym)
