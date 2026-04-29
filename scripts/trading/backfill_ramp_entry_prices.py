@@ -17,16 +17,32 @@ actual fill (not from a sizing quote).
 
 Usage
 -----
+The IBKR paper account only allows ONE API connection at a time. The running
+homeguard-multi service holds it. To run this script, temporarily stop the
+service first:
+
+    # On EC2:
+    sudo systemctl stop homeguard-multi
+
     # Dry-run (default) -- prints the diff, makes no changes:
     python scripts/trading/backfill_ramp_entry_prices.py
 
     # Apply:
     python scripts/trading/backfill_ramp_entry_prices.py --apply
 
+    # Restart the service:
+    sudo systemctl start homeguard-multi
+
 The script is idempotent: on an already-correct file it will print "No drift
 detected" and exit 0.
 
 Run on EC2 (where the live state file lives) -- not locally.
+
+Why one connection? IBKR Gateway in paper-account mode caps simultaneous API
+connections at 1 per port. clientId is just a logical channel; the gateway
+itself is single-tenant. Future: stand up a sidecar service that polls
+broker.get_stock_positions() periodically and writes to a local cache file
+that this script reads instead.
 """
 
 from __future__ import annotations
