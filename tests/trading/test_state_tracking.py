@@ -365,3 +365,69 @@ class TestEdgeCases:
         assert state_manager.get_position_qty('mp', 'AAPL') == 100
         assert state_manager.get_position_qty('mp', 'MSFT') == 0
         assert state_manager.get_position_qty('omr', 'AAPL') == 0
+
+
+class TestRunnerSessionState:
+    """Tests for persisted runner session state (peak equity, day-open equity)."""
+
+    def test_get_returns_none_when_unset(self, state_manager):
+        out = state_manager.get_runner_session_state('ramp')
+        assert out['peak_equity_usd'] is None
+        assert out['session_open_equity_usd'] is None
+        assert out['session_open_date'] is None
+
+    def test_round_trip(self, state_manager):
+        state_manager.update_runner_session_state(
+            'ramp',
+            peak_equity_usd=1023456.78,
+            session_open_equity_usd=1014351.11,
+            session_open_date='2026-04-28',
+        )
+        out = state_manager.get_runner_session_state('ramp')
+        assert out['peak_equity_usd'] == 1023456.78
+        assert out['session_open_equity_usd'] == 1014351.11
+        assert out['session_open_date'] == '2026-04-28'
+
+    def test_partial_update_preserves_other_fields(self, state_manager):
+        state_manager.update_runner_session_state(
+            'ramp',
+            peak_equity_usd=1000.0,
+            session_open_equity_usd=900.0,
+            session_open_date='2026-04-28',
+        )
+        # Update only the peak; other fields should stay
+        state_manager.update_runner_session_state('ramp', peak_equity_usd=1100.0)
+        out = state_manager.get_runner_session_state('ramp')
+        assert out['peak_equity_usd'] == 1100.0
+        assert out['session_open_equity_usd'] == 900.0  # unchanged
+        assert out['session_open_date'] == '2026-04-28'  # unchanged
+
+    def test_strategies_isolated(self, state_manager):
+        state_manager.update_runner_session_state('ramp', peak_equity_usd=1000.0)
+        state_manager.update_runner_session_state('cscm', peak_equity_usd=2000.0)
+        assert state_manager.get_runner_session_state('ramp')['peak_equity_usd'] == 1000.0
+        assert state_manager.get_runner_session_state('cscm')['peak_equity_usd'] == 2000.0
+
+    def test_persists_across_manager_reload(self, state_manager, temp_state_dir):
+        """Write via one manager, read via a fresh manager pointed at the same files."""
+        state_manager.update_runner_session_state(
+            'ramp',
+            peak_equity_usd=1023456.78,
+            session_open_equity_usd=1014351.11,
+            session_open_date='2026-04-28',
+        )
+        # Spin up a fresh manager on the same files (simulates process restart)
+        from pathlib import Path
+        state_file = Path(temp_state_dir) / "strategy_positions.json"
+        toggle_file = Path(temp_state_dir) / "strategy_toggle.yaml"
+        fresh = StrategyStateManager(state_file=state_file, toggle_file=toggle_file)
+        out = fresh.get_runner_session_state('ramp')
+        assert out['peak_equity_usd'] == 1023456.78
+        assert out['session_open_equity_usd'] == 1014351.11
+        assert out['session_open_date'] == '2026-04-28'
+
+    def test_unknown_strategy_creates_entry(self, state_manager):
+        """Strategies not pre-seeded should still accept session state."""
+        state_manager.update_runner_session_state('newstrat', peak_equity_usd=500.0)
+        out = state_manager.get_runner_session_state('newstrat')
+        assert out['peak_equity_usd'] == 500.0

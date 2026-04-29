@@ -643,6 +643,47 @@ class StrategyStateManager:
         return self._state.get('strategies', {}).get(strategy, {}).get('last_execution')
 
     # =========================================================================
+    # Runner Session State (peak equity, day-open equity)
+    # =========================================================================
+    # These persist `LiveTradingRunner._peak_equity` and `_session_open_equity`
+    # across process restarts so the drawdown and day-PnL gauges keep their
+    # baselines instead of resetting to 0 every time the bot is restarted.
+
+    def get_runner_session_state(self, strategy: str) -> Dict[str, Any]:
+        """Return persisted runner session state for `strategy`.
+
+        Keys: peak_equity_usd (float), session_open_equity_usd (float),
+        session_open_date (str YYYY-MM-DD ET). Missing keys return None values.
+        """
+        self._load_state()
+        strat = self._state.get('strategies', {}).get(strategy, {}) or {}
+        return {
+            'peak_equity_usd': strat.get('peak_equity_usd'),
+            'session_open_equity_usd': strat.get('session_open_equity_usd'),
+            'session_open_date': strat.get('session_open_date'),
+        }
+
+    def update_runner_session_state(
+        self,
+        strategy: str,
+        peak_equity_usd: Optional[float] = None,
+        session_open_equity_usd: Optional[float] = None,
+        session_open_date: Optional[str] = None,
+    ) -> None:
+        """Persist runner session state for `strategy`. Only non-None values are written."""
+        self._load_state()
+        if strategy not in self._state.get('strategies', {}):
+            self._state.setdefault('strategies', {})[strategy] = {'positions': {}, 'last_execution': None}
+        strat = self._state['strategies'][strategy]
+        if peak_equity_usd is not None:
+            strat['peak_equity_usd'] = float(peak_equity_usd)
+        if session_open_equity_usd is not None:
+            strat['session_open_equity_usd'] = float(session_open_equity_usd)
+        if session_open_date is not None:
+            strat['session_open_date'] = str(session_open_date)
+        self._save_state()
+
+    # =========================================================================
     # Broker Synchronization
     # =========================================================================
 

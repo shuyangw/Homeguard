@@ -299,8 +299,28 @@ class LiveTradingRunner:
         self.assume_market_open: bool = assume_market_open  # Bypass market open check for testing
         self.metrics_registry = metrics_registry  # Optional MetricsRegistry for monitoring
         self._metrics_tick_counter = 0  # Throttles broker.get_account() calls
-        self._peak_equity: float = 0.0  # Rolling peak since process start (for drawdown)
-        self._session_open_equity: Optional[float] = None  # Set on first tick after market open
+        # Load drawdown peak + session-open equity from persistent state so they
+        # don't reset to 0 when the process restarts (which is several times a
+        # day given the auto-stop schedule). See StrategyStateManager.
+        # `_persist_strategy` is the strategy key used for state lookups.
+        self._persist_strategy: str = adapter.__class__.__name__.replace('LiveAdapter', '').lower()
+        self._peak_equity: float = 0.0
+        self._session_open_equity: Optional[float] = None
+        self._session_open_date: Optional[str] = None
+        try:
+            sm = getattr(adapter, 'state_manager', None)
+            if sm is not None and hasattr(sm, 'get_runner_session_state'):
+                persisted = sm.get_runner_session_state(self._persist_strategy)
+                self._peak_equity = float(persisted.get('peak_equity_usd') or 0.0)
+                self._session_open_equity = persisted.get('session_open_equity_usd')
+                self._session_open_date = persisted.get('session_open_date')
+                if self._peak_equity > 0:
+                    logger.info(
+                        f"Loaded persisted session state: peak_equity=${self._peak_equity:,.2f}, "
+                        f"session_open=${self._session_open_equity}, date={self._session_open_date}"
+                    )
+        except Exception as e:
+            logger.warning(f"Failed to load persisted session state (non-fatal): {e}")
 
         # Setup logging directory
         if log_dir is None:
@@ -507,25 +527,61 @@ class LiveTradingRunner:
             traceback.print_exc()
 
     def _emit_derived_portfolio_metrics(self, account: dict) -> None:
-        """Emit drawdown and day-P&L gauges from a freshly fetched account dict."""
+        """Emit drawdown and day-P&L gauges from a freshly fetched account dict.
+
+        Persists `_peak_equity` and `_session_open_equity` to the state manager
+        on every update so process restarts don't reset these baselines to 0.
+        Resets `_session_open_equity` only when the calendar trading day rolls
+        over (ET).
+        """
         equity = float(account.get('portfolio_value', 0))
+
+        # Determine "today" in ET so the session boundary aligns with US market days.
+        from src.utils.timezone import tz as _tz
+        today_str = _tz.now().date().isoformat()
+
+        peak_changed = False
         if equity > self._peak_equity:
             self._peak_equity = equity
+            peak_changed = True
         drawdown_pct = 0.0 if self._peak_equity <= 0 else (
             (equity - self._peak_equity) / self._peak_equity * 100.0
         )
         self.metrics_registry.update_drawdown(drawdown_pct)
 
-        # Alpaca account exposes `last_equity` (prior session close). Fall back
-        # to an in-process open-of-session snapshot if that field isn't present.
+        # Day P&L: prefer broker's last_equity if exposed (Alpaca does, IBKR
+        # does not). Otherwise use the persisted session-open equity, refreshing
+        # when the trading day rolls over.
         last_equity = float(account.get('last_equity') or 0)
+        session_changed = False
         if last_equity > 0:
             day_pnl = equity - last_equity
         else:
-            if self._session_open_equity is None and self._is_market_open():
+            # Roll the session if the calendar day changed, OR if we don't yet
+            # have a baseline and markets are open.
+            day_rolled = self._session_open_date != today_str
+            need_initial = self._session_open_equity is None and self._is_market_open()
+            if day_rolled or need_initial:
                 self._session_open_equity = equity
+                self._session_open_date = today_str
+                session_changed = True
             day_pnl = equity - (self._session_open_equity or equity)
         self.metrics_registry.update_day_pnl(day_pnl)
+
+        # Persist when anything changed, so the next process restart has the
+        # right baselines. Cheap: state file is small and writes are atomic.
+        if peak_changed or session_changed:
+            try:
+                sm = getattr(self.adapter, 'state_manager', None)
+                if sm is not None and hasattr(sm, 'update_runner_session_state'):
+                    sm.update_runner_session_state(
+                        self._persist_strategy,
+                        peak_equity_usd=self._peak_equity if peak_changed else None,
+                        session_open_equity_usd=self._session_open_equity if session_changed else None,
+                        session_open_date=self._session_open_date if session_changed else None,
+                    )
+            except Exception as e:
+                logger.error(f"Failed to persist runner session state (non-fatal): {e}")
 
     def _compute_strategy_equity(self, initial_capital: float, account: dict) -> float:
         """Compute equity attributed to this strategy, in USD.
