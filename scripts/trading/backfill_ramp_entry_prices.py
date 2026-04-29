@@ -65,10 +65,16 @@ def main() -> int:
         default="ramp",
         help="Strategy key in the state file. Defaults to 'ramp'.",
     )
+    parser.add_argument(
+        "--client-id",
+        type=int,
+        default=88,
+        help="IBKR client ID (must not collide with running services). Default 88.",
+    )
     args = parser.parse_args()
 
     # Connect to broker
-    print(f"[backfill] Connecting to IBKR (clientId=99) to read live avg_entry_price...")
+    print(f"[backfill] Connecting to IBKR (clientId={args.client_id}) to read live avg_entry_price...")
     try:
         from src.trading.brokers.ibkr.ibkr_broker import IBKRBroker
         from src.trading.brokers.ibkr.config import IBKRConfig
@@ -76,7 +82,7 @@ def main() -> int:
         print(f"[backfill] FATAL: could not import IBKR broker: {e}")
         return 2
 
-    broker = IBKRBroker(IBKRConfig(host="127.0.0.1", port=4002, client_id=99))
+    broker = IBKRBroker(IBKRConfig(host="127.0.0.1", port=4002, client_id=args.client_id))
     try:
         broker.start()
         broker_positions = broker.get_stock_positions() or []
