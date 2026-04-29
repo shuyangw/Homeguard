@@ -1364,6 +1364,26 @@ def main():
             data_provider = create_data_provider(broker=broker)
             logger.success(f"Data provider ready: {data_provider.name}")
 
+        # Build the PriceOracle. Streaming first (Alpaca live IEX), then broker
+        # REST quote, then broker portfolio snapshot (cached). This codifies
+        # "use the freshest live source available" for everything that needs
+        # a current mark, regardless of which broker handles execution.
+        # See src/trading/price_oracle.py.
+        from src.trading.price_oracle import (
+            PriceOracle,
+            StreamingPriceProvider,
+            BrokerQuotePriceProvider,
+            BrokerPortfolioPriceProvider,
+        )
+        from src.streaming.interface import StreamingProviderInterface
+        oracle_providers = []
+        if isinstance(data_provider, StreamingProviderInterface):
+            oracle_providers.append(StreamingPriceProvider(streaming=data_provider))
+        oracle_providers.append(BrokerQuotePriceProvider(broker=broker))
+        oracle_providers.append(BrokerPortfolioPriceProvider(broker=broker))
+        price_oracle = PriceOracle(providers=oracle_providers)
+        logger.info(f"PriceOracle: {len(oracle_providers)} providers ({', '.join(type(p).__name__ for p in oracle_providers)})")
+
         # Create strategy adapter
         logger.info("")
         logger.info(f"Creating {args.strategy} adapter...")
@@ -1440,6 +1460,10 @@ def main():
         else:
             logger.error(f"Unknown strategy: {args.strategy}")
             return 1
+
+        # Inject the oracle into the adapter so its sizing/post-state code can
+        # use the same live-price source as the metrics emission path.
+        adapter._price_oracle = price_oracle
 
         logger.success("Adapter created successfully")
         logger.info("")

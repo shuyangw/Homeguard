@@ -1458,22 +1458,31 @@ class RAMPLiveAdapter(StrategyAdapter):
                     continue
 
                 try:
-                    # Get current price
-                    quote = self.broker.get_latest_quote(symbol)
-                    if not quote:
-                        logger.warning(f"[RAMP] No quote available for {symbol}")
-                        continue
-
-                    # Try ask price first, fall back to bid if ask is 0 or missing
-                    ask_price = float(quote.get('ask', 0))
-                    bid_price = float(quote.get('bid', 0))
-                    current_price = ask_price if ask_price > 0 else bid_price
+                    # Resolve current price via the PriceOracle: streaming
+                    # (live Alpaca IEX) -> broker quote -> broker portfolio.
+                    # Falls back to broker.get_latest_quote directly if the
+                    # oracle wasn't injected (older callers / tests).
+                    current_price = 0.0
+                    oracle = getattr(self, '_price_oracle', None)
+                    if oracle is not None:
+                        pp = oracle.get_live_price(symbol)
+                        if pp is not None:
+                            current_price = pp.price
+                            logger.debug(f"[RAMP] {symbol} price ${pp.price:.2f} via {pp.source}")
 
                     if current_price <= 0:
-                        logger.warning(
-                            f"[RAMP] Skipping {symbol} - invalid quote "
-                            f"(ask={ask_price}, bid={bid_price})"
-                        )
+                        # Oracle absent or all providers returned None -- legacy
+                        # path so behavior matches pre-oracle code.
+                        quote = self.broker.get_latest_quote(symbol)
+                        if not quote:
+                            logger.warning(f"[RAMP] No quote available for {symbol}")
+                            continue
+                        ask_price = float(quote.get('ask', 0))
+                        bid_price = float(quote.get('bid', 0))
+                        current_price = ask_price if ask_price > 0 else bid_price
+
+                    if current_price <= 0:
+                        logger.warning(f"[RAMP] Skipping {symbol} - invalid price")
                         continue
 
                     # Calculate shares to buy using FLOOR to never exceed target
