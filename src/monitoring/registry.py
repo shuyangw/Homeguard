@@ -234,6 +234,20 @@ class MetricsRegistry:
         self.set_gauge('hg_strategy_equity_usd', float(equity_usd),
                        {'strategy': self.strategy})
 
+    def update_strategy_drawdown(self, drawdown_pct: float) -> None:
+        """Per-strategy drawdown vs peak strategy equity, in percent (<=0).
+
+        Use this with strategy_equity_usd (the strategy's slice of a shared
+        broker account) rather than the whole broker portfolio_value. The
+        broker-level `update_drawdown` is misleading when only a small portion
+        of the broker account is allocated to the strategy -- a $96k RAMP
+        position drawing down $3.5k inside a $1M IBKR paper account shows
+        up as -0.31% portfolio drawdown but is actually -3.5% strategy
+        drawdown.
+        """
+        self.set_gauge('hg_strategy_drawdown_pct', float(drawdown_pct),
+                       {'strategy': self.strategy})
+
     def update_position(self, symbol: str, qty: float,
                         unrealized_pnl: float) -> None:
         """Update per-position gauges."""

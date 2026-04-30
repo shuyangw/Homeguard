@@ -127,19 +127,72 @@ def _emit_metrics_tick(adapter, metrics_registry, state) -> None:
         equity = float(account.get('portfolio_value', 0) or 0)
         update_strategy_equity(metrics_registry, equity)
 
-    # ---- Drawdown + day PnL (in-process tracking, since Coinbase has no last_equity) ----
+    # ---- Drawdown + day PnL ----
+    # Coinbase has no last_equity, so we track peak/session-open in our own
+    # state. State is loaded from StrategyStateManager at sidecar startup
+    # and persisted on every change so it survives process restarts (the
+    # 8 PM auto-stop reset both gauges to 0% pre-fix; see commit history
+    # for the matching RAMP fix in run_live_paper_trading.py).
     try:
+        from src.utils.timezone import tz as _tz
+        today_str = _tz.now().date().isoformat()
+
+        peak_changed = False
         if equity > state['peak_equity']:
             state['peak_equity'] = equity
+            peak_changed = True
         drawdown_pct = 0.0 if state['peak_equity'] <= 0 else (
             (equity - state['peak_equity']) / state['peak_equity'] * 100.0
         )
         metrics_registry.update_drawdown(drawdown_pct)
 
-        if state['session_open_equity'] is None and equity > 0:
+        # Strategy-level drawdown: equity here IS the strategy slice (CSCM
+        # is not co-located with other strategies on the same broker), so
+        # it would coincide with the broker peak today. Track it as a
+        # separate field anyway, matching the RAMP wiring, so the new
+        # `hg_strategy_drawdown_pct{strategy="cscm"}` gauge stays available
+        # if CSCM later moves to a shared broker.
+        peak_strategy_changed = False
+        if equity > state['peak_strategy_equity']:
+            state['peak_strategy_equity'] = equity
+            peak_strategy_changed = True
+        strategy_drawdown_pct = 0.0 if state['peak_strategy_equity'] <= 0 else (
+            (equity - state['peak_strategy_equity'])
+            / state['peak_strategy_equity'] * 100.0
+        )
+        from src.monitoring.hooks import update_strategy_drawdown
+        update_strategy_drawdown(metrics_registry, strategy_drawdown_pct)
+
+        # Roll session_open_equity at ET-day boundary, OR set initial.
+        session_changed = False
+        day_rolled = state['session_open_date'] != today_str
+        need_initial = state['session_open_equity'] is None and equity > 0
+        if day_rolled or need_initial:
             state['session_open_equity'] = equity
+            state['session_open_date'] = today_str
+            session_changed = True
         day_pnl = equity - (state['session_open_equity'] or equity)
         metrics_registry.update_day_pnl(day_pnl)
+
+        # Persist when anything changed so the next process restart has
+        # the right baselines. Atomic, idempotent.
+        if peak_changed or peak_strategy_changed or session_changed:
+            try:
+                sm = getattr(adapter, 'state_manager', None)
+                if sm is not None and hasattr(sm, 'update_runner_session_state'):
+                    sm.update_runner_session_state(
+                        STRATEGY_NAME,
+                        peak_equity_usd=state['peak_equity'] if peak_changed else None,
+                        peak_strategy_equity_usd=(
+                            state['peak_strategy_equity'] if peak_strategy_changed else None
+                        ),
+                        session_open_equity_usd=(
+                            state['session_open_equity'] if session_changed else None
+                        ),
+                        session_open_date=state['session_open_date'] if session_changed else None,
+                    )
+            except Exception as e:
+                logger.error(f"[CSCM-metrics] persist runner session state failed: {e}")
     except Exception as e:
         logger.error(f"[CSCM-metrics] derived portfolio metrics failed: {e}")
 
@@ -195,7 +248,35 @@ def _start_metrics_sidecar(adapter, metrics_registry, initial_capital_usd: float
     """Start daemon thread that emits CSCM metrics periodically."""
     from src.monitoring.hooks import update_strategy_initial_capital
 
-    state = {'peak_equity': 0.0, 'session_open_equity': None}
+    # Load persisted peak/session baselines so drawdown and day-PnL gauges
+    # don't reset to 0 on every process restart. Mirrors the RAMP runner
+    # in run_live_paper_trading.py:310-323.
+    state = {
+        'peak_equity': 0.0,
+        'peak_strategy_equity': 0.0,
+        'session_open_equity': None,
+        'session_open_date': None,
+    }
+    try:
+        sm = getattr(adapter, 'state_manager', None)
+        if sm is not None and hasattr(sm, 'get_runner_session_state'):
+            persisted = sm.get_runner_session_state(STRATEGY_NAME)
+            state['peak_equity'] = float(persisted.get('peak_equity_usd') or 0.0)
+            state['peak_strategy_equity'] = float(
+                persisted.get('peak_strategy_equity_usd') or 0.0
+            )
+            state['session_open_equity'] = persisted.get('session_open_equity_usd')
+            state['session_open_date'] = persisted.get('session_open_date')
+            if state['peak_equity'] > 0 or state['peak_strategy_equity'] > 0:
+                logger.info(
+                    f"[CSCM-metrics] Loaded persisted state: "
+                    f"peak_equity=${state['peak_equity']:,.2f}, "
+                    f"peak_strategy_equity=${state['peak_strategy_equity']:,.2f}, "
+                    f"session_open=${state['session_open_equity']}, "
+                    f"date={state['session_open_date']}"
+                )
+    except Exception as e:
+        logger.warning(f"[CSCM-metrics] Failed to load persisted state (non-fatal): {e}")
 
     # Emit static starting-capital gauge once at startup so dashboards can show it
     # alongside the dynamic deployed-capital series.

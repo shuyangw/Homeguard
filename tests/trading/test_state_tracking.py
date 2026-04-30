@@ -373,6 +373,7 @@ class TestRunnerSessionState:
     def test_get_returns_none_when_unset(self, state_manager):
         out = state_manager.get_runner_session_state('ramp')
         assert out['peak_equity_usd'] is None
+        assert out['peak_strategy_equity_usd'] is None
         assert out['session_open_equity_usd'] is None
         assert out['session_open_date'] is None
 
@@ -380,13 +381,23 @@ class TestRunnerSessionState:
         state_manager.update_runner_session_state(
             'ramp',
             peak_equity_usd=1023456.78,
+            peak_strategy_equity_usd=99876.54,
             session_open_equity_usd=1014351.11,
             session_open_date='2026-04-28',
         )
         out = state_manager.get_runner_session_state('ramp')
         assert out['peak_equity_usd'] == 1023456.78
+        assert out['peak_strategy_equity_usd'] == 99876.54
         assert out['session_open_equity_usd'] == 1014351.11
         assert out['session_open_date'] == '2026-04-28'
+
+    def test_round_trip_peak_strategy_equity_independently(self, state_manager):
+        """peak_strategy_equity_usd can be updated without touching peak_equity_usd."""
+        state_manager.update_runner_session_state('ramp', peak_equity_usd=1000.0)
+        state_manager.update_runner_session_state('ramp', peak_strategy_equity_usd=99.5)
+        out = state_manager.get_runner_session_state('ramp')
+        assert out['peak_equity_usd'] == 1000.0
+        assert out['peak_strategy_equity_usd'] == 99.5
 
     def test_partial_update_preserves_other_fields(self, state_manager):
         state_manager.update_runner_session_state(

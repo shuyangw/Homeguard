@@ -90,6 +90,20 @@ def update_strategy_equity(
     registry.update_strategy_equity(equity_usd)
 
 
+def update_strategy_drawdown(
+    registry: Optional['MetricsRegistry'],
+    drawdown_pct: float,
+) -> None:
+    """Report the strategy's drawdown from peak strategy equity, in percent.
+
+    No-op if registry is None. Drawdown should be a non-positive number;
+    callers compute it as `(equity - peak) / peak * 100` and clamp at 0.
+    """
+    if registry is None:
+        return
+    registry.update_strategy_drawdown(drawdown_pct)
+
+
 def inc_rebalance_error(
     registry: Optional['MetricsRegistry'],
     phase: str = 'other',

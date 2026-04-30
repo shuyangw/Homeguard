@@ -652,13 +652,25 @@ class StrategyStateManager:
     def get_runner_session_state(self, strategy: str) -> Dict[str, Any]:
         """Return persisted runner session state for `strategy`.
 
-        Keys: peak_equity_usd (float), session_open_equity_usd (float),
-        session_open_date (str YYYY-MM-DD ET). Missing keys return None values.
+        Keys:
+            peak_equity_usd: float -- broker portfolio_value all-time high.
+                Drives `hg_portfolio_drawdown_pct`.
+            peak_strategy_equity_usd: float -- strategy slice all-time high
+                (initial_capital + attributed unrealized PnL). Drives
+                `hg_strategy_drawdown_pct` -- correctly scoped when multiple
+                strategies share a broker account (e.g. RAMP on a $1M IBKR
+                paper account where the strategy slice is only ~$96k).
+            session_open_equity_usd: float -- broker portfolio_value at the
+                start of the current ET trading day.
+            session_open_date: str (YYYY-MM-DD ET).
+
+        Missing keys return None values.
         """
         self._load_state()
         strat = self._state.get('strategies', {}).get(strategy, {}) or {}
         return {
             'peak_equity_usd': strat.get('peak_equity_usd'),
+            'peak_strategy_equity_usd': strat.get('peak_strategy_equity_usd'),
             'session_open_equity_usd': strat.get('session_open_equity_usd'),
             'session_open_date': strat.get('session_open_date'),
         }
@@ -667,6 +679,7 @@ class StrategyStateManager:
         self,
         strategy: str,
         peak_equity_usd: Optional[float] = None,
+        peak_strategy_equity_usd: Optional[float] = None,
         session_open_equity_usd: Optional[float] = None,
         session_open_date: Optional[str] = None,
     ) -> None:
@@ -677,6 +690,8 @@ class StrategyStateManager:
         strat = self._state['strategies'][strategy]
         if peak_equity_usd is not None:
             strat['peak_equity_usd'] = float(peak_equity_usd)
+        if peak_strategy_equity_usd is not None:
+            strat['peak_strategy_equity_usd'] = float(peak_strategy_equity_usd)
         if session_open_equity_usd is not None:
             strat['session_open_equity_usd'] = float(session_open_equity_usd)
         if session_open_date is not None:

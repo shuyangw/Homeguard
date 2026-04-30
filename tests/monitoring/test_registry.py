@@ -151,6 +151,18 @@ class TestHighLevelUpdates:
         reg.update_drawdown(5.2)
         assert reg.get_gauge('hg_portfolio_drawdown_pct') == 5.2
 
+    def test_update_strategy_drawdown_is_labeled(self):
+        """Per-strategy drawdown gauge must carry the strategy label so
+        Grafana panels can group by it (the broker-level update_drawdown
+        gauge is unlabeled and gets keyed by systemd job)."""
+        reg = MetricsRegistry(strategy='ramp')
+        reg.update_strategy_drawdown(-3.5)
+        assert reg.get_gauge('hg_strategy_drawdown_pct',
+                             {'strategy': 'ramp'}) == -3.5
+        # Without the label, the lookup must miss -- proves the label
+        # is required and the gauge is per-strategy.
+        assert reg.get_gauge('hg_strategy_drawdown_pct') is None
+
     def test_update_day_pnl(self):
         reg = MetricsRegistry(strategy='omr')
         reg.update_day_pnl(-150.0)

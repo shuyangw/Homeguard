@@ -327,7 +327,7 @@
     {
       "id": 2,
       "title": "Drawdown % by Strategy",
-      "description": "Peak-to-trough drawdown per strategy as a percentage of peak equity. Source: `hg_portfolio_drawdown_pct`, computed in each strategy's sidecar from (equity - peak_equity) / peak_equity * 100. Always <= 0 by construction (clamped at max=0). Green > -5%, yellow -5% to -20%, red < -20%. Flat 0 line = strategy is at all-time high or no samples yet.",
+      "description": "Peak-to-trough drawdown per strategy as a percentage of peak strategy equity. Source: `hg_strategy_drawdown_pct{strategy=...}`, computed from (strategy_equity - peak_strategy_equity) / peak_strategy_equity * 100, where strategy_equity is the strategy's slice of its broker account (initial_capital + attributed unrealized PnL), NOT the broker portfolio_value. Always <= 0 by construction. Green > -5%, yellow -5% to -20%, red < -20%. Persisted across process restarts via StrategyStateManager.",
       "type": "timeseries",
       "gridPos": {
         "x": 12,
@@ -345,8 +345,8 @@
             "type": "prometheus",
             "uid": "victoriametrics"
           },
-          "expr": "hg_portfolio_drawdown_pct",
-          "legendFormat": "{{job}}",
+          "expr": "hg_strategy_drawdown_pct",
+          "legendFormat": "{{strategy}}",
           "refId": "A"
         }
       ],

@@ -305,6 +305,7 @@ class LiveTradingRunner:
         # `_persist_strategy` is the strategy key used for state lookups.
         self._persist_strategy: str = adapter.__class__.__name__.replace('LiveAdapter', '').lower()
         self._peak_equity: float = 0.0
+        self._peak_strategy_equity: float = 0.0
         self._session_open_equity: Optional[float] = None
         self._session_open_date: Optional[str] = None
         try:
@@ -312,11 +313,13 @@ class LiveTradingRunner:
             if sm is not None and hasattr(sm, 'get_runner_session_state'):
                 persisted = sm.get_runner_session_state(self._persist_strategy)
                 self._peak_equity = float(persisted.get('peak_equity_usd') or 0.0)
+                self._peak_strategy_equity = float(persisted.get('peak_strategy_equity_usd') or 0.0)
                 self._session_open_equity = persisted.get('session_open_equity_usd')
                 self._session_open_date = persisted.get('session_open_date')
-                if self._peak_equity > 0:
+                if self._peak_equity > 0 or self._peak_strategy_equity > 0:
                     logger.info(
                         f"Loaded persisted session state: peak_equity=${self._peak_equity:,.2f}, "
+                        f"peak_strategy_equity=${self._peak_strategy_equity:,.2f}, "
                         f"session_open=${self._session_open_equity}, date={self._session_open_date}"
                     )
         except Exception as e:
@@ -583,6 +586,42 @@ class LiveTradingRunner:
             except Exception as e:
                 logger.error(f"Failed to persist runner session state (non-fatal): {e}")
 
+    def _emit_strategy_drawdown(self, strategy_equity: float) -> None:
+        """Emit `hg_strategy_drawdown_pct{strategy=...}` based on strategy slice.
+
+        Tracks `_peak_strategy_equity` separately from `_peak_equity` so the
+        per-strategy drawdown reflects the strategy's actual portion of a
+        shared broker account (e.g. RAMP's $96k slice of a $1M IBKR paper
+        account), not the broker portfolio. Persists the new peak so it
+        survives process restarts.
+        """
+        if strategy_equity <= 0:
+            return
+        peak_changed = False
+        if strategy_equity > self._peak_strategy_equity:
+            self._peak_strategy_equity = strategy_equity
+            peak_changed = True
+        drawdown_pct = 0.0 if self._peak_strategy_equity <= 0 else (
+            (strategy_equity - self._peak_strategy_equity)
+            / self._peak_strategy_equity * 100.0
+        )
+        try:
+            from src.monitoring.hooks import update_strategy_drawdown
+            update_strategy_drawdown(self.metrics_registry, drawdown_pct)
+        except Exception as e:
+            logger.error(f"Failed to emit strategy drawdown (non-fatal): {e}")
+
+        if peak_changed:
+            try:
+                sm = getattr(self.adapter, 'state_manager', None)
+                if sm is not None and hasattr(sm, 'update_runner_session_state'):
+                    sm.update_runner_session_state(
+                        self._persist_strategy,
+                        peak_strategy_equity_usd=self._peak_strategy_equity,
+                    )
+            except Exception as e:
+                logger.error(f"Failed to persist peak_strategy_equity (non-fatal): {e}")
+
     def _compute_strategy_equity(self, initial_capital: float, account: dict) -> float:
         """Compute equity attributed to this strategy, in USD.
 
@@ -812,6 +851,7 @@ class LiveTradingRunner:
                                     self.metrics_registry,
                                     strategy_equity,
                                 )
+                                self._emit_strategy_drawdown(strategy_equity)
                                 self._emit_derived_portfolio_metrics(account)
                                 self._emit_position_and_strategy_metrics(
                                     update_position_metrics, update_strategy_metrics
