@@ -181,6 +181,50 @@ Note: `--strategy multi` mode exists in the runner but only launches one strateg
 - Walk-forward validated: **0.846 Sharpe ratio out-of-sample** (2022-2024)
 - Docs: `docs/strategies/RAMP_STRATEGY.md`, `docs/strategies/20251212_RAMP_WALK_FORWARD_VALIDATION.md`
 
+## Live Trading Investigation Playbook
+
+**ALWAYS try these canned commands FIRST before any other diagnostic work.** They cover the 80% of investigation questions and run in seconds.
+
+The local `~/.ssh/config` defines a `Host ec2` alias, so any command below can run on EC2 by prefixing with `ssh ec2 'cd ~/Homeguard && source venv/bin/activate && <cmd>'`.
+
+| Question | Canned command | Notes |
+|----------|---------------|-------|
+| What is each strategy doing right now? | `python -m src.trading.decision_log status` | One-shot snapshot of every strategy's most-recent record (timestamp, age, regime, exec count, equity, status). Single round-trip. **Always start here.** |
+| Show the most recent decision for strategy X | `python -m src.trading.decision_log show <ramp\|omr\|mp\|cscm>` | Pretty-printed record (preconditions, regime, top-momentum, executions, post-state). Add `--json` for raw. |
+| List recent decisions for strategy X | `python -m src.trading.decision_log list <strategy> --days 7` | Tabular view of last N days. |
+| Why was symbol Y traded / skipped on date Z? | `python -m src.trading.decision_log explain <strategy> --symbol Y --date YYYY-MM-DD` | Per-symbol breakdown of logic + execution + precondition gates. |
+| Find decisions matching a predicate | `python -m src.trading.decision_log grep <strategy> --where 'regime=BEAR' --days 30` | Supported: `regime=NAME`, `executions:length=N`, `error.stage=NAME`, `preconditions.all_passed=true\|false`. |
+| Cross-strategy aggregates over a window | `python -m src.trading.decision_log summary --days 7` | Triggers, clean/blocked/errored, fill ratios, per strategy. |
+| Is the multi-strategy service running? | `ssh ec2 'systemctl is-active homeguard-multi homeguard-cscm'` | Returns `active` / `inactive` / `failed` per service. |
+| Recent service logs | `ssh ec2 'sudo journalctl -u homeguard-multi -n 200 --no-pager'` | Use `-f` for streaming. |
+| Live metrics | `ssh ec2 'curl -s http://127.0.0.1:8082/metrics \| grep "^hg_"'` | Prometheus scrape endpoint. |
+| Persisted strategy state (positions, runner session) | `ssh ec2 'cat ~/Homeguard/data/trading/strategy_positions.json \| jq .'` | Source of truth for entry_price, qty, peak_equity, session_open_equity. |
+| Broker positions (live) | `ssh ec2 'cd ~/Homeguard && source venv/bin/activate && python -c "from src.trading.brokers.broker_factory import create_broker_for_strategy; b=create_broker_for_strategy(\"ramp\"); [print(p) for p in b.get_stock_positions()]"'` | Bypasses caches; hits IBKR/Alpaca directly. |
+
+### When the canned commands don't answer the question
+
+The `decision_log` CLI surfaces the structured per-trigger record, but live-trading bugs frequently hide in cross-cutting state: streaming buffer freshness, IBKR Gateway connection cap, EventBridge cron timing, dashboard provisioning drift, in-process metrics that never persisted. **If two `decision_log` queries can't surface the answer, STOP repeating canned queries and switch into intelligent reasoning mode.**
+
+In intelligent reasoning mode, treat the codebase and runtime state as a single graph of evidence and form hypotheses by cross-referencing:
+
+- **Decision log raw JSONL** (`data/trading/decisions/<strategy>_YYYYMMDD.jsonl`) — the `_latest/` snapshot only has the LAST record; the per-day file has every fire of the day. Use `jq` directly when the CLI's predicates aren't expressive enough.
+- **Strategy state file** (`data/trading/strategy_positions.json`) — positions, entry prices, last_execution timestamps, peak/session-open equity. Compare against decision log post_state to detect drift between adapter intent and persisted state.
+- **Service journals** (`journalctl -u homeguard-multi -u homeguard-cscm`) — Python tracebacks, regime transitions, IBKR connection events, websocket reconnects. The decision log records only completed fires; mid-fire crashes show up here.
+- **Monitoring metrics** (`/metrics` endpoint, Grafana panels under `infra/grafana/dashboards/`) — gauge/counter values reflect the LIVE state of the runner, not the decision log's frozen snapshot. Useful for "is this current?" vs "what was decided at 3:55 PM?"
+- **Broker state directly** (IBKR `ib.portfolio()` via the broker class) — authoritative for cost basis, qty, and live mark; everything else is downstream.
+- **Streaming buffer** (`src/streaming/`) — recent bars per symbol; if oracle gives stale prices, this is where to look.
+- **Recent commits** (`git log --oneline -50`) — most observability bugs are recent regressions; correlating a behavior change with a commit window is often the fastest path.
+- **Infra config** — `infra/terraform/scheduled_start_stop.tf` for cron timing, `config/trading/broker_routing.yaml` for which broker each strategy uses, `config/trading/strategy_toggle.yaml` for enabled/shutdown_requested flags.
+
+**Reasoning rules:**
+1. Don't repeat queries that already returned no data — they will not start returning data.
+2. Form a concrete hypothesis BEFORE the next query. ("Did the EventBridge cron fire at 3:55 PM ET?" not "let me check the cron.")
+3. Cross-reference at least two data sources before concluding. Decision log + journal log. State file + broker portfolio. Metrics + decision log post_state. Disagreement between sources is itself diagnostic.
+4. When investigating "why did X happen?" prefer foreground commands with timeouts over background-and-poll. Background mode is for genuinely long-running tasks (>30s).
+5. If a command takes more than 2-3 attempts to get right (quoting, paths, escaping), write a `/tmp/<name>.py` script and run it as a file rather than inlining as `python -c`.
+
+The goal is to converge on the answer in 3-5 commands by stacking evidence, not to brute-force-search 30 commands hoping one surfaces it.
+
 ## Agents, Commands & Skills
 
 Slash commands: `/code-review` (pre-commit review), `/feature-dev` (guided implementation)
