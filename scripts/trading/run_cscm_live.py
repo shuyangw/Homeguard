@@ -130,9 +130,10 @@ def _emit_metrics_tick(adapter, metrics_registry, state) -> None:
     # ---- Drawdown + day PnL ----
     # Coinbase has no last_equity, so we track peak/session-open in our own
     # state. State is loaded from StrategyStateManager at sidecar startup
-    # and persisted on every change so it survives process restarts (the
-    # 8 PM auto-stop reset both gauges to 0% pre-fix; see commit history
-    # for the matching RAMP fix in run_live_paper_trading.py).
+    # and persisted on every change so it survives process restarts.
+    # Strategy drawdown is NOT emitted as a separate gauge -- it's derived
+    # in PromQL from `hg_strategy_equity_usd` history. See the
+    # "Drawdown % by Strategy" panel in portfolio_overview.json.
     try:
         from src.utils.timezone import tz as _tz
         today_str = _tz.now().date().isoformat()
@@ -145,23 +146,6 @@ def _emit_metrics_tick(adapter, metrics_registry, state) -> None:
             (equity - state['peak_equity']) / state['peak_equity'] * 100.0
         )
         metrics_registry.update_drawdown(drawdown_pct)
-
-        # Strategy-level drawdown: equity here IS the strategy slice (CSCM
-        # is not co-located with other strategies on the same broker), so
-        # it would coincide with the broker peak today. Track it as a
-        # separate field anyway, matching the RAMP wiring, so the new
-        # `hg_strategy_drawdown_pct{strategy="cscm"}` gauge stays available
-        # if CSCM later moves to a shared broker.
-        peak_strategy_changed = False
-        if equity > state['peak_strategy_equity']:
-            state['peak_strategy_equity'] = equity
-            peak_strategy_changed = True
-        strategy_drawdown_pct = 0.0 if state['peak_strategy_equity'] <= 0 else (
-            (equity - state['peak_strategy_equity'])
-            / state['peak_strategy_equity'] * 100.0
-        )
-        from src.monitoring.hooks import update_strategy_drawdown
-        update_strategy_drawdown(metrics_registry, strategy_drawdown_pct)
 
         # Roll session_open_equity at ET-day boundary, OR set initial.
         session_changed = False
@@ -176,16 +160,13 @@ def _emit_metrics_tick(adapter, metrics_registry, state) -> None:
 
         # Persist when anything changed so the next process restart has
         # the right baselines. Atomic, idempotent.
-        if peak_changed or peak_strategy_changed or session_changed:
+        if peak_changed or session_changed:
             try:
                 sm = getattr(adapter, 'state_manager', None)
                 if sm is not None and hasattr(sm, 'update_runner_session_state'):
                     sm.update_runner_session_state(
                         STRATEGY_NAME,
                         peak_equity_usd=state['peak_equity'] if peak_changed else None,
-                        peak_strategy_equity_usd=(
-                            state['peak_strategy_equity'] if peak_strategy_changed else None
-                        ),
                         session_open_equity_usd=(
                             state['session_open_equity'] if session_changed else None
                         ),

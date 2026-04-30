@@ -84,24 +84,14 @@ def update_strategy_equity(
     registry: Optional['MetricsRegistry'],
     equity_usd: float,
 ) -> None:
-    """Report the strategy's current equity (cash + positions). Emit per-tick."""
-    if registry is None:
-        return
-    registry.update_strategy_equity(equity_usd)
+    """Report the strategy's current equity (cash + positions). Emit per-tick.
 
-
-def update_strategy_drawdown(
-    registry: Optional['MetricsRegistry'],
-    drawdown_pct: float,
-) -> None:
-    """Report the strategy's drawdown from peak strategy equity, in percent.
-
-    No-op if registry is None. Drawdown should be a non-positive number;
-    callers compute it as `(equity - peak) / peak * 100` and clamp at 0.
+    Strategy drawdown is computed in Grafana from this gauge's history via
+    max_over_time -- there is no separate drawdown gauge to emit.
     """
     if registry is None:
         return
-    registry.update_strategy_drawdown(drawdown_pct)
+    registry.update_strategy_equity(equity_usd)
 
 
 def inc_rebalance_error(

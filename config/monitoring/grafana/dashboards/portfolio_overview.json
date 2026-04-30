@@ -327,7 +327,7 @@
     {
       "id": 2,
       "title": "Drawdown % by Strategy",
-      "description": "Two series per strategy: (1) `hg_strategy_drawdown_pct{strategy=...}` -- accurate strategy-slice drawdown, computed from initial_capital + attributed unrealized PnL. (2) `hg_portfolio_drawdown_pct{job=...}` -- legacy broker-level drawdown kept for historical continuity (data exists from before the strategy gauge was introduced). Always <= 0. Green > -5%, yellow -5% to -20%, red < -20%. Both metrics persisted across process restarts via StrategyStateManager.",
+      "description": "One line per strategy. Drawdown is derived in PromQL from `hg_strategy_equity_usd` history: (equity - peak) / peak * 100, where peak = max_over_time(equity[365d]). This means there's no separate drawdown gauge to emit and no peak to persist -- the strategy_equity gauge is the single source of truth, and drawdown is just a query-time view of it. Always <= 0. Green > -5%, yellow -5% to -20%, red < -20%. Continuous historical line because the equity gauge has been emitted for both strategies as long as the metrics layer existed.",
       "type": "timeseries",
       "gridPos": {
         "x": 12,
@@ -345,18 +345,9 @@
             "type": "prometheus",
             "uid": "victoriametrics"
           },
-          "expr": "hg_strategy_drawdown_pct",
-          "legendFormat": "{{strategy}} (strategy)",
+          "expr": "clamp_max((hg_strategy_equity_usd - max_over_time(hg_strategy_equity_usd[365d])) / max_over_time(hg_strategy_equity_usd[365d]) * 100, 0)",
+          "legendFormat": "{{strategy}}",
           "refId": "A"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "victoriametrics"
-          },
-          "expr": "hg_portfolio_drawdown_pct",
-          "legendFormat": "{{job}} (broker)",
-          "refId": "B"
         }
       ],
       "fieldConfig": {
