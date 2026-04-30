@@ -239,6 +239,19 @@ class MetricsRegistry:
         self.set_gauge('hg_strategy_equity_usd', float(equity_usd),
                        {'strategy': self.strategy})
 
+    def update_strategy_last_decision_timestamp(self, ts: float) -> None:
+        """Wall-clock seconds when this strategy's last decision was recorded.
+
+        Sourced from the mtime of `data/trading/decisions/_latest/<strategy>.json`,
+        which the decision-log writer touches on every trigger fire. Distinct
+        from `hg_strategy_last_signal_timestamp` -- that gauge is set to
+        `time.time()` on every metrics tick (process-liveness), which makes
+        it useless as "time since last decision" for low-cadence strategies
+        like CSCM (weekly rebalance).
+        """
+        self.set_gauge('hg_strategy_last_decision_timestamp', float(ts),
+                       {'strategy': self.strategy})
+
     def update_position(self, symbol: str, qty: float,
                         unrealized_pnl: float) -> None:
         """Update per-position gauges."""

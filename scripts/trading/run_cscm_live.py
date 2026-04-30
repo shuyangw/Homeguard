@@ -78,6 +78,7 @@ def _emit_metrics_tick(adapter, metrics_registry, state) -> None:
         update_position_metrics,
         update_strategy_metrics,
         update_strategy_equity,
+        update_strategy_last_decision_timestamp,
     )
 
     broker = adapter.broker
@@ -223,6 +224,17 @@ def _emit_metrics_tick(adapter, metrics_registry, state) -> None:
         update_process_metrics(metrics_registry)
     except Exception as e:
         logger.error(f"[CSCM-metrics] market/process metrics failed: {e}")
+
+    # ---- Decision-age gauge (mtime of decision-log _latest snapshot) ----
+    try:
+        from src.trading.decision_log import paths as _dl_paths
+        _latest = _dl_paths.latest_path(STRATEGY_NAME)
+        if _latest.exists():
+            update_strategy_last_decision_timestamp(
+                metrics_registry, _latest.stat().st_mtime,
+            )
+    except Exception as e:
+        logger.error(f"[CSCM-metrics] decision-timestamp emit failed: {e}")
 
 
 def _start_metrics_sidecar(adapter, metrics_registry, initial_capital_usd: float) -> threading.Thread:

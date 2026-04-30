@@ -144,8 +144,8 @@
     },
     {
       "id": 4,
-      "title": "Signal Freshness (seconds)",
-      "description": "Seconds elapsed since the strategy last completed a sidecar metrics tick. Computed as `time() - hg_strategy_last_signal_timestamp`. Green < 60s, yellow 60-300s, red > 300s. If the line climbs monotonically past the red threshold, the strategy process is hung or blocked on I/O.",
+      "title": "Decision Age (seconds)",
+      "description": "Seconds since the strategy's last recorded decision. Source: `time() - hg_strategy_last_decision_timestamp`, where the timestamp is the mtime of `data/trading/decisions/_latest/<strategy>.json` -- written by the decision-log every time a strategy trigger fires. Expected to grow large for low-cadence strategies (RAMP fires once per trading day; CSCM weekly). Green < 1d, yellow 1-7d, red > 7d. For process-liveness (is the sidecar emitting at all?) see the 'Tick Age' column on Portfolio Overview's Strategy Status table.",
       "type": "timeseries",
       "gridPos": {
         "x": 12,
@@ -163,7 +163,7 @@
             "type": "prometheus",
             "uid": "victoriametrics"
           },
-          "expr": "time() - hg_strategy_last_signal_timestamp",
+          "expr": "time() - hg_strategy_last_decision_timestamp",
           "legendFormat": "{{strategy}}",
           "refId": "A"
         }
@@ -181,11 +181,11 @@
               },
               {
                 "color": "yellow",
-                "value": 60
+                "value": 86400
               },
               {
                 "color": "red",
-                "value": 300
+                "value": 604800
               }
             ]
           }

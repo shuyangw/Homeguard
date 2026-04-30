@@ -307,6 +307,13 @@ class LiveTradingRunner:
         self._peak_equity: float = 0.0
         self._session_open_equity: Optional[float] = None
         self._session_open_date: Optional[str] = None
+        # Regime transition tracking for `hg_regime_time_in_state_seconds`.
+        # In-process only -- on restart, the timestamp resets to "now" so
+        # the gauge climbs from 0 again. Acceptable: regime transitions
+        # are logged in the decision log if precise long-horizon tracking
+        # is needed.
+        self._last_regime_seen: Optional[str] = None
+        self._last_regime_change_time: Optional[float] = None
         try:
             sm = getattr(adapter, 'state_manager', None)
             if sm is not None and hasattr(sm, 'get_runner_session_state'):
@@ -703,8 +710,19 @@ class LiveTradingRunner:
             return 0.0
 
     def _emit_strategy_specific_metrics(self) -> None:
-        """Emit regime + RAMP cache-age gauges. No-op for non-RAMP adapters."""
+        """Emit regime + RAMP cache-age gauges. No-op for non-RAMP adapters.
+
+        Regime gauge emission is gated on `_is_market_open()` so that after
+        market close, the panel keeps showing the last "open hours" regime
+        snapshot rather than oscillating on stale OHLCV data. SPY SMAs and
+        time_in_state come from the live regime detector, not hardcoded zeros.
+        """
         if self.adapter.__class__.__name__ != 'RAMPLiveAdapter':
+            return
+        # Regime emission is meaningless on stale post-market data: the
+        # detector recomputes against bars that haven't moved in hours and
+        # may flip-flop classifications. Stay sticky on the last value.
+        if not self._is_market_open():
             return
         # Regime state code -- RAMP stores it on the inner RAMPSignals instance
         # exposed as adapter._ramp_signals, not on the wrapper at adapter.strategy.
@@ -714,10 +732,30 @@ class LiveTradingRunner:
             try:
                 from src.strategies.advanced.market_regime_detector import MarketRegimeDetector
                 regime_code = MarketRegimeDetector.REGIMES.get(regime_name, 0)
+
+                # Pull live SMAs from the detector's last classification cache.
+                # MarketRegimeDetector populates `last_indicators` with sma_20,
+                # sma_50, sma_200 (current SPY price snapshot for each window)
+                # on every classify_regime() call.
+                detector = getattr(ramp_signals, 'regime_detector', None)
+                indicators = getattr(detector, 'last_indicators', None) or {}
+                sma_20 = float(indicators.get('sma_20') or 0.0)
+                sma_50 = float(indicators.get('sma_50') or 0.0)
+                sma_200 = float(indicators.get('sma_200') or 0.0)
+
+                # Time in current regime: track transitions in-process. On
+                # first observation, mark "now" as the change time so the
+                # gauge starts at 0 and climbs.
+                now = time.time()
+                if regime_name != self._last_regime_seen:
+                    self._last_regime_change_time = now
+                    self._last_regime_seen = regime_name
+                time_in_state = now - (self._last_regime_change_time or now)
+
                 self.metrics_registry.update_regime(
                     state_code=regime_code,
-                    sma_20=0.0, sma_50=0.0, sma_200=0.0,
-                    time_in_state_seconds=0.0,
+                    sma_20=sma_20, sma_50=sma_50, sma_200=sma_200,
+                    time_in_state_seconds=time_in_state,
                 )
             except Exception as e:
                 logger.error(f"Metrics: regime emit failed: {e}")
@@ -779,6 +817,7 @@ class LiveTradingRunner:
                         update_position_metrics,
                         update_strategy_metrics,
                         update_strategy_equity,
+                        update_strategy_last_decision_timestamp,
                     )
                     try:
                         # Portfolio gauges need a REST call per update -- throttle to
@@ -818,6 +857,20 @@ class LiveTradingRunner:
                                 )
                         update_market_status(self.metrics_registry, self._is_market_open())
                         update_process_metrics(self.metrics_registry)
+                        # Decision-age gauge: mtime of the per-strategy
+                        # decision-log _latest snapshot. The decision-log
+                        # writer touches this on every trigger fire, so
+                        # the mtime IS the time of the last decision.
+                        try:
+                            from src.trading.decision_log import paths as _dl_paths
+                            _latest = _dl_paths.latest_path(self._persist_strategy)
+                            if _latest.exists():
+                                update_strategy_last_decision_timestamp(
+                                    self.metrics_registry,
+                                    _latest.stat().st_mtime,
+                                )
+                        except Exception as e:
+                            logger.error(f"Metrics: decision-timestamp emit failed: {e}")
                         self._emit_strategy_specific_metrics()
 
                         # WebSocket status if streaming
@@ -826,7 +879,18 @@ class LiveTradingRunner:
                             if hasattr(dp, 'is_connected'):
                                 feed = os.getenv('STREAMING_FEED', 'iex')
                                 connected = dp.is_connected()
-                                symbols = getattr(dp, '_subscribed_count', 0)
+                                # `_subscribed_count` does not exist on
+                                # LiveDataProvider; the public method is
+                                # get_subscribed_symbols() -> set[str].
+                                # The previous getattr fallback always
+                                # returned 0 -- the gauge looked broken.
+                                if hasattr(dp, 'get_subscribed_symbols'):
+                                    try:
+                                        symbols = len(dp.get_subscribed_symbols())
+                                    except Exception:
+                                        symbols = 0
+                                else:
+                                    symbols = 0
                                 update_websocket_metrics(
                                     self.metrics_registry, feed, connected, symbols
                                 )

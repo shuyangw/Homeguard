@@ -81,6 +81,10 @@ class MarketRegimeDetector:
         self.momentum_periods = [20, 50, 200]  # SMA periods for SPY
         self.volatility_window = 20            # Window for realized volatility
         self.momentum_slope_window = 20        # Window for momentum slope calculation
+        # Cache of indicators from the most recent classify_regime call.
+        # Populated for downstream metrics emission (SPY SMAs feed Grafana
+        # `hg_regime_sma_signal{period=...}`). None until first classification.
+        self.last_indicators: Optional[Dict] = None
 
     def classify_regime(
         self,
@@ -106,6 +110,8 @@ class MarketRegimeDetector:
 
         # Calculate indicators
         indicators = self._calculate_indicators(spy_data, vix_data, timestamp)
+        # Persist for downstream metrics emission (e.g. Grafana SMA panels).
+        self.last_indicators = indicators
 
         # Score each regime
         regime_scores = {}

@@ -151,6 +151,16 @@ class TestHighLevelUpdates:
         reg.update_drawdown(5.2)
         assert reg.get_gauge('hg_portfolio_drawdown_pct') == 5.2
 
+    def test_update_strategy_last_decision_timestamp_is_labeled(self):
+        """Decision-age gauge must carry the strategy label so each strategy
+        has its own series. Without the label, the lookup must miss."""
+        reg = MetricsRegistry(strategy='ramp')
+        reg.update_strategy_last_decision_timestamp(1700000000.5)
+        assert reg.get_gauge(
+            'hg_strategy_last_decision_timestamp', {'strategy': 'ramp'}
+        ) == 1700000000.5
+        assert reg.get_gauge('hg_strategy_last_decision_timestamp') is None
+
     def test_update_day_pnl(self):
         reg = MetricsRegistry(strategy='omr')
         reg.update_day_pnl(-150.0)

@@ -11,7 +11,7 @@
     {
       "id": 10,
       "title": "Strategy Status",
-      "description": "Single-row-per-strategy snapshot of all live trading strategies. Strategy-agnostic by design -- adding a new strategy adds a row, never a panel. Composed entirely of existing per-strategy metrics; no new emissions required. Columns: Equity ($), Starting capital ($), Deployed ($) = sum of position market values, Idle = Equity - Deployed, Positions = open count, Signal Age = `time() - hg_strategy_last_signal_timestamp` (red >300s indicates a hung process). For strategy-specific 'why not deploying' detail (RAMP regime, CSCM BTC vs SMA40, trailing stops), drill into the decision log via `python -m src.trading.decision_log` or the Service Logs panel on Incident Review.",
+      "description": "Single-row-per-strategy snapshot of all live trading strategies. Strategy-agnostic by design -- adding a new strategy adds a row, never a panel. Composed entirely of existing per-strategy metrics; no new emissions required. Columns: Equity ($), Starting capital ($), Deployed ($) = sum of position market values, Idle = Equity - Deployed, Positions = open count, Tick Age (s) = `time() - hg_strategy_last_signal_timestamp` (process-liveness; red >300s indicates a hung sidecar), Decision Age = `time() - hg_strategy_last_decision_timestamp` (mtime of the decision-log _latest snapshot; expected high for low-cadence strategies like CSCM weekly rebalance). For strategy-specific 'why not deploying' detail, drill into the decision log via `python -m src.trading.decision_log` or the Service Logs panel on Incident Review.",
       "type": "table",
       "gridPos": {
         "x": 0,
@@ -73,6 +73,16 @@
           "format": "table",
           "instant": true,
           "refId": "E"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+          },
+          "expr": "time() - hg_strategy_last_decision_timestamp",
+          "format": "table",
+          "instant": true,
+          "refId": "F"
         }
       ],
       "transformations": [
@@ -84,6 +94,20 @@
           }
         },
         {
+          "id": "calculateField",
+          "options": {
+            "alias": "Idle",
+            "mode": "binary",
+            "binary": {
+              "left": "Value #A",
+              "operator": "-",
+              "right": "Value #C"
+            },
+            "reduce": {"reducer": "sum"},
+            "replaceFields": false
+          }
+        },
+        {
           "id": "organize",
           "options": {
             "excludeByName": {
@@ -92,21 +116,25 @@
               "Time 3": true,
               "Time 4": true,
               "Time 5": true,
+              "Time 6": true,
               "__name__ 1": true,
               "__name__ 2": true,
               "__name__ 3": true,
               "__name__ 4": true,
               "__name__ 5": true,
+              "__name__ 6": true,
               "job 1": true,
               "job 2": true,
               "job 3": true,
               "job 4": true,
               "job 5": true,
+              "job 6": true,
               "instance 1": true,
               "instance 2": true,
               "instance 3": true,
               "instance 4": true,
-              "instance 5": true
+              "instance 5": true,
+              "instance 6": true
             },
             "renameByName": {
               "strategy": "Strategy",
@@ -114,15 +142,18 @@
               "Value #B": "Starting ($)",
               "Value #C": "Deployed ($)",
               "Value #D": "Positions",
-              "Value #E": "Signal Age (s)"
+              "Value #E": "Tick Age (s)",
+              "Value #F": "Decision Age (s)"
             },
             "indexByName": {
               "Strategy": 0,
               "Equity ($)": 1,
               "Starting ($)": 2,
               "Deployed ($)": 3,
-              "Positions": 4,
-              "Signal Age (s)": 5
+              "Idle": 4,
+              "Positions": 5,
+              "Tick Age (s)": 6,
+              "Decision Age (s)": 7
             }
           }
         }
@@ -198,7 +229,23 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "Signal Age (s)"
+              "options": "Idle"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "currencyUSD"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Tick Age (s)"
             },
             "properties": [
               {
@@ -236,6 +283,48 @@
                 }
               }
             ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Decision Age (s)"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "s"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "yellow",
+                      "value": 86400
+                    },
+                    {
+                      "color": "red",
+                      "value": 604800
+                    }
+                  ]
+                }
+              }
+            ]
           }
         ]
       },
@@ -247,7 +336,7 @@
     {
       "id": 1,
       "title": "Equity Curve by Strategy",
-      "description": "Current equity (cash + positions) per live strategy over time, with starting capital as a dashed reference line. Source: `hg_strategy_equity_usd` (solid) = broker.get_account().portfolio_value emitted per-tick by the strategy sidecar. `hg_strategy_initial_capital_usd` (dashed) is the session's starting budget, emitted once at startup. Log Y-axis accommodates strategies with different funding sizes (e.g. CSCM ~$100k vs RAMP IBKR paper ~$1M). If a strategy line stops updating, that strategy's process is hung.",
+      "description": "Current equity per live strategy over time, with starting capital as a dashed reference line. Source: `hg_strategy_equity_usd` (solid). For strategies that share a broker account (RAMP on IBKR paper) this is `initial_capital + sum(attributed_unrealized_pnl)` via `_compute_strategy_equity` -- the strategy slice, not the whole broker portfolio. For strategies with a dedicated broker (CSCM on DemoBroker) it equals `broker.get_account().portfolio_value` because no other strategy shares the account. `hg_strategy_initial_capital_usd` (dashed) is the session's starting budget, emitted once at startup. Log Y-axis accommodates strategies with different funding sizes. If a strategy line stops updating, that strategy's process is hung.",
       "type": "timeseries",
       "gridPos": {
         "x": 0,
@@ -387,7 +476,7 @@
     {
       "id": 3,
       "title": "Day P&L (USD)",
-      "description": "Intra-day P&L per strategy plus a summed 'Total' line. Source: `hg_portfolio_day_pnl_usd` = current_equity - session_open_equity, reset each trading session. Y-axis centered on zero so losses display symmetrically below. Non-zero only when strategies are actively trading or holding positions whose mark-to-market moves.",
+      "description": "Per-strategy P&L since the start of the visible time range, plus a summed 'Total' across strategies. Derived in PromQL from `hg_strategy_equity_usd` history: `equity - first_over_time(equity[$__range])`. The window matches the panel's visible time range, so 'now-6h' shows 6-hour P&L; 'now-1d' shows day P&L. No separate Day-PnL gauge is emitted -- the strategy_equity gauge is the single source of truth. The legacy broker-level `hg_portfolio_day_pnl_usd` is still emitted but no panel reads it -- it conflates broker portfolio drift with strategy P&L when strategies share an account.",
       "type": "timeseries",
       "gridPos": {
         "x": 0,
@@ -405,7 +494,7 @@
             "type": "prometheus",
             "uid": "victoriametrics"
           },
-          "expr": "sum(hg_portfolio_day_pnl_usd)",
+          "expr": "sum(hg_strategy_equity_usd - first_over_time(hg_strategy_equity_usd[$__range]))",
           "legendFormat": "Total",
           "refId": "A"
         },
@@ -414,8 +503,8 @@
             "type": "prometheus",
             "uid": "victoriametrics"
           },
-          "expr": "hg_portfolio_day_pnl_usd",
-          "legendFormat": "{{job}}",
+          "expr": "hg_strategy_equity_usd - first_over_time(hg_strategy_equity_usd[$__range])",
+          "legendFormat": "{{strategy}}",
           "refId": "B"
         }
       ],
@@ -518,7 +607,7 @@
     {
       "id": 11,
       "title": "Current Positions",
-      "description": "Instant snapshot of every open position across all strategies. Columns: Strategy, Symbol, Quantity, Unrealized PnL (color-coded red/green by sign). Source: `hg_position_qty` and `hg_position_unrealized_pnl_usd` with the `symbol` and `strategy` labels, merged by Grafana. A position closes -> row disappears on next scrape.",
+      "description": "Instant snapshot of every open position across all strategies. Columns: Strategy, Symbol, Quantity, Unrealized PnL (color-coded red/green by sign). Sources: `hg_position_qty` and `hg_position_unrealized_pnl_usd` with `symbol` and `strategy` labels, joined on (strategy, symbol) so two strategies holding the same ticker stay distinct rows. A position closes -> row disappears on next scrape.",
       "type": "table",
       "gridPos": {
         "x": 0,
@@ -554,10 +643,10 @@
       ],
       "transformations": [
         {
-          "id": "joinByField",
+          "id": "joinByLabels",
           "options": {
-            "byField": "symbol",
-            "mode": "outer"
+            "value": "Value",
+            "join": ["strategy", "symbol"]
           }
         },
         {
@@ -572,14 +661,13 @@
               "job 1": true,
               "job 2": true,
               "instance 1": true,
-              "instance 2": true,
-              "strategy 2": true
+              "instance 2": true
             },
             "renameByName": {
-              "Value #A": "Quantity",
-              "Value #B": "Unrealized PnL",
+              "hg_position_qty": "Quantity",
+              "hg_position_unrealized_pnl_usd": "Unrealized PnL",
               "symbol": "Symbol",
-              "strategy 1": "Strategy"
+              "strategy": "Strategy"
             },
             "indexByName": {
               "Strategy": 0,

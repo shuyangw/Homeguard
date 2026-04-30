@@ -94,6 +94,20 @@ def update_strategy_equity(
     registry.update_strategy_equity(equity_usd)
 
 
+def update_strategy_last_decision_timestamp(
+    registry: Optional['MetricsRegistry'],
+    ts: float,
+) -> None:
+    """Report the wall-clock time of the strategy's last recorded decision.
+
+    Pass the mtime of `data/trading/decisions/_latest/<strategy>.json`. No-op
+    if registry is None or the timestamp is non-positive.
+    """
+    if registry is None or ts <= 0:
+        return
+    registry.update_strategy_last_decision_timestamp(ts)
+
+
 def inc_rebalance_error(
     registry: Optional['MetricsRegistry'],
     phase: str = 'other',
