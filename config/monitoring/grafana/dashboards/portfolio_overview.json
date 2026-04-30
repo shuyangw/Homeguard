@@ -327,7 +327,7 @@
     {
       "id": 2,
       "title": "Drawdown % by Strategy",
-      "description": "Peak-to-trough drawdown per strategy as a percentage of peak strategy equity. Source: `hg_strategy_drawdown_pct{strategy=...}`, computed from (strategy_equity - peak_strategy_equity) / peak_strategy_equity * 100, where strategy_equity is the strategy's slice of its broker account (initial_capital + attributed unrealized PnL), NOT the broker portfolio_value. Always <= 0 by construction. Green > -5%, yellow -5% to -20%, red < -20%. Persisted across process restarts via StrategyStateManager.",
+      "description": "Two series per strategy: (1) `hg_strategy_drawdown_pct{strategy=...}` -- accurate strategy-slice drawdown, computed from initial_capital + attributed unrealized PnL. (2) `hg_portfolio_drawdown_pct{job=...}` -- legacy broker-level drawdown kept for historical continuity (data exists from before the strategy gauge was introduced). Always <= 0. Green > -5%, yellow -5% to -20%, red < -20%. Both metrics persisted across process restarts via StrategyStateManager.",
       "type": "timeseries",
       "gridPos": {
         "x": 12,
@@ -346,8 +346,17 @@
             "uid": "victoriametrics"
           },
           "expr": "hg_strategy_drawdown_pct",
-          "legendFormat": "{{strategy}}",
+          "legendFormat": "{{strategy}} (strategy)",
           "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+          },
+          "expr": "hg_portfolio_drawdown_pct",
+          "legendFormat": "{{job}} (broker)",
+          "refId": "B"
         }
       ],
       "fieldConfig": {

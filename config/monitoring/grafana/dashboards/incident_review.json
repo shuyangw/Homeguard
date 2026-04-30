@@ -27,7 +27,7 @@
     {
       "id": 2,
       "title": "Drawdown % by Strategy",
-      "description": "Same metric as Portfolio Overview drawdown, but kept here so incident correlation uses a single tab. Source: `hg_strategy_drawdown_pct{strategy=...}` -- per-strategy slice (initial_capital + attributed unrealized PnL), NOT broker portfolio_value. Always <= 0. Green > -5%, yellow -5% to -20%, red < -20%.",
+      "description": "Two series per strategy: (1) `hg_strategy_drawdown_pct{strategy=...}` -- accurate strategy-slice drawdown. (2) `hg_portfolio_drawdown_pct{job=...}` -- legacy broker-level drawdown kept for historical continuity. Always <= 0. Green > -5%, yellow -5% to -20%, red < -20%.",
       "type": "timeseries",
       "gridPos": {"x": 12, "y": 0, "w": 12, "h": 8},
       "datasource": {"type": "prometheus", "uid": "victoriametrics"},
@@ -35,8 +35,14 @@
         {
           "datasource": {"type": "prometheus", "uid": "victoriametrics"},
           "expr": "hg_strategy_drawdown_pct",
-          "legendFormat": "{{strategy}}",
+          "legendFormat": "{{strategy}} (strategy)",
           "refId": "A"
+        },
+        {
+          "datasource": {"type": "prometheus", "uid": "victoriametrics"},
+          "expr": "hg_portfolio_drawdown_pct",
+          "legendFormat": "{{job}} (broker)",
+          "refId": "B"
         }
       ],
       "fieldConfig": {
