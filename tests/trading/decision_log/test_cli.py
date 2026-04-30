@@ -190,16 +190,14 @@ class TestStatus:
             "  omr:\n    enabled: false\n    shutdown_requested: false\n"
             "  mp:\n    enabled: false\n    shutdown_requested: false\n"
         )
-        # Patch the toggle resolver: omr & mp are disabled in the toggle
-        # (and governed by it). CSCM is also "false" in the toggle but
-        # NOT governed by it (separate service), so it must still show.
-        monkeypatch.setattr(cli, "_disabled_strategies", lambda: {"omr", "mp"})
+        # Patch the config path resolution to point at our tmp file.
+        monkeypatch.setattr(cli, "_enabled_strategies", lambda: {"ramp", "cscm"})
 
         rc = cli.main(["status"])
         assert rc == 0
         out = capsys.readouterr().out
         assert "ramp" in out and "cscm" in out
-        # Disabled toggle-governed strategies should NOT appear by default.
+        # Disabled strategies should NOT appear by default.
         assert "omr" not in out and " mp " not in out
 
     def test_status_all_flag_includes_disabled(
@@ -239,8 +237,8 @@ class TestStatus:
         for s in ("ramp", "omr"):
             append(_make(s))
 
-        # Toggle says omr is disabled; without --all, omr would be hidden.
-        monkeypatch.setattr(cli, "_disabled_strategies", lambda: {"omr"})
+        # Toggle says only ramp is enabled.
+        monkeypatch.setattr(cli, "_enabled_strategies", lambda: {"ramp"})
 
         rc = cli.main(["status", "--all"])
         assert rc == 0
