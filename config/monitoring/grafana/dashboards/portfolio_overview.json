@@ -327,7 +327,7 @@
     {
       "id": 2,
       "title": "Drawdown % by Strategy",
-      "description": "One line per strategy. Drawdown is derived in PromQL from `hg_strategy_equity_usd` history: (equity - peak) / peak * 100, where peak = max_over_time(equity[365d]). This means there's no separate drawdown gauge to emit and no peak to persist -- the strategy_equity gauge is the single source of truth, and drawdown is just a query-time view of it. Always <= 0. Green > -5%, yellow -5% to -20%, red < -20%. Continuous historical line because the equity gauge has been emitted for both strategies as long as the metrics layer existed.",
+      "description": "One line per strategy. Drawdown is derived in PromQL from `hg_strategy_equity_usd` history: (equity - peak) / peak * 100, where peak = max_over_time(equity[$__range]). The peak window matches the panel's visible time range, so drawdown is 'drawdown from the highest equity in the period you're viewing' -- zooming out widens the lookback. No separate drawdown gauge is emitted and no peak is persisted; the equity gauge is the single source of truth. Always <= 0. Green > -5%, yellow -5% to -20%, red < -20%.",
       "type": "timeseries",
       "gridPos": {
         "x": 12,
@@ -345,7 +345,7 @@
             "type": "prometheus",
             "uid": "victoriametrics"
           },
-          "expr": "clamp_max((hg_strategy_equity_usd - max_over_time(hg_strategy_equity_usd[365d])) / max_over_time(hg_strategy_equity_usd[365d]) * 100, 0)",
+          "expr": "clamp_max((hg_strategy_equity_usd - max_over_time(hg_strategy_equity_usd[$__range])) / max_over_time(hg_strategy_equity_usd[$__range]) * 100, 0)",
           "legendFormat": "{{strategy}}",
           "refId": "A"
         }
