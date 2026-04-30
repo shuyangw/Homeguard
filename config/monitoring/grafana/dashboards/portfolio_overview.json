@@ -607,7 +607,7 @@
     {
       "id": 11,
       "title": "Current Positions",
-      "description": "Instant snapshot of every open position across all strategies. Columns: Strategy, Symbol, Quantity, Unrealized PnL (color-coded red/green by sign). Sources: `hg_position_qty` and `hg_position_unrealized_pnl_usd` with `symbol` and `strategy` labels, joined on (strategy, symbol) so two strategies holding the same ticker stay distinct rows. A position closes -> row disappears on next scrape.",
+      "description": "Instant snapshot of every open position across all strategies. Columns: Strategy, Symbol, Quantity, Unrealized PnL (color-coded red/green by sign). Sources: `hg_position_qty` and `hg_position_unrealized_pnl_usd`, joined by `symbol`. ASSUMPTION: no two strategies hold the same ticker concurrently (RAMP=stocks, CSCM=crypto, OMR=leveraged ETFs -- no overlap). If a future strategy violates that, this panel will collapse rows; switch the transformation to a multi-label join then.",
       "type": "table",
       "gridPos": {
         "x": 0,
@@ -643,10 +643,10 @@
       ],
       "transformations": [
         {
-          "id": "joinByLabels",
+          "id": "joinByField",
           "options": {
-            "value": "Value",
-            "join": ["strategy", "symbol"]
+            "byField": "symbol",
+            "mode": "outer"
           }
         },
         {
@@ -661,13 +661,14 @@
               "job 1": true,
               "job 2": true,
               "instance 1": true,
-              "instance 2": true
+              "instance 2": true,
+              "strategy 2": true
             },
             "renameByName": {
-              "hg_position_qty": "Quantity",
-              "hg_position_unrealized_pnl_usd": "Unrealized PnL",
+              "Value #A": "Quantity",
+              "Value #B": "Unrealized PnL",
               "symbol": "Symbol",
-              "strategy": "Strategy"
+              "strategy 1": "Strategy"
             },
             "indexByName": {
               "Strategy": 0,
