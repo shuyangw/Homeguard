@@ -267,17 +267,32 @@ def _render_record(rec: DecisionRecord) -> str:
     # Logic decisions
     if rec.logic_decisions:
         ld = rec.logic_decisions
-        n = ld.top_n
-        per_pos = sum(ld.target_value_usd.values()) / n if n else 0
-        total_target = sum(ld.target_value_usd.values())
-        pct = (ld.exposure_pct * 100) if n else 0
+        top_n = ld.top_n
+        new_buy_count = len(ld.target_value_usd)
+        held_count = len(ld.hold_signals)
+        sum_new = sum(ld.target_value_usd.values())
+        # Per-buy = sum / count of NEW BUYS, NOT / top_n. The previous formula
+        # `sum / top_n` divided new-buy total by total target count (incl. holds),
+        # producing a per-position value that nobody actually deployed (e.g.
+        # "$4,250 each" when each new buy was actually $5,000 = $85k / 17).
+        per_new = sum_new / new_buy_count if new_buy_count else 0
+        target_pct = ld.exposure_pct * 100
         lines.append("Logic:")
-        lines.append(
-            f"  Target {n} positions x ${per_pos:,.0f} each = "
-            f"${total_target:,.0f} ({pct:.0f}% of initial_capital)"
-        )
+        if held_count > 0:
+            lines.append(
+                f"  Target {top_n} positions: {new_buy_count} new @ "
+                f"${per_new:,.0f} each (${sum_new:,.0f}) + {held_count} held"
+            )
+        else:
+            lines.append(
+                f"  Target {top_n} new buys @ ${per_new:,.0f} each = "
+                f"${sum_new:,.0f}"
+            )
+        lines.append(f"  Target exposure: {target_pct:.0f}% of initial_capital")
         if ld.target_symbols:
-            lines.append(f"  Buy:  {' '.join(ld.target_symbols[:n])}")
+            lines.append(f"  Buy:  {' '.join(ld.target_symbols)}")
+        if ld.hold_signals:
+            lines.append(f"  Hold: {' '.join(ld.hold_signals)}")
         if ld.exit_signals:
             lines.append(f"  Sell: {' '.join(ld.exit_signals)}")
         lines.append("")
