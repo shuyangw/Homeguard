@@ -1,6 +1,6 @@
 """CLI entry point: python -m src.trading.decision_log <cmd>.
 
-Subcommands: status, show, list, grep, explain, summary.
+Subcommands: show, list, grep, explain, summary.
 ASCII-only output per project convention.
 """
 from __future__ import annotations
@@ -8,7 +8,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timedelta
 from typing import List, Optional
 
 from src.trading.decision_log.reader import (
@@ -20,16 +20,6 @@ from src.trading.decision_log.record import DecisionRecord
 def main(argv: Optional[List[str]] = None) -> int:
     parser = argparse.ArgumentParser(prog="python -m src.trading.decision_log")
     sub = parser.add_subparsers(dest="cmd", required=True)
-
-    p_status = sub.add_parser(
-        "status",
-        help="One-shot snapshot of every active strategy's most-recent record",
-    )
-    p_status.add_argument(
-        "--all", action="store_true",
-        help="Include strategies that are disabled in strategy_toggle.yaml",
-    )
-    p_status.set_defaults(func=cmd_status)
 
     p_show = sub.add_parser("show", help="Pretty-print a record")
     p_show.add_argument("strategy", choices=["ramp", "omr", "mp", "cscm"])
@@ -61,134 +51,6 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     args = parser.parse_args(argv)
     return args.func(args)
-
-
-def cmd_status(args) -> int:
-    """Snapshot the most-recent record for every active strategy.
-
-    Designed to answer "what is each strategy doing right now?" in a single
-    round-trip -- avoids running `show` once per strategy.
-
-    Discovery order:
-      1. Iterate strategies that have a `_latest/<name>.json` snapshot.
-      2. If `config/trading/strategy_toggle.yaml` is present, filter to
-         strategies with `enabled: true` (so disabled OMR/MP don't add
-         noise). With `--all`, ignore the toggle and show every strategy
-         that has a record.
-    """
-    enabled = _enabled_strategies() if not args.all else None
-    rows: List[tuple] = []
-    for s in _strategies_with_records():
-        if enabled is not None and s not in enabled:
-            continue
-        rec = latest(s)
-        if rec is None:
-            continue
-        rows.append((s, rec))
-
-    if not rows:
-        print("No decision records found for any active strategy.", file=sys.stderr)
-        return 1
-
-    now = datetime.now(timezone.utc)
-    header = (
-        f"{'STRAT':<6} {'LAST FIRE':<19} {'AGE':<7} "
-        f"{'TRIGGER':<22} {'REGIME':<12} {'EXEC':<7} "
-        f"{'EQUITY':>12} STATUS"
-    )
-    print(header)
-    for s, rec in rows:
-        ts = datetime.fromisoformat(rec.timestamp)
-        if ts.tzinfo is None:
-            ts = ts.replace(tzinfo=timezone.utc)
-        age = _humanize_age((now - ts).total_seconds())
-        regime = (rec.inputs.regime or "-")[:12]
-        filled = sum(1 for e in rec.executions if e.status == "filled")
-        total = len(rec.executions)
-        exec_str = f"{filled}/{total}"
-        status = _record_status(rec)
-        equity = (
-            f"${rec.post_state.strategy_equity_after:,.0f}"
-            if rec.post_state else "-"
-        )
-        print(
-            f"{s:<6} {ts.strftime('%Y-%m-%d %H:%M'):<19} {age:<7} "
-            f"{rec.trigger.kind[:22]:<22} {regime:<12} {exec_str:<7} "
-            f"{equity:>12} {status}"
-        )
-    return 0
-
-
-def _strategies_with_records() -> List[str]:
-    """Return strategy names that have a `_latest/<name>.json` snapshot."""
-    from src.trading.decision_log import paths
-    latest_dir = paths.latest_dir()
-    if not latest_dir.exists():
-        return []
-    return sorted(
-        f.stem for f in latest_dir.iterdir()
-        if f.is_file() and f.suffix == ".json"
-    )
-
-
-def _enabled_strategies() -> Optional[set]:
-    """Read `config/trading/strategy_toggle.yaml`, return enabled strategy names.
-
-    Returns None if the toggle file is missing -- caller treats that as
-    "no filter, show everything". The toggle file is the runtime source
-    of truth; OMR / MP being disabled there should hide them from
-    `status` so the operator sees only what is actually running.
-    """
-    from pathlib import Path
-    project_root = Path(__file__).resolve().parents[3]
-    toggle_path = project_root / "config" / "trading" / "strategy_toggle.yaml"
-    if not toggle_path.exists():
-        return None
-    try:
-        import yaml  # type: ignore
-    except ImportError:
-        return None
-    try:
-        with toggle_path.open() as fh:
-            data = yaml.safe_load(fh) or {}
-    except (OSError, yaml.YAMLError):
-        return None
-    strategies = data.get("strategies", {}) or {}
-    return {
-        name for name, cfg in strategies.items()
-        if isinstance(cfg, dict) and cfg.get("enabled") is True
-    }
-
-
-def _humanize_age(seconds: float) -> str:
-    if seconds < 60:
-        return f"{seconds:.0f}s"
-    if seconds < 3600:
-        return f"{seconds / 60:.0f}m"
-    if seconds < 86400:
-        return f"{seconds / 3600:.1f}h"
-    return f"{seconds / 86400:.1f}d"
-
-
-def _record_status(rec: DecisionRecord) -> str:
-    """One-line status string matching the convention used in `list`."""
-    filled = sum(1 for e in rec.executions if e.status == "filled")
-    total = len(rec.executions)
-    if rec.error is not None:
-        return f"errored: {rec.error.stage}"
-    if not rec.preconditions.all_passed:
-        failed = [
-            name for name in (
-                "strategy_enabled", "shutdown_requested",
-                "execution_lock_acquired", "health_check", "data_freshness",
-            ) if not getattr(rec.preconditions, name).passed
-        ]
-        return f"blocked: {','.join(failed)}"
-    if total == 0:
-        return "no executions"
-    if filled == total:
-        return "clean"
-    return f"partial ({total - filled} skipped)"
 
 
 def cmd_show(args) -> int:
@@ -228,7 +90,16 @@ def cmd_list(args) -> int:
         targets = len(rec.logic_decisions.target_symbols) if rec.logic_decisions else 0
         filled = sum(1 for e in rec.executions if e.status == "filled")
         total = len(rec.executions)
-        status = _record_status(rec)
+        if rec.error is not None:
+            status = f"errored: {rec.error.stage}"
+        elif not rec.preconditions.all_passed:
+            status = "blocked: precondition"
+        elif total == 0:
+            status = "no executions"
+        elif filled == total:
+            status = "clean"
+        else:
+            status = f"partial ({total - filled} skipped)"
         print(
             f"{ts.date()!s:<11} {ts.strftime('%H:%M:%S'):<9} "
             f"{rec.trigger.kind[:14]:<14} {regime[:13]:<13} "
