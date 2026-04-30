@@ -76,10 +76,10 @@ def cmd_status(args) -> int:
          noise). With `--all`, ignore the toggle and show every strategy
          that has a record.
     """
-    enabled = _enabled_strategies() if not args.all else None
+    disabled = _disabled_strategies() if not args.all else None
     rows: List[tuple] = []
     for s in _strategies_with_records():
-        if enabled is not None and s not in enabled:
+        if disabled is not None and s in disabled:
             continue
         rec = latest(s)
         if rec is None:
@@ -131,13 +131,19 @@ def _strategies_with_records() -> List[str]:
     )
 
 
-def _enabled_strategies() -> Optional[set]:
-    """Read `config/trading/strategy_toggle.yaml`, return enabled strategy names.
+_TOGGLE_GOVERNED = {"ramp", "omr", "mp"}
 
-    Returns None if the toggle file is missing -- caller treats that as
-    "no filter, show everything". The toggle file is the runtime source
-    of truth; OMR / MP being disabled there should hide them from
-    `status` so the operator sees only what is actually running.
+
+def _disabled_strategies() -> Optional[set]:
+    """Read `config/trading/strategy_toggle.yaml`, return disabled strategy names.
+
+    Only strategies in `_TOGGLE_GOVERNED` are considered -- those are the
+    ones the `homeguard-multi` service honors. CSCM has its own systemd
+    unit (`homeguard-cscm`) and ignores the toggle, so its toggle value
+    is meaningless and must NOT cause it to be hidden.
+
+    Returns None if the toggle file is missing or unreadable -- caller
+    treats that as "no filter, show every strategy with records".
     """
     from pathlib import Path
     project_root = Path(__file__).resolve().parents[3]
@@ -156,7 +162,9 @@ def _enabled_strategies() -> Optional[set]:
     strategies = data.get("strategies", {}) or {}
     return {
         name for name, cfg in strategies.items()
-        if isinstance(cfg, dict) and cfg.get("enabled") is True
+        if name in _TOGGLE_GOVERNED
+        and isinstance(cfg, dict)
+        and cfg.get("enabled") is False
     }
 
 
