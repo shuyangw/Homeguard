@@ -39,14 +39,19 @@ cat >> ~/.bashrc << 'BASHRC_SETUP'
 # Homeguard Trading Bot Shortcuts
 # ================================
 
-# Quick Commands (all strategies)
-alias bot-update='echo "[*] Updating..."; (cd ~/Homeguard && git pull && echo "[*] Restarting services..." && sudo systemctl restart homeguard-omr homeguard-mp homeguard-cscm-demo 2>/dev/null; echo "[+] Done!")'
-alias bot-restart='echo "[*] Restarting..."; sudo systemctl restart homeguard-omr homeguard-mp homeguard-cscm-demo 2>/dev/null; echo "[+] Restarted!"'
-alias bot-start='sudo systemctl start homeguard-omr homeguard-mp homeguard-cscm-demo 2>/dev/null'
-alias bot-stop='sudo systemctl stop homeguard-omr homeguard-mp homeguard-cscm-demo 2>/dev/null'
-alias bot-status='echo ""; echo "Strategy Services:"; for svc in homeguard-omr homeguard-mp homeguard-cscm-demo; do status=$(systemctl is-active $svc 2>/dev/null || echo "unknown"); if [ "$status" = "active" ]; then echo -e "  \033[32m$svc: $status\033[0m"; else echo -e "  \033[31m$svc: $status\033[0m"; fi; done'
-alias bot-logs='sudo journalctl -u homeguard-omr -u homeguard-mp -u homeguard-cscm-demo -f --output=cat --no-hostname'
-alias bot-logs-recent='sudo journalctl -u homeguard-omr -u homeguard-mp -u homeguard-cscm-demo -n 100 --no-pager --output=cat --no-hostname'
+# Quick Commands (all currently-enabled strategies: RAMP via multi runner +
+# CSCM via live runner with demo broker). homeguard-cscm-demo is superseded
+# by homeguard-cscm + CSCM_USE_DEMO_BROKER=true (disabled 2026-05-01 to stop
+# duplicate trade-log writes); homeguard-omr / homeguard-mp are disabled by
+# strategy_toggle and have no listener -- per-strategy aliases below remain
+# for future re-enabling.
+alias bot-update='echo "[*] Updating..."; (cd ~/Homeguard && git pull && echo "[*] Restarting services..." && sudo systemctl restart homeguard-multi homeguard-cscm 2>/dev/null; echo "[+] Done!")'
+alias bot-restart='echo "[*] Restarting..."; sudo systemctl restart homeguard-multi homeguard-cscm 2>/dev/null; echo "[+] Restarted!"'
+alias bot-start='sudo systemctl start homeguard-multi homeguard-cscm 2>/dev/null'
+alias bot-stop='sudo systemctl stop homeguard-multi homeguard-cscm 2>/dev/null'
+alias bot-status='echo ""; echo "Strategy Services:"; for svc in homeguard-multi homeguard-cscm; do status=$(systemctl is-active $svc 2>/dev/null || echo "unknown"); if [ "$status" = "active" ]; then echo -e "  \033[32m$svc: $status\033[0m"; else echo -e "  \033[31m$svc: $status\033[0m"; fi; done'
+alias bot-logs='sudo journalctl -u homeguard-multi -u homeguard-cscm -f --output=cat --no-hostname'
+alias bot-logs-recent='sudo journalctl -u homeguard-multi -u homeguard-cscm -n 100 --no-pager --output=cat --no-hostname'
 
 # OMR (Overnight Mean Reversion) - Leveraged ETFs
 alias omr-start='sudo systemctl start homeguard-omr && echo "[+] OMR started"'
