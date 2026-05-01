@@ -197,6 +197,79 @@ class TestHighLevelUpdates:
         assert reg.get_gauge('hg_position_qty', labels) is None
         assert reg.get_gauge('hg_position_unrealized_pnl_usd', labels) is None
 
+    def test_replace_position_set_removes_stale_symbols(self):
+        """A symbol that disappears from positions must have its gauges removed."""
+        reg = MetricsRegistry(strategy='ramp')
+        reg.replace_position_set([
+            {'symbol': 'A', 'quantity': 10, 'unrealized_pnl': 1.0},
+            {'symbol': 'B', 'quantity': 20, 'unrealized_pnl': 2.0},
+            {'symbol': 'C', 'quantity': 30, 'unrealized_pnl': 3.0},
+        ])
+        # A drops out, D enters; B and C carry over with new values.
+        reg.replace_position_set([
+            {'symbol': 'B', 'quantity': 25, 'unrealized_pnl': 2.5},
+            {'symbol': 'C', 'quantity': 35, 'unrealized_pnl': 3.5},
+            {'symbol': 'D', 'quantity': 40, 'unrealized_pnl': 4.0},
+        ])
+        # A is gone (the bug fix)
+        assert reg.get_gauge('hg_position_qty',
+                             {'symbol': 'A', 'strategy': 'ramp'}) is None
+        assert reg.get_gauge('hg_position_unrealized_pnl_usd',
+                             {'symbol': 'A', 'strategy': 'ramp'}) is None
+        # B/C updated to new values
+        assert reg.get_gauge('hg_position_qty',
+                             {'symbol': 'B', 'strategy': 'ramp'}) == 25
+        assert reg.get_gauge('hg_position_unrealized_pnl_usd',
+                             {'symbol': 'C', 'strategy': 'ramp'}) == 3.5
+        # D added
+        assert reg.get_gauge('hg_position_qty',
+                             {'symbol': 'D', 'strategy': 'ramp'}) == 40
+
+    def test_replace_position_set_does_not_touch_other_strategy(self):
+        """Per-strategy scoping: ramp.replace_position_set must not affect cscm."""
+        ramp = MetricsRegistry(strategy='ramp')
+        cscm = MetricsRegistry(strategy='cscm')
+        # Both registries write to the same gauge name space (same Prometheus
+        # series, distinguished by the `strategy` label) -- but each is its own
+        # in-process registry, so cross-strategy interference would only happen
+        # if a single registry tried to clean up another strategy's labels.
+        ramp.update_position('FCX', 100, 0)
+        cscm.update_position('BTC/USD', 0.1, 0)
+        # ramp rebalances, FCX drops out. cscm's BTC/USD must NOT be touched.
+        ramp.replace_position_set([
+            {'symbol': 'AAPL', 'quantity': 50, 'unrealized_pnl': 0},
+        ])
+        assert ramp.get_gauge('hg_position_qty',
+                              {'symbol': 'FCX', 'strategy': 'ramp'}) is None
+        # The cscm registry still has BTC/USD untouched.
+        assert cscm.get_gauge('hg_position_qty',
+                              {'symbol': 'BTC/USD', 'strategy': 'cscm'}) == 0.1
+
+    def test_replace_position_set_handles_none_unrealized_pnl(self):
+        """IBKR returns None for unrealized_pnl on freshly opened positions."""
+        reg = MetricsRegistry(strategy='ramp')
+        reg.replace_position_set([
+            {'symbol': 'AAPL', 'quantity': 10, 'unrealized_pnl': None},
+            {'symbol': 'MSFT', 'quantity': None, 'unrealized_pnl': None},
+        ])
+        assert reg.get_gauge('hg_position_qty',
+                             {'symbol': 'AAPL', 'strategy': 'ramp'}) == 10
+        assert reg.get_gauge('hg_position_unrealized_pnl_usd',
+                             {'symbol': 'AAPL', 'strategy': 'ramp'}) == 0
+        assert reg.get_gauge('hg_position_qty',
+                             {'symbol': 'MSFT', 'strategy': 'ramp'}) == 0
+
+    def test_replace_position_set_with_empty_list_clears_all(self):
+        """When the strategy holds no positions, all per-symbol gauges are gone."""
+        reg = MetricsRegistry(strategy='ramp')
+        reg.update_position('AAPL', 10, 0)
+        reg.update_position('MSFT', 20, 0)
+        reg.replace_position_set([])
+        assert reg.get_gauge('hg_position_qty',
+                             {'symbol': 'AAPL', 'strategy': 'ramp'}) is None
+        assert reg.get_gauge('hg_position_qty',
+                             {'symbol': 'MSFT', 'strategy': 'ramp'}) is None
+
     def test_record_order_submitted(self):
         reg = MetricsRegistry(strategy='omr')
         reg.record_order_submitted('buy', 'alpaca')

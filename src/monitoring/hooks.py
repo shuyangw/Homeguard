@@ -123,21 +123,18 @@ def update_position_metrics(
     positions: list,
 ) -> None:
     """
-    Update per-position gauges from a list of position dicts.
+    Update per-position gauges to match exactly `positions` for this strategy.
 
-    Each position dict must have 'symbol', 'quantity', and 'unrealized_pnl'.
+    Delegates to `registry.replace_position_set`, which removes gauges for
+    symbols no longer in `positions` (preventing the closed-position-persists
+    leak) and updates/adds gauges for symbols that are.
+
+    Each position dict must have 'symbol' and may have 'quantity' and
+    'unrealized_pnl' (None-tolerant per IBKR fresh-position behavior).
     """
     if registry is None:
         return
-    for pos in positions:
-        # Use `or 0` rather than .get(k, 0) because IBKR can return None
-        # (key present, value None) for unrealized_pnl on freshly opened
-        # positions before market data is subscribed for the symbol.
-        registry.update_position(
-            symbol=pos['symbol'],
-            qty=float(pos.get('quantity') or 0),
-            unrealized_pnl=float(pos.get('unrealized_pnl') or 0),
-        )
+    registry.replace_position_set(positions)
 
 
 def update_websocket_metrics(

@@ -265,6 +265,36 @@ class MetricsRegistry:
         self.remove_gauge('hg_position_qty', labels)
         self.remove_gauge('hg_position_unrealized_pnl_usd', labels)
 
+    def replace_position_set(self, positions: list) -> None:
+        """Set per-position gauges to exactly match `positions` for this strategy.
+
+        Symbols present in the registry under this strategy but absent from
+        `positions` are removed via `close_position`. Without this, closed
+        positions' gauges would persist in memory and keep being scraped with
+        stale values, populating the dashboard with phantom positions until
+        the bot restarts.
+
+        Each entry in `positions` must have 'symbol' and may have 'quantity'
+        and 'unrealized_pnl' (None-tolerant: IBKR returns None for unrealized
+        on freshly-opened positions before market data is subscribed).
+        """
+        current_symbols = {p['symbol'] for p in positions}
+        with self._lock:
+            existing_symbols = {
+                dict(lk).get('symbol')
+                for lk in self._gauges.get('hg_position_qty', {})
+                if lk and dict(lk).get('strategy') == self.strategy
+            }
+        for stale in existing_symbols - current_symbols:
+            if stale is not None:
+                self.close_position(stale)
+        for pos in positions:
+            self.update_position(
+                symbol=pos['symbol'],
+                qty=float(pos.get('quantity') or 0),
+                unrealized_pnl=float(pos.get('unrealized_pnl') or 0),
+            )
+
     def update_regime(self, state_code: int, sma_20: float, sma_50: float,
                       sma_200: float, time_in_state_seconds: float) -> None:
         """Update regime detection gauges."""
