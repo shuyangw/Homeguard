@@ -52,6 +52,11 @@ LABELS = {
 
 def main() -> int:
     all_exits = []
+    # Earliest trade-of-any-kind timestamp per strategy. Used to emit a $0
+    # baseline for strategies that have entries in the trade log but no
+    # exits yet (e.g. CSCM in early operation), so the chart shows a flat
+    # zero line across the visible range instead of a single live dot.
+    strategy_earliest_trade_ts: dict = {}
     for f in sorted(LOG_DIR.glob('trades_*.jsonl')):
         try:
             with open(f) as fp:
@@ -60,42 +65,60 @@ def main() -> int:
                         r = json.loads(line)
                     except Exception:
                         continue
+                    strategy = r.get('strategy')
+                    ts = r.get('timestamp')
+                    if not strategy or not ts:
+                        continue
+                    try:
+                        dt = datetime.fromisoformat(ts)
+                        ts_ms = int(dt.timestamp() * 1000)
+                    except Exception:
+                        continue
+                    prev = strategy_earliest_trade_ts.get(strategy)
+                    if prev is None or ts_ms < prev:
+                        strategy_earliest_trade_ts[strategy] = ts_ms
                     if r.get('trade_type') != 'exit':
                         continue
                     pnl = r.get('pnl_dollars')
-                    strategy = r.get('strategy')
-                    ts = r.get('timestamp')
-                    if pnl is None or not strategy or not ts:
+                    if pnl is None:
                         continue
-                    dt = datetime.fromisoformat(ts)
-                    ts_ms = int(dt.timestamp() * 1000)
                     all_exits.append((ts_ms, strategy, float(pnl)))
         except Exception as e:
             print(f'WARN: failed reading {f}: {e}', file=sys.stderr)
 
     all_exits.sort(key=lambda x: x[0])
-    if not all_exits:
-        print('No exits to backfill')
-        return 0
-
     print(f'Total exits: {len(all_exits)}')
-    print(f'Earliest:    {datetime.fromtimestamp(all_exits[0][0] / 1000)}')
-    print(f'Latest:      {datetime.fromtimestamp(all_exits[-1][0] / 1000)}')
+    if all_exits:
+        print(f'Earliest exit: {datetime.fromtimestamp(all_exits[0][0] / 1000)}')
+        print(f'Latest exit:   {datetime.fromtimestamp(all_exits[-1][0] / 1000)}')
 
     cumulative = {}
-    strategy_first_seen = {}
+    strategy_first_exit_seen = {}
     lines = []
     for ts_ms, strategy, pnl in all_exits:
         label_str = LABELS.get(strategy)
         if not label_str:
             continue
-        if strategy not in strategy_first_seen:
-            strategy_first_seen[strategy] = ts_ms
-            # $0 baseline 1 hour before first exit so the chart starts at zero.
+        if strategy not in strategy_first_exit_seen:
+            strategy_first_exit_seen[strategy] = ts_ms
             baseline_ts = ts_ms - 3600 * 1000
             lines.append(f'{METRIC}{label_str} 0 {baseline_ts}')
         cumulative[strategy] = cumulative.get(strategy, 0.0) + pnl
         lines.append(f'{METRIC}{label_str} {cumulative[strategy]} {ts_ms}')
+
+    # For strategies with trade-log entries but no exits yet (e.g. CSCM
+    # while the rebalance never fires), emit a $0 baseline anchored to
+    # the earliest trade timestamp so the chart shows a continuous flat
+    # zero line instead of a single live dot.
+    for strategy, earliest_ts in strategy_earliest_trade_ts.items():
+        if strategy in cumulative:
+            continue
+        label_str = LABELS.get(strategy)
+        if not label_str:
+            continue
+        baseline_ts = earliest_ts - 3600 * 1000
+        lines.append(f'{METRIC}{label_str} 0 {baseline_ts}')
+        cumulative[strategy] = 0.0
 
     print(f'Generated {len(lines)} datapoints across {len(cumulative)} strategies')
     for s, v in sorted(cumulative.items()):
