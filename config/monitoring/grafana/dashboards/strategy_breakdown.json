@@ -10,8 +10,8 @@
   "panels": [
     {
       "id": 1,
-      "title": "Realized P&L by Strategy",
-      "description": "Realized P&L per strategy WITHIN THE DASHBOARD'S TIME RANGE -- resize the range picker to compare windows (last 1h, last 7d, last 30d, etc.). Computed in PromQL as `lifetime - first_over_time(lifetime[$__range])` so it composes with arbitrary time selections, unlike the today-only `hg_strategy_realized_pnl_usd` gauge which discontinues at midnight ET. Source: `hg_strategy_realized_pnl_lifetime_usd` -- cumulative sum of `pnl_dollars` across ALL `trades_*.jsonl` files for the strategy, emitted every ~30s. For an at-a-glance 'today only' view see the `Today's Realized P&L` stat tile on Portfolio Overview.",
+      "title": "Cumulative Realized P&L by Strategy",
+      "description": "Cumulative realized P&L per strategy since the strategy started trading. Each step in the line is a closed position; gain or loss is the height of the step. Source: `hg_strategy_realized_pnl_lifetime_usd` -- emitted every ~30s as the running sum of `pnl_dollars` across ALL `trades_*.jsonl` files for the strategy. To see P&L over a specific window, use the time-range picker -- the difference between the line's value at the start and end of the visible range IS that window's realized P&L. For 'today only' view see the `Today's Realized P&L` stat tile on Portfolio Overview.",
       "type": "timeseries",
       "gridPos": {
         "x": 0,
@@ -29,7 +29,7 @@
             "type": "prometheus",
             "uid": "victoriametrics"
           },
-          "expr": "hg_strategy_realized_pnl_lifetime_usd - first_over_time(hg_strategy_realized_pnl_lifetime_usd[$__range])",
+          "expr": "hg_strategy_realized_pnl_lifetime_usd",
           "legendFormat": "{{strategy}}",
           "refId": "A"
         }
