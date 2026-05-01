@@ -38,7 +38,12 @@
         "defaults": {
           "unit": "currencyUSD",
           "custom": {
-            "axisCenteredZero": true
+            "axisCenteredZero": true,
+            "lineInterpolation": "stepAfter",
+            "spanNulls": true,
+            "showPoints": "always",
+            "pointSize": 5,
+            "lineWidth": 2
           }
         },
         "overrides": []
