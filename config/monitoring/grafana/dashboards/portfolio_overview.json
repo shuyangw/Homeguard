@@ -727,6 +727,62 @@
         "showHeader": true,
         "cellHeight": "sm"
       }
+    },
+    {
+      "id": 12,
+      "title": "Today's Realized P&L",
+      "description": "Per-strategy realized P&L since midnight ET, anchored to today's session boundary. One value per strategy. Source: `hg_strategy_realized_pnl_usd` (today gauge), computed by summing `pnl_dollars` on `exit` rows in today's `trades_*.jsonl`. Resets at midnight ET regardless of dashboard time range -- this is by design (the today gauge has fixed-boundary semantics; for range-relative views see the `Realized P&L by Strategy` time series on Strategy Breakdown).",
+      "type": "stat",
+      "gridPos": {
+        "x": 0,
+        "y": 32,
+        "w": 24,
+        "h": 4
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "victoriametrics"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+          },
+          "expr": "hg_strategy_realized_pnl_usd",
+          "legendFormat": "{{strategy}}",
+          "instant": true,
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "red", "value": null},
+              {"color": "green", "value": 0}
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "values": false,
+          "calcs": ["lastNotNull"],
+          "fields": ""
+        },
+        "orientation": "horizontal",
+        "textMode": "value_and_name",
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center"
+      }
     }
   ],
   "refresh": "30s",

@@ -215,6 +215,12 @@ def _emit_metrics_tick(adapter, metrics_registry, state) -> None:
             positions=len(positions),
             capital_allocated=capital,
         )
+        # Emit cumulative realized PnL (distinct from today's). Used by
+        # range-relative dashboard panels via lifetime - first_over_time(...).
+        from src.utils.trading_logger import compute_lifetime_realized_pnl
+        metrics_registry.update_strategy_realized_pnl_lifetime(
+            compute_lifetime_realized_pnl(STRATEGY_NAME)
+        )
     except Exception as e:
         logger.error(f"[CSCM-metrics] position/strategy metrics failed: {e}")
 

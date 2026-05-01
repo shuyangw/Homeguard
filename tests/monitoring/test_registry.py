@@ -270,6 +270,17 @@ class TestHighLevelUpdates:
         assert reg.get_gauge('hg_position_qty',
                              {'symbol': 'MSFT', 'strategy': 'ramp'}) is None
 
+    def test_update_strategy_realized_pnl_lifetime(self):
+        """Lifetime gauge labels by strategy and accepts negatives."""
+        reg = MetricsRegistry(strategy='ramp')
+        reg.update_strategy_realized_pnl_lifetime(950.58)
+        assert reg.get_gauge('hg_strategy_realized_pnl_lifetime_usd',
+                             {'strategy': 'ramp'}) == 950.58
+        # Negative is valid (losing days).
+        reg.update_strategy_realized_pnl_lifetime(-1500.0)
+        assert reg.get_gauge('hg_strategy_realized_pnl_lifetime_usd',
+                             {'strategy': 'ramp'}) == -1500.0
+
     def test_record_order_submitted(self):
         reg = MetricsRegistry(strategy='omr')
         reg.record_order_submitted('buy', 'alpaca')

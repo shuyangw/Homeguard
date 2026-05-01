@@ -482,3 +482,73 @@ def read_trade_log(date_str: Optional[str] = None, log_dir: str = "/home/ec2-use
         system_logger.error(f"[TRADE_LOG] Failed to read trade log {log_file}: {e}")
 
     return trades
+
+
+# Per-file (mtime, {strategy: pnl_sum}) cache so the lifetime aggregator
+# doesn't re-scan every trades_*.jsonl on each metrics tick. Past-day files
+# never change mtime; today's file changes only when log_exit appends.
+_LIFETIME_PNL_CACHE: Dict[str, Any] = {}
+
+
+def _sum_pnl_per_strategy_in_file(file_path: Path) -> Dict[str, float]:
+    """Read one trades JSONL and return {strategy: sum(pnl_dollars on exits)}."""
+    sums: Dict[str, float] = {}
+    try:
+        with open(file_path, 'r', encoding='utf-8') as f:
+            for line in f:
+                try:
+                    row = json.loads(line)
+                except Exception:
+                    continue
+                if row.get('trade_type') != 'exit':
+                    continue
+                pnl = row.get('pnl_dollars')
+                strategy = row.get('strategy')
+                if pnl is None or not strategy:
+                    continue
+                try:
+                    sums[strategy] = sums.get(strategy, 0.0) + float(pnl)
+                except (TypeError, ValueError):
+                    continue
+    except Exception as e:
+        system_logger.error(f"[TRADE_LOG] Failed to read {file_path}: {e}")
+    return sums
+
+
+def compute_lifetime_realized_pnl(
+    strategy: str,
+    log_dir: str = "/home/ec2-user/logs",
+) -> float:
+    """Sum pnl_dollars on exit rows across ALL trades_*.jsonl for `strategy`.
+
+    Per-file mtime cache: a file is re-scanned only if its mtime changed since
+    the last call. Past-day files match the cache forever (one read per process
+    lifetime); today's file is re-read only after log_exit appends.
+
+    Returns 0.0 if log dir doesn't exist or no matching files. Cumulative
+    quantity, monotonic only in expectation -- can decrease if a day records
+    losses. Used both for the lifetime gauge emission and the strategy-equity
+    formula (initial + lifetime_realized + unrealized).
+    """
+    log_path = Path(log_dir)
+    if not log_path.exists():
+        return 0.0
+    total = 0.0
+    try:
+        files = log_path.glob('trades_*.jsonl')
+    except OSError:
+        return 0.0
+    for f in files:
+        try:
+            mtime = f.stat().st_mtime
+        except OSError:
+            continue
+        key = str(f)
+        cached = _LIFETIME_PNL_CACHE.get(key)
+        if cached is not None and cached[0] == mtime:
+            per_strategy = cached[1]
+        else:
+            per_strategy = _sum_pnl_per_strategy_in_file(f)
+            _LIFETIME_PNL_CACHE[key] = (mtime, per_strategy)
+        total += per_strategy.get(strategy, 0.0)
+    return total

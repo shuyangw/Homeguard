@@ -593,23 +593,30 @@ class LiveTradingRunner:
     def _compute_strategy_equity(self, initial_capital: float, account: dict) -> float:
         """Compute equity attributed to this strategy, in USD.
 
-        Formula: initial_capital + sum(unrealized_pnl) for strategy-tagged positions.
+        Formula: initial_capital + lifetime_realized_pnl + sum(unrealized_pnl)
+        for strategy-tagged positions.
 
         Rationale: strategies share a broker account (e.g. OMR + RAMP both on IBKR
         paper). Reporting the full broker portfolio_value overstates each strategy's
         footprint -- the dashboard would show $1M for every strategy sharing a $1M
-        account. Instead, anchor to the strategy's own capital budget and add its
-        attributed P&L.
+        account. Anchor to the strategy's own capital budget, add closed-position
+        cash gains/losses (lifetime_realized), and add the unrealized swing on
+        currently-open positions.
 
-        With zero positions this returns initial_capital unchanged; as positions
-        accumulate P&L the line diverges accordingly.
+        Without `lifetime_realized` the equity line resets to initial_capital after
+        every rebalance, since fresh entries start at ~$0 unrealized and the prior
+        cycle's gains are lost from view. See docs/progress/20260501_*.md.
         """
+        from src.utils.trading_logger import compute_lifetime_realized_pnl
+
         strategy = self.metrics_registry.strategy
+        lifetime_realized = compute_lifetime_realized_pnl(strategy)
+
         try:
             all_positions = self.adapter.broker.get_positions() or []
         except Exception as e:
             logger.error(f"Metrics: broker.get_positions for equity failed: {e}")
-            return initial_capital
+            return initial_capital + lifetime_realized
 
         owned_symbols: set = set()
         try:
@@ -620,8 +627,8 @@ class LiveTradingRunner:
             logger.error(f"Metrics: state_manager.get_positions for equity failed: {e}")
 
         if not owned_symbols:
-            # No tracked positions yet -- all capital sits as cash budget.
-            return initial_capital
+            # No open positions; cash sits at initial + realized.
+            return initial_capital + lifetime_realized
 
         tagged = [p for p in all_positions if p.get('symbol') in owned_symbols]
         # Enrich with the PriceOracle (streaming -> broker quote -> portfolio
@@ -631,8 +638,8 @@ class LiveTradingRunner:
         oracle = getattr(self.adapter, '_price_oracle', None)
         if oracle is not None:
             tagged = oracle.enrich_positions(tagged)
-        pnl = sum(float(p.get('unrealized_pnl') or 0) for p in tagged)
-        return initial_capital + pnl
+        unrealized = sum(float(p.get('unrealized_pnl') or 0) for p in tagged)
+        return initial_capital + lifetime_realized + unrealized
 
     def _emit_position_and_strategy_metrics(self, update_position_metrics, update_strategy_metrics) -> None:
         """Emit per-position and strategy-aggregate gauges from a broker positions fetch.
@@ -683,6 +690,12 @@ class LiveTradingRunner:
             unrealized_pnl=unrealized,
             positions=len(positions),
             capital_allocated=capital,
+        )
+        # Emit cumulative realized PnL (distinct from today's). Used by
+        # range-relative dashboard panels via lifetime - first_over_time(...).
+        from src.utils.trading_logger import compute_lifetime_realized_pnl
+        self.metrics_registry.update_strategy_realized_pnl_lifetime(
+            compute_lifetime_realized_pnl(strategy)
         )
 
     def _compute_today_realized_pnl(self, strategy: str) -> float:

@@ -11,7 +11,7 @@
     {
       "id": 1,
       "title": "Realized P&L by Strategy",
-      "description": "Today's realized P&L per strategy, aggregated from the trade-log JSONL (sum of `pnl_dollars` where `trade_type == 'exit'` and `strategy == <s>`). Resets each trading day. Does NOT include mark-to-market on open positions (see Unrealized panel). Updated every ~30s by the strategy sidecar.",
+      "description": "Realized P&L per strategy WITHIN THE DASHBOARD'S TIME RANGE -- resize the range picker to compare windows (last 1h, last 7d, last 30d, etc.). Computed in PromQL as `lifetime - first_over_time(lifetime[$__range])` so it composes with arbitrary time selections, unlike the today-only `hg_strategy_realized_pnl_usd` gauge which discontinues at midnight ET. Source: `hg_strategy_realized_pnl_lifetime_usd` -- cumulative sum of `pnl_dollars` across ALL `trades_*.jsonl` files for the strategy, emitted every ~30s. For an at-a-glance 'today only' view see the `Today's Realized P&L` stat tile on Portfolio Overview.",
       "type": "timeseries",
       "gridPos": {
         "x": 0,
@@ -29,7 +29,7 @@
             "type": "prometheus",
             "uid": "victoriametrics"
           },
-          "expr": "hg_strategy_realized_pnl_usd",
+          "expr": "hg_strategy_realized_pnl_lifetime_usd - first_over_time(hg_strategy_realized_pnl_lifetime_usd[$__range])",
           "legendFormat": "{{strategy}}",
           "refId": "A"
         }

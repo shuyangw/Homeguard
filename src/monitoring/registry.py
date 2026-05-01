@@ -222,6 +222,20 @@ class MetricsRegistry:
         self.set_gauge('hg_strategy_initial_capital_usd', float(initial_capital_usd),
                        {'strategy': self.strategy})
 
+    def update_strategy_realized_pnl_lifetime(self, lifetime_pnl_usd: float) -> None:
+        """Report cumulative realized PnL since the strategy's first trade.
+
+        Distinct from `hg_strategy_realized_pnl_usd` which is today-only and
+        resets at midnight ET. The lifetime gauge is monotonic in expectation
+        (can decrease on losing days) and supports range-relative PromQL queries
+        like `lifetime - first_over_time(lifetime[$__range])` for "P&L over
+        whatever range the dashboard is showing" -- the n-time-ago pattern that
+        the today gauge can't satisfy.
+        """
+        self.set_gauge('hg_strategy_realized_pnl_lifetime_usd',
+                       float(lifetime_pnl_usd),
+                       {'strategy': self.strategy})
+
     def update_strategy_equity(self, equity_usd: float) -> None:
         """Report the strategy's current equity in USD.
 
