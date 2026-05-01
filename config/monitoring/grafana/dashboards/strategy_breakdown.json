@@ -43,7 +43,7 @@
             "spanNulls": true,
             "showPoints": "never",
             "lineWidth": 2,
-            "fillOpacity": 10
+            "fillOpacity": 0
           }
         },
         "overrides": []
