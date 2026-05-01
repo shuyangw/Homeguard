@@ -41,9 +41,9 @@
             "axisCenteredZero": true,
             "lineInterpolation": "stepAfter",
             "spanNulls": true,
-            "showPoints": "always",
-            "pointSize": 5,
-            "lineWidth": 2
+            "showPoints": "never",
+            "lineWidth": 2,
+            "fillOpacity": 10
           }
         },
         "overrides": []
