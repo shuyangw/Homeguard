@@ -11,7 +11,7 @@
     {
       "id": 1,
       "title": "Cumulative Realized P&L by Strategy",
-      "description": "Cumulative realized P&L per strategy since the strategy started trading. Each step in the line is a closed position; gain or loss is the height of the step. Long flat segments between steps mean no exits happened in that period. Source: `hg_strategy_realized_pnl_lifetime_usd`. Query uses `last_over_time(...[90d])` so at any point in the visible range the line shows the most recent cumulative value (carries forward across long gaps between exits). Lookback of 90d matches VM retention. To see P&L over a specific window, use the time-range picker -- the difference between the line's start-of-range and end-of-range values IS that window's realized P&L. For 'today only' view see the `Today's Realized P&L` stat tile on Portfolio Overview.",
+      "description": "Cumulative realized P&L per strategy since the strategy started trading. Each step in the line is a closed position; gain or loss is the height of the step. Long flat segments between steps mean no exits happened in that period. Source: `hg_strategy_realized_pnl_lifetime_usd`. Query: `last_over_time(...[90d]) and on(job, instance) (up == 1)` -- the `last_over_time` carries values forward across long gaps so the line stays continuous across no-exit periods; the `up == 1` join filters out strategies whose metric endpoint isn't currently being scraped (so dormant strategies like OMR/MP don't haunt the chart with their historical data). Lookback of 90d matches VM retention. To see P&L over a specific window, use the time-range picker -- the difference between the line's start-of-range and end-of-range values IS that window's realized P&L. For 'today only' view see the `Today's Realized P&L` stat tile on Portfolio Overview.",
       "type": "timeseries",
       "gridPos": {
         "x": 0,
@@ -29,7 +29,7 @@
             "type": "prometheus",
             "uid": "victoriametrics"
           },
-          "expr": "last_over_time(hg_strategy_realized_pnl_lifetime_usd[90d])",
+          "expr": "last_over_time(hg_strategy_realized_pnl_lifetime_usd[90d]) and on(job, instance) (up == 1)",
           "legendFormat": "{{strategy}}",
           "refId": "A"
         }
