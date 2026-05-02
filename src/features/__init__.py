@@ -28,6 +28,7 @@ from src.features.volatility import (
     close_to_close_rv,
     parkinson_rv,
     garman_klass_rv,
+    yang_zhang_rv,
 )
 
 __all__ = [
@@ -41,4 +42,5 @@ __all__ = [
     'close_to_close_rv',
     'parkinson_rv',
     'garman_klass_rv',
+    'yang_zhang_rv',
 ]

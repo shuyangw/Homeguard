@@ -180,3 +180,46 @@ class TestGarmanKlassRV:
         ohlc.loc[ohlc.index[5], 'open'] = np.nan
         rv = garman_klass_rv(ohlc, window=3)
         assert np.isnan(rv.iloc[5])
+
+
+class TestYangZhangRV:
+    def test_converges_to_known_sigma(self):
+        from src.features import yang_zhang_rv
+        sigma = 0.02
+        ohlc = _make_synthetic_ohlc(2000, sigma=sigma, seed=19)
+        rv = yang_zhang_rv(ohlc, window=60).dropna()
+        expected = sigma * np.sqrt(252)
+        assert 0.5 * expected < rv.median() < 2.0 * expected
+
+    def test_first_row_nan_due_to_shift(self):
+        from src.features import yang_zhang_rv
+        ohlc = _make_synthetic_ohlc(50, seed=20)
+        rv = yang_zhang_rv(ohlc, window=10)
+        # First row's overnight log return uses shift(1) -> NaN
+        assert np.isnan(rv.iloc[0])
+
+    def test_missing_columns_raises(self):
+        from src.features import yang_zhang_rv
+        df = pd.DataFrame({'high': [1, 2], 'low': [0.5, 1.5], 'close': [1, 2]})
+        with pytest.raises(KeyError):
+            yang_zhang_rv(df, window=2)
+
+    def test_negative_window_raises(self):
+        from src.features import yang_zhang_rv
+        ohlc = _make_synthetic_ohlc(10, seed=21)
+        with pytest.raises(ValueError):
+            yang_zhang_rv(ohlc, window=0)
+
+    def test_window_must_be_at_least_2(self):
+        # Yang-Zhang's k-factor uses (n+1)/(n-1); n=1 would divide by zero
+        from src.features import yang_zhang_rv
+        ohlc = _make_synthetic_ohlc(10, seed=22)
+        with pytest.raises(ValueError):
+            yang_zhang_rv(ohlc, window=1)
+
+    def test_index_preserved(self):
+        from src.features import yang_zhang_rv
+        ohlc = _make_synthetic_ohlc(20, seed=23)
+        rv = yang_zhang_rv(ohlc, window=5)
+        assert rv.index.equals(ohlc.index)
+        assert len(rv) == len(ohlc)
