@@ -14,3 +14,9 @@ Public API is flat at the package level. The canonical import form is:
 Submodule imports (from src.features.normalizers import ..., from
 src.features.volatility import ...) remain valid.
 """
+
+from src.features.normalizers import log_transform
+
+__all__ = [
+    'log_transform',
+]
