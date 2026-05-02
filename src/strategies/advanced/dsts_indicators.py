@@ -481,8 +481,12 @@ class DSTSIndicators:
         Returns:
             Series of position sizes between min_position and max_position
         """
+        from src.features import close_to_close_rv
         returns = close.pct_change()
-        realized_vol = returns.rolling(lookback).std() * np.sqrt(annualization_factor)
+        realized_vol = close_to_close_rv(
+            returns, window=lookback,
+            annualization_factor=annualization_factor,
+        )
 
         # Avoid division by zero
         realized_vol = realized_vol.replace(0, np.nan)
