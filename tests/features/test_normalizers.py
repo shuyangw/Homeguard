@@ -222,6 +222,36 @@ class TestRobustZscoreRolling:
         out = robust_zscore_rolling(pd.Series([], dtype=float), window=5)
         assert len(out) == 0
 
+    def test_all_nan_window(self):
+        """Coverage: _mad_zscore_window with all NaN values (line 48)."""
+        from src.features import robust_zscore_rolling
+        s = pd.Series([1.0, 2.0, np.nan, np.nan, np.nan, 3.0, 4.0])
+        z = robust_zscore_rolling(s, window=3)
+        # Window containing all NaN values should produce NaN
+        assert np.isnan(z.iloc[4])
+
+    def test_window_last_value_nan(self):
+        """Coverage: _mad_zscore_window with NaN as last value (line 51)."""
+        from src.features import robust_zscore_rolling
+        s = pd.Series([1.0, 2.0, 3.0, 4.0, np.nan])
+        z = robust_zscore_rolling(s, window=3)
+        # Last value NaN produces NaN output
+        assert np.isnan(z.iloc[4])
+
+    def test_mad_zscore_window_direct_all_nan(self):
+        """Direct test of _mad_zscore_window with all NaN (line 48)."""
+        from src.features.normalizers import _mad_zscore_window
+        window = np.array([np.nan, np.nan, np.nan])
+        result = _mad_zscore_window(window)
+        assert np.isnan(result)
+
+    def test_mad_zscore_window_direct_last_nan(self):
+        """Direct test of _mad_zscore_window with NaN last value (line 51)."""
+        from src.features.normalizers import _mad_zscore_window
+        window = np.array([1.0, 2.0, np.nan])
+        result = _mad_zscore_window(window)
+        assert np.isnan(result)
+
 
 class TestRobustZscoreCrossSectional:
     def test_median_zero_property(self):
