@@ -24,3 +24,18 @@ def log_returns(prices: pd.Series, periods: int = 1) -> pd.Series:
         raise ValueError(f"periods must be >= 1, got {periods}")
     log_prices = log_transform(prices)
     return log_prices - log_prices.shift(periods)
+
+
+def zscore_rolling(series: pd.Series, window: int) -> pd.Series:
+    """Standard rolling z-score: (x - rolling_mean) / rolling_std.
+
+    Provided for legacy migration only; new code should use
+    robust_zscore_rolling. Zero-variance windows produce NaN (no epsilon
+    hack).
+    """
+    if window < 1:
+        raise ValueError(f"window must be >= 1, got {window}")
+    rolling_mean = series.rolling(window=window, min_periods=window).mean()
+    rolling_std = series.rolling(window=window, min_periods=window).std()
+    rolling_std_safe = rolling_std.where(rolling_std > 0)
+    return (series - rolling_mean) / rolling_std_safe

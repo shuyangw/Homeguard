@@ -100,3 +100,66 @@ class TestLogReturns:
         out = log_returns(s)
         assert out.index.equals(idx)
         assert len(out) == len(s)
+
+
+class TestZscoreRolling:
+    def test_steady_state_distribution(self):
+        from src.features import zscore_rolling
+        rng = np.random.default_rng(2)
+        s = pd.Series(rng.normal(5.0, 2.0, 1000))
+        z = zscore_rolling(s, window=50).dropna()
+        # Steady-state mean and std should be close to 0 and 1
+        assert abs(z.mean()) < 0.1
+        assert abs(z.std() - 1.0) < 0.1
+
+    def test_zero_variance_window_produces_nan(self):
+        from src.features import zscore_rolling
+        # Constant input over the window -> std=0 -> NaN
+        s = pd.Series([5.0] * 10)
+        z = zscore_rolling(s, window=5)
+        # Indices 4-9 have a full window of constants -> NaN
+        assert z.iloc[4:].isna().all()
+
+    def test_no_epsilon_leak(self):
+        # Verifies the +1e-10 hack from old ml_crypto_mr is not present.
+        from src.features import zscore_rolling
+        s = pd.Series([5.0] * 10)
+        z = zscore_rolling(s, window=5)
+        finite = z.dropna()
+        assert len(finite) == 0  # no near-zero leak; all NaN
+
+    def test_insufficient_data_leading_nan(self):
+        from src.features import zscore_rolling
+        s = pd.Series([1.0, 2.0, 3.0, 4.0, 5.0])
+        z = zscore_rolling(s, window=3)
+        assert np.isnan(z.iloc[0])
+        assert np.isnan(z.iloc[1])
+        assert not np.isnan(z.iloc[2])
+
+    def test_nan_propagates(self):
+        from src.features import zscore_rolling
+        s = pd.Series([1.0, 2.0, np.nan, 4.0, 5.0, 6.0])
+        z = zscore_rolling(s, window=3)
+        # Window containing NaN should produce NaN output
+        assert np.isnan(z.iloc[2])
+        assert np.isnan(z.iloc[3])
+
+    def test_negative_window_raises(self):
+        from src.features import zscore_rolling
+        with pytest.raises(ValueError):
+            zscore_rolling(pd.Series([1.0, 2.0]), window=0)
+        with pytest.raises(ValueError):
+            zscore_rolling(pd.Series([1.0, 2.0]), window=-1)
+
+    def test_empty_series(self):
+        from src.features import zscore_rolling
+        out = zscore_rolling(pd.Series([], dtype=float), window=5)
+        assert len(out) == 0
+
+    def test_index_preserved(self):
+        from src.features import zscore_rolling
+        idx = pd.date_range("2020-01-01", periods=10, freq="D")
+        s = pd.Series(np.arange(10, dtype=float), index=idx)
+        out = zscore_rolling(s, window=3)
+        assert out.index.equals(idx)
+        assert len(out) == len(s)
