@@ -24,6 +24,9 @@ from src.features.normalizers import (
     winsorize,
     rank_transform,
 )
+from src.features.volatility import (
+    close_to_close_rv,
+)
 
 __all__ = [
     'log_transform',
@@ -33,4 +36,5 @@ __all__ = [
     'robust_zscore_cross_sectional',
     'winsorize',
     'rank_transform',
+    'close_to_close_rv',
 ]
