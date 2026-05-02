@@ -2,7 +2,15 @@
 # Idempotent Grafana installer for Amazon Linux 2023 ARM64
 set -euo pipefail
 
-GRAFANA_VERSION="11.4.0"
+# Pin to specific 12.x version to avoid surprise upgrades to Grafana 13+ (which
+# may introduce breaking dashboard schema or plugin loader changes). Bump
+# deliberately after testing on a non-prod EC2.
+#
+# Why 12.x: Grafana 11.x aarch64 RPM ships the Loki datasource with only
+# TypeScript source files, no compiled `dist/module.js`. Frontend requests
+# /public/plugins/loki/module.js and 404s, breaking any dashboard that uses
+# the Logs panel type. 12.x ships the compiled bundle (~670KB module.js).
+GRAFANA_VERSION="12.4.3"
 CONFIG_DIR="/etc/grafana"
 PROVISIONING_DIR="${CONFIG_DIR}/provisioning"
 
@@ -24,18 +32,8 @@ REPO
     echo "  Added Grafana yum repo"
 fi
 
-# Install or update (pin to target version to avoid surprise upgrades to Grafana 13+)
+# Install or update (pin to target version)
 sudo dnf install -y "grafana-${GRAFANA_VERSION}"
-
-# Workaround: Grafana 11.4.0 aarch64 rpm ships Loki datasource with an empty
-# dist/ subdirectory but no dist/plugin.json. The plugin finder silently skips
-# the entire plugin directory. Copy plugin.json into dist/ so it gets discovered.
-LOKI_PLUGIN_DIR="/usr/share/grafana/public/app/plugins/datasource/loki"
-if [ -f "${LOKI_PLUGIN_DIR}/plugin.json" ] && [ ! -f "${LOKI_PLUGIN_DIR}/dist/plugin.json" ]; then
-    sudo mkdir -p "${LOKI_PLUGIN_DIR}/dist"
-    sudo cp "${LOKI_PLUGIN_DIR}/plugin.json" "${LOKI_PLUGIN_DIR}/dist/plugin.json"
-    echo "  Patched Loki plugin.json into dist/ (rpm packaging bug workaround)"
-fi
 
 # Configure grafana.ini for localhost binding
 sudo sed -i 's/^;http_addr =.*/http_addr = 127.0.0.1/' "${CONFIG_DIR}/grafana.ini"
