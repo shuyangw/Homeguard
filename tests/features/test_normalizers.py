@@ -311,3 +311,49 @@ class TestWinsorize:
         out = winsorize(s)
         assert out.index.equals(idx)
         assert len(out) == len(s)
+
+
+class TestRankTransform:
+    def test_uniform_distribution(self):
+        from src.features import rank_transform
+        from scipy import stats
+        rng = np.random.default_rng(7)
+        s = pd.Series(rng.normal(0.0, 1.0, 1000))
+        ranked = rank_transform(s)
+        # KS test against uniform [0,1]
+        ks_stat, p_value = stats.kstest(ranked.dropna(), 'uniform')
+        assert p_value > 0.01  # cannot reject uniformity
+
+    def test_output_in_unit_interval(self):
+        from src.features import rank_transform
+        s = pd.Series([5.0, 1.0, 3.0, 2.0, 4.0])
+        ranked = rank_transform(s)
+        assert ranked.min() > 0.0
+        assert ranked.max() <= 1.0
+
+    def test_nan_preserved(self):
+        from src.features import rank_transform
+        s = pd.Series([1.0, np.nan, 3.0, 2.0])
+        ranked = rank_transform(s)
+        assert np.isnan(ranked.iloc[1])
+
+    def test_method_parameter(self):
+        from src.features import rank_transform
+        s = pd.Series([1.0, 2.0, 2.0, 3.0])
+        out_avg = rank_transform(s, method='average')
+        out_min = rank_transform(s, method='min')
+        # 'min' assigns the same rank to ties; 'average' assigns the average
+        assert out_avg.iloc[1] != out_min.iloc[1] or out_avg.iloc[2] != out_min.iloc[2]
+
+    def test_empty_series(self):
+        from src.features import rank_transform
+        out = rank_transform(pd.Series([], dtype=float))
+        assert len(out) == 0
+
+    def test_index_preserved(self):
+        from src.features import rank_transform
+        idx = pd.date_range("2020-01-01", periods=5, freq="D")
+        s = pd.Series([5.0, 1.0, 3.0, 2.0, 4.0], index=idx)
+        out = rank_transform(s)
+        assert out.index.equals(idx)
+        assert len(out) == len(s)

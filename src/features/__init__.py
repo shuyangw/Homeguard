@@ -22,6 +22,7 @@ from src.features.normalizers import (
     robust_zscore_rolling,
     robust_zscore_cross_sectional,
     winsorize,
+    rank_transform,
 )
 
 __all__ = [
@@ -31,4 +32,5 @@ __all__ = [
     'robust_zscore_rolling',
     'robust_zscore_cross_sectional',
     'winsorize',
+    'rank_transform',
 ]

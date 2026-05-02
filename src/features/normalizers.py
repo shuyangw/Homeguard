@@ -103,3 +103,11 @@ def winsorize(series: pd.Series,
     lower_bound = series.quantile(lower_q)
     upper_bound = series.quantile(upper_q)
     return series.clip(lower=lower_bound, upper=upper_bound)
+
+
+def rank_transform(series: pd.Series, method: str = 'average') -> pd.Series:
+    """Rank values to [0, 1] uniform. Wraps pandas .rank(pct=True).
+
+    NaNs preserved. method: 'average' | 'min' | 'max' | 'first' | 'dense'.
+    """
+    return series.rank(method=method, pct=True)
