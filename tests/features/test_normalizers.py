@@ -265,3 +265,49 @@ class TestRobustZscoreCrossSectional:
         z = robust_zscore_cross_sectional(s)
         assert list(z.index) == list(s.index)
         assert len(z) == len(s)
+
+
+class TestWinsorize:
+    def test_clips_correct_fraction_uniform(self):
+        from src.features import winsorize
+        rng = np.random.default_rng(6)
+        s = pd.Series(rng.uniform(0.0, 100.0, 10000))
+        out = winsorize(s, lower_q=0.01, upper_q=0.99)
+        # Total fraction at the boundary values should be ~2%
+        lower_bound = s.quantile(0.01)
+        upper_bound = s.quantile(0.99)
+        clipped = ((out == lower_bound) | (out == upper_bound)).sum()
+        assert 150 < clipped < 250  # ~2% of 10000 with a wide tolerance
+
+    def test_lower_q_ge_upper_q_raises(self):
+        from src.features import winsorize
+        with pytest.raises(ValueError):
+            winsorize(pd.Series([1.0, 2.0, 3.0]), lower_q=0.5, upper_q=0.5)
+        with pytest.raises(ValueError):
+            winsorize(pd.Series([1.0, 2.0, 3.0]), lower_q=0.6, upper_q=0.4)
+
+    def test_quantiles_outside_unit_raises(self):
+        from src.features import winsorize
+        with pytest.raises(ValueError):
+            winsorize(pd.Series([1.0, 2.0]), lower_q=-0.1, upper_q=0.99)
+        with pytest.raises(ValueError):
+            winsorize(pd.Series([1.0, 2.0]), lower_q=0.01, upper_q=1.1)
+
+    def test_nan_preserved(self):
+        from src.features import winsorize
+        s = pd.Series([1.0, np.nan, 5.0, 100.0])
+        out = winsorize(s, lower_q=0.0, upper_q=0.99)
+        assert np.isnan(out.iloc[1])
+
+    def test_empty_series(self):
+        from src.features import winsorize
+        out = winsorize(pd.Series([], dtype=float))
+        assert len(out) == 0
+
+    def test_index_preserved(self):
+        from src.features import winsorize
+        idx = pd.date_range("2020-01-01", periods=5, freq="D")
+        s = pd.Series([1.0, 50.0, 100.0, 50.0, 200.0], index=idx)
+        out = winsorize(s)
+        assert out.index.equals(idx)
+        assert len(out) == len(s)

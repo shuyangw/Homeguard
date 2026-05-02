@@ -85,3 +85,21 @@ def robust_zscore_cross_sectional(series: pd.Series) -> pd.Series:
     if mad == 0:
         return pd.Series(np.full_like(arr, np.nan), index=series.index)
     return (series - med) / (1.4826 * mad)
+
+
+def winsorize(series: pd.Series,
+              lower_q: float = 0.01,
+              upper_q: float = 0.99) -> pd.Series:
+    """Clip values outside [lower_q, upper_q] quantiles to the quantile bounds.
+
+    Quantiles are computed on non-NaN values; NaNs are preserved.
+    """
+    if not (0.0 <= lower_q <= 1.0):
+        raise ValueError(f"lower_q must be in [0, 1], got {lower_q}")
+    if not (0.0 <= upper_q <= 1.0):
+        raise ValueError(f"upper_q must be in [0, 1], got {upper_q}")
+    if lower_q >= upper_q:
+        raise ValueError(f"lower_q ({lower_q}) must be < upper_q ({upper_q})")
+    lower_bound = series.quantile(lower_q)
+    upper_bound = series.quantile(upper_q)
+    return series.clip(lower=lower_bound, upper=upper_bound)
