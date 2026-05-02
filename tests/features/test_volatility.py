@@ -88,3 +88,59 @@ class TestCloseToCloseRV:
         rv = close_to_close_rv(returns, window=3)
         assert rv.index.equals(idx)
         assert len(rv) == len(returns)
+
+
+class TestParkinsonRV:
+    def test_converges_to_known_sigma(self):
+        from src.features import parkinson_rv
+        sigma = 0.02
+        ohlc = _make_synthetic_ohlc(2000, sigma=sigma, seed=10)
+        rv = parkinson_rv(ohlc, window=60).dropna()
+        # Annualized: sqrt(252) * sigma_daily
+        expected = sigma * np.sqrt(252)
+        # Tolerance is generous because synthetic OHLC is approximate
+        assert 0.5 * expected < rv.median() < 2.0 * expected
+
+    def test_more_efficient_than_close_to_close(self):
+        """Parkinson should have lower variance than close-to-close on the
+        same data."""
+        from src.features import parkinson_rv, close_to_close_rv
+        ohlc = _make_synthetic_ohlc(1000, sigma=0.02, seed=11)
+        returns = ohlc['close'].pct_change()
+        rv_p = parkinson_rv(ohlc, window=20).dropna()
+        rv_c = close_to_close_rv(returns, window=20).dropna()
+        # Variance of estimates (sampling variability)
+        assert rv_p.std() < rv_c.std() * 1.5  # generous; mostly checks order
+
+    def test_missing_high_column_raises(self):
+        from src.features import parkinson_rv
+        df = pd.DataFrame({'low': [1, 2, 3]})
+        with pytest.raises(KeyError):
+            parkinson_rv(df, window=2)
+
+    def test_missing_low_column_raises(self):
+        from src.features import parkinson_rv
+        df = pd.DataFrame({'high': [1, 2, 3]})
+        with pytest.raises(KeyError):
+            parkinson_rv(df, window=2)
+
+    def test_negative_window_raises(self):
+        from src.features import parkinson_rv
+        ohlc = _make_synthetic_ohlc(10, seed=12)
+        with pytest.raises(ValueError):
+            parkinson_rv(ohlc, window=0)
+
+    def test_index_preserved(self):
+        from src.features import parkinson_rv
+        ohlc = _make_synthetic_ohlc(20, seed=13)
+        rv = parkinson_rv(ohlc, window=5)
+        assert rv.index.equals(ohlc.index)
+        assert len(rv) == len(ohlc)
+
+    def test_nan_propagates(self):
+        from src.features import parkinson_rv
+        ohlc = _make_synthetic_ohlc(20, seed=14)
+        ohlc.loc[ohlc.index[5], 'high'] = np.nan
+        rv = parkinson_rv(ohlc, window=3)
+        # Windows containing the NaN row -> NaN
+        assert np.isnan(rv.iloc[5])

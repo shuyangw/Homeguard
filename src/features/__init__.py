@@ -26,6 +26,7 @@ from src.features.normalizers import (
 )
 from src.features.volatility import (
     close_to_close_rv,
+    parkinson_rv,
 )
 
 __all__ = [
@@ -37,4 +38,5 @@ __all__ = [
     'winsorize',
     'rank_transform',
     'close_to_close_rv',
+    'parkinson_rv',
 ]

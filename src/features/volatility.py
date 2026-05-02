@@ -20,3 +20,21 @@ def close_to_close_rv(returns: pd.Series,
         raise ValueError(f"window must be >= 1, got {window}")
     rolling_std = returns.rolling(window=window, min_periods=window).std()
     return rolling_std * np.sqrt(annualization_factor)
+
+
+def parkinson_rv(ohlc_df: pd.DataFrame,
+                 window: int,
+                 annualization_factor: float = 252) -> pd.Series:
+    """Parkinson range-based volatility from high/low prices.
+
+    Assumes zero drift. Requires lowercase 'high' and 'low' columns.
+    Formula: sqrt( (1 / (4 * ln(2))) * mean(ln(H/L)^2) * annualization )
+    """
+    if window < 1:
+        raise ValueError(f"window must be >= 1, got {window}")
+    high = ohlc_df['high']
+    low = ohlc_df['low']
+    log_hl_sq = np.log(high / low) ** 2
+    factor = 1.0 / (4.0 * np.log(2.0))
+    sq_var = factor * log_hl_sq.rolling(window=window, min_periods=window).mean()
+    return np.sqrt(sq_var * annualization_factor)
