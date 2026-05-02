@@ -144,3 +144,39 @@ class TestParkinsonRV:
         rv = parkinson_rv(ohlc, window=3)
         # Windows containing the NaN row -> NaN
         assert np.isnan(rv.iloc[5])
+
+
+class TestGarmanKlassRV:
+    def test_converges_to_known_sigma(self):
+        from src.features import garman_klass_rv
+        sigma = 0.02
+        ohlc = _make_synthetic_ohlc(2000, sigma=sigma, seed=15)
+        rv = garman_klass_rv(ohlc, window=60).dropna()
+        expected = sigma * np.sqrt(252)
+        assert 0.5 * expected < rv.median() < 2.0 * expected
+
+    def test_missing_columns_raises(self):
+        from src.features import garman_klass_rv
+        df = pd.DataFrame({'high': [1, 2], 'low': [0.5, 1.5], 'close': [1, 2]})
+        with pytest.raises(KeyError):
+            garman_klass_rv(df, window=2)  # missing 'open'
+
+    def test_negative_window_raises(self):
+        from src.features import garman_klass_rv
+        ohlc = _make_synthetic_ohlc(10, seed=16)
+        with pytest.raises(ValueError):
+            garman_klass_rv(ohlc, window=0)
+
+    def test_index_preserved(self):
+        from src.features import garman_klass_rv
+        ohlc = _make_synthetic_ohlc(20, seed=17)
+        rv = garman_klass_rv(ohlc, window=5)
+        assert rv.index.equals(ohlc.index)
+        assert len(rv) == len(ohlc)
+
+    def test_nan_propagates(self):
+        from src.features import garman_klass_rv
+        ohlc = _make_synthetic_ohlc(20, seed=18)
+        ohlc.loc[ohlc.index[5], 'open'] = np.nan
+        rv = garman_klass_rv(ohlc, window=3)
+        assert np.isnan(rv.iloc[5])

@@ -27,6 +27,7 @@ from src.features.normalizers import (
 from src.features.volatility import (
     close_to_close_rv,
     parkinson_rv,
+    garman_klass_rv,
 )
 
 __all__ = [
@@ -39,4 +40,5 @@ __all__ = [
     'rank_transform',
     'close_to_close_rv',
     'parkinson_rv',
+    'garman_klass_rv',
 ]
