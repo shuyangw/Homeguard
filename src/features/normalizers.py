@@ -39,3 +39,31 @@ def zscore_rolling(series: pd.Series, window: int) -> pd.Series:
     rolling_std = series.rolling(window=window, min_periods=window).std()
     rolling_std_safe = rolling_std.where(rolling_std > 0)
     return (series - rolling_mean) / rolling_std_safe
+
+
+def _mad_zscore_window(window_values: np.ndarray) -> float:
+    """Compute robust z-score for the most recent value of a window."""
+    finite = window_values[~np.isnan(window_values)]
+    if len(finite) == 0:
+        return np.nan
+    last = window_values[-1]
+    if np.isnan(last):
+        return np.nan
+    med = np.median(finite)
+    mad = np.median(np.abs(finite - med))
+    if mad == 0:
+        return np.nan
+    return (last - med) / (1.4826 * mad)
+
+
+def robust_zscore_rolling(series: pd.Series, window: int) -> pd.Series:
+    """MAD-based rolling z-score: (x - rolling_median) / (1.4826 * rolling_MAD).
+
+    The 1.4826 factor scales MAD to be a consistent estimator of sigma under
+    normal data. Zero-MAD windows produce NaN. Default for new code.
+    """
+    if window < 1:
+        raise ValueError(f"window must be >= 1, got {window}")
+    return series.rolling(window=window, min_periods=window).apply(
+        _mad_zscore_window, raw=True
+    )

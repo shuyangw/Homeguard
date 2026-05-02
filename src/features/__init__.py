@@ -19,10 +19,12 @@ from src.features.normalizers import (
     log_transform,
     log_returns,
     zscore_rolling,
+    robust_zscore_rolling,
 )
 
 __all__ = [
     'log_transform',
     'log_returns',
     'zscore_rolling',
+    'robust_zscore_rolling',
 ]

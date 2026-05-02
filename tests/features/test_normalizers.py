@@ -163,3 +163,61 @@ class TestZscoreRolling:
         out = zscore_rolling(s, window=3)
         assert out.index.equals(idx)
         assert len(out) == len(s)
+
+
+class TestRobustZscoreRolling:
+    def test_steady_state_median(self):
+        from src.features import robust_zscore_rolling
+        rng = np.random.default_rng(3)
+        s = pd.Series(rng.normal(5.0, 2.0, 1000))
+        z = robust_zscore_rolling(s, window=50).dropna()
+        assert abs(z.median()) < 0.2
+
+    def test_robust_to_single_outlier(self):
+        from src.features import robust_zscore_rolling
+        rng = np.random.default_rng(4)
+        clean = pd.Series(rng.normal(0.0, 1.0, 200))
+        z_clean = robust_zscore_rolling(clean, window=20)
+
+        # Inject a 100-sigma outlier far from any test index we check
+        contaminated = clean.copy()
+        contaminated.iloc[100] = 100.0
+        z_contam = robust_zscore_rolling(contaminated, window=20)
+
+        # Indices BEFORE the outlier window should be unchanged
+        np.testing.assert_allclose(
+            z_clean.iloc[80:99].dropna().to_numpy(),
+            z_contam.iloc[80:99].dropna().to_numpy(),
+            atol=1e-10,
+        )
+
+    def test_zero_mad_window_produces_nan(self):
+        from src.features import robust_zscore_rolling
+        s = pd.Series([5.0] * 10)
+        z = robust_zscore_rolling(s, window=5)
+        assert z.iloc[4:].isna().all()
+
+    def test_insufficient_data_leading_nan(self):
+        from src.features import robust_zscore_rolling
+        s = pd.Series([1.0, 2.0, 3.0, 4.0, 5.0])
+        z = robust_zscore_rolling(s, window=3)
+        assert np.isnan(z.iloc[0])
+        assert np.isnan(z.iloc[1])
+
+    def test_negative_window_raises(self):
+        from src.features import robust_zscore_rolling
+        with pytest.raises(ValueError):
+            robust_zscore_rolling(pd.Series([1.0, 2.0]), window=0)
+
+    def test_index_preserved(self):
+        from src.features import robust_zscore_rolling
+        idx = pd.date_range("2020-01-01", periods=10, freq="D")
+        s = pd.Series(np.arange(10, dtype=float), index=idx)
+        out = robust_zscore_rolling(s, window=3)
+        assert out.index.equals(idx)
+        assert len(out) == len(s)
+
+    def test_empty_series(self):
+        from src.features import robust_zscore_rolling
+        out = robust_zscore_rolling(pd.Series([], dtype=float), window=5)
+        assert len(out) == 0
