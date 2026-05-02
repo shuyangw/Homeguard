@@ -67,3 +67,21 @@ def robust_zscore_rolling(series: pd.Series, window: int) -> pd.Series:
     return series.rolling(window=window, min_periods=window).apply(
         _mad_zscore_window, raw=True
     )
+
+
+def robust_zscore_cross_sectional(series: pd.Series) -> pd.Series:
+    """MAD-based cross-sectional z-score across the index of a single
+    timepoint's values.
+
+    Operates over the index (e.g., across symbols), not over time. Zero-MAD
+    inputs produce all NaN.
+    """
+    arr = series.to_numpy(dtype=float)
+    finite = arr[~np.isnan(arr)]
+    if len(finite) == 0:
+        return pd.Series(arr, index=series.index)
+    med = np.median(finite)
+    mad = np.median(np.abs(finite - med))
+    if mad == 0:
+        return pd.Series(np.full_like(arr, np.nan), index=series.index)
+    return (series - med) / (1.4826 * mad)

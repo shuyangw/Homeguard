@@ -221,3 +221,47 @@ class TestRobustZscoreRolling:
         from src.features import robust_zscore_rolling
         out = robust_zscore_rolling(pd.Series([], dtype=float), window=5)
         assert len(out) == 0
+
+
+class TestRobustZscoreCrossSectional:
+    def test_median_zero_property(self):
+        from src.features import robust_zscore_cross_sectional
+        rng = np.random.default_rng(5)
+        s = pd.Series(rng.normal(10.0, 3.0, 100), index=[f"S{i}" for i in range(100)])
+        z = robust_zscore_cross_sectional(s)
+        assert abs(z.median()) < 1e-10
+
+    def test_zero_mad_produces_all_nan(self):
+        from src.features import robust_zscore_cross_sectional
+        s = pd.Series([5.0, 5.0, 5.0, 5.0])
+        z = robust_zscore_cross_sectional(s)
+        assert z.isna().all()
+
+    def test_nan_propagates(self):
+        from src.features import robust_zscore_cross_sectional
+        s = pd.Series([1.0, 2.0, np.nan, 4.0, 5.0])
+        z = robust_zscore_cross_sectional(s)
+        assert np.isnan(z.iloc[2])
+        # Other entries should be finite
+        assert z.iloc[0:2].notna().all()
+        assert z.iloc[3:].notna().all()
+
+    def test_empty_series(self):
+        from src.features import robust_zscore_cross_sectional
+        out = robust_zscore_cross_sectional(pd.Series([], dtype=float))
+        assert len(out) == 0
+
+    def test_all_nan_input(self):
+        from src.features import robust_zscore_cross_sectional
+        s = pd.Series([np.nan, np.nan, np.nan])
+        z = robust_zscore_cross_sectional(s)
+        assert z.isna().all()
+        assert len(z) == 3
+
+    def test_index_preserved(self):
+        from src.features import robust_zscore_cross_sectional
+        s = pd.Series([1.0, 2.0, 3.0, 4.0, 5.0],
+                      index=['AAPL', 'MSFT', 'GOOG', 'AMZN', 'NVDA'])
+        z = robust_zscore_cross_sectional(s)
+        assert list(z.index) == list(s.index)
+        assert len(z) == len(s)

@@ -20,6 +20,7 @@ from src.features.normalizers import (
     log_returns,
     zscore_rolling,
     robust_zscore_rolling,
+    robust_zscore_cross_sectional,
 )
 
 __all__ = [
@@ -27,4 +28,5 @@ __all__ = [
     'log_returns',
     'zscore_rolling',
     'robust_zscore_rolling',
+    'robust_zscore_cross_sectional',
 ]
