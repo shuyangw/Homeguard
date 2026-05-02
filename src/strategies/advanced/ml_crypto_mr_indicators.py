@@ -119,12 +119,12 @@ class MLCryptoMRIndicators:
             window: Rolling window for mean/std (default 20)
 
         Returns:
-            Z-score series
+            Z-score series. Zero-variance windows produce NaN (not the
+            near-zero value that the prior epsilon hack produced); consumers
+            must tolerate NaN.
         """
-        rolling_mean = series.rolling(window=window, min_periods=window).mean()
-        rolling_std = series.rolling(window=window, min_periods=window).std()
-        zscore = (series - rolling_mean) / (rolling_std + 1e-10)
-        return zscore
+        from src.features import zscore_rolling
+        return zscore_rolling(series, window=window)
 
     @staticmethod
     def calculate_rsi(series: pd.Series, period: int = 14) -> pd.Series:
