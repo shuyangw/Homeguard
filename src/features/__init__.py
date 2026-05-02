@@ -15,8 +15,9 @@ Submodule imports (from src.features.normalizers import ..., from
 src.features.volatility import ...) remain valid.
 """
 
-from src.features.normalizers import log_transform
+from src.features.normalizers import log_transform, log_returns
 
 __all__ = [
     'log_transform',
+    'log_returns',
 ]
