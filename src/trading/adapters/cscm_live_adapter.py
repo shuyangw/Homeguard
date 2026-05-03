@@ -19,7 +19,7 @@ Deployment (live trading only):
 """
 
 from decimal import Decimal
-from datetime import datetime, time, timedelta
+from datetime import datetime, time, timedelta, timezone
 from pathlib import Path
 from typing import Dict, List, Optional, Any
 import pickle
@@ -469,16 +469,31 @@ class CSCMLiveAdapter:
         return False
 
     def _should_rebalance(self) -> bool:
-        """Check if we should rebalance now."""
-        now = tz.now()
+        """Check if we should rebalance now.
 
-        # Check if it's rebalance day
+        Uses UTC for the day-of-week / day-boundary check to align with the
+        EventBridge weekend EC2 schedule (also UTC). Previously used
+        `tz.now()` (ET), which silently missed CSCM's weekly rebalance every
+        weekend because the EventBridge wake window (Sat 23:00 UTC -> Sun
+        00:10 UTC) is entirely on Saturday in ET, so the day check returned
+        False and the bot never fired before EC2 was stopped again.
+        """
+        now = datetime.now(timezone.utc)
+
+        # Check if it's rebalance day (in UTC)
         if not self.signals.should_rebalance(now):
             return False
 
-        # Check if we already rebalanced today
+        # Check if we already rebalanced today (UTC). Normalize the persisted
+        # _last_rebalance to UTC if it carries a different tzinfo (older state
+        # files were written with ET-aware datetimes).
         if self._last_rebalance:
-            last_date = self._last_rebalance.date() if hasattr(self._last_rebalance, 'date') else self._last_rebalance
+            last = self._last_rebalance
+            if hasattr(last, 'tzinfo') and last.tzinfo is not None:
+                last_utc = last.astimezone(timezone.utc)
+            else:
+                last_utc = last
+            last_date = last_utc.date() if hasattr(last_utc, 'date') else last_utc
             today = now.date()
             if last_date == today:
                 logger.debug("[CSCM] Already rebalanced today")
@@ -666,8 +681,10 @@ class CSCMLiveAdapter:
             finally:
                 remaining_buys = max(remaining_buys - 1, 0)
 
-        # Mark rebalance complete
-        self._last_rebalance = tz.now()
+        # Mark rebalance complete. Stored in UTC to match the day-boundary
+        # semantics in _should_rebalance (which uses UTC to align with the
+        # EventBridge weekend EC2 schedule).
+        self._last_rebalance = datetime.now(timezone.utc)
         self.signals.mark_rebalanced(self._last_rebalance)
         self._current_positions = self._get_current_positions()
         self._save_state()
