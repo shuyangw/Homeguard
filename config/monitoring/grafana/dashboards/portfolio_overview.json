@@ -330,7 +330,14 @@
       },
       "options": {
         "showHeader": true,
-        "cellHeight": "sm"
+        "cellHeight": "sm",
+        "footer": {
+          "show": true,
+          "reducer": ["sum"],
+          "fields": ["Equity ($)", "Starting ($)", "Deployed ($)", "Idle", "Positions"],
+          "countRows": false,
+          "enablePagination": false
+        }
       }
     },
     {
