@@ -18,6 +18,9 @@ settings.ini
 TODO.md
 .claude-recovery.log
 
+# Git worktrees (isolated workspaces for parallel feature development)
+.worktrees/
+
 # Strategy enable/shutdown toggle: runtime state modified by the bot at every
 # rebalance / via /toggle Discord command. Don't track. Auto-generated on
 # first run by StrategyStateManager._load_toggle if missing. See template
