@@ -1,6 +1,7 @@
 """Futures-specific derivation pipelines."""
 
 from src.data.derivations.futures.sofr import derive_sofr
+from src.data.derivations.futures.yields import get_treasury_yield
 
 
 def compute_es_realized_vol(*args, **kwargs):
@@ -21,6 +22,7 @@ def compute_carry_glbx(*args, **kwargs):
 
 __all__ = [
     "derive_sofr",
+    "get_treasury_yield",
     "compute_es_realized_vol",
     "compute_carry_glbx",
 ]
