@@ -302,6 +302,125 @@ def convert_f() -> None:
     logger.info(f"Section F: {total_rows:,} rows")
 
 
+def convert_trades(section: str = "Trades_ES_MES") -> None:
+    """Trades schema converter: per (symbol, month) restricted-window output.
+
+    Filters to 19:00-21:00 UTC (3pm-4pm ET) post-download as Databento batch
+    doesn't natively support time-of-day windowing.
+
+    Storage: futures_trades_window/symbol={ROOT}/year={Y}/month={M}/data.parquet
+    """
+    out_root = DATA_ROOT / "futures_trades_window"
+    section_dir = STAGING_ROOT / section
+    if not section_dir.exists():
+        logger.warning(f"  {section}: staging dir missing")
+        return
+    files = list(_iter_dbn_files(section_dir))
+    logger.info(f"Section {section}: {len(files)} dbn files")
+    total_rows = 0
+    for i, f in enumerate(files):
+        try:
+            df = _read_dbn(f)
+        except Exception as e:
+            logger.error(f"  {f.name}: read failed {e}")
+            continue
+        if df.is_empty():
+            continue
+        df = _normalize_ts(df)
+        # Each file is one (symbol, month) due to split_symbols=True
+        if "symbol" not in df.columns:
+            logger.warning(f"  {f.name}: no symbol column, skipping")
+            continue
+        sym_full = df["symbol"][0]
+        root = _strip_continuous_suffix(sym_full)
+        # Filter to 19:00-21:00 UTC window
+        df = df.with_columns(pl.col("timestamp").dt.hour().alias("_hour"))
+        df = df.filter((pl.col("_hour") >= 19) & (pl.col("_hour") < 21))
+        df = df.drop("_hour")
+        if df.is_empty():
+            continue
+        ts_min = df["timestamp"].min()
+        year, month = ts_min.year, ts_min.month
+        out = (
+            out_root / f"symbol={root}" / f"year={year}" / f"month={month}"
+            / "data.parquet"
+        )
+        if out.exists():
+            continue
+        total_rows += _write_parquet(df, out)
+        if (i + 1) % 200 == 0:
+            logger.info(f"  ... {i+1}/{len(files)} files, {total_rows:,} rows so far")
+    logger.info(f"Section {section}: {total_rows:,} total rows")
+
+
+def convert_status(section: str = "Status_universe") -> None:
+    """Status schema converter: flat by year.
+
+    Storage: futures_status/year={Y}/data.parquet
+    """
+    out_root = DATA_ROOT / "futures_status"
+    section_dir = STAGING_ROOT / section
+    if not section_dir.exists():
+        logger.warning(f"  {section}: staging dir missing")
+        return
+    files = list(_iter_dbn_files(section_dir))
+    logger.info(f"Section {section}: {len(files)} dbn files")
+    by_year: dict[int, list[pl.DataFrame]] = {}
+    for f in files:
+        try:
+            df = _read_dbn(f)
+        except Exception as e:
+            logger.error(f"  {f.name}: read failed {e}")
+            continue
+        if df.is_empty():
+            continue
+        df = _normalize_ts(df)
+        ts_min = df["timestamp"].min()
+        by_year.setdefault(ts_min.year, []).append(df)
+    total_rows = 0
+    for year, parts in by_year.items():
+        merged = pl.concat(parts).sort("timestamp")
+        out = out_root / f"year={year}" / "data.parquet"
+        if out.exists():
+            continue
+        total_rows += _write_parquet(merged, out)
+    logger.info(f"Section {section}: {total_rows:,} total rows")
+
+
+def convert_b_ed_daily() -> None:
+    """Section B_ED_daily: Eurodollar (ED.FUT) per-contract daily OHLCV.
+
+    Storage: futures_per_contract_daily/root=ED/year={Y}/data.parquet
+    """
+    out_root = DATA_ROOT / "futures_per_contract_daily" / "root=ED"
+    section_dir = STAGING_ROOT / "B_ED_daily"
+    if not section_dir.exists():
+        logger.warning("  B_ED_daily: staging dir missing")
+        return
+    files = list(_iter_dbn_files(section_dir))
+    logger.info(f"Section B_ED_daily: {len(files)} dbn files")
+    by_year: dict[int, list[pl.DataFrame]] = {}
+    for f in files:
+        try:
+            df = _read_dbn(f)
+        except Exception as e:
+            logger.error(f"  {f.name}: read failed {e}")
+            continue
+        if df.is_empty():
+            continue
+        df = _normalize_ts(df)
+        ts_min = df["timestamp"].min()
+        by_year.setdefault(ts_min.year, []).append(df)
+    total_rows = 0
+    for year, parts in by_year.items():
+        merged = pl.concat(parts).sort("timestamp")
+        out = out_root / f"year={year}" / "data.parquet"
+        if out.exists():
+            continue
+        total_rows += _write_parquet(merged, out)
+    logger.info(f"Section B_ED_daily: {total_rows:,} total rows")
+
+
 CONVERTERS = {
     "A_v": lambda: convert_a("A_v"),
     "A_n_diag": lambda: convert_a("A_n_diag"),
@@ -310,6 +429,10 @@ CONVERTERS = {
     "D": convert_d,
     "E": lambda: convert_b_c_e("E"),
     "F": convert_f,
+    "Trades_ES_MES": lambda: convert_trades("Trades_ES_MES"),
+    "Status_continuous": lambda: convert_status("Status_continuous"),
+    "Status_parent": lambda: convert_status("Status_parent"),
+    "B_ED_daily": convert_b_ed_daily,
 }
 
 
