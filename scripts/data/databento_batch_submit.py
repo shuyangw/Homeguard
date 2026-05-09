@@ -246,6 +246,30 @@ def submit_all(end_date: str = DEFAULT_END) -> int:
         state=state,
     )
 
+    # Section Status_continuous + Status_parent: status events (halts, limits,
+    # pre-open transitions) for backtest realism. Split into two jobs because
+    # Databento doesn't accept mixed stype_in in a single submission.
+    _submit(
+        client, "Status_continuous",
+        schema="status",
+        symbols=CONTINUOUS_V_DOTTED,
+        stype_in="continuous",
+        start=BULK_PULL_START, end=end_date,
+        split_duration="month",
+        split_symbols=False,
+        state=state,
+    )
+    _submit(
+        client, "Status_parent",
+        schema="status",
+        symbols=ALL_FUT_PARENTS,
+        stype_in="parent",
+        start=BULK_PULL_START, end=end_date,
+        split_duration="month",
+        split_symbols=False,
+        state=state,
+    )
+
     logger.info(f"\nAll sections submitted. State file: {STATE_FILE}")
     logger.info(f"Total jobs: {len(state['jobs'])}")
     for sec, info in state["jobs"].items():
