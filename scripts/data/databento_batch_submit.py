@@ -230,6 +230,22 @@ def submit_all(end_date: str = DEFAULT_END) -> int:
         state=state,
     )
 
+    # Section Trades_ES_MES: trades schema for ES, MES, last-hour window, 5 years.
+    # For Adaptation A imbalance signal proxy (cheaper than MBP-1).
+    # Time window: 19:00-21:00 UTC daily (3pm-4pm ET cash session close).
+    # Note: Databento batch jobs don't natively support time-of-day filtering;
+    # we pull full days and filter post-download in the converter.
+    _submit(
+        client, "Trades_ES_MES",
+        schema="trades",
+        symbols=["ES.v.0", "MES.v.0"],
+        stype_in="continuous",
+        start="2021-01-01", end="2026-02-22",
+        split_duration="month",
+        split_symbols=True,
+        state=state,
+    )
+
     logger.info(f"\nAll sections submitted. State file: {STATE_FILE}")
     logger.info(f"Total jobs: {len(state['jobs'])}")
     for sec, info in state["jobs"].items():
