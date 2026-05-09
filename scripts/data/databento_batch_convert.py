@@ -354,7 +354,11 @@ def convert_trades(section: str = "Trades_ES_MES") -> None:
 
 
 def convert_status(section: str = "Status_universe") -> None:
-    """Status schema converter: flat by year.
+    """Status schema converter: flat by year, merging with existing year files.
+
+    Status_continuous and Status_parent both target the same per-year files,
+    so this merges with any existing rows (deduped by timestamp+symbol+action)
+    instead of skipping when year already exists.
 
     Storage: futures_status/year={Y}/data.parquet
     """
@@ -379,12 +383,14 @@ def convert_status(section: str = "Status_universe") -> None:
         by_year.setdefault(ts_min.year, []).append(df)
     total_rows = 0
     for year, parts in by_year.items():
-        merged = pl.concat(parts).sort("timestamp")
         out = out_root / f"year={year}" / "data.parquet"
+        # Merge with existing if present
         if out.exists():
-            continue
+            existing = pl.read_parquet(out)
+            parts.insert(0, existing)
+        merged = pl.concat(parts, how="diagonal_relaxed").unique().sort("timestamp")
         total_rows += _write_parquet(merged, out)
-    logger.info(f"Section {section}: {total_rows:,} total rows")
+    logger.info(f"Section {section}: {total_rows:,} total rows after merge")
 
 
 def convert_b_ed_daily() -> None:
