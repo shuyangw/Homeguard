@@ -273,10 +273,11 @@ def submit_all(end_date: str = DEFAULT_END) -> int:
     # Section B_ED_daily: Eurodollar per-contract daily for pre-2018 funding.
     # Phased out by CME in 2023; covers history needed for funding-rate proxy
     # before SR1 listing on 2018-05-07.
+    # Note: Databento accepts "GE.FUT" (legacy CME symbol) not "ED.FUT".
     _submit(
         client, "B_ED_daily",
         schema="ohlcv-1d",
-        symbols=["ED.FUT"],
+        symbols=["GE.FUT"],
         stype_in="parent",
         start=BULK_PULL_START, end="2023-12-31",
         split_duration="month",
