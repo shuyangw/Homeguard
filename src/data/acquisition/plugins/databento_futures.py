@@ -21,8 +21,34 @@ logger = get_logger(__name__)
 
 DEFAULT_FUTURES_UNIVERSE = ["ES", "NQ", "CL", "GC", "ZN", "6E", "ZC", "YM", "RTY"]
 
+# Full Databento bulk-pull universe per docs/strategies/research/DATABENTO_BULK_PULL_PLAN.md
+# Section A.1-A.8 continuous OHLCV-1m. Includes GC.n.0 (open-interest roll diagnostic).
+BULK_PULL_UNIVERSE_V = [
+    # Equity index full size
+    "ES", "NQ", "YM", "RTY",
+    # Equity index micros
+    "MES", "MNQ", "M2K", "MYM",
+    # Energy
+    "CL", "NG", "HO", "RB", "BZ", "MCL", "MNG",
+    # Metals (PRIMARY FIX vs broken c.0)
+    "GC", "SI", "HG", "PL", "MGC", "SIL",
+    # Rates / bonds
+    "ZT", "ZF", "ZN", "TN", "ZB", "UB",
+    "SR3", "SR1",
+    "10Y", "30Y", "5YY", "2YY",
+    # FX
+    "6E", "6J", "6B", "6A", "6C", "6S", "6N", "6M",
+    # Agriculture (SECONDARY FIX vs broken c.0)
+    "ZC", "ZS", "ZW", "KE", "ZL", "ZM", "LE", "HE",
+    # Crypto
+    "BTC", "MBT", "ETH", "MET",
+]
+
 DATASET = "GLBX.MDP3"
 DEFAULT_START = "2020-01-01"
+BULK_PULL_START = "2010-06-06"  # GLBX.MDP3 dataset floor
+
+VALID_ROLL_RULES = ("v", "n", "c")  # volume, open-interest, calendar
 
 
 class DatabentoFuturesPlugin(BaseDownloader):
@@ -41,6 +67,8 @@ class DatabentoFuturesPlugin(BaseDownloader):
         self,
         output_dir: Optional[Path] = None,
         schema: str = "ohlcv-1m",
+        roll_rule: str = "v",
+        storage_subdir: Optional[str] = None,
         **kwargs,
     ):
         self._api_key = os.getenv("DATABENTO_API_KEY")
@@ -55,8 +83,15 @@ class DatabentoFuturesPlugin(BaseDownloader):
             )
         if schema not in ("ohlcv-1m", "trades"):
             raise ValueError(f"schema must be 'ohlcv-1m' or 'trades', got '{schema}'")
-        # Set _schema before super().__init__ because it calls _get_storage_subdir()
+        if roll_rule not in VALID_ROLL_RULES:
+            raise ValueError(
+                f"roll_rule must be one of {VALID_ROLL_RULES}, got '{roll_rule}'"
+            )
+        # Set _schema, _roll_rule before super().__init__ because it calls
+        # _get_storage_subdir()
         self._schema = schema
+        self._roll_rule = roll_rule
+        self._storage_subdir_override = storage_subdir
         super().__init__(output_dir=output_dir, **kwargs)
 
     def _create_client(self) -> Any:
@@ -90,14 +125,21 @@ class DatabentoFuturesPlugin(BaseDownloader):
             return self._normalize_trades(df)
 
     def _normalize_ohlcv(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Convert Databento ohlcv-1m DataFrame to canonical schema."""
+        """Convert Databento ohlcv-1m DataFrame to canonical schema.
+
+        Timestamps are cast to [us, UTC] per the documented canonical schema
+        (.claude/data_handling.md). pandas defaults to [ns]; explicit cast
+        prevents dtype drift across the dataset.
+        """
         # Databento sets ts_event as the index by default
         ts_series = (
             df.index if df.index.name == "ts_event" else df["ts_event"]
         )
         return pd.DataFrame(
             {
-                "timestamp": pd.to_datetime(ts_series, utc=True),
+                "timestamp": pd.to_datetime(ts_series, utc=True).astype(
+                    "datetime64[us, UTC]"
+                ),
                 "open": df["open"].astype(float),
                 "high": df["high"].astype(float),
                 "low": df["low"].astype(float),
@@ -123,7 +165,9 @@ class DatabentoFuturesPlugin(BaseDownloader):
         )
         return pd.DataFrame(
             {
-                "timestamp": pd.to_datetime(ts_series, utc=True),
+                "timestamp": pd.to_datetime(ts_series, utc=True).astype(
+                    "datetime64[us, UTC]"
+                ),
                 "price": df["price"].astype(float),
                 "size": df["size"].astype(float),
             }
@@ -135,6 +179,8 @@ class DatabentoFuturesPlugin(BaseDownloader):
         return FUTURES_TRADES_SCHEMA
 
     def _get_storage_subdir(self) -> str:
+        if self._storage_subdir_override:
+            return self._storage_subdir_override
         if self._schema == "ohlcv-1m":
             return "futures_1min"
         return "futures_trades"
@@ -143,10 +189,13 @@ class DatabentoFuturesPlugin(BaseDownloader):
         return symbol
 
     def _to_api_symbol(self, symbol: str) -> str:
-        """Convert short symbol (ES) to Databento continuous format (ES.c.0)."""
-        if ".c." not in symbol:
-            return f"{symbol}.c.0"
-        return symbol
+        """Convert short symbol (ES) to Databento continuous format (ES.{rule}.0).
+
+        Pass through fully-qualified continuous symbols (e.g. ES.v.0, GC.n.0) unchanged.
+        """
+        if any(f".{r}." in symbol for r in VALID_ROLL_RULES):
+            return symbol
+        return f"{symbol}.{self._roll_rule}.0"
 
     def download(
         self,
