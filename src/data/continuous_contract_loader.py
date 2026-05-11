@@ -204,3 +204,39 @@ class ContinuousContractDataLoader:
             return df_adj.sort("timestamp")
 
         raise ValueError(f"unreachable: {method}")
+
+    def aggregate_to_daily(
+        self, root: str, method: str = "ratio_adjusted",
+        start: date | None = None, end: date | None = None,
+    ) -> pl.DataFrame:
+        """Aggregate minute bars to daily OHLCV."""
+        df = self.load(root, method=method, start=start, end=end)
+        if df.is_empty():
+            return df
+        return df.group_by_dynamic(
+            "timestamp", every="1d", closed="left", label="left",
+        ).agg([
+            pl.col("open").first(),
+            pl.col("high").max(),
+            pl.col("low").min(),
+            pl.col("close").last(),
+            pl.col("volume").sum(),
+        ]).sort("timestamp")
+
+    def aggregate_to_hourly(
+        self, root: str, method: str = "ratio_adjusted",
+        start: date | None = None, end: date | None = None,
+    ) -> pl.DataFrame:
+        """Aggregate minute bars to hourly OHLCV."""
+        df = self.load(root, method=method, start=start, end=end)
+        if df.is_empty():
+            return df
+        return df.group_by_dynamic(
+            "timestamp", every="1h", closed="left", label="left",
+        ).agg([
+            pl.col("open").first(),
+            pl.col("high").max(),
+            pl.col("low").min(),
+            pl.col("close").last(),
+            pl.col("volume").sum(),
+        ]).sort("timestamp")

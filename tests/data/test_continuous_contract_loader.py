@@ -179,3 +179,38 @@ def test_load_panama_adjusted(tmp_path, monkeypatch):
     df = ContinuousContractDataLoader().load("YY", method="panama_adjusted")
     # diff = 110 - 100 = 10; day 1 close adjusted = 100 + 10 = 110; day 2 = 110; day 3 = 112
     assert df["close"].to_list() == pytest.approx([110.0, 110.0, 112.0], abs=1e-6)
+
+
+def test_aggregate_to_daily(tmp_path, monkeypatch):
+    d = tmp_path / "futures_1min" / "symbol=XX" / "year=2024" / "month=1"
+    d.mkdir(parents=True)
+    # 3 minutes on day 1, 2 minutes on day 2
+    pl.DataFrame({
+        "timestamp": [
+            datetime(2024, 1, 1, 14, 0, tzinfo=timezone.utc),
+            datetime(2024, 1, 1, 14, 1, tzinfo=timezone.utc),
+            datetime(2024, 1, 1, 14, 2, tzinfo=timezone.utc),
+            datetime(2024, 1, 2, 14, 0, tzinfo=timezone.utc),
+            datetime(2024, 1, 2, 14, 1, tzinfo=timezone.utc),
+        ],
+        "open": [100.0, 100.5, 101.0, 102.0, 102.5],
+        "high": [100.5, 101.0, 101.5, 102.5, 103.0],
+        "low":  [99.5, 100.0, 100.5, 101.5, 102.0],
+        "close":[100.5, 101.0, 100.8, 102.5, 102.8],
+        "volume": [100, 200, 300, 400, 500],
+    }).with_columns(
+        pl.col("timestamp").cast(pl.Datetime("us", "UTC")),
+        pl.col("volume").cast(pl.UInt64),
+    ).write_parquet(d / "data.parquet")
+    monkeypatch.setattr(
+        "src.data.continuous_contract_loader._storage_root",
+        lambda: tmp_path,
+    )
+    daily = ContinuousContractDataLoader().aggregate_to_daily("XX", method="raw")
+    assert daily.shape[0] == 2
+    day1 = daily.row(0, named=True)
+    day2 = daily.row(1, named=True)
+    assert day1["open"] == 100.0 and day1["close"] == 100.8
+    assert day1["high"] == 101.5 and day1["low"] == 99.5
+    assert day1["volume"] == 600
+    assert day2["open"] == 102.0 and day2["close"] == 102.8
