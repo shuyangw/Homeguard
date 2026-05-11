@@ -11,33 +11,27 @@
 
 Before starting the 14-day window, all of the following must be true:
 
-1. **All sub-chunks 6a-6j merged to main**:
-   - 6a: `FuturesPosition` + v3 schema (`docs/progress/20260511_CHUNK6a_*`)
-   - 6b: `FuturesTradingInterface` ABC + `IBKRFuturesBroker` skeleton (`docs/progress/20260511_CHUNK6b_*`)
-   - 6c-6j: All 7 safeguard components
+1. **All sub-chunks 6a-6k merged to main** (DONE):
+   - 6a: `FuturesPosition` + v3 schema (`docs/progress/20260511_CHUNK6a_FUTURES_POSITION_MODEL.md`)
+   - 6b: `FuturesTradingInterface` ABC + `IBKRFuturesBroker` skeleton (`docs/progress/20260511_CHUNK6b_FUTURES_BROKER_SKELETON.md`)
+   - 6c-6k: 7 safeguard components + paper runbook (`docs/progress/20260511_CHUNK6_FUTURES_BROKER_SAFEGUARDS.md`)
 
-2. **Real IBKR API integration in `IBKRFuturesBroker._ibkr_submit_stub`**:
-   The current `_ibkr_submit_stub` method in `src/trading/brokers/ibkr/ibkr_futures_broker.py` returns synthetic order IDs. Before validation, replace it with real `ib_async` calls:
-   - Instantiate `ib_async.IB` connection per `IBKRConfig`
-   - Build `Future` contract for the resolved `(symbol_root, contract_month)`
-   - Call `ib.qualifyContracts(future)` to bind the contract
-   - Call `ib.placeOrder(future, order)` to submit
-   - Return `{"orderId": trade.order.orderId, "permId": trade.order.permId, "status": str(trade.orderStatus.status)}`
-   - Wire `cancel_order`, `get_order`, `get_futures_positions`, `get_margin_status`, `what_if_order` similarly
-   This is approximately 200-300 LOC of additional integration code.
+2. **Real `ib_async` integration in `IBKRFuturesBroker`** (DONE, merged `9c9cc95`, fixes `5b2925c`):
+   `_ibkr_submit`, `cancel_order`, `get_order`, `get_orders`, `get_open_orders`, `get_futures_positions`, `get_futures_position`, `close_futures_position`, `close_all_futures_positions`, `what_if_order`, `get_margin_status`, `place_futures_order`, `place_futures_combo_order`, `get_latest_trade` are all wired against `ib_async` via the existing `IBKRConnectionManager` singleton. All async round-trips go through `run_sync(...Async(...))`. Validated end-to-end on EC2 paper Gateway 2026-05-11 (see `docs/progress/20260511_FUTURES_EC2_PAPER_SMOKE_VALIDATION.md`).
 
-3. **`futures_definitions/` integration in symbol resolver**:
-   The current `FuturesSymbolResolver` doesn't read expiration dates from `futures_definitions/`. Add a `get_expiration(symbol_root, contract_month) -> date` method on a new `DefinitionsLoader` class that reads from `H:/Stock_Data/futures_definitions/year=Y/month=M/data.parquet` filtered to the contract. Use this in the smoke test instead of the placeholder date.
+3. **`futures_definitions/` integration** (DONE, merged `3c757e1`):
+   `FuturesDefinitionsLoader` (`src/data/futures_definitions_loader.py`) reads `<storage>/futures_definitions/year=Y/month=M/data.parquet`, returns real expirations. Wired through `FuturesSymbolResolver` -> `ResolvedOrder.expiration_date` -> `submit_resolved_order` -> `ExpirationGuard`. Falls back to `ib.reqContractDetailsAsync` when local partitions aren't deployed (used on EC2 where the data is not synced).
 
 4. **IBKR Gateway running on port 4002 (paper)**:
    ```
    IBKR Gateway -> Paper Trading -> Connect
-   Futures permissions enabled in account settings
+   Futures permissions enabled in account settings (CME / NYMEX / COMEX / CBOT)
    ```
+   On EC2 (`homeguard-trading` instance), the running `homeguard-multi.service` already binds Gateway on 4002 with clientId=10. The smoke test uses clientId=99 so it doesn't collide.
 
-5. **Audit log directory writable**: `~/.homeguard/audit/` exists and the running process has write permission.
+5. **Audit log directory writable**: `~/.homeguard/audit/` for production strategies, `~/.homeguard/audit_smoke/` for smoke runs.
 
-6. **Smoke test passes**: `python scripts/trading/futures_paper_smoke_test.py` exits 0 with all `[OK]` markers.
+6. **Smoke test passes**: `python scripts/trading/futures_paper_smoke_test.py` exits 0 with all `[+]` markers. **PASSED on EC2 2026-05-11** (see validation log).
 
 ---
 
@@ -156,40 +150,14 @@ When all boxes above are checked, the strategy may move from paper to real-money
 
 ---
 
-## 5. Real IBKR integration deferred
+## 5. IBKR integration -- shipped
 
-This runbook assumes `_ibkr_submit_stub` has been replaced with real `ib_async` calls. That integration is approximately 200-300 LOC and was deferred from sub-chunk 6j. Code sketch:
+Real `ib_async` integration is now live (merge `9c9cc95`, fixes `5b2925c`). All `FuturesTradingInterface` methods go through `IBKRConnectionManager.run_sync(...Async(...))`. Exchange routing is in `_EXCHANGE_BY_ROOT` (CME / NYMEX / COMEX / CBOT for 40+ symbol roots). Key implementation files:
 
-```python
-def _ibkr_submit(self, resolved: ResolvedOrder) -> dict[str, Any]:
-    from ib_async import Future, LimitOrder, MarketOrder
-    self._ensure_connection()
-    contract = Future(
-        symbol=resolved.symbol_root,
-        lastTradeDateOrContractMonth=resolved.contract_month,
-        exchange="GLOBEX",
-    )
-    self._ib.qualifyContracts(contract)
-    if resolved.order_type == OrderType.LIMIT:
-        order = LimitOrder(
-            action=resolved.side.value,
-            totalQuantity=resolved.quantity,
-            lmtPrice=resolved.limit_price,
-            tif=resolved.time_in_force.value,
-        )
-    else:
-        order = MarketOrder(
-            action=resolved.side.value,
-            totalQuantity=resolved.quantity,
-            tif=resolved.time_in_force.value,
-        )
-    trade = self._ib.placeOrder(contract, order)
-    self._ib.sleep(0.5)  # let IBKR acknowledge
-    return {
-        "orderId": trade.order.orderId,
-        "permId": trade.order.permId,
-        "status": str(trade.orderStatus.status),
-    }
-```
+- `src/trading/brokers/ibkr/ibkr_futures_broker.py` -- the broker
+- `src/trading/futures/symbol_resolver.py` -- continuous-to-per-contract resolution
+- `src/data/futures_definitions_loader.py` -- expiration source
 
-A separate sub-chunk (call it 6l) should land this before the smoke test can run for real.
+End-to-end smoke validation against EC2 paper Gateway: `docs/progress/20260511_FUTURES_EC2_PAPER_SMOKE_VALIDATION.md`.
+
+The remaining gap before the 14-day window can start is operational: a strategy adapter must invoke `broker.submit_resolved_order(resolved, hold_overnight=True)` for two weeks. That work belongs to Phase 2+ strategy adaptations.
