@@ -11,10 +11,28 @@ from pathlib import Path
 
 import polars as pl
 
+from src.data.derivations.futures.sofr import derive_sofr
 from src.settings import get_local_storage_dir
 
 
 _MONTH_CODES = "FGHJKMNQUVXZ"
+
+# Approximate duration in years for each bond root (used for bond carry).
+DURATION_BY_ROOT: dict[str, float] = {
+    "ZT": 2.0,
+    "ZF": 5.0,
+    "ZN": 9.0,
+    "TN": 9.0,
+    "ZB": 17.0,
+    "UB": 22.0,
+    "2YY": 2.0,
+    "5YY": 5.0,
+    "10Y": 9.0,
+    "30Y": 22.0,
+}
+
+# Micro Yield roots: close IS yield in % directly.
+MICRO_YIELD_ROOTS = {"2YY", "5YY", "10Y", "30Y"}
 
 
 def _storage_root() -> Path:
@@ -104,5 +122,16 @@ class CarryCalculator:
         if asset_class == "fx":
             return (second_c - front_c) / front_c * (365.0 / days_to_second)
         if asset_class == "bond":
-            raise NotImplementedError("bond carry: Task 4.3")
+            duration = DURATION_BY_ROOT.get(root)
+            if duration is None:
+                raise ValueError(f"no duration table entry for {root}")
+            if root in MICRO_YIELD_ROOTS:
+                # Front close is the yield in %; funding rate is SOFR in %
+                front_yield = front_c
+                funding = derive_sofr(d)
+                return duration * (front_yield - funding) / 100.0
+            # ZT/ZF/ZN/ZB/TN/UB: price-traded bond futures.
+            # Yield not directly available without CTD conversion factor.
+            # v1 fallback: return 0 (caller can ignore bond carry for these).
+            return 0.0
         raise ValueError(f"unknown asset_class: {asset_class}")

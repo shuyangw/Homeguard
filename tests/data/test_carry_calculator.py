@@ -89,3 +89,48 @@ def test_compute_equity_index(tmp_path, monkeypatch):
     )
     carry = CarryCalculator().compute("ES", "equity_index", date(2024, 6, 3))
     assert carry == pytest.approx(-0.0475, abs=0.005)
+
+
+def test_compute_bond_micro_yield(tmp_path, monkeypatch):
+    """10Y Micro Yield: front close = 4.20% (yield), SOFR = 3.50%.
+    duration=9, carry = 9 * (4.20 - 3.50) / 100 = 0.063."""
+    rows = [
+        {"timestamp": datetime(2024, 6, 3, 14, 0, tzinfo=timezone.utc),
+         "open": 4.20, "high": 4.20, "low": 4.20, "close": 4.20,
+         "volume": 100000, "symbol": "10YM4"},
+        {"timestamp": datetime(2024, 6, 3, 14, 1, tzinfo=timezone.utc),
+         "open": 4.22, "high": 4.22, "low": 4.22, "close": 4.22,
+         "volume": 5000, "symbol": "10YU4"},
+    ]
+    _write_pcm_fixture(tmp_path, 2024, 6, rows)
+    monkeypatch.setattr(
+        "src.data.carry_calculator._storage_root",
+        lambda: tmp_path,
+    )
+    # Stub SOFR derivation
+    monkeypatch.setattr(
+        "src.data.carry_calculator.derive_sofr",
+        lambda d: 3.5,
+    )
+    carry = CarryCalculator().compute("10Y", "bond", date(2024, 6, 3))
+    # 9 * (4.20 - 3.50) / 100 = 0.063
+    assert carry == pytest.approx(0.063, abs=0.005)
+
+
+def test_compute_bond_standard_returns_zero(tmp_path, monkeypatch):
+    """ZN (price-traded T-Note): no direct yield available -> v1 fallback returns 0."""
+    rows = [
+        {"timestamp": datetime(2024, 6, 3, 14, 0, tzinfo=timezone.utc),
+         "open": 110.5, "high": 110.5, "low": 110.5, "close": 110.5,
+         "volume": 100000, "symbol": "ZNM4"},
+        {"timestamp": datetime(2024, 6, 3, 14, 1, tzinfo=timezone.utc),
+         "open": 110.0, "high": 110.0, "low": 110.0, "close": 110.0,
+         "volume": 5000, "symbol": "ZNU4"},
+    ]
+    _write_pcm_fixture(tmp_path, 2024, 6, rows)
+    monkeypatch.setattr(
+        "src.data.carry_calculator._storage_root",
+        lambda: tmp_path,
+    )
+    carry = CarryCalculator().compute("ZN", "bond", date(2024, 6, 3))
+    assert carry == 0.0
