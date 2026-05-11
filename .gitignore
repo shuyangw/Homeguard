@@ -292,6 +292,10 @@ docs/*
 !docs/storage/
 !docs/storage/**
 
+# KEEP: Trading runbooks (operational procedures for live/paper trading)
+!docs/trading/
+!docs/trading/**
+
 # Hide everything else (new files only - previously tracked files remain):
 # - docs/api/ (can be generated from code)
 # - docs/guides/ (user guides, wiki material)
