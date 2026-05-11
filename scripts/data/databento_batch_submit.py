@@ -204,7 +204,7 @@ def _submit(
                 f"cost=${job['cost_usd']}")
 
 
-def submit_all(end_date: str = DEFAULT_END) -> int:
+def submit_all(end_date: str = DEFAULT_END, confirm: bool = False) -> int:
     api_key = os.getenv("DATABENTO_API_KEY")
     if not api_key:
         logger.error("DATABENTO_API_KEY not set")
@@ -212,96 +212,111 @@ def submit_all(end_date: str = DEFAULT_END) -> int:
     client = db.Historical(api_key)
     state = _load_state()
 
+    precheck_log: list[tuple[str, bool, str]] = []
+
+    def _gated_submit(section, **kwargs):
+        # Run precheck before submitting
+        passed, summary = precheck_section(
+            client,
+            section=section,
+            schema=kwargs["schema"],
+            symbols=kwargs["symbols"],
+            stype_in=kwargs["stype_in"],
+            start=kwargs["start"],
+            end=kwargs["end"],
+        )
+        precheck_log.append((section, passed, summary))
+        if not passed:
+            logger.warning(f"  Section {section}: PRECHECK FAILED -- {summary}")
+            return
+        if not confirm:
+            logger.info(f"  Section {section}: PRECHECK OK -- {summary} (dry run, not submitting)")
+            return
+        _submit(client, section, state=state, **kwargs)
+
     # Section A: continuous OHLCV-1m, .v.0 universe
     # 54 symbols x 192 months = 10,368 files with split_symbols=True; under 100k limit
-    _submit(
-        client, "A_v",
+    _gated_submit(
+        "A_v",
         schema="ohlcv-1m",
         symbols=CONTINUOUS_V_DOTTED,
         stype_in="continuous",
         start=BULK_PULL_START, end=end_date,
         split_duration="month",
         split_symbols=True,
-        state=state,
     )
 
     # Section A diagnostic: GC.n.0 (open-interest roll)
-    _submit(
-        client, "A_n_diag",
+    _gated_submit(
+        "A_n_diag",
         schema="ohlcv-1m",
         symbols=CONTINUOUS_DIAGNOSTIC,
         stype_in="continuous",
         start=BULK_PULL_START, end=end_date,
         split_duration="month",
         split_symbols=True,
-        state=state,
     )
 
     # Section B: per-contract daily OHLCV-1d
     # split_symbols=False because parent symbology expands per contract
     # (each .FUT has hundreds of unique contracts) which blows past 100k file limit.
     # Will split client-side post-download.
-    _submit(
-        client, "B",
+    _gated_submit(
+        "B",
         schema="ohlcv-1d",
         symbols=ALL_FUT_PARENTS,
         stype_in="parent",
         start=BULK_PULL_START, end=end_date,
         split_duration="month",
         split_symbols=False,
-        state=state,
     )
 
     # Section C: options on futures daily
     # split_symbols=False (option chains have thousands of strike-expiries per family).
-    _submit(
-        client, "C",
+    _gated_submit(
+        "C",
         schema="ohlcv-1d",
         symbols=ALL_OPT_PARENTS,
         stype_in="parent",
         start=BULK_PULL_START, end=end_date,
         split_duration="month",
         split_symbols=False,
-        state=state,
     )
 
     # Section D already submitted manually; keep its id if known
     # (Will be submitted here if state file is fresh)
-    _submit(
-        client, "D",
+    _gated_submit(
+        "D",
         schema="definition",
         symbols=ALL_FUT_PARENTS + ALL_OPT_PARENTS,
         stype_in="parent",
         start=BULK_PULL_START, end=end_date,
         split_duration="month",
         split_symbols=False,  # keep one file per month, all symbols
-        state=state,
     )
 
     # Section E: statistics
     # split_symbols=False (statistics include per-contract stats per stat type;
     # ~thousands of unique contracts per family blows past 100k limit).
-    _submit(
-        client, "E",
+    _gated_submit(
+        "E",
         schema="statistics",
         symbols=ALL_FUT_PARENTS,
         stype_in="parent",
         start=BULK_PULL_START, end=end_date,
         split_duration="month",
         split_symbols=False,
-        state=state,
     )
 
     # Section F: MBP-1 last 6 months free; 4 syms x ~130 days = 520 files
-    _submit(
-        client, "F",
+    _gated_submit(
+        "F",
         schema="mbp-1",
         symbols=MBP1_SYMBOLS,
         stype_in="continuous",
         start=MBP1_FREE_START, end=MBP1_FREE_END,
         split_duration="day",
         split_symbols=True,
-        state=state,
     )
 
     # Section Trades_ES_MES: trades schema for ES, MES, last-hour window, 5 years.
@@ -309,55 +324,62 @@ def submit_all(end_date: str = DEFAULT_END) -> int:
     # Time window: 19:00-21:00 UTC daily (3pm-4pm ET cash session close).
     # Note: Databento batch jobs don't natively support time-of-day filtering;
     # we pull full days and filter post-download in the converter.
-    _submit(
-        client, "Trades_ES_MES",
+    _gated_submit(
+        "Trades_ES_MES",
         schema="trades",
         symbols=["ES.v.0", "MES.v.0"],
         stype_in="continuous",
         start="2021-01-01", end="2026-02-22",
         split_duration="month",
         split_symbols=True,
-        state=state,
     )
 
     # Section Status_continuous + Status_parent: status events (halts, limits,
     # pre-open transitions) for backtest realism. Split into two jobs because
     # Databento doesn't accept mixed stype_in in a single submission.
-    _submit(
-        client, "Status_continuous",
+    _gated_submit(
+        "Status_continuous",
         schema="status",
         symbols=CONTINUOUS_V_DOTTED,
         stype_in="continuous",
         start=BULK_PULL_START, end=end_date,
         split_duration="month",
         split_symbols=False,
-        state=state,
     )
-    _submit(
-        client, "Status_parent",
+    _gated_submit(
+        "Status_parent",
         schema="status",
         symbols=ALL_FUT_PARENTS,
         stype_in="parent",
         start=BULK_PULL_START, end=end_date,
         split_duration="month",
         split_symbols=False,
-        state=state,
     )
 
     # Section B_ED_daily: Eurodollar per-contract daily for pre-2018 funding.
     # Phased out by CME in 2023; covers history needed for funding-rate proxy
     # before SR1 listing on 2018-05-07.
     # Note: Databento accepts "GE.FUT" (legacy CME symbol) not "ED.FUT".
-    _submit(
-        client, "B_ED_daily",
+    _gated_submit(
+        "B_ED_daily",
         schema="ohlcv-1d",
         symbols=["GE.FUT"],
         stype_in="parent",
         start=BULK_PULL_START, end="2023-12-31",
         split_duration="month",
         split_symbols=False,
-        state=state,
     )
+
+    # Precheck summary table
+    logger.info("\n=== Precheck Summary ===")
+    for section, passed, summary in precheck_log:
+        flag = "OK  " if passed else "FAIL"
+        logger.info(f"  [{flag}] {section}: {summary}")
+    fail_count = sum(1 for _, p, _ in precheck_log if not p)
+    if fail_count:
+        logger.warning(f"\n{fail_count} sections failed precheck and were not submitted.")
+    if not confirm:
+        logger.info("\n(DRY RUN: use --confirm to submit prechecked-OK sections)")
 
     logger.info(f"\nAll sections submitted. State file: {STATE_FILE}")
     logger.info(f"Total jobs: {len(state['jobs'])}")
@@ -371,8 +393,13 @@ def submit_all(end_date: str = DEFAULT_END) -> int:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--end-date", default=DEFAULT_END)
+    parser.add_argument(
+        "--confirm",
+        action="store_true",
+        help="Execute submissions after prechecks pass. Without this, runs as a dry run.",
+    )
     args = parser.parse_args()
-    return submit_all(end_date=args.end_date)
+    return submit_all(end_date=args.end_date, confirm=args.confirm)
 
 
 if __name__ == "__main__":
