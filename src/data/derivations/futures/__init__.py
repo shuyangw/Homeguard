@@ -1,5 +1,6 @@
 """Futures-specific derivation pipelines."""
 
+from src.data.derivations.futures.macro_calendar import load_macro_calendar
 from src.data.derivations.futures.sofr import derive_sofr
 from src.data.derivations.futures.vix_equivalent import derive_vix_equivalent
 from src.data.derivations.futures.yields import get_treasury_yield
@@ -17,5 +18,6 @@ __all__ = [
     "derive_sofr",
     "derive_vix_equivalent",
     "get_treasury_yield",
+    "load_macro_calendar",
     "compute_carry_glbx",
 ]
