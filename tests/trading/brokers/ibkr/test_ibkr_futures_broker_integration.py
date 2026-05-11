@@ -124,6 +124,51 @@ def test_submit_resolved_order_rejected_on_margin(tmp_path):
     assert "margin" in entries[0]["error_message"].lower()
 
 
+def test_submit_resolved_order_reads_expiration_from_order(tmp_path):
+    """When expiration_date param is omitted, broker uses resolved.expiration_date."""
+    broker = _mk_broker_with_passing_guards(tmp_path)
+    order = ResolvedOrder(
+        strategy_intent="ES.v.0", symbol_root="ES", contract_month="202406",
+        raw_symbol="ESM4", side=OrderSide.BUY, quantity=2,
+        order_type=OrderType.LIMIT, limit_price=5300.0, stop_price=None,
+        time_in_force=TimeInForce.DAY, strategy="adaptation_d",
+        as_of=date(2024, 5, 1),
+        expiration_date=date(2024, 6, 21),
+    )
+    response = broker.submit_resolved_order(order, hold_overnight=False)
+    assert response["status"] == "stub_accepted"
+    # Verify ExpirationGuard was called with the order's expiration_date
+    broker._expiration_guard.check_new_entry_with_expiration.assert_called_once_with(
+        "ES", date(2024, 6, 21),
+    )
+
+
+def test_submit_resolved_order_explicit_param_overrides_order_field(tmp_path):
+    """Explicit expiration_date param takes precedence over resolved.expiration_date."""
+    broker = _mk_broker_with_passing_guards(tmp_path)
+    order = ResolvedOrder(
+        strategy_intent="ES.v.0", symbol_root="ES", contract_month="202406",
+        raw_symbol="ESM4", side=OrderSide.BUY, quantity=2,
+        order_type=OrderType.LIMIT, limit_price=5300.0, stop_price=None,
+        time_in_force=TimeInForce.DAY, strategy="adaptation_d",
+        as_of=date(2024, 5, 1),
+        expiration_date=date(2024, 6, 21),  # would be the default
+    )
+    override = date(2024, 9, 20)
+    broker.submit_resolved_order(order, expiration_date=override)
+    broker._expiration_guard.check_new_entry_with_expiration.assert_called_once_with(
+        "ES", override,
+    )
+
+
+def test_submit_resolved_order_no_expiration_raises(tmp_path):
+    """No expiration_date in either param or order field -> ValueError."""
+    broker = _mk_broker_with_passing_guards(tmp_path)
+    order = _mk_resolved_order()  # expiration_date defaults to None
+    with pytest.raises(ValueError, match="no expiration_date available"):
+        broker.submit_resolved_order(order)
+
+
 def test_safeguards_lazy_init():
     """Broker created without explicit safeguards lazily constructs them."""
     broker = IBKRFuturesBroker(IBKRConfig(port=4002))

@@ -17,6 +17,7 @@ from datetime import date
 from typing import Any
 
 from src.data.continuous_contract_loader import ContinuousContractDataLoader
+from src.data.futures_definitions_loader import FuturesDefinitionsLoader
 from src.trading.brokers.interfaces.base import OrderSide, OrderType, TimeInForce
 
 
@@ -51,6 +52,7 @@ class ResolvedOrder:
     time_in_force: TimeInForce
     strategy: str              # which strategy emitted this order
     as_of: date
+    expiration_date: date | None = None  # populated when definitions_loader is set
 
 
 def _raw_symbol_to_contract_month(raw_symbol: str, root: str) -> str:
@@ -75,8 +77,12 @@ def _raw_symbol_to_contract_month(raw_symbol: str, root: str) -> str:
 class FuturesSymbolResolver:
     """Resolves continuous symbol intents to per-contract order params."""
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        definitions_loader: FuturesDefinitionsLoader | None = None,
+    ) -> None:
         self._loader = ContinuousContractDataLoader()
+        self._definitions = definitions_loader
         self._cache: dict[tuple[str, date], ContractResolution] = {}
 
     def resolve_active_contract(self, symbol_root: str, as_of: date) -> ContractResolution:
@@ -122,6 +128,11 @@ class FuturesSymbolResolver:
             )
         root = strategy_intent.split(".", 1)[0]
         resolution = self.resolve_active_contract(root, as_of)
+        expiration_date: date | None = None
+        if self._definitions is not None:
+            expiration_date = self._definitions.get_expiration(
+                resolution.raw_symbol, root, as_of,
+            )
         return ResolvedOrder(
             strategy_intent=strategy_intent,
             symbol_root=root,
@@ -135,4 +146,5 @@ class FuturesSymbolResolver:
             time_in_force=time_in_force,
             strategy=strategy,
             as_of=as_of,
+            expiration_date=expiration_date,
         )

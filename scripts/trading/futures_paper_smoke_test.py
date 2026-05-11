@@ -33,6 +33,7 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(PROJECT_ROOT))
 
+from src.data.futures_definitions_loader import FuturesDefinitionsLoader
 from src.trading.brokers.ibkr.config import IBKRConfig
 from src.trading.brokers.ibkr.ibkr_futures_broker import (
     IBKRFuturesBroker, OrderRejectedError,
@@ -55,7 +56,8 @@ def run_safeguard_smoke(symbol_root: str = "MES") -> int:
     audit = AuditLog(log_dir=audit_dir)
     broker = IBKRFuturesBroker(config=config, audit_log=audit)
 
-    resolver = FuturesSymbolResolver()
+    definitions_loader = FuturesDefinitionsLoader()
+    resolver = FuturesSymbolResolver(definitions_loader=definitions_loader)
     today = date.today()
     try:
         resolved = resolver.resolve_for_order(
@@ -71,15 +73,13 @@ def run_safeguard_smoke(symbol_root: str = "MES") -> int:
     except Exception as e:
         logger.error(f"[FAIL] symbol resolution failed: {e}")
         return 1
-    logger.info(f"[OK] resolved {symbol_root}.v.0 -> {resolved.raw_symbol} (contract_month={resolved.contract_month})")
-
-    placeholder_expiration = date(today.year + 1, 12, 31)
-    logger.warning("[!] using placeholder expiration date; replace with futures_definitions/ lookup")
+    logger.info(
+        f"[OK] resolved {symbol_root}.v.0 -> {resolved.raw_symbol} "
+        f"(contract_month={resolved.contract_month}, expiration={resolved.expiration_date})"
+    )
 
     try:
-        response = broker.submit_resolved_order(
-            resolved, expiration_date=placeholder_expiration, hold_overnight=False,
-        )
+        response = broker.submit_resolved_order(resolved, hold_overnight=False)
         logger.info(f"[OK] order submitted: orderId={response['orderId']} status={response['status']}")
     except OrderRejectedError as e:
         logger.error(f"[FAIL] safeguard rejected order: {e}")
