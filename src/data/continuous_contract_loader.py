@@ -81,3 +81,21 @@ class ContinuousContractDataLoader:
         ranked = daily.sort(["date", "vol"], descending=[False, True])
         active = ranked.group_by("date").agg(pl.col("symbol").first().alias("active")).sort("date")
         return active
+
+    def detect_roll_dates(
+        self, root: str, start: date, end: date
+    ) -> list[date]:
+        """Return list of dates where the active contract changes.
+
+        Each returned date is the FIRST day the new contract is active.
+        """
+        active = self._active_contract_per_day(root, start, end)
+        if active.is_empty():
+            return []
+        rolls: list[date] = []
+        prev = None
+        for row in active.iter_rows(named=True):
+            if prev is not None and row["active"] != prev:
+                rolls.append(row["date"])
+            prev = row["active"]
+        return rolls

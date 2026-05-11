@@ -50,3 +50,29 @@ def test_active_contract_picks_highest_volume_outright(tmp_path, monkeypatch):
     row = active.row(0, named=True)
     assert row["date"] == date(2024, 6, 3)
     assert row["active"] == "ESM4"
+
+
+def test_detect_roll_dates(tmp_path, monkeypatch):
+    # Build 5 trading days: ESM4 dominates first 3, ESU4 takes over on day 4
+    rows = []
+    for day, sym, vol in [
+        (3, "ESM4", 1_000_000),
+        (4, "ESM4", 800_000),
+        (5, "ESM4", 600_000),
+        (6, "ESU4", 700_000),  # roll happens here
+        (7, "ESU4", 900_000),
+    ]:
+        rows.append({
+            "timestamp": datetime(2024, 6, day, 14, 0, tzinfo=timezone.utc),
+            "open": 5400.0, "high": 5400.0, "low": 5400.0, "close": 5400.0,
+            "volume": vol, "symbol": sym,
+        })
+    _write_pcm_fixture(tmp_path, 2024, 6, rows)
+    monkeypatch.setattr(
+        "src.data.continuous_contract_loader._storage_root",
+        lambda: tmp_path,
+    )
+    rolls = ContinuousContractDataLoader().detect_roll_dates(
+        "ES", date(2024, 6, 1), date(2024, 6, 30),
+    )
+    assert rolls == [date(2024, 6, 6)]
