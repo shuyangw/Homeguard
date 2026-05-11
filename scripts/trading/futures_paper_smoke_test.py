@@ -166,13 +166,17 @@ def _resolve_intent_via_ibkr(
     from ib_async import Future
     from src.trading.futures.symbol_resolver import ResolvedOrder
 
-    ib = broker._ensure_connection().ib
+    conn = broker._ensure_connection()
     base = Future(
         symbol=symbol_root,
         exchange=broker._exchange_for(symbol_root),
         includeExpired=False,
     )
-    details = ib.reqContractDetails(base)
+
+    # reqContractDetailsAsync returns Awaitable, not coroutine -- wrap it
+    async def _fetch_details():
+        return await conn.ib.reqContractDetailsAsync(base)
+    details = conn.run_sync(_fetch_details())
     if not details:
         raise RuntimeError(
             f"IBKR returned no contract details for {symbol_root}; "

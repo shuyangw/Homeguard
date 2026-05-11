@@ -202,16 +202,20 @@ class IBKRFuturesBroker(FuturesTradingInterface):
         return _EXCHANGE_BY_ROOT.get(symbol_root, _DEFAULT_EXCHANGE)
 
     def _build_future_contract(self, symbol_root: str, contract_month: str) -> Any:
-        """Build an ib_async Future contract from (root, YYYYMM)."""
+        """Build an ib_async Future contract from (root, YYYYMM).
+
+        Uses qualifyContractsAsync via the connection manager's event loop
+        to avoid blocking the calling thread waiting on a sync round-trip.
+        """
         from ib_async import Future
         contract = Future(
             symbol=symbol_root,
             lastTradeDateOrContractMonth=contract_month,
             exchange=self._exchange_for(symbol_root),
         )
-        # Bind to the actual instrument; raises if ambiguous/missing
-        qualified = self._ensure_connection().ib.qualifyContracts(contract)
-        if not qualified:
+        conn = self._ensure_connection()
+        qualified = conn.run_sync(conn.ib.qualifyContractsAsync(contract))
+        if not qualified or qualified[0] is None:
             raise ValueError(
                 f"could not qualify futures contract: {symbol_root} {contract_month}"
             )
@@ -547,23 +551,31 @@ class IBKRFuturesBroker(FuturesTradingInterface):
             self._side_to_ibkr(side), quantity, order_type,
             limit_price, None, TimeInForce.DAY, what_if=True,
         )
-        ib = self._ensure_connection().ib
-        # whatIfOrder is sync; returns OrderState directly
-        order_state = ib.whatIfOrder(contract, order)
+        conn = self._ensure_connection()
+        # whatIfOrderAsync returns an Awaitable (not a coroutine), so wrap
+        # it in an async function before passing to run_sync.
+        async def _what_if():
+            return await conn.ib.whatIfOrderAsync(contract, order)
+        order_state = conn.run_sync(_what_if())
+        def _parse(field: str) -> float:
+            """Parse one of ib_async's OrderState string-valued margin fields."""
+            raw = getattr(order_state, field, "") or ""
+            try:
+                return float(raw)
+            except (TypeError, ValueError):
+                return 0.0
+
         return {
             "commission": float(getattr(order_state, "commission", 0) or 0),
-            "initial_margin": float(
-                getattr(order_state, "initMarginChange", None)
-                or getattr(order_state, "initMargin", 0) or 0
-            ),
-            "maintenance_margin": float(
-                getattr(order_state, "maintMarginChange", None)
-                or getattr(order_state, "maintMargin", 0) or 0
-            ),
-            "equity_with_loan": float(
-                getattr(order_state, "equityWithLoanChange", None)
-                or getattr(order_state, "equityWithLoan", 0) or 0
-            ),
+            # MarginGuard reads *_after for the gate
+            "initial_margin_after": _parse("initMarginAfter"),
+            "maintenance_margin_after": _parse("maintMarginAfter"),
+            "equity_with_loan_after": _parse("equityWithLoanAfter"),
+            # Sanity / logging fields
+            "initial_margin_change": _parse("initMarginChange"),
+            "maintenance_margin_change": _parse("maintMarginChange"),
+            # Aliases for backwards-compatible callers (e.g., smoke test)
+            "initial_margin": _parse("initMarginChange"),
         }
 
     def get_margin_status(self) -> dict[str, Any]:
