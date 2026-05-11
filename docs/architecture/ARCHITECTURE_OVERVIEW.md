@@ -166,6 +166,54 @@ Homeguard is a professional-grade backtesting framework for algorithmic trading 
 
 **Integration**: Pass provider to StockScreener for fundamental filters
 
+#### Data Validation Framework (src/data/validation/)
+
+Multi-domain layered validation framework for the local data store. Currently
+implemented for futures; equities/crypto/fx/options have placeholder packages
+ready to be filled in. Each domain registers checks across four layers:
+
+- **Layer 1 — Structural**: section presence, partition key validity, file
+  count per symbol, schema match, parquet integrity sampling
+- **Layer 2 — Statistical**: per-symbol bar density, OHLCV invariants, date
+  floor, freshness, gap detection, volume sanity, derived-signal sanity (SOFR,
+  Treasury yields)
+- **Layer 3 — Cross-source**: definitions completeness vs per-contract,
+  derived SOFR vs 2Y direct read, yield curve smoothness
+- **Layer 4 — External**: known events captured (e.g. CL April 2020 negative
+  oil), ZN-vs-10Y correlation, optional yfinance and CME settlement
+  cross-checks (opt-in via `--external-yfinance` / `--external-cme`)
+
+**Core primitives** ([src/data/validation/core/](../../src/data/validation/core/)):
+- `BaseCheck` ABC with class-level auto-registration via `__init_subclass__`
+- `ValidationRunner` — domain/layer/name filtering, per-check exception
+  containment, continue-on-CRITICAL aggregation
+- `MarkdownReporter` — YAML frontmatter + machine-parseable body for
+  regression diff against prior runs
+- `ValidationResult` / `RunReport` (frozen dataclasses)
+
+**Adaptation F gating** ([src/data/validation/futures/checks/adaptation_f.py](../../src/data/validation/futures/checks/adaptation_f.py))
+is lazy-loaded — checks register only when the CLI is invoked with
+`--adaptation-f`, so they don't pollute the default registry.
+
+**CLI**: `python scripts/data/run_validation.py --domain futures --mode initial`
+
+#### Derivation Pipelines (src/data/derivations/)
+
+Reusable derivations that turn primary market data into engineered signals
+the strategies and validation checks consume.
+
+- **SOFR derivation** ([src/data/derivations/futures/sofr.py](../../src/data/derivations/futures/sofr.py))
+  - `derive_sofr(date)` returns implied overnight SOFR from `SR1` front-month
+    futures close (`100 - close`); listing 2018-05-07
+- **Treasury yields** ([src/data/derivations/futures/yields.py](../../src/data/derivations/futures/yields.py))
+  - `get_treasury_yield(tenor, date)` reads the on-the-run yield directly
+    from CME Micro Yield futures (2YY, 5YY, 10Y, 30Y); listing 2022-08-15
+
+ES realized volatility, VIX-equivalent (Cboe whitepaper), and per-asset-class
+carry computation are deferred — see
+[20260509_VALIDATION_FRAMEWORK_DEFERMENTS.md](../progress/20260509_VALIDATION_FRAMEWORK_DEFERMENTS.md)
+for the rationale and re-entry plan.
+
 ---
 
 ### Layer 2: Strategy Layer
