@@ -278,6 +278,61 @@ def test_get_futures_position_lookup():
 
 # --- margin status --------------------------------------------------------
 
+def test_audit_log_property_lazy_inits():
+    """broker.audit_log returns the safeguard's AuditLog, lazy-constructed."""
+    broker = IBKRFuturesBroker(config=IBKRConfig(port=4002))
+    assert broker._audit_log is None
+    al = broker.audit_log
+    assert al is not None
+    from src.trading.futures.audit_log import AuditLog
+    assert isinstance(al, AuditLog)
+
+
+def test_get_latest_trade_returns_dict_shape():
+    """get_latest_trade extracts last/bid/ask/close from ticker, defaults to 0.0."""
+    broker, mock_conn = _mk_broker_with_mock_conn()
+    # Mock contract qualification
+    fake_contract = MagicMock()
+    fake_contract.localSymbol = "MESM4"
+    fake_contract.symbol = "MES"
+    mock_conn.ib.qualifyContracts.return_value = [fake_contract]
+    # Mock the snapshot
+    fake_ticker = MagicMock()
+    fake_ticker.last = 5800.0
+    fake_ticker.bid = 5799.75
+    fake_ticker.ask = 5800.25
+    fake_ticker.close = 5750.0
+    mock_conn.run_sync.return_value = fake_ticker
+
+    snap = broker.get_latest_trade("MES", "202406")
+    assert snap["price"] == 5800.0
+    assert snap["bid"] == 5799.75
+    assert snap["ask"] == 5800.25
+    assert snap["close"] == 5750.0
+    assert snap["raw_symbol"] == "MESM4"
+
+
+def test_get_latest_trade_handles_nan():
+    """When ticker fields are NaN (market closed), all numeric fields are 0.0."""
+    broker, mock_conn = _mk_broker_with_mock_conn()
+    fake_contract = MagicMock()
+    fake_contract.localSymbol = "MESM4"
+    fake_contract.symbol = "MES"
+    mock_conn.ib.qualifyContracts.return_value = [fake_contract]
+    fake_ticker = MagicMock()
+    fake_ticker.last = float("nan")
+    fake_ticker.bid = float("nan")
+    fake_ticker.ask = float("nan")
+    fake_ticker.close = float("nan")
+    mock_conn.run_sync.return_value = fake_ticker
+
+    snap = broker.get_latest_trade("MES", "202406")
+    assert snap["price"] == 0.0
+    assert snap["bid"] == 0.0
+    assert snap["ask"] == 0.0
+    assert snap["close"] == 0.0
+
+
 def test_get_margin_status_parses_account_values():
     broker, mock_conn = _mk_broker_with_mock_conn()
     mock_conn.ib.accountValues.return_value = [
