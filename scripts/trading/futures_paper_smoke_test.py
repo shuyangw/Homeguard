@@ -130,20 +130,122 @@ def _connect_broker(client_id: int, port: int) -> IBKRFuturesBroker:
     return broker
 
 
-def _resolve_intent(broker: IBKRFuturesBroker, symbol_root: str):
-    """Resolve <root>.v.0 to ResolvedOrder with real expiration_date."""
+def _resolve_intent_via_local_data(
+    broker: IBKRFuturesBroker, symbol_root: str,
+):
+    """Resolve <root>.v.0 using local PCM + definitions data.
+
+    Used when Homeguard's local data partitions are present (Windows dev
+    machine, etc.). Returns a ResolvedOrder with real expiration_date.
+    Raises FileNotFoundError if data isn't available -- caller should
+    fall back to _resolve_intent_via_ibkr.
+    """
     loader = FuturesDefinitionsLoader()
     resolver = FuturesSymbolResolver(definitions_loader=loader)
     return resolver.resolve_for_order(
         strategy_intent=f"{symbol_root}.v.0",
         side=OrderSide.BUY,
-        quantity=1,  # placeholder, overridden below
+        quantity=1,
         as_of=date.today(),
         strategy="futures_smoke_test",
         order_type=OrderType.LIMIT,
         limit_price=1.0,
         time_in_force=TimeInForce.DAY,
     )
+
+
+def _resolve_intent_via_ibkr(
+    broker: IBKRFuturesBroker, symbol_root: str,
+):
+    """Resolve <root>.v.0 by querying IBKR contract details directly.
+
+    Used when local PCM / definitions data isn't deployed (e.g., on EC2
+    where production strategies don't need futures data). Returns a
+    ResolvedOrder with the active front-month contract and real expiration.
+    """
+    from ib_async import Future
+    from src.trading.futures.symbol_resolver import ResolvedOrder
+
+    ib = broker._ensure_connection().ib
+    base = Future(
+        symbol=symbol_root,
+        exchange=broker._exchange_for(symbol_root),
+        includeExpired=False,
+    )
+    details = ib.reqContractDetails(base)
+    if not details:
+        raise RuntimeError(
+            f"IBKR returned no contract details for {symbol_root}; "
+            f"check futures permissions on the paper account"
+        )
+    today = date.today()
+    # Pick the contract whose lastTradeDate is earliest but still in the future.
+    candidates = []
+    for cd in details:
+        c = cd.contract
+        date_str = c.lastTradeDateOrContractMonth or ""
+        if len(date_str) >= 8:
+            try:
+                exp = date(
+                    int(date_str[:4]), int(date_str[4:6]), int(date_str[6:8]),
+                )
+            except ValueError:
+                continue
+        elif len(date_str) == 6:
+            try:
+                exp = date(
+                    int(date_str[:4]), int(date_str[4:6]),
+                    28,  # use a within-month placeholder; reqContractDetails
+                          # may return YYYYMM rather than YYYYMMDD
+                )
+            except ValueError:
+                continue
+        else:
+            continue
+        if exp >= today:
+            candidates.append((exp, c, date_str))
+    if not candidates:
+        raise RuntimeError(
+            f"no live front-month contract found for {symbol_root}"
+        )
+    candidates.sort(key=lambda t: t[0])
+    expiration, front_contract, date_str = candidates[0]
+    # contract_month convention is YYYYMM (6 chars); slice off DD if present
+    contract_month = date_str[:6]
+
+    return ResolvedOrder(
+        strategy_intent=f"{symbol_root}.v.0",
+        symbol_root=symbol_root,
+        contract_month=contract_month,
+        raw_symbol=front_contract.localSymbol or front_contract.symbol,
+        side=OrderSide.BUY,
+        quantity=1,
+        order_type=OrderType.LIMIT,
+        limit_price=1.0,
+        stop_price=None,
+        time_in_force=TimeInForce.DAY,
+        strategy="futures_smoke_test",
+        as_of=today,
+        expiration_date=expiration,
+    )
+
+
+def _resolve_intent(broker: IBKRFuturesBroker, symbol_root: str):
+    """Resolve <root>.v.0, preferring local data and falling back to IBKR."""
+    try:
+        resolved = _resolve_intent_via_local_data(broker, symbol_root)
+        if resolved.expiration_date is None:
+            raise RuntimeError("expiration_date not populated")
+        logger.info("  resolved via local FuturesDefinitionsLoader")
+        return resolved
+    except (FileNotFoundError, RuntimeError, ValueError) as e:
+        logger.warning(
+            f"  local data unavailable ({type(e).__name__}: {e}); "
+            f"falling back to IBKR contract details"
+        )
+        resolved = _resolve_intent_via_ibkr(broker, symbol_root)
+        logger.info("  resolved via IBKR reqContractDetails")
+        return resolved
 
 
 def _fetch_reference_price(
@@ -245,7 +347,7 @@ def run_smoke_test(symbol_root: str, qty: int,
         except Exception as e:
             fail("0d", f"symbol resolution failed: {e}")
         if resolved.expiration_date is None:
-            fail("0d", "expiration_date is None -- DefinitionsLoader not wired")
+            fail("0d", "expiration_date is None after both resolution paths")
         ok(f"{symbol_root}.v.0 -> {resolved.raw_symbol} "
            f"(contract_month={resolved.contract_month}, "
            f"expiration={resolved.expiration_date})")
