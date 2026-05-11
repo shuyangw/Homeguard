@@ -1,12 +1,10 @@
-"""Tests for IBKRFuturesBroker skeleton (no IBKR connection required).
+"""Shape tests for IBKRFuturesBroker (no IBKR connection required).
 
-These tests verify class shape only -- signatures, ABC compliance, and
-that methods raise NotImplementedError (since the actual IBKR API calls
-are wired in sub-chunks 6c-6j).
+Verify the class implements the FuturesTradingInterface ABC with matching
+signatures. Behavior tests (with mocked ib_async) live in
+test_ibkr_futures_broker_integration.py.
 """
 import inspect
-
-import pytest
 
 from src.trading.brokers.interfaces.futures_trading import FuturesTradingInterface
 from src.trading.brokers.ibkr.ibkr_futures_broker import IBKRFuturesBroker
@@ -60,26 +58,9 @@ def test_method_signatures_match_interface():
             )
 
 
-def test_skeleton_methods_raise_not_implemented():
-    """Skeleton methods raise NotImplementedError until sub-chunks 6c-6j wire them."""
-    # We construct an instance without starting a connection -- the skeleton
-    # __init__ stashes config but doesn't connect.
+def test_instantiable_without_connection():
+    """Construction stashes config but doesn't open an IBKR connection."""
     from src.trading.brokers.ibkr.config import IBKRConfig
     broker = IBKRFuturesBroker(IBKRConfig(port=4002))
-
-    from src.trading.brokers.interfaces.base import OrderSide, OrderType
-
-    with pytest.raises(NotImplementedError):
-        broker.place_futures_order(
-            symbol_root="MES", contract_month="202603",
-            side=OrderSide.BUY, quantity=1, order_type=OrderType.MARKET,
-        )
-    with pytest.raises(NotImplementedError):
-        broker.get_futures_positions()
-    with pytest.raises(NotImplementedError):
-        broker.get_margin_status()
-    with pytest.raises(NotImplementedError):
-        broker.what_if_order(
-            symbol_root="MES", contract_month="202603",
-            side=OrderSide.BUY, quantity=1,
-        )
+    assert broker._conn is None
+    assert broker._config.port == 4002

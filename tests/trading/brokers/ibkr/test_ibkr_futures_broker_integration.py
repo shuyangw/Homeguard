@@ -34,18 +34,33 @@ def _mk_resolved_order() -> ResolvedOrder:
 
 
 def _mk_broker_with_passing_guards(tmp_path) -> IBKRFuturesBroker:
-    """Build a broker whose guards are tuned to accept the test order."""
+    """Build a broker whose guards are tuned to accept the test order.
+
+    Also stubs `_ibkr_submit` so safeguard tests don't require a real IBKR
+    connection. The submit-stub returns a synthetic dict that downstream
+    AuditLog.log_submission can record.
+    """
     audit = AuditLog(log_dir=tmp_path / "audit")
     exp_guard = MagicMock()
     exp_guard.check_new_entry_with_expiration.return_value = ExpirationVerdict.OK
     margin_guard = MagicMock()
     margin_guard.pre_trade_check.return_value = MarginCheckResult(verdict=MarginVerdict.OK)
-    return IBKRFuturesBroker(
+    broker = IBKRFuturesBroker(
         config=IBKRConfig(port=4002),
         audit_log=audit,
         expiration_guard=exp_guard,
         margin_guard=margin_guard,
     )
+    broker._ibkr_submit = lambda resolved: {
+        "orderId": 12345, "permId": 12346, "status": "pending",
+        "raw_status": "Submitted", "symbol": resolved.raw_symbol,
+        "contract_month": resolved.contract_month, "quantity": resolved.quantity,
+        "side": "buy" if resolved.side == OrderSide.BUY else "sell",
+        "order_type": resolved.order_type.value.lower(),
+        "limit_price": resolved.limit_price, "stop_price": resolved.stop_price,
+        "filled_qty": 0, "filled_avg_price": None,
+    }
+    return broker
 
 
 def test_submit_resolved_order_happy_path(tmp_path):
@@ -56,7 +71,7 @@ def test_submit_resolved_order_happy_path(tmp_path):
         expiration_date=date(2024, 6, 21),
         hold_overnight=False,
     )
-    assert response["status"] == "stub_accepted"
+    assert response["status"] == "pending"
     assert "orderId" in response
     # Audit log has one 'submit' entry
     import json
@@ -136,7 +151,7 @@ def test_submit_resolved_order_reads_expiration_from_order(tmp_path):
         expiration_date=date(2024, 6, 21),
     )
     response = broker.submit_resolved_order(order, hold_overnight=False)
-    assert response["status"] == "stub_accepted"
+    assert response["status"] == "pending"
     # Verify ExpirationGuard was called with the order's expiration_date
     broker._expiration_guard.check_new_entry_with_expiration.assert_called_once_with(
         "ES", date(2024, 6, 21),
