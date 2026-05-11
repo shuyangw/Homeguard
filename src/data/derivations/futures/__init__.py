@@ -1,6 +1,7 @@
 """Futures-specific derivation pipelines."""
 
 from src.data.derivations.futures.macro_calendar import load_macro_calendar
+from src.data.derivations.futures.open_interest import aggregate_open_interest
 from src.data.derivations.futures.sofr import derive_sofr
 from src.data.derivations.futures.vix_equivalent import derive_vix_equivalent
 from src.data.derivations.futures.yields import get_treasury_yield
@@ -15,6 +16,7 @@ def compute_carry_glbx(*args, **kwargs):
 
 
 __all__ = [
+    "aggregate_open_interest",
     "derive_sofr",
     "derive_vix_equivalent",
     "get_treasury_yield",
