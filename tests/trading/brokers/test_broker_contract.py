@@ -94,3 +94,56 @@ def test_stock_broker_method_accepts_required_params(
             f"required parameter {required!r}. Signature: {sig}. "
             f"ExecutionEngine passes this by name."
         )
+
+
+# --- Futures broker contract test (added 2026-05-11, sub-chunk 6b) ---
+
+# Methods that strategies and ExecutionEngine call on a FuturesTradingInterface
+# concrete broker. Kept in sync with src/trading/brokers/interfaces/futures_trading.py
+# -- if FuturesTradingInterface gains a method that strategies call, add it here.
+REQUIRED_FUTURES_METHODS = [
+    (
+        "place_futures_order",
+        ["symbol_root", "contract_month", "side", "quantity", "order_type",
+         "limit_price", "stop_price", "time_in_force"],
+    ),
+    (
+        "place_futures_combo_order",
+        ["legs", "order_type", "limit_price", "time_in_force"],
+    ),
+    ("get_futures_positions",       []),
+    ("get_futures_position",        ["symbol_root", "contract_month"]),
+    ("close_futures_position",      ["symbol_root", "contract_month"]),
+    ("close_all_futures_positions", []),
+    (
+        "what_if_order",
+        ["symbol_root", "contract_month", "side", "quantity",
+         "order_type", "limit_price"],
+    ),
+    ("get_margin_status",           []),
+    # Inherited from OrderManagementInterface
+    ("cancel_order",                ["order_id"]),
+    ("get_order",                   ["order_id"]),
+]
+
+
+@pytest.mark.parametrize("method_name,required_params", REQUIRED_FUTURES_METHODS)
+def test_ibkr_futures_broker_has_required_method(method_name, required_params):
+    """IBKRFuturesBroker exposes every method strategies/ExecutionEngine need.
+
+    Catches regressions where the broker silently falls off the interface.
+    """
+    from src.trading.brokers.ibkr.ibkr_futures_broker import IBKRFuturesBroker
+
+    method = getattr(IBKRFuturesBroker, method_name, None)
+    assert method is not None, (
+        f"IBKRFuturesBroker is missing required method '{method_name}'"
+    )
+
+    sig = inspect.signature(method)
+    actual_params = [p for p in sig.parameters.keys() if p != "self"]
+    for p in required_params:
+        assert p in actual_params, (
+            f"IBKRFuturesBroker.{method_name} signature {actual_params} "
+            f"missing required parameter '{p}'"
+        )

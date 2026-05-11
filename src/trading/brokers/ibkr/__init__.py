@@ -31,6 +31,7 @@ Dependencies:
 from src.trading.brokers.ibkr.config import IBKRConfig
 from src.trading.brokers.ibkr.connection import IBKRConnectionManager
 from src.trading.brokers.ibkr.ibkr_broker import IBKRBroker
+from src.trading.brokers.ibkr.ibkr_futures_broker import IBKRFuturesBroker
 from src.trading.brokers.ibkr.data_download import IBKRDataProvider
 from src.trading.brokers.ibkr.streaming import IBKRStreamingProvider
 
@@ -38,6 +39,7 @@ __all__ = [
     "IBKRConfig",
     "IBKRConnectionManager",
     "IBKRBroker",
+    "IBKRFuturesBroker",
     "IBKRDataProvider",
     "IBKRStreamingProvider",
 ]
