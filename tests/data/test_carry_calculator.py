@@ -47,3 +47,45 @@ def test_find_front_second_close(tmp_path, monkeypatch):
     assert front_c == 5300.0
     assert second_sym == "ESU4"
     assert second_c == 5362.0
+
+
+def test_compute_commodity(tmp_path, monkeypatch):
+    """GC: GCQ4 (Aug) is volume-heavier so it's 'front'; GCM4 (Jun) is 'second'.
+    second_month - front_month = -2 months (= -60 days). Algorithm uses ABSOLUTE
+    months for days_to_second so days_to_second=60.
+    carry = (2322.5 - 2346.1) / 2346.1 * (365/60) ≈ -0.0612"""
+    rows = [
+        {"timestamp": datetime(2024, 6, 3, 14, 0, tzinfo=timezone.utc),
+         "open": 2322.5, "high": 2322.5, "low": 2322.5, "close": 2322.5,
+         "volume": 1000, "symbol": "GCM4"},  # Jun 2024
+        {"timestamp": datetime(2024, 6, 3, 14, 1, tzinfo=timezone.utc),
+         "open": 2346.1, "high": 2346.1, "low": 2346.1, "close": 2346.1,
+         "volume": 100000, "symbol": "GCQ4"},  # Aug 2024 (front)
+    ]
+    _write_pcm_fixture(tmp_path, 2024, 6, rows)
+    monkeypatch.setattr(
+        "src.data.carry_calculator._storage_root",
+        lambda: tmp_path,
+    )
+    carry = CarryCalculator().compute("GC", "commodity", date(2024, 6, 3))
+    assert carry == pytest.approx(-0.0612, abs=0.005)
+
+
+def test_compute_equity_index(tmp_path, monkeypatch):
+    """ES: front=5296.75, second=5359.50, ~90d to second.
+    Equity formula: (front - second) / second * (365/90) ≈ -0.0475."""
+    rows = [
+        {"timestamp": datetime(2024, 6, 3, 14, 0, tzinfo=timezone.utc),
+         "open": 5296.75, "high": 5296.75, "low": 5296.75, "close": 5296.75,
+         "volume": 1_000_000, "symbol": "ESM4"},
+        {"timestamp": datetime(2024, 6, 3, 14, 1, tzinfo=timezone.utc),
+         "open": 5359.50, "high": 5359.50, "low": 5359.50, "close": 5359.50,
+         "volume": 50_000, "symbol": "ESU4"},
+    ]
+    _write_pcm_fixture(tmp_path, 2024, 6, rows)
+    monkeypatch.setattr(
+        "src.data.carry_calculator._storage_root",
+        lambda: tmp_path,
+    )
+    carry = CarryCalculator().compute("ES", "equity_index", date(2024, 6, 3))
+    assert carry == pytest.approx(-0.0475, abs=0.005)

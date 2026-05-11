@@ -67,3 +67,42 @@ class CarryCalculator:
         rows = daily.head(2).to_dicts()
         return (rows[0]["symbol"], rows[0]["c"],
                 rows[1]["symbol"], rows[1]["c"])
+
+    def _months_between(self, front_sym: str, second_sym: str, root: str) -> int:
+        """Number of calendar months between front and second contract.
+
+        Symbol format: <root><MONTH_CODE><YEAR_DIGIT>. Year is the last digit
+        of the year (CME convention). Returns (second_month - front_month).
+
+        Example: front=Q4 (Aug), second=M4 (Jun) -> -2 months (same year, 2 months earlier).
+        """
+        fs = front_sym[len(root):]
+        ss = second_sym[len(root):]
+        f_month = _MONTH_CODES.index(fs[0]) + 1
+        s_month = _MONTH_CODES.index(ss[0]) + 1
+        f_year = int(fs[1:])
+        s_year = int(ss[1:])
+
+        # Adjust for year wrapping: if s_year < f_year, assume second is in next decade
+        if s_year < f_year:
+            s_year += 10
+
+        return (s_year - f_year) * 12 + (s_month - f_month)
+
+    def compute(self, root: str, asset_class: str, d: date) -> float:
+        """Compute carry signal for `root` on date `d` per asset class."""
+        front_sym, front_c, second_sym, second_c = self._find_front_second_close(root, d)
+        months = self._months_between(front_sym, second_sym, root)
+        if months == 0:
+            raise ValueError(f"front and second contracts in same month: {front_sym}, {second_sym}")
+        days_to_second = abs(months) * 30.0
+
+        if asset_class == "commodity":
+            return (second_c - front_c) / front_c * (365.0 / days_to_second)
+        if asset_class == "equity_index":
+            return (front_c - second_c) / second_c * (365.0 / days_to_second)
+        if asset_class == "fx":
+            return (second_c - front_c) / front_c * (365.0 / days_to_second)
+        if asset_class == "bond":
+            raise NotImplementedError("bond carry: Task 4.3")
+        raise ValueError(f"unknown asset_class: {asset_class}")
