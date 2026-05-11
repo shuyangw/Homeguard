@@ -76,3 +76,31 @@ def test_detect_roll_dates(tmp_path, monkeypatch):
         "ES", date(2024, 6, 1), date(2024, 6, 30),
     )
     assert rolls == [date(2024, 6, 6)]
+
+
+def test_load_raw_passthrough(tmp_path, monkeypatch):
+    # Write minimal continuous .v.0 data
+    d = tmp_path / "futures_1min" / "symbol=ES" / "year=2024" / "month=6"
+    d.mkdir(parents=True)
+    pl.DataFrame({
+        "timestamp": [
+            datetime(2024, 6, 3, 14, 0, tzinfo=timezone.utc),
+            datetime(2024, 6, 3, 14, 1, tzinfo=timezone.utc),
+        ],
+        "open": [5400.0, 5400.5],
+        "high": [5401.0, 5401.0],
+        "low": [5399.5, 5400.0],
+        "close": [5400.5, 5400.75],
+        "volume": [100, 120],
+    }).with_columns(
+        pl.col("timestamp").cast(pl.Datetime("us", "UTC")),
+        pl.col("volume").cast(pl.UInt64),
+    ).write_parquet(d / "data.parquet")
+
+    monkeypatch.setattr(
+        "src.data.continuous_contract_loader._storage_root",
+        lambda: tmp_path,
+    )
+    df = ContinuousContractDataLoader().load("ES", method="raw")
+    assert df.shape == (2, 6)
+    assert df["close"].to_list() == [5400.5, 5400.75]

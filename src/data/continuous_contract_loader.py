@@ -99,3 +99,34 @@ class ContinuousContractDataLoader:
                 rolls.append(row["date"])
             prev = row["active"]
         return rolls
+
+    def load(
+        self,
+        root: str,
+        method: str = "ratio_adjusted",
+        start: date | None = None,
+        end: date | None = None,
+    ) -> pl.DataFrame:
+        """Load continuous contract bars.
+
+        method: "raw" | "ratio_adjusted" | "panama_adjusted"
+        start/end: optional date range filter on the output
+        """
+        if method not in ("raw", "ratio_adjusted", "panama_adjusted"):
+            raise ValueError(f"unknown method: {method}")
+
+        sym_dir = _storage_root() / "futures_1min" / f"symbol={root}"
+        files = sorted(sym_dir.rglob("data.parquet"))
+        if not files:
+            return pl.DataFrame()
+        df = pl.concat([pl.read_parquet(f) for f in files]).sort("timestamp")
+        if start is not None:
+            df = df.filter(pl.col("timestamp").dt.date() >= start)
+        if end is not None:
+            df = df.filter(pl.col("timestamp").dt.date() <= end)
+
+        if method == "raw":
+            return df
+
+        # ratio_adjusted and panama_adjusted: implemented in subsequent tasks
+        raise NotImplementedError(f"method {method} not yet implemented")
