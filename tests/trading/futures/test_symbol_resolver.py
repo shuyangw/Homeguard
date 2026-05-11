@@ -95,6 +95,66 @@ def test_resolve_for_order_rejects_lowercase():
         )
 
 
+def test_resolve_for_order_populates_expiration_when_loader_provided(
+    tmp_path, monkeypatch,
+):
+    """When a definitions_loader is injected, ResolvedOrder.expiration_date
+    comes from the futures_definitions partition."""
+    from src.data.futures_definitions_loader import FuturesDefinitionsLoader
+
+    # PCM fixture for continuous-contract resolver
+    rows = [
+        {"timestamp": datetime(2024, 6, 3, 14, 0, tzinfo=timezone.utc),
+         "open": 5300.0, "high": 5300.0, "low": 5300.0, "close": 5300.0,
+         "volume": 1_000_000, "symbol": "ESM4"},
+    ]
+    _write_pcm_fixture(tmp_path, 2024, 6, rows)
+    # Definitions fixture
+    defs_dir = (tmp_path / "futures_definitions" / "year=2024" / "month=6")
+    defs_dir.mkdir(parents=True, exist_ok=True)
+    pl.DataFrame([{
+        "symbol": "ESM4",
+        "instrument_class": "F",
+        "expiration": datetime(2024, 6, 21, tzinfo=timezone.utc),
+        "activation": datetime(2019, 6, 1, tzinfo=timezone.utc),
+        "min_price_increment": 0.25,
+        "min_price_increment_amount": 12.50,
+        "timestamp": datetime(2024, 6, 1, tzinfo=timezone.utc),
+    }]).write_parquet(defs_dir / "data.parquet")
+
+    monkeypatch.setattr(
+        "src.data.continuous_contract_loader._storage_root", lambda: tmp_path,
+    )
+
+    loader = FuturesDefinitionsLoader(storage_root=tmp_path)
+    resolver = FuturesSymbolResolver(definitions_loader=loader)
+    order = resolver.resolve_for_order(
+        strategy_intent="ES.v.0", side=OrderSide.BUY, quantity=1,
+        as_of=date(2024, 6, 3), strategy="smoke_test",
+    )
+    assert order.expiration_date == date(2024, 6, 21)
+
+
+def test_resolve_for_order_expiration_is_none_without_loader(
+    tmp_path, monkeypatch,
+):
+    """No definitions_loader -> expiration_date stays None (backward compat)."""
+    rows = [
+        {"timestamp": datetime(2024, 6, 3, 14, 0, tzinfo=timezone.utc),
+         "open": 5300.0, "high": 5300.0, "low": 5300.0, "close": 5300.0,
+         "volume": 1_000_000, "symbol": "ESM4"},
+    ]
+    _write_pcm_fixture(tmp_path, 2024, 6, rows)
+    monkeypatch.setattr(
+        "src.data.continuous_contract_loader._storage_root", lambda: tmp_path,
+    )
+    order = FuturesSymbolResolver().resolve_for_order(
+        strategy_intent="ES.v.0", side=OrderSide.BUY, quantity=1,
+        as_of=date(2024, 6, 3), strategy="x",
+    )
+    assert order.expiration_date is None
+
+
 def test_resolve_for_order_caches_intra_session(tmp_path, monkeypatch):
     """Resolutions cached per (root, date) so repeat calls are cheap."""
     rows = [

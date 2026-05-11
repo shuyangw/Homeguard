@@ -66,7 +66,7 @@ class IBKRFuturesBroker(FuturesTradingInterface):
     def submit_resolved_order(
         self,
         resolved_order: ResolvedOrder,
-        expiration_date: date,
+        expiration_date: date | None = None,
         hold_overnight: bool = False,
     ) -> dict[str, Any]:
         """Submit a resolved order through the safeguard chain.
@@ -76,15 +76,31 @@ class IBKRFuturesBroker(FuturesTradingInterface):
           2. MarginGuard.pre_trade_check
         If any fails, AuditLog.log_reject is called and OrderRejectedError
         is raised. If all pass, the order is forwarded to IBKR (currently
-        a stub; real IBKR API call wired in 6k) and AuditLog.log_submission
+        a stub; real IBKR API call wired in 6l) and AuditLog.log_submission
         records success.
 
+        Expiration date resolution:
+          - If `expiration_date` argument is given, use it (explicit override).
+          - Otherwise read `resolved_order.expiration_date` (populated when
+            the resolver was constructed with a FuturesDefinitionsLoader).
+          - If neither is available, raise ValueError -- the ExpirationGuard
+            cannot operate without a real expiration date.
+
         This is the main entry point for strategy adapters using the
-        safeguard chain. Strategy code:
+        safeguard chain. Strategy code (preferred form):
+            resolver = FuturesSymbolResolver(definitions_loader=loader)
             resolved = resolver.resolve_for_order(...)
-            broker.submit_resolved_order(resolved, expiration_date, hold_overnight=True)
+            broker.submit_resolved_order(resolved, hold_overnight=True)
         """
         self._ensure_safeguards()
+
+        if expiration_date is None:
+            expiration_date = resolved_order.expiration_date
+        if expiration_date is None:
+            raise ValueError(
+                "no expiration_date available: pass it explicitly or "
+                "construct the resolver with a FuturesDefinitionsLoader"
+            )
 
         # 1. Expiration check
         exp_verdict = self._expiration_guard.check_new_entry_with_expiration(
