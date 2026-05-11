@@ -24,5 +24,60 @@ def _storage_root() -> Path:
     return get_local_storage_dir()
 
 
+# CME month codes: F=Jan G=Feb H=Mar J=Apr K=May M=Jun N=Jul Q=Aug U=Sep V=Oct X=Nov Z=Dec
+_MONTH_CODES = "FGHJKMNQUVXZ"
+
+
+def _is_outright(symbol: str, root: str) -> bool:
+    """True if `symbol` is an outright contract of `root` (not a spread)."""
+    if "-" in symbol or " " in symbol:
+        return False
+    if not symbol.startswith(root):
+        return False
+    suffix = symbol[len(root):]
+    if len(suffix) < 2:
+        return False
+    # suffix should be one month-code letter + digits (year)
+    return suffix[0] in _MONTH_CODES and suffix[1:].isdigit()
+
+
 class ContinuousContractDataLoader:
-    pass
+    def _active_contract_per_day(
+        self, root: str, start: date, end: date
+    ) -> pl.DataFrame:
+        """Return DataFrame with columns [date, active] for each trading day
+        in [start, end] where `active` is the highest-volume outright contract
+        of `root` on that day."""
+        pcm_root = _storage_root() / "futures_per_contract_1min"
+        if not pcm_root.exists():
+            return pl.DataFrame(schema={"date": pl.Date, "active": pl.String})
+
+        all_files: list[Path] = []
+        for y in range(start.year, end.year + 1):
+            for m in range(1, 13):
+                f = pcm_root / f"year={y}" / f"month={m}" / "data.parquet"
+                if f.exists():
+                    all_files.append(f)
+        if not all_files:
+            return pl.DataFrame(schema={"date": pl.Date, "active": pl.String})
+
+        df = pl.concat([pl.read_parquet(f) for f in all_files])
+        df = df.filter(pl.col("symbol").map_elements(
+            lambda s: _is_outright(s, root), return_dtype=pl.Boolean,
+        ))
+        df = df.filter(
+            (pl.col("timestamp").dt.date() >= start)
+            & (pl.col("timestamp").dt.date() <= end)
+        )
+        if df.is_empty():
+            return pl.DataFrame(schema={"date": pl.Date, "active": pl.String})
+
+        # Daily total volume per (date, symbol); pick the symbol with max volume per date
+        daily = df.group_by([
+            pl.col("timestamp").dt.date().alias("date"),
+            pl.col("symbol"),
+        ]).agg(pl.col("volume").sum().alias("vol"))
+        # For each date, take row with max vol
+        ranked = daily.sort(["date", "vol"], descending=[False, True])
+        active = ranked.group_by("date").agg(pl.col("symbol").first().alias("active")).sort("date")
+        return active
