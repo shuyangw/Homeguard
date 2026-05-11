@@ -70,6 +70,80 @@ def _save_state(state: dict[str, Any]) -> None:
     STATE_FILE.write_text(json.dumps(state, indent=2, default=str))
 
 
+def precheck_section(
+    client: "db.Historical",
+    section: str,
+    schema: str,
+    symbols: list[str],
+    stype_in: str,
+    start: str,
+    end: str,
+    dataset: str = "GLBX.MDP3",
+    budget_threshold_usd: float = 50.0,
+    volume_threshold_records: int = 100_000_000,
+) -> tuple[bool, str]:
+    """Run three pre-submission probes against Databento metadata.
+
+    Probes in order: symbology resolution -> cost -> record count.
+    Short-circuits on first failure. Returns (passed, summary) where
+    summary is a single-line string suitable for tabular display.
+
+    Thresholds default to $50 / 100M records per doc 02 v1.1 section 3.8.
+    Caller may override per submission as needed.
+    """
+    # 1. Symbology probe
+    try:
+        res = client.symbology.resolve(
+            dataset=dataset,
+            symbols=symbols,
+            stype_in=stype_in,
+            stype_out="instrument_id",
+            start_date=start,
+            end_date=end,
+        )
+        n_resolved = sum(len(v) for v in res.get("result", {}).values())
+        not_found = res.get("not_found", [])
+        if not_found or n_resolved == 0:
+            return (False, f"FAIL: symbology: not_found={not_found} resolved={n_resolved}")
+    except Exception as e:
+        return (False, f"FAIL: symbology: {type(e).__name__}: {e}")
+
+    # 2. Cost probe
+    try:
+        cost_usd = float(client.metadata.get_cost(
+            dataset=dataset,
+            schema=schema,
+            symbols=symbols,
+            stype_in=stype_in,
+            start=start,
+            end=end,
+        ))
+    except Exception as e:
+        return (False, f"FAIL: cost probe: {type(e).__name__}: {e}")
+    if cost_usd > budget_threshold_usd:
+        return (False, f"FAIL: cost: ${cost_usd:.2f} > threshold ${budget_threshold_usd:.2f}")
+
+    # 3. Volume probe
+    try:
+        record_count = int(client.metadata.get_record_count(
+            dataset=dataset,
+            schema=schema,
+            symbols=symbols,
+            stype_in=stype_in,
+            start=start,
+            end=end,
+        ))
+    except Exception as e:
+        return (False, f"FAIL: volume probe: {type(e).__name__}: {e}")
+    if record_count > volume_threshold_records:
+        return (
+            False,
+            f"FAIL: volume: {record_count:,} records > threshold {volume_threshold_records:,}",
+        )
+
+    return (True, f"OK: {n_resolved} syms, ${cost_usd:.2f}, {record_count:,} records")
+
+
 def _submit(
     client: db.Historical,
     section: str,
