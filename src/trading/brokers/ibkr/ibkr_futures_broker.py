@@ -277,6 +277,43 @@ class IBKRFuturesBroker(FuturesTradingInterface):
             "filled_avg_price": float(status.avgFillPrice) if status.avgFillPrice else None,
         }
 
+    async def _snapshot_async(self, contract: Any) -> Any:
+        """Request a market-data snapshot for a contract (sync wrapper helper)."""
+        ticker = self._ensure_connection().ib.reqMktData(contract, "", True, False)
+        await asyncio.sleep(2.0)
+        return ticker
+
+    def get_latest_trade(
+        self, symbol_root: str, contract_month: str,
+    ) -> dict[str, Any]:
+        """Last-trade snapshot for a futures contract.
+
+        Returns {'price': float, 'bid': float, 'ask': float, 'close': float}.
+        Fields default to 0.0 when not available (e.g., market closed).
+        """
+        contract = self._build_future_contract(symbol_root, contract_month)
+        ticker = self._ensure_connection().run_sync(
+            self._snapshot_async(contract), timeout=15,
+        )
+
+        def _safe(v: Any) -> float:
+            # ib_async returns NaN when no data; NaN != NaN is the test
+            try:
+                fv = float(v)
+                return fv if fv == fv else 0.0
+            except (TypeError, ValueError):
+                return 0.0
+
+        return {
+            "symbol_root": symbol_root,
+            "contract_month": contract_month,
+            "raw_symbol": getattr(contract, "localSymbol", None) or contract.symbol,
+            "price": _safe(ticker.last),
+            "bid": _safe(ticker.bid),
+            "ask": _safe(ticker.ask),
+            "close": _safe(ticker.close),
+        }
+
     def _ibkr_submit(self, resolved: ResolvedOrder) -> dict[str, Any]:
         """Forward a resolved order to IBKR. Returns the standardized order dict."""
         contract = self._build_future_contract(
@@ -299,6 +336,13 @@ class IBKRFuturesBroker(FuturesTradingInterface):
     # ==================== OrderManagementInterface ====================
 
     def cancel_order(self, order_id: str) -> bool:
+        """Cancel an open order by IBKR order ID.
+
+        Note: audit logging of cancels is a strategy-layer concern (the
+        broker doesn't know which strategy owns the order). Callers that
+        need cancel audit entries should invoke `self.audit_log.log_cancel(...)`
+        explicitly after a successful cancel.
+        """
         try:
             ib = self._ensure_connection().ib
             for trade in ib.openTrades():
@@ -311,6 +355,12 @@ class IBKRFuturesBroker(FuturesTradingInterface):
         except Exception as e:
             logger.error(f"[IBKR-FUT] Failed to cancel order {order_id}: {e}")
             return False
+
+    @property
+    def audit_log(self) -> Any:
+        """Public read accessor for the audit log (for explicit cancel logging)."""
+        self._ensure_safeguards()
+        return self._audit_log
 
     def get_order(self, order_id: str) -> dict[str, Any]:
         ib = self._ensure_connection().ib
