@@ -104,3 +104,42 @@ def test_load_raw_passthrough(tmp_path, monkeypatch):
     df = ContinuousContractDataLoader().load("ES", method="raw")
     assert df.shape == (2, 6)
     assert df["close"].to_list() == [5400.5, 5400.75]
+
+
+def test_load_ratio_adjusted(tmp_path, monkeypatch):
+    # Synthetic .v.0: 3 days. Roll on day 2 with a discontinuity 100 -> 110.
+    d = tmp_path / "futures_1min" / "symbol=ZZ" / "year=2024" / "month=1"
+    d.mkdir(parents=True)
+    pl.DataFrame({
+        "timestamp": [
+            datetime(2024, 1, 1, 14, 0, tzinfo=timezone.utc),  # pre-roll: close=100
+            datetime(2024, 1, 2, 14, 0, tzinfo=timezone.utc),  # roll day: close=110
+            datetime(2024, 1, 3, 14, 0, tzinfo=timezone.utc),  # post-roll: close=112
+        ],
+        "open": [100.0, 110.0, 110.0],
+        "high": [100.0, 110.0, 112.0],
+        "low": [100.0, 110.0, 110.0],
+        "close": [100.0, 110.0, 112.0],
+        "volume": [50, 50, 50],
+    }).with_columns(
+        pl.col("timestamp").cast(pl.Datetime("us", "UTC")),
+        pl.col("volume").cast(pl.UInt64),
+    ).write_parquet(d / "data.parquet")
+
+    # Per-contract: ZZF4 dominates day 1; ZZG4 dominates from day 2
+    rows = [
+        {"timestamp": datetime(2024, 1, 1, 14, 0, tzinfo=timezone.utc),
+         "open": 100.0, "high": 100.0, "low": 100.0, "close": 100.0,
+         "volume": 1000, "symbol": "ZZF4"},
+        {"timestamp": datetime(2024, 1, 2, 14, 0, tzinfo=timezone.utc),
+         "open": 110.0, "high": 110.0, "low": 110.0, "close": 110.0,
+         "volume": 1000, "symbol": "ZZG4"},
+    ]
+    _write_pcm_fixture(tmp_path, 2024, 1, rows)
+    monkeypatch.setattr(
+        "src.data.continuous_contract_loader._storage_root",
+        lambda: tmp_path,
+    )
+    df = ContinuousContractDataLoader().load("ZZ", method="ratio_adjusted")
+    # Day 1 close should be 100 * (110/100) = 110.0; day 2 = 110; day 3 = 112
+    assert df["close"].to_list() == pytest.approx([110.0, 110.0, 112.0], abs=1e-6)

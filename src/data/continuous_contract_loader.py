@@ -128,5 +128,52 @@ class ContinuousContractDataLoader:
         if method == "raw":
             return df
 
-        # ratio_adjusted and panama_adjusted: implemented in subsequent tasks
+        # Both ratio_adjusted and panama_adjusted need roll dates and per-date close
+        if df.is_empty():
+            return df
+        data_start = df["timestamp"].min().date()
+        data_end = df["timestamp"].max().date()
+        rolls = self.detect_roll_dates(root, data_start, data_end)
+        if not rolls:
+            return df
+
+        # Per-date last close for ratio/diff computation at each roll
+        daily_close = df.group_by(
+            pl.col("timestamp").dt.date().alias("d"),
+        ).agg(pl.col("close").last().alias("c")).sort("d")
+        close_map = {row["d"]: row["c"] for row in daily_close.iter_rows(named=True)}
+
+        if method == "ratio_adjusted":
+            # Walk rolls in reverse, accumulating a ratio factor that applies to
+            # all dates strictly before that roll.
+            date_factor: dict[date, float] = {d: 1.0 for d in close_map}
+            cumulative = 1.0
+            for roll_date in reversed(rolls):
+                prev_dates = [d for d in close_map if d < roll_date]
+                if not prev_dates:
+                    continue
+                day_before = max(prev_dates)
+                old_c = close_map[day_before]
+                new_c = close_map[roll_date]
+                if old_c == 0:
+                    continue
+                this_ratio = new_c / old_c
+                cumulative *= this_ratio
+                for d in [d for d in date_factor if d < roll_date]:
+                    date_factor[d] = cumulative
+
+            df_dates = df.with_columns(pl.col("timestamp").dt.date().alias("d"))
+            factor_df = pl.DataFrame({
+                "d": list(date_factor.keys()),
+                "factor": list(date_factor.values()),
+            })
+            df_adj = df_dates.join(factor_df, on="d", how="left").with_columns([
+                (pl.col("open") * pl.col("factor")).alias("open"),
+                (pl.col("high") * pl.col("factor")).alias("high"),
+                (pl.col("low") * pl.col("factor")).alias("low"),
+                (pl.col("close") * pl.col("factor")).alias("close"),
+            ]).drop(["d", "factor"])
+            return df_adj.sort("timestamp")
+
+        # panama_adjusted: Task 6
         raise NotImplementedError(f"method {method} not yet implemented")
