@@ -143,3 +143,39 @@ def test_load_ratio_adjusted(tmp_path, monkeypatch):
     df = ContinuousContractDataLoader().load("ZZ", method="ratio_adjusted")
     # Day 1 close should be 100 * (110/100) = 110.0; day 2 = 110; day 3 = 112
     assert df["close"].to_list() == pytest.approx([110.0, 110.0, 112.0], abs=1e-6)
+
+
+def test_load_panama_adjusted(tmp_path, monkeypatch):
+    d = tmp_path / "futures_1min" / "symbol=YY" / "year=2024" / "month=1"
+    d.mkdir(parents=True)
+    pl.DataFrame({
+        "timestamp": [
+            datetime(2024, 1, 1, 14, 0, tzinfo=timezone.utc),  # close=100
+            datetime(2024, 1, 2, 14, 0, tzinfo=timezone.utc),  # close=110 (roll)
+            datetime(2024, 1, 3, 14, 0, tzinfo=timezone.utc),  # close=112
+        ],
+        "open": [100.0, 110.0, 110.0],
+        "high": [100.0, 110.0, 112.0],
+        "low": [100.0, 110.0, 110.0],
+        "close": [100.0, 110.0, 112.0],
+        "volume": [50, 50, 50],
+    }).with_columns(
+        pl.col("timestamp").cast(pl.Datetime("us", "UTC")),
+        pl.col("volume").cast(pl.UInt64),
+    ).write_parquet(d / "data.parquet")
+    rows = [
+        {"timestamp": datetime(2024, 1, 1, 14, 0, tzinfo=timezone.utc),
+         "open": 100.0, "high": 100.0, "low": 100.0, "close": 100.0,
+         "volume": 1000, "symbol": "YYF4"},
+        {"timestamp": datetime(2024, 1, 2, 14, 0, tzinfo=timezone.utc),
+         "open": 110.0, "high": 110.0, "low": 110.0, "close": 110.0,
+         "volume": 1000, "symbol": "YYG4"},
+    ]
+    _write_pcm_fixture(tmp_path, 2024, 1, rows)
+    monkeypatch.setattr(
+        "src.data.continuous_contract_loader._storage_root",
+        lambda: tmp_path,
+    )
+    df = ContinuousContractDataLoader().load("YY", method="panama_adjusted")
+    # diff = 110 - 100 = 10; day 1 close adjusted = 100 + 10 = 110; day 2 = 110; day 3 = 112
+    assert df["close"].to_list() == pytest.approx([110.0, 110.0, 112.0], abs=1e-6)

@@ -175,5 +175,32 @@ class ContinuousContractDataLoader:
             ]).drop(["d", "factor"])
             return df_adj.sort("timestamp")
 
-        # panama_adjusted: Task 6
-        raise NotImplementedError(f"method {method} not yet implemented")
+        if method == "panama_adjusted":
+            date_offset: dict[date, float] = {d: 0.0 for d in close_map}
+            cumulative = 0.0
+            for roll_date in reversed(rolls):
+                prev_dates = [d for d in close_map if d < roll_date]
+                if not prev_dates:
+                    continue
+                day_before = max(prev_dates)
+                old_c = close_map[day_before]
+                new_c = close_map[roll_date]
+                this_diff = new_c - old_c
+                cumulative += this_diff
+                for d in [d for d in date_offset if d < roll_date]:
+                    date_offset[d] = cumulative
+
+            df_dates = df.with_columns(pl.col("timestamp").dt.date().alias("d"))
+            offset_df = pl.DataFrame({
+                "d": list(date_offset.keys()),
+                "offset": list(date_offset.values()),
+            })
+            df_adj = df_dates.join(offset_df, on="d", how="left").with_columns([
+                (pl.col("open") + pl.col("offset")).alias("open"),
+                (pl.col("high") + pl.col("offset")).alias("high"),
+                (pl.col("low") + pl.col("offset")).alias("low"),
+                (pl.col("close") + pl.col("offset")).alias("close"),
+            ]).drop(["d", "offset"])
+            return df_adj.sort("timestamp")
+
+        raise ValueError(f"unreachable: {method}")
