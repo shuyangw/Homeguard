@@ -110,12 +110,13 @@ def test_date_floor_check_pass(tmp_path: Path, monkeypatch):
 
 
 def test_sofr_derivation_check_skips_when_data_missing(tmp_path: Path, monkeypatch):
+    # Patch sofr_module's _storage_root to return empty dir, so all derives fail
     monkeypatch.setattr(
-        "src.data.validation.futures.checks.statistical._storage_root",
+        "src.data.derivations.futures.sofr._storage_root",
         lambda: tmp_path,
     )
     r = SofrDerivationSanityCheck().run()
-    # No SR1 data - all sample dates fail; severity WARNING
+    # No SR1 data - all sample dates fail; severity WARNING or CRITICAL
     assert r.severity in (Severity.WARNING, Severity.CRITICAL)
 
 

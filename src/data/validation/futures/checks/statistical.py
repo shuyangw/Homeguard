@@ -321,7 +321,9 @@ class SofrDerivationSanityCheck(BaseCheck):
 
     def run(self) -> ValidationResult:
         t0 = time.time()
-        # 30 random business days from 2018-05-07 onward
+        # 30 random weekday dates from 2018-05-07 onward. Weekdays only;
+        # market holidays still occur but at a low enough rate to stay
+        # under the WARNING threshold (<=5 issues).
         start = sofr_module.SR1_LISTING_DATE
         end = date.today() - timedelta(days=2)
         if start >= end:
@@ -329,8 +331,13 @@ class SofrDerivationSanityCheck(BaseCheck):
                 self.name, Severity.INFO, True,
                 "no eligible date range", {}, t0,
             )
-        days = (end - start).days
-        sample = [start + timedelta(days=random.randint(0, days)) for _ in range(30)]
+        total_days = (end - start).days
+        weekdays = [
+            start + timedelta(days=i)
+            for i in range(total_days + 1)
+            if (start + timedelta(days=i)).weekday() < 5
+        ]
+        sample = random.sample(weekdays, min(30, len(weekdays)))
         issues: list[tuple[str, str]] = []
         for d in sample:
             try:
