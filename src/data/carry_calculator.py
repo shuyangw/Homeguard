@@ -6,7 +6,7 @@ futures_per_contract_1min/ on the target date. Outright contracts only
 """
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 
 import polars as pl
@@ -135,3 +135,24 @@ class CarryCalculator:
             # v1 fallback: return 0 (caller can ignore bond carry for these).
             return 0.0
         raise ValueError(f"unknown asset_class: {asset_class}")
+
+    def compute_history(
+        self, root: str, asset_class: str, start: date, end: date,
+    ) -> pl.DataFrame:
+        """Compute carry per trading day between start and end (inclusive).
+
+        Skips dates where the underlying data lookup fails (weekends, holidays,
+        missing data). Returns DataFrame with columns [date, carry].
+        """
+        records: list[dict] = []
+        d = start
+        while d <= end:
+            try:
+                c = self.compute(root, asset_class, d)
+                records.append({"date": d, "carry": c})
+            except (ValueError, FileNotFoundError, NotImplementedError):
+                pass  # skip dates with no data
+            d += timedelta(days=1)
+        if not records:
+            return pl.DataFrame(schema={"date": pl.Date, "carry": pl.Float64})
+        return pl.DataFrame(records)

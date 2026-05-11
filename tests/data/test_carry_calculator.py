@@ -134,3 +134,31 @@ def test_compute_bond_standard_returns_zero(tmp_path, monkeypatch):
     )
     carry = CarryCalculator().compute("ZN", "bond", date(2024, 6, 3))
     assert carry == 0.0
+
+
+def test_compute_history(tmp_path, monkeypatch):
+    """compute_history walks dates, returns DataFrame [date, carry], drops null dates."""
+    # 3 days of GC front/second data; second is volume-heavier so it's "front"
+    rows = []
+    for day in (3, 4, 5):
+        rows.extend([
+            {"timestamp": datetime(2024, 6, day, 14, 0, tzinfo=timezone.utc),
+             "open": 2300.0 + day, "high": 2300.0 + day, "low": 2300.0 + day, "close": 2300.0 + day,
+             "volume": 1000, "symbol": "GCM4"},
+            {"timestamp": datetime(2024, 6, day, 14, 1, tzinfo=timezone.utc),
+             "open": 2325.0 + day, "high": 2325.0 + day, "low": 2325.0 + day, "close": 2325.0 + day,
+             "volume": 100000, "symbol": "GCQ4"},
+        ])
+    _write_pcm_fixture(tmp_path, 2024, 6, rows)
+    monkeypatch.setattr(
+        "src.data.carry_calculator._storage_root",
+        lambda: tmp_path,
+    )
+    hist = CarryCalculator().compute_history(
+        "GC", "commodity", date(2024, 6, 3), date(2024, 6, 5),
+    )
+    assert hist.shape == (3, 2)
+    assert hist.columns == ["date", "carry"]
+    # All 3 carries should be in the same range (similar prices)
+    for c in hist["carry"].to_list():
+        assert -0.10 < c < 0.10, f"unexpected carry magnitude {c}"
