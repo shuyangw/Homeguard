@@ -370,7 +370,7 @@
             "type": "prometheus",
             "uid": "victoriametrics"
           },
-          "expr": "hg_strategy_initial_capital_usd",
+          "expr": "last_over_time(hg_strategy_initial_capital_usd[$__range])",
           "legendFormat": "{{strategy}} starting",
           "refId": "B"
         }
