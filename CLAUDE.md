@@ -89,13 +89,14 @@ Detailed overfitting thresholds and backtest integrity rules: `.claude/rules/str
 
 ## Backtesting
 
-**CRITICAL**: Avoid lookahead bias, survivorship bias, and overfitting.
+**CRITICAL**: Methodology is authoritative at [`docs/methodology/backtesting.md`](docs/methodology/backtesting.md). When agent prompts and this file conflict, this file wins. Read the relevant sections before any quantitative work.
+
 - **ALWAYS use the config-driven backtesting system** - don't write ad-hoc scripts
 - Run backtests via: `python -m src.backtest_runner --config config/backtesting/ma_single.yaml`
-- Consult `docs/guidelines/backtesting.md` before modifying backtest code
+- Bias prevention, statistical gates (PSR/DSR/PBO), walk-forward purge/embargo, cost models, stopping conditions: see `docs/methodology/backtesting.md` Sections 1-5
 - Use market calendar for trading day filtering
 - Apply proper risk management
-- Details: [`.claude/backtesting.md`](.claude/backtesting.md)
+- Operational details: [`.claude/backtesting.md`](.claude/backtesting.md)
 
 ### Existing Backtest Tools (CHECK BEFORE CREATING NEW)
 

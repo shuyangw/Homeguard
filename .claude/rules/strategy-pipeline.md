@@ -38,59 +38,27 @@ These rules load alongside CLAUDE.md at session start. They apply to the orchest
 - Never skip filling in the backtest iterations table — record ALL metrics
 - Never overwrite previous results — increment run numbers
 
-## Backtest integrity (enforced at every phase)
+## Backtest integrity (authoritative)
 
-### No future data leakage
-- All signals must use shift(1) or equivalent
-- Train/test splits must be temporal, never random
-- Features computed from only past data at each point
-- Regime detection uses only data available at decision time
-- Any data join checked for look-ahead
-- Universe selection must not use future knowledge (survivorship bias)
+**`docs/methodology/backtesting.md` is the single source of truth.** When this file and the methodology disagree, the methodology wins. Read the relevant section directly; do not paraphrase from memory.
 
-### Overfitting thresholds
-- Sharpe > 3.0 → REJECT
-- Sharpe > 1.5 → VERIFY with Deflated Sharpe Ratio
-- CAGR > 20% → INVESTIGATE
-- Max DD < 5% on volatile assets → SUSPICIOUS
-- Trades < 30 → INSUFFICIENT
-- IS vs OOS gap > 30% → REJECT (strong overfitting)
-- >70% returns from single regime → FRAGILE
+| Topic | Methodology section |
+|---|---|
+| Bias prevention (lookahead, survivorship, selection, normalization, vol-target, full-data coverage) | Section 1 |
+| Statistical gate (Sharpe, PSR, DSR with correct formula, PBO, combined gate) | Section 2 |
+| Walk-forward (purging, embargo -- embargo is NOT the feature lookback) | Section 3 |
+| Cost models by asset class + 1.5x cost-sensitivity gate | Section 4 |
+| Stopping conditions (statistical floor, diminishing returns, overfitting trip, parameter sensitivity) | Section 5 |
+| Data quality, point-in-time, news timestamps, data-snapshot reproducibility | Section 7 |
+| Reproducibility identity fields (git SHA, config SHA, snapshot date, env hash, seeds) | Section 8 |
+| Experiment registry schema (`output/experiments.duckdb`) | Section 9 |
+| Homeguard paths, regime detectors, brokers, services, EC2 env | Section 10 |
 
-### Full data coverage is mandatory
-- Backtests MUST use the FULL available data range for every symbol, not a cherry-picked window
-- Determine earliest available date per symbol; start backtest there (minus lookback)
-- Symbols with shorter histories enter the universe when data becomes available
-- Reserve most recent 1 year as true out-of-sample
-- Short-window results (e.g., 2-3 years) are NOT evidence of viability
-- Lesson: ramp-long-calls showed Sharpe 0.698 (2022-2024) but -0.767 over full timeline (2018-2024)
+Inline magic-number thresholds ("Sharpe > 3.0 REJECT", "CAGR > 20% INVESTIGATE") are removed -- they were replaced by the combined statistical gate in methodology Section 2.5.
 
-### Transaction costs are mandatory
-- Every backtest must include realistic transaction costs (see cost tier table in trading-lead.md)
-- Final validation must test at 1.5x costs
-- If Sharpe < 0.5 at 1.5x costs → edge too thin for live
-- Slippage model from `src/backtesting/engine/` must be active
+## Metrics -- record all of these for every backtest run
 
-### Walk-forward is mandatory for optimized parameters
-- Minimum 3 rolling windows via `src/backtesting/chunking/`
-- Report per-window OOS performance
-- Walk-forward OOS degradation > 30% from IS → edge likely not real
-
-### Parameter discipline
-- Target ≤3 tunable parameters
-- Every parameter needs economic rationale
-- Neighbors +/-10-20% must also work (no cliff edges)
-- Magic numbers are red flags
-
-### Data frequency validation
-- Strategy spec declares required frequency (daily/1min/5min)
-- If strategy logic is intraday but spec says daily → flag mismatch before implementation
-- Pass data frequency to every backtest/optimizer dispatch
-- Factor runtime into session pacing (1min data = much longer runs)
-
-## Metrics — record all of these for every backtest run
-
-Sharpe, DSR-adjusted Sharpe, CAGR, Max DD, Max DD duration, Calmar (CAGR/MaxDD), win rate (monthly), profit factor, trade count, avg hold time, regime robustness, cost sensitivity (1.5x Sharpe), IS/OOS gap, backtest window, data frequency.
+Sharpe, PSR, DSR (using project-wide cumulative trial count), PBO, CAGR, Max DD, Max DD duration, Calmar, win rate (monthly), profit factor, trade count, avg hold time, regime robustness, cost sensitivity (1.5x), IS/OOS Sharpe ratio, backtest window, data frequency. Append to the experiment registry per methodology Section 9.3.
 
 ## Homeguard file structure
 
