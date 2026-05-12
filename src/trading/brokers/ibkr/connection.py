@@ -213,8 +213,15 @@ class IBKRConnectionManager:
         # returns an empty list even when positions exist, which breaks
         # startup reconciliation and Grafana metric attribution. Must run
         # on every (re)connect; IB clears subscriptions on disconnect.
+        #
+        # Use the low-level client.reqAccountUpdates rather than
+        # ib.reqAccountUpdates: the latter is a sync wrapper that calls
+        # run_until_complete, which raises "event loop already running"
+        # when invoked from within this coroutine. The client method
+        # only sends the wire request -- the portfolio is populated
+        # asynchronously via ib_async's event handlers.
         for acct in self._ib.managedAccounts() or []:
-            self._ib.reqAccountUpdates(acct)
+            self._ib.client.reqAccountUpdates(True, acct)
         # Wait briefly for the portfolio snapshot so callers right after
         # start() see populated data.
         await asyncio.sleep(1.0)
