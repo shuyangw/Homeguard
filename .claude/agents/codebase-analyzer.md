@@ -2,7 +2,7 @@
 name: codebase-analyzer
 description: Analyze codebase quality, count lines of code by file type with/without comments, detect code smells and duplicates, identify test coverage gaps
 tools: Glob, Grep, LS, Read, Bash, BashOutput
-model: haiku
+model: sonnet
 color: blue
 ---
 
