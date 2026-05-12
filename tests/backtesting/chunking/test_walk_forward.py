@@ -232,6 +232,79 @@ class TestWalkForwardValidator:
         assert sharpe == 0.0
 
 
+class TestPurgeAndEmbargo:
+    """Tests for purge_days and embargo_pct per methodology Section 3.2-3.3."""
+
+    def test_purge_shortens_train_window_end(self, engine):
+        validator = WalkForwardValidator(
+            engine=engine,
+            train_months=6,
+            test_months=3,
+            step_months=3,
+            purge_days=20,
+        )
+        windows = validator.generate_windows("2020-01-01", "2021-12-31")
+        assert windows, "Expected at least one window"
+        first = windows[0]
+        train_end = pd.to_datetime(first.train_end)
+        test_start = pd.to_datetime(first.test_start)
+        # train_end must be ~20 days before test_start.
+        gap = (test_start - train_end).days
+        assert gap == 20, f"expected 20-day purge gap, got {gap}"
+        # Test window itself is not shortened.
+        test_end = pd.to_datetime(first.test_end)
+        assert (test_end - test_start).days >= 89  # ~3 months
+
+    def test_purge_zero_keeps_train_contiguous_with_test(self, engine):
+        # Backward-compat: existing call sites should see identical windows.
+        validator = WalkForwardValidator(
+            engine=engine, train_months=6, test_months=3, step_months=3,
+        )
+        windows = validator.generate_windows("2020-01-01", "2021-12-31")
+        for w in windows:
+            assert w.train_end == w.test_start
+
+    def test_embargo_pushes_next_train_start_forward(self, engine):
+        validator = WalkForwardValidator(
+            engine=engine,
+            train_months=12,
+            test_months=3,
+            step_months=3,
+            embargo_pct=0.05,  # 5% of approximate 12-month train (~18 days)
+        )
+        windows = validator.generate_windows("2020-01-01", "2024-12-31")
+        assert len(windows) >= 2, "need >= 2 windows to test embargo"
+        # Without embargo, next train_start would be exactly 3 months after
+        # current train_start. With 5% embargo, it should be 3 months PLUS
+        # ~18 days.
+        start_w1 = pd.to_datetime(windows[0].train_start)
+        start_w2 = pd.to_datetime(windows[1].train_start)
+        delta_days = (start_w2 - start_w1).days
+        # 3 months is roughly 90 days. Embargo ~ 0.05 * 12*30 = 18 days.
+        assert 100 <= delta_days <= 115, f"delta_days={delta_days}; expected ~108"
+
+    def test_embargo_zero_preserves_legacy_step(self, engine):
+        validator = WalkForwardValidator(
+            engine=engine, train_months=12, test_months=3, step_months=3,
+        )
+        windows = validator.generate_windows("2020-01-01", "2024-12-31")
+        if len(windows) >= 2:
+            start_w1 = pd.to_datetime(windows[0].train_start)
+            start_w2 = pd.to_datetime(windows[1].train_start)
+            # Exactly 3 months -> 89-92 days depending on calendar.
+            assert 87 <= (start_w2 - start_w1).days <= 95
+
+    def test_invalid_purge_days_raises(self, engine):
+        with pytest.raises(ValueError, match="purge_days"):
+            WalkForwardValidator(engine=engine, purge_days=-1)
+
+    def test_invalid_embargo_pct_raises(self, engine):
+        with pytest.raises(ValueError, match="embargo_pct"):
+            WalkForwardValidator(engine=engine, embargo_pct=1.5)
+        with pytest.raises(ValueError, match="embargo_pct"):
+            WalkForwardValidator(engine=engine, embargo_pct=-0.1)
+
+
 class TestWalkForwardResults:
     """Tests for WalkForwardResults dataclass."""
 

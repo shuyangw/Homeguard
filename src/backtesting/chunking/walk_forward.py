@@ -18,7 +18,16 @@ from src.utils import logger
 
 @dataclass
 class WalkForwardWindow:
-    """Single train/test window for walk-forward validation."""
+    """Single train/test window for walk-forward validation.
+
+    ``train_end`` already reflects purging when the validator is
+    constructed with ``purge_days > 0`` -- purged days are subtracted
+    from the *end* of the training window so the train period does not
+    overlap with the future-return horizon of the test set
+    (methodology Section 3.2). The embargo applies to the *next*
+    fold's training start, not to this window's test set
+    (methodology Section 3.3).
+    """
     train_start: str
     train_end: str
     test_start: str
@@ -102,7 +111,9 @@ class WalkForwardValidator:
         engine: BacktestEngine,
         train_months: int = 12,
         test_months: int = 3,
-        step_months: int = 3
+        step_months: int = 3,
+        purge_days: int = 0,
+        embargo_pct: float = 0.0,
     ):
         """
         Initialize walk-forward validator.
@@ -112,11 +123,28 @@ class WalkForwardValidator:
             train_months: Training period length in months (default: 12)
             test_months: Testing period length in months (default: 3)
             step_months: Step size between windows in months (default: 3)
+            purge_days: Days removed from the end of each training window
+                so the train period does not overlap with the label-determination
+                horizon of the test set. Set to the strategy's label horizon
+                (1 for daily rebalance, ~20 for monthly momentum). See
+                docs/methodology/backtesting.md Section 3.2.
+            embargo_pct: Fraction of the train window length removed from
+                the *start* of the next training window (the embargo gap).
+                Defaults to 0; the methodology recommends 0.01--0.05 for
+                features with serial correlation that are not strictly
+                point-in-time. NOT the same as the feature lookback --
+                see Section 3.3.
         """
+        if purge_days < 0:
+            raise ValueError(f"purge_days must be >= 0, got {purge_days}")
+        if not 0.0 <= embargo_pct < 1.0:
+            raise ValueError(f"embargo_pct must be in [0, 1), got {embargo_pct}")
         self.engine = engine
         self.train_months = train_months
         self.test_months = test_months
         self.step_months = step_months
+        self.purge_days = purge_days
+        self.embargo_pct = embargo_pct
 
     def generate_windows(
         self,
@@ -140,16 +168,22 @@ class WalkForwardValidator:
         window_num = 1
         current_start = start
 
-        while True:
-            # Calculate train period
-            train_start = current_start
-            train_end = train_start + pd.DateOffset(months=self.train_months)
+        # Embargo gap (in days) is a fraction of the train window length.
+        approx_train_days = self.train_months * 30
+        embargo_days = int(round(self.embargo_pct * approx_train_days))
 
-            # Calculate test period
-            test_start = train_end
+        while True:
+            # Pure train period; purge subtracts from the END (Section 3.2).
+            train_start = current_start
+            train_end_raw = train_start + pd.DateOffset(months=self.train_months)
+            train_end = train_end_raw - pd.Timedelta(days=self.purge_days)
+            if train_end <= train_start:
+                break
+
+            # Test starts where the un-purged train would have ended.
+            test_start = train_end_raw
             test_end = test_start + pd.DateOffset(months=self.test_months)
 
-            # Check if we've exceeded the end date
             if test_end > end:
                 break
 
@@ -158,12 +192,15 @@ class WalkForwardValidator:
                 train_end=train_end.strftime('%Y-%m-%d'),
                 test_start=test_start.strftime('%Y-%m-%d'),
                 test_end=test_end.strftime('%Y-%m-%d'),
-                window_number=window_num
+                window_number=window_num,
             )
             windows.append(window)
 
-            # Step forward
+            # Step forward; the embargo gap pushes the next train start
+            # forward beyond the natural step (Section 3.3).
             current_start += pd.DateOffset(months=self.step_months)
+            if embargo_days:
+                current_start += pd.Timedelta(days=embargo_days)
             window_num += 1
 
         return windows
