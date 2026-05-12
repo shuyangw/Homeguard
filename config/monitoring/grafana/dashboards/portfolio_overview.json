@@ -343,7 +343,7 @@
     {
       "id": 1,
       "title": "Equity Curve by Strategy",
-      "description": "Current equity per live strategy over time, with starting capital as a dashed reference line. Source: `hg_strategy_equity_usd` (solid). For strategies that share a broker account (RAMP on IBKR paper) this is `initial_capital + sum(attributed_unrealized_pnl)` via `_compute_strategy_equity` -- the strategy slice, not the whole broker portfolio. For strategies with a dedicated broker (CSCM on DemoBroker) it equals `broker.get_account().portfolio_value` because no other strategy shares the account. `hg_strategy_initial_capital_usd` (dashed) is the session's starting budget, emitted once at startup. Log Y-axis accommodates strategies with different funding sizes. If a strategy line stops updating, that strategy's process is hung.",
+      "description": "Current equity per live strategy over time, with starting capital as a dashed reference line. Source: `hg_strategy_equity_usd` (solid). For strategies that share a broker account (RAMP on IBKR paper) this is `initial_capital + sum(attributed_unrealized_pnl)` via `_compute_strategy_equity` -- the strategy slice, not the whole broker portfolio. For strategies with a dedicated broker (CSCM on DemoBroker) it equals `broker.get_account().portfolio_value` because no other strategy shares the account. `hg_strategy_initial_capital_usd` (dashed) is the session's starting budget, emitted once at startup. Linear Y-axis with soft bounds ($80k-$130k) is tuned for the current $100k strategy funding; revisit if a strategy is launched with a materially different size. If a strategy line stops updating, that strategy's process is hung.",
       "type": "timeseries",
       "gridPos": {
         "x": 0,
@@ -378,11 +378,14 @@
       "fieldConfig": {
         "defaults": {
           "unit": "currencyUSD",
+          "min": 80000,
+          "max": 130000,
           "custom": {
             "scaleDistribution": {
-              "type": "log",
-              "log": 10
-            }
+              "type": "linear"
+            },
+            "axisSoftMin": 80000,
+            "axisSoftMax": 130000
           }
         },
         "overrides": [
