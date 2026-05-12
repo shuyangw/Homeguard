@@ -207,6 +207,18 @@ class IBKRConnectionManager:
         )
         # Set market data type (3 = delayed for paper, 1 = live)
         self._ib.reqMarketDataType(self._config.market_data_type)
+
+        # Subscribe to account updates so ib.portfolio() populates with
+        # marketPrice/marketValue/unrealizedPNL. Without this, portfolio()
+        # returns an empty list even when positions exist, which breaks
+        # startup reconciliation and Grafana metric attribution. Must run
+        # on every (re)connect; IB clears subscriptions on disconnect.
+        for acct in self._ib.managedAccounts() or []:
+            self._ib.reqAccountUpdates(acct)
+        # Wait briefly for the portfolio snapshot so callers right after
+        # start() see populated data.
+        await asyncio.sleep(1.0)
+
         self._connected.set()
         self._reconnect_count = 0
 
