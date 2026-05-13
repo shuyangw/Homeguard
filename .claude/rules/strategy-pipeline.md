@@ -53,6 +53,8 @@ These rules load alongside CLAUDE.md at session start. They apply to the orchest
 | Reproducibility identity fields (git SHA, config SHA, snapshot date, env hash, seeds) | Section 8 |
 | Experiment registry schema (`output/experiments.duckdb`) | Section 9 |
 | Homeguard paths, regime detectors, brokers, services, EC2 env | Section 10 |
+| Exit logic, stops, profit-taking, MAE/MFE, asset-class profit-taking rules | Section 11 |
+| Required diagnostic outputs (trade-level metrics, capacity, regime transitions, parameter stability, benchmark/IR) | Section 12 |
 
 Inline magic-number thresholds ("Sharpe > 3.0 REJECT", "CAGR > 20% INVESTIGATE") are removed -- they were replaced by the combined statistical gate in methodology Section 2.5.
 

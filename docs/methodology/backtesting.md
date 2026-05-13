@@ -860,11 +860,497 @@ Always check individual services via `systemctl status homeguard-*.service`, not
 
 ---
 
+
+## Section 11: Exit Logic and Profit-Taking Methodology
+
+Exit logic -- stops, targets, trailing rules, time-based exits -- is the single most overfitting-prone aspect of strategy design. There is almost always a stop level that would have caught the worst training drawdown; the optimizer will find it; it will fail OOS. This section defines what's required to use exit logic correctly and to validate it without falling into the stop-optimization trap.
+
+This section applies to every strategy with a non-time-based exit. Time-only-exit strategies (OMR's "exit at 9:31 AM next day", RAMP's "exit on next rebalance") are exempt from 11.2-11.6 but must still document the exit type per 11.1.
+
+### 11.1 Exit-logic taxonomy
+
+Every strategy blueprint declares its exit type(s). Implementer follows. Reviewer verifies.
+
+| Type | Definition | Example |
+|---|---|---|
+| `time_fixed` | Exit after exactly N bars or at a fixed wall-clock time | OMR exits at 9:31 AM next day |
+| `signal_reversal` | Exit when an opposite entry signal fires | MA crossover: long exits on bearish cross |
+| `fixed_pct_stop` | Exit at fixed % below entry | -5% stop loss |
+| `fixed_pct_target` | Exit at fixed % above entry | +10% profit target |
+| `vol_scaled_stop` | Exit at k x ATR below entry | -1.5 ATR stop |
+| `vol_scaled_target` | Exit at k x ATR above entry | +2.0 ATR target |
+| `trailing_stop` | Stop ratchets on new high (longs) / low (shorts) | Trail by 0.8 ATR after +1.0 ATR profit |
+| `time_stop` | Exit if not profitable after N bars | Close if down after 5 days |
+| `conditional` | Exit on regime change, vol spike, correlation breakdown | Exit on regime -> BEAR |
+| `scale_out` | Partial exits at multiple price levels | 50% at +5%, 50% at +10% |
+| `greek_limit` | Options: exit when delta/gamma/vega crosses threshold | Close short put when delta < -0.5 |
+| `premium_capture` | Options: close when X% of max premium captured | Close CSP at 50% premium decay |
+
+Strategies typically combine 2-4 of these (e.g., signal_reversal + time_stop + trailing_stop). The taxonomy makes the combination explicit so reviewers and optimizers can verify each component independently.
+
+### 11.2 Bar-resolution requirements
+
+A stop or target validated on data coarser than the trigger condition is invalid. The backtest cannot know whether the stop hit before or after the close.
+
+| Exit type | Minimum data frequency |
+|---|---|
+| `time_fixed` at daily granularity | Daily bars |
+| `signal_reversal` at daily granularity | Daily bars |
+| Any `fixed_pct_*` or `vol_scaled_*` with same-day trigger | 1-minute bars |
+| Any `trailing_stop` with intraday trigger | 1-minute bars |
+| `time_stop` based on holding period (no intraday trigger) | Daily bars |
+| Same-bar entry + stop (e.g., ORB) | 1-minute bars, with chronological fill order documented |
+| Options: `greek_limit` | EOD chains if checked at EOD; intraday chains if checked intraday |
+| Options: `premium_capture` | EOD chains usually sufficient |
+
+**Code-reviewer rule**: If a strategy declares an intraday stop on daily bars, flag as CRITICAL. The backtest can give either the lucky `H=stop_level - 0.01` answer or the unlucky `L=stop_level - 5%` answer; neither is real.
+
+### 11.3 Same-bar fill-order convention
+
+When both a stop and a target could trigger within the same bar (intraday, daily, whatever), the conservative convention is:
+
+**Stops fill first.**
+
+This is a backtest-pessimism choice: the backtest reports the worst plausible interpretation, so live results can only surprise upward. For strategies where the optimizer would otherwise exploit favorable fill-ordering, this is the only safe assumption.
+
+For ORB-style strategies where entry and stop can hit the same bar, the implementer must use minute data and the actual chronological order from the data -- not the same-bar convention.
+
+For mean-reversion strategies that frequently revisit entry-region prices intraday, the same-bar fill-order convention will mark some trades as stopped-out that in reality might have hit the target. This is correct conservatism -- backtest those trades as losses.
+
+Implementer must document the fill-order assumption in the strategy's blueprint.
+
+### 11.4 Gap modeling
+
+When a stop or target is set overnight (or across any market closure) and the next session opens past it, the fill price is the open, not the stop level.
+
+**Required model:**
+
+For a long position with stop at price `S`:
+
+```
+if next_open <= S:
+    fill_price = next_open  # gap fill, possibly far below S
+else:
+    # intraday -- check during the bar
+    if next_low <= S:
+        fill_price = S      # stop triggered intrabar at S
+    else:
+        # no trigger this bar
+```
+
+Symmetric for shorts and for targets (mirror condition with `>=` and `next_high`).
+
+**Asset-class adjustments:**
+
+| Asset class | Gap risk | Notes |
+|---|---|---|
+| US equities | High Mon-Fri overnight, very high Mon morning | Earnings, news |
+| Futures (continuous) | Moderate at session boundaries; high at quarterly rolls | Roll modeled separately |
+| FX | Moderate weekend gaps (Friday NY close -> Sunday Asia open) | |
+| Crypto | Low (24/7), but flash crashes substitute | May 2021, Oct 2021 |
+| Options | High -- both gap and IV crush at open | Avoid same-day options stops near close |
+
+Strategies that hold across known gap risks (e.g., overnight equity positions through earnings) must either filter out names with imminent earnings or accept gap risk in cost modeling.
+
+### 11.5 Stop-specific slippage
+
+Stops execute as market orders at trigger. Slippage on stops is structurally worse than slippage on limit entries.
+
+**Multiplier on standard cost tier (per Section 4):**
+
+| Condition | Slippage multiplier |
+|---|---|
+| Stop fills during normal liquid hours | 1.5x standard cost tier |
+| Stop fills during news event / volatility spike | 2.0x standard cost tier |
+| Stop fills on gap-down open (equity) | 3.0x standard or actual gap, whichever larger |
+| Stop fills during off-session (FX Asian, futures off-hours) | 2.0x standard cost tier |
+| Stop fills during weekend (crypto thin liquidity) | 2.0x standard cost tier |
+| Stop fills during flash crash event | Model as worst quartile of trade-by-trade slippage on training data |
+
+**Cost-sensitivity test (extending Section 4.6):**
+
+For strategies with stops, the 1.5x cost sensitivity test also runs at 2.0x **stop slippage** (entry slippage unchanged). This stresses the strategy on its actual failure mode rather than uniformly inflating costs.
+
+Pass criterion (extending Section 4.6): Sharpe at 2.0x stop slippage >= 0.4 AND PSR(0) at 2.0x stop slippage > 0.85. Lower thresholds than the 1.5x general cost test because stop-stressed Sharpe is expected to be worse.
+
+### 11.6 MAE/MFE methodology
+
+Maximum Adverse Excursion and Maximum Favorable Excursion are the principled way to size stops and targets without overfitting. Computed from a backtest's trade log, they characterize the actual distribution of intra-trade price movement that the strategy experiences.
+
+**Per-trade fields required in the trade log** (Code-reviewer enforces in Section 11.9):
+
+```
+entry_time            # ISO timestamp
+entry_price           # Fill price including entry slippage
+exit_time
+exit_price            # Fill price including exit slippage
+exit_reason           # signal_reversal | stop_hit | target_hit | time_expired | regime_change | etc.
+mae_pct               # Worst paper loss during the trade, signed (negative for longs that went down)
+mfe_pct               # Best paper profit during the trade, signed
+mae_time              # When MAE occurred (timestamp)
+mfe_time              # When MFE occurred (timestamp)
+bars_held             # Integer count
+hit_stop              # bool: did the trade ever touch the stop level?
+hit_target            # bool: did the trade ever touch the target level?
+```
+
+Trades without these fields cannot be analyzed by Section 11.6 and Section 12. Code-reviewer flags any backtest engine or trade log producer missing these.
+
+**Required outputs in every backtest report for strategies with non-time-based exits** (extending Section 12 driver requirements):
+
+1. **Winners' MAE distribution**: mean, p25, p50, p75, p95. "How deep did winning trades go underwater before recovering?"
+2. **Losers' MAE distribution**: same five quantiles. "How deep did losing trades go before exit?"
+3. **Target attainment rate**: fraction of winning trades that hit the declared profit target (if applicable). Numbers near 1.0 suggest targets are too tight; numbers near 0 suggest no targets are being hit.
+4. **Stop-touched-but-recovered rate**: fraction of *winning* trades whose intra-trade MAE breached the stop level. Indicates stops are too tight -- these trades would have stopped out in live trading with realistic execution.
+5. **Target-exceeded-but-reverted rate**: fraction of *losing* trades whose intra-trade MFE exceeded the target level. Indicates targets are too tight or trailing rules too loose -- winners turned to losers.
+
+**Stop-sizing from MAE/MFE (training-data-only procedure):**
+
+1. Compute MAE distribution for winning trades on the training period.
+2. Compute MAE distribution for losing trades on the training period.
+3. Set the stop at the level where: (a) losers' 25th percentile MAE is exceeded, but (b) winners' 75th percentile MAE is not breached. If no such gap exists, the trade-by-trade signal isn't distinguishable on MAE alone -- use vol-scaled stops instead.
+4. Validate on OOS: report points 1-5 above on OOS data. If winners' MAE distribution shifts up materially OOS, the stop is too tight.
+
+This is the only stop-sizing procedure that doesn't fit to noise. **Optimizer-discovered stop levels without MAE/MFE backing are rejected** by the lead in Phase 9 validation.
+
+### 11.7 Profit-taking by asset class
+
+Profit targets, trailing stops, and scale-out rules have asset-class-specific interpretations. This subsection codifies the per-asset rules.
+
+#### 11.7.1 Equities (cash and leveraged ETFs)
+
+- Both stops and targets work in standard form: fixed-pct, vol-scaled, MAE/MFE-derived.
+- Slippage per 11.5.
+- Gap risk per 11.4. Stop slippage on equity gap-downs can be severe -- model explicitly for any strategy holding overnight.
+- **Profit-taking analysis required**: target attainment rate, MFE-beyond-target rate, R:R distribution by exit type.
+- For leveraged ETFs (TQQQ, SOXL, etc.): MFE distributions are wider; standard pct-based targets are usually too tight. Vol-scaled targets recommended.
+
+#### 11.7.2 Futures (continuous .c.0 contracts)
+
+- Stops in ticks, not pct. Tick value varies by contract (ES = $12.50, NQ = $5.00, CL = $10.00, etc.).
+- Same-bar fill-order matters more than equities (faster markets).
+- Slippage on news events: 1.5x to 3x normal during scheduled releases (FOMC, NFP, EIA inventory). Strategy specs should declare whether they trade through these or filter them out.
+- Profit-taking: scaling-out is common due to contract granularity (you can exit 1 of 3 contracts at +1 ATR, etc.). Strategy spec must declare whether engine supports partials before scale-out is in the parameter space.
+- **Required diagnostic for futures strategies**: target attainment rate broken down by intraday session (RTH vs ETH if applicable).
+
+#### 11.7.3 FX
+
+- Stops in pips. Pip value depends on pair and position size.
+- Spread is part of stop slippage (you don't get filled on the bid as a long stopping out).
+- Session-dependent: stops triggered in thin Asian hours can slip 2-5x tighter-session slippage.
+- 24/5 trading with weekend gap risk: Sunday open can blow through Friday's stop. Required filter: strategy specs must declare whether they hold across weekends.
+- Profit-taking on mean-reversion FX strategies (e.g., the Darwinex-inspired strategy): **tight targets relative to ATR are correct**. Letting winners run is the wrong instinct in mean-reversion contexts; the edge is the reversion, not trend continuation. Typical target ~ 0.5 to 1.0 x ATR.
+- **Required diagnostic for FX strategies**: target attainment rate by session (Asian / London / NY overlap / NY).
+
+#### 11.7.4 Crypto
+
+- 24/7 mostly eliminates gap risk, but flash-crash risk substitutes. Document major events (May 19 2021 BTC, May 2022 LUNA, Oct 2021 various). Strategies with stops below recent significant lows are vulnerable.
+- Weekend liquidity is thin on most pairs. Stops set during weekday liquidity may slip 2-3x worse Saturday/Sunday.
+- Exchange outages create false stops (price prints on illiquid books) -- for CSCM on Coinbase, model assumes Coinbase doesn't have an outage. If a different exchange is added, that assumption changes.
+- **Profit-taking trap**: crypto's positive skew is extreme; capping upside via fixed targets can destroy strategies that profit from rare large moves. **Default recommendation for momentum/trend crypto strategies: trailing stops, not fixed targets.** Mean-reversion strategies follow the FX rule (tight targets correct).
+- **Required diagnostic for crypto strategies**: MFE distribution with explicit reporting of trades whose MFE > 2x target (suggests target is too tight).
+
+#### 11.7.5 Options
+
+This is the most distinct of the asset classes and needs the most care.
+
+- **Stops on the option price are unreliable.** Option value moves with Greeks (delta, gamma, theta, vega), not just underlying price. A 50% stop on the option premium can trigger from a vol crush even with the underlying flat -- that's not a stop-out signal, it's a market-condition change.
+- **Better stop framing**: stop on the *underlying* price ("if underlying hits X, close position regardless of option P&L") or stop on *Greeks* ("close if short put delta exceeds -0.5").
+- **Profit-taking for premium sellers (CSPs, covered calls, credit spreads, iron condors)**: industry-standard practice (tastytrade research):
+  - **Manage at 50% of max profit.** Close the position when 50% of the premium received has decayed.
+  - **Manage at 21 DTE.** Close the position when 21 days to expiration remain, regardless of P&L. Gamma risk increases exponentially below 21 DTE.
+  - **Roll on breach.** If the short strike is breached, roll to a further-OTM strike at the next monthly expiration.
+- **Profit-taking for premium buyers (long calls, long puts, debit spreads)**: theta works against you. Pure signal-based exits typically outperform fixed targets. Fixed profit targets are acceptable for short-duration intraday options trades but generally fail for swing/positional buyers.
+- **Required diagnostic for options strategies**: separate Greek-exposure tracking -- average delta, gamma, vega at exit; distribution of theta-decay-captured per trade.
+
+For RAMP-CSP specifically (research strategy, blocked on options data gap): premium-capture exits at 50% with 21-DTE forced close is the right starting framework. Optimizer should *not* search around these parameters -- they're conventionally optimal per Sosnoff/tastytrade research and search would overfit. Search on entry parameters only (which strikes, which DTE entry, regime filters).
+
+### 11.8 Stops and the parameter budget
+
+Stops count toward the <=3 free-parameter budget from Section 5.4.
+
+A strategy with `entry_signal_param + stop_loss_pct + profit_target_pct` is at 3 parameters. Adding a `trailing_threshold` makes it 4 -- over the budget. This is a hard limit; over-parameterization is the primary route to overfitting.
+
+**Configurations that don't count against the budget:**
+
+- Parameters fixed by methodology (50% premium capture for CSPs, 21-DTE for options management)
+- Parameters fixed by asset class (tick value for futures)
+- Parameters fixed by exchange (Coinbase fee tier for CSCM)
+
+**Configurations that do count:**
+
+- Anything searchable in `param_grid` or `param_space`
+- Anything the strategy spec lists under `parameters_to_optimize`
+
+If a strategy needs more than 3 tunable parameters including stops/targets, the strategy is over-parameterized. Methodology requires simplification -- either drop a parameter, fix it from first principles, or split into two strategies.
+
+### 11.9 Code-reviewer responsibilities for exit logic
+
+The code-reviewer, when reviewing changes under `src/strategies/`, `src/backtesting/engine/`, or any backtest script, must verify:
+
+1. **Bar-resolution match**: If the strategy declares an intraday stop, the backtest config uses 1-minute bars. CRITICAL severity if mismatched.
+2. **Same-bar fill-order documented**: Strategy blueprint includes the fill-order assumption (per 11.3) and the engine implements it. HIGH severity if undocumented.
+3. **Gap modeling present**: For overnight-holding strategies, the engine implements the gap-fill model from 11.4. Verify by reading `src/backtesting/engine/backtest_engine.py` for the relevant fill logic. HIGH severity if missing.
+4. **Trade log schema complete**: All fields from 11.6 are written by the engine. CRITICAL severity if `mae_pct`, `mfe_pct`, `hit_stop`, `hit_target` are missing -- those are required for downstream diagnostic outputs.
+5. **Stop slippage applied**: If the engine has a slippage model, verify the stop multiplier (1.5x-3.0x per 11.5) is in effect on stop exits. HIGH severity if entries and stop exits use the same multiplier.
+6. **Parameter budget**: Count exit-logic parameters against the <=3 budget per 11.8. MEDIUM severity if the strategy is at or over the budget.
+
+These checks supplement Section 1 (bias prevention) and Section 7 (point-in-time) reviewer responsibilities. Reviewer prompts dispatched by the trading-lead must include the line "Consult docs/methodology/backtesting.md Section 11 for exit-logic checks."
+
+### 11.10 Optimizer behavior with exit-level parameters
+
+When the parameter space includes stop levels, profit-target levels, trailing thresholds, or any exit-logic parameter, the backtest-optimizer applies tightened sensitivity classification (Section 5.5).
+
+**Standard sensitivity classification (Section 5.5):**
+
+| Behavior | Label |
+|---|---|
+| Both neighbors achieve >= 0.9 x best Sharpe | STABLE |
+| Neighbors achieve 0.5-0.9 x best Sharpe | MODERATE |
+| Either neighbor achieves < 0.5 x best Sharpe | BRITTLE |
+
+**Tightened classification for exit-logic parameters:**
+
+| Behavior | Label |
+|---|---|
+| Both neighbors achieve >= 0.95 x best Sharpe | STABLE |
+| Neighbors achieve 0.7-0.95 x best Sharpe | MODERATE |
+| Either neighbor achieves < 0.7 x best Sharpe | BRITTLE |
+
+BRITTLE on any exit-logic parameter triggers an immediate stop (Section 5.3). Stops and targets that aren't robust to small perturbations will fail in live trading -- execution variability alone will move the fill price more than the perturbation.
+
+Additionally, when the optimizer's recommended stop/target levels are not backed by MAE/MFE analysis on training data (per 11.6), the lead's Phase 9 validation rejects the configuration regardless of statistical gate. MAE/MFE-derived stops are the only defensible source for these parameters.
+
+### 11.11 Exit logic and the experiment registry
+
+The registry schema (Section 9) gains two additional fields for backtests of strategies with non-time-based exits:
+
+```sql
+ALTER TABLE runs ADD COLUMN exit_logic_summary JSON;
+-- {
+--   "exit_types": ["signal_reversal", "fixed_pct_stop", "trailing_stop"],
+--   "winners_mae_p75": -0.018,
+--   "losers_mae_p25": -0.043,
+--   "target_attainment_rate": 0.62,
+--   "stop_touched_but_recovered_rate": 0.08,
+--   "target_exceeded_but_reverted_rate": 0.14,
+--   "stop_slippage_multiplier_applied": 1.5
+-- }
+
+ALTER TABLE runs ADD COLUMN mae_mfe_validated BOOLEAN;
+-- TRUE if MAE/MFE distributions were computed and stops are MAE/MFE-derived per 11.6
+```
+
+The portfolio-integrator (Section 6) reads `exit_logic_summary` to verify that any strategy graduating to live trading has sane exit-logic diagnostics. A strategy with `target_exceeded_but_reverted_rate > 0.30` should not graduate even if its Sharpe is good -- too many winners are turning into losers due to target placement.
+
+```
+
+---
+
+## Section 12: Required Diagnostic Outputs
+
+This section consolidates the cross-cutting diagnostics required of every backtest and every optimization. Where Section 2 defines *what statistical tests must pass*, this section defines *what diagnostic information must be produced* -- even when the statistics pass.
+
+The five Tier-1 diagnostics below are mandatory. The backtest-driver produces them in every report. The backtest-optimizer produces them for the top configuration of every optimization run. The trading-lead gates on them in Phase 6 and Phase 9 validation.
+
+### 12.1 Trade-level metrics alongside portfolio metrics
+
+Every backtest report includes both views:
+
+**Portfolio-level** (from existing Section 2):
+- Pooled-returns Sharpe ratio, PSR, DSR
+- CAGR, max drawdown, Calmar ratio
+- PBO from optimizer runs (Section 2.4)
+
+**Trade-level** (new requirement):
+- Win rate (fraction of round-trips with positive P&L after costs)
+- Profit factor (gross wins / gross losses)
+- Expectancy (mean P&L per trade in $)
+- Average winner vs. average loser (R:R distribution)
+- Longest losing streak (count of consecutive losing trades)
+- Largest single trade win / largest single trade loss
+- Win rate by holding period (bucketed: < 1 day, 1-5 days, 5-20 days, > 20 days)
+
+**Why required**: portfolio Sharpe smooths across many trades and can mask a strategy whose individual trades are marginal. A strategy with portfolio Sharpe 1.5 but trade-level expectancy near zero after costs is one execution-quality regression away from breakeven. The reverse -- a strategy with low Sharpe but extreme R:R and high expectancy -- has different deployment characteristics (smaller AUM, more selective).
+
+**Gate (trading-lead Phase 6 and 9)**: reject if `portfolio_sharpe > 1.0` AND `trade_expectancy_after_costs <= 0`. This is a P&L attribution mismatch -- the engine is computing portfolio returns differently than trade returns, or costs are being applied inconsistently. Dispatch code-reviewer to investigate before proceeding.
+
+### 12.2 Capacity curve
+
+Every backtest of a strategy aiming for live deployment runs the same backtest at multiple capital levels and reports the Sharpe / CAGR / max DD curve.
+
+**Standard scale points**: $50K, $250K, $1M, $5M, $25M.
+
+Method: re-evaluate the existing trade log at each capital level, applying the square-root market impact model from Section 4.1:
+
+```
+impact_pct = sigma_daily x eta x sqrt(position_size_dollars / daily_dollar_volume)
+```
+
+For positions exceeding ~5% of ADV, impact is non-trivial and Sharpe degrades. The curve tells you where the strategy's edge breaks down.
+
+**Output format** (in metrics JSON, registry column `capacity_curve`):
+
+```json
+"capacity_curve": [
+    {"capital_usd": 50000, "sharpe": 1.52, "cagr": 0.18, "max_dd": -0.07, "avg_impact_bps": 2.1},
+    {"capital_usd": 250000, "sharpe": 1.48, "cagr": 0.17, "max_dd": -0.08, "avg_impact_bps": 4.7},
+    {"capital_usd": 1000000, "sharpe": 1.41, "cagr": 0.15, "max_dd": -0.09, "avg_impact_bps": 9.4},
+    {"capital_usd": 5000000, "sharpe": 1.18, "cagr": 0.11, "max_dd": -0.11, "avg_impact_bps": 21.0},
+    {"capital_usd": 25000000, "sharpe": 0.62, "cagr": 0.05, "max_dd": -0.14, "avg_impact_bps": 47.0}
+]
+```
+
+**Gate (portfolio-integrator)**: identify the capacity ceiling -- the capital level beyond which Sharpe drops below 80% of the $50K baseline. Allocation recommendation never exceeds capacity_ceiling / 2.
+
+**Cost**: ~5-10 additional minutes per backtest. Cheap relative to the run itself.
+
+### 12.3 Regime transition analysis
+
+Every backtest of a strategy with 5+ years of data reports performance broken down by:
+
+- Stable-regime periods (consecutive days in the same regime)
+- Transition periods (+/-10 trading days around each regime boundary detected by `MarketRegimeDetector`)
+
+**Output format**:
+
+```json
+"regime_transitions": {
+    "n_transitions": 14,
+    "transition_window_days": 10,
+    "transition_sharpe": 0.31,
+    "non_transition_sharpe": 1.42,
+    "transition_max_dd": -0.18,
+    "non_transition_max_dd": -0.07,
+    "transition_pct_of_total_dd": 0.62,
+    "transition_pct_of_total_pnl": 0.08
+}
+```
+
+**Why required**: strategies often look fine when averaged across regimes but lose disproportionately at transitions, where regime detectors lag in real time. A strategy that earns Sharpe 1.5 in stable regimes but Sharpe -0.3 in transitions is structurally vulnerable to whichever delay the live regime detector has -- and OMR/RAMP both have live detectors with non-zero lag.
+
+**Gate (trading-lead Phase 6 and 9)**: reject if `transition_pct_of_total_dd > 0.5` (more than half of drawdown happens at transitions) AND `transition_sharpe < 0` (transitions are net-negative). Strategies failing this gate should not graduate or should be paper-trading-only.
+
+### 12.4 Hyperparameter temporal stability
+
+When an optimization sweep has parameter count >= 2, the backtest-optimizer runs the optimization separately on each of the K walk-forward windows and reports parameter stability.
+
+**Output format** (in optimization chronicle and registry):
+
+```json
+"parameter_stability": {
+    "n_windows": 5,
+    "windows": [
+        {"train_end": "2020-06-30", "best": {"long_period": 21, "penalty_weight": 4.0, "top_n": 8}},
+        {"train_end": "2021-06-30", "best": {"long_period": 21, "penalty_weight": 5.0, "top_n": 10}},
+        {"train_end": "2022-06-30", "best": {"long_period": 21, "penalty_weight": 4.0, "top_n": 9}},
+        {"train_end": "2023-06-30", "best": {"long_period": 21, "penalty_weight": 4.5, "top_n": 12}},
+        {"train_end": "2024-06-30", "best": {"long_period": 21, "penalty_weight": 5.0, "top_n": 11}}
+    ],
+    "stability_by_parameter": {
+        "long_period": {"mean": 21.0, "std": 0.0, "cv": 0.0, "classification": "STABLE"},
+        "penalty_weight": {"mean": 4.5, "std": 0.5, "cv": 0.11, "classification": "STABLE"},
+        "top_n": {"mean": 10.0, "std": 1.6, "cv": 0.16, "classification": "STABLE"}
+    },
+    "overall_classification": "STABLE"
+}
+```
+
+**Classification by coefficient of variation**:
+
+| CV | Label |
+|---|---|
+| < 0.20 | STABLE |
+| 0.20 - 0.50 | MODERATE |
+| > 0.50 | UNSTABLE |
+
+Overall classification is the worst across all parameters.
+
+**Gate (trading-lead Phase 9)**: reject if `overall_classification == UNSTABLE`. The parameters fit noise, not signal -- different windows recommend materially different configurations and there's no defensible reason to pick any single one.
+
+**Cost**: real. K-window optimization multiplies optimizer wall-clock by K. For a 6-hour optimization with K=5, this is 30 hours. The methodology accepts this cost for strategies graduating to live deployment, and the optimizer's hard cap (Section 5.6) accommodates it: 5000 cumulative configurations per strategy includes the K-window decomposition.
+
+Strategies in early research phase (not yet candidates for live deployment) may skip 12.4. The optimizer reports `"parameter_stability": "not_assessed_research_phase"` in that case. Lead's gate doesn't trigger for research-phase strategies.
+
+### 12.5 Benchmark comparison and information ratio
+
+Every backtest of an equity, ETF, or futures strategy reports benchmark-relative metrics:
+
+- **Beta** to the benchmark (regression slope of strategy returns on benchmark returns)
+- **Alpha** (regression intercept, annualized)
+- **Tracking error** (std of strategy returns minus benchmark returns, annualized)
+- **Information ratio** (alpha / tracking error)
+
+**Benchmark mapping**:
+
+| Strategy class | Benchmark |
+|---|---|
+| Long-only equity | SPY |
+| Long-short equity | Equal-weighted SPY + cash |
+| Sector-rotation equity | XLK + XLF + XLV equal-weighted |
+| Long-only crypto | BTC |
+| Long-only futures (equity index) | ES front-month |
+| Long-only futures (commodity) | GSCI Commodity Index |
+| FX (G10 carry trade) | DBV ETF |
+| FX (mean reversion) | None -- report Sharpe only |
+| Options (premium-selling) | None -- report Sharpe only |
+
+**Output format**:
+
+```json
+"benchmark_comparison": {
+    "benchmark_symbol": "SPY",
+    "beta": 0.45,
+    "alpha_annualized": 0.082,
+    "tracking_error_annualized": 0.087,
+    "information_ratio": 0.94,
+    "r_squared": 0.31
+}
+```
+
+**Why required**: a long-only equity strategy with Sharpe 1.0 in a bull market with Sharpe 0.8 is generating much of its Sharpe from market beta, not skill. Information ratio strips that out. Strategies with high Sharpe and low IR are paying complexity for market exposure that could be bought directly.
+
+**Gate (trading-lead Phase 6 and 9)**:
+
+| Asset class | Min information ratio | Action if below |
+|---|---|---|
+| Long-only equity | 0.30 | Reject -- strategy is not adding skill above market |
+| Long-short equity | 0.50 | Reject |
+| Sector-rotation equity | 0.40 | Reject |
+| Long-only crypto | 0.40 | Reject |
+| Long-only futures | 0.30 | Reject |
+| Strategies with no defined benchmark | N/A | Report Sharpe only, no IR gate |
+
+### 12.6 Required diagnostic outputs -- consolidated table
+
+For convenience, the complete diagnostic checklist for each strategy class:
+
+| Diagnostic | When required | Produced by | Gated by | Severity if missing |
+|---|---|---|---|---|
+| Portfolio metrics (Sharpe, PSR, DSR, max DD) | Every backtest | backtest-driver | trading-lead | CRITICAL |
+| Trade-level metrics (12.1) | Every backtest | backtest-driver | trading-lead | HIGH |
+| Capacity curve (12.2) | Every backtest aiming for live | backtest-driver | portfolio-integrator | HIGH |
+| Regime transitions (12.3) | 5+ year backtests | backtest-driver | trading-lead | HIGH |
+| Parameter stability (12.4) | Optimization with >= 2 params, live-bound | backtest-optimizer | trading-lead | HIGH |
+| Benchmark / IR (12.5) | Strategies with defined benchmark | backtest-driver | trading-lead | MEDIUM |
+| Exit logic summary (11.11) | Strategies with non-time exits | backtest-driver | portfolio-integrator | HIGH |
+| MAE/MFE validation (11.6) | Strategies with stops/targets | backtest-driver | trading-lead | HIGH |
+| PBO (Section 2.4) | Optimization with > 20 configs | backtest-optimizer | trading-lead | CRITICAL |
+| Reproducibility identity (Section 8.1) | Every run | All run-producing agents | trading-lead | CRITICAL |
+
+Severity defines the lead's response:
+- **CRITICAL** missing: reject the phase, mark `[!]` in TODO.md, dispatch fix
+- **HIGH** missing: reject the phase unless explicitly waived by user
+- **MEDIUM** missing: warn in the report, proceed but flag
+
+---
+
 ## Changelog
 
 | Date | Change | Author |
 |---|---|---|
-| 2026-05-12 | Initial consolidated methodology. Replaces inline rules in `backtest-optimizer`, `backtest-driver`, `trading-lead`, and `trade-log-analyzer` agents. Fixes DSR formula, embargo definition, options slippage, regime detector path, systemd service references, and EC2 memory threshold. | Shuyang |
+| 2026-05-12 | v2: Section 11 (Exit Logic and Profit-Taking Methodology, 11 subsections) and Section 12 (Required Diagnostic Outputs, 6 subsections) appended. Registry schema extended (`exit_logic_summary`, `mae_mfe_validated`). Appendix table updated to reflect actual on-disk agents and to add a "future agents" note for `portfolio-integrator`, `strategy-architect`, `strategy-implementer` (decision B). Gates added: trade-expectancy consistency, capacity, regime transitions, parameter temporal stability, information ratio. Stop-loss governance: MAE/MFE-derived stops required for live deployment. | Shuyang |
+| 2026-05-12 | v1: Initial consolidated methodology. Replaces inline rules in `backtest-optimizer`, `backtest-driver`, `trading-lead`, and `trade-log-analyzer` agents. Fixes DSR formula, embargo definition, options slippage, regime detector path, systemd service references, and EC2 memory threshold. | Shuyang |
 
 ---
 
@@ -872,15 +1358,25 @@ Always check individual services via `systemctl status homeguard-*.service`, not
 
 Each agent reads only the sections it needs. A pointer table to avoid wasting context:
 
+Agents currently in `.claude/agents/`:
+
 | Agent | Must read | Should read |
 |---|---|---|
-| strategy-lead | 1, 5, 6, 10 | 2 (for verdicts), 9 |
-| strategy-architect | 1, 10 | 4 (for cost-aware design) |
-| strategy-implementer | 1, 10 | 7 (point-in-time) |
-| code-reviewer | 1, 7 | 10 (paths) |
-| backtest-driver | 1, 2, 3, 4, 8, 9, 10 | 5 (for sanity check) |
-| backtest-optimizer | 1, 2, 3, 5, 8, 9 | 4, 10 |
-| portfolio-integrator | 6, 9 | 2 (DSR) |
+| strategy-lead | 1, 5, 6, 10, 11, 12 | 2 (for verdicts), 9 |
+| code-architect (when used for strategy work) | 1, 10, 11 | 4 (cost-aware design) |
+| code-explorer | 10 | -- |
+| code-reviewer | 1, 7, 11 (for strategies with exits) | 10 (paths) |
+| backtest-driver | 1, 2, 3, 4, 8, 9, 10, 11, 12 | 5 (sanity check) |
+| backtest-optimizer | 1, 2, 3, 5, 8, 9, 11, 12 | 4, 10 |
 | trade-log-analyzer | 10 (services, brokers, env) | -- |
+| live-ops | 10 | -- |
+| codebase-analyzer | -- | -- |
+
+**Future agents** (decision B -- defer until trigger):
+
+- `portfolio-integrator`: trigger = first portfolio-integration question requiring multi-file return-stream analysis the orchestrator can't fit in its head. Methodology Section 6 (the rules) is in effect; lead handles inline until then. Must read 6, 9, 11.11, 12.
+- `strategy-architect` and `strategy-implementer`: trigger = first strategy where the blueprint phase needs its own context budget. Currently `code-architect` and the general-purpose agent handle these.
+
+When a future agent is created, move its row into the main table above.
 
 This is the file. When in doubt, read it.
