@@ -18,37 +18,41 @@ You are an expert trading bot diagnostics specialist. Your job is to connect to 
 
 ---
 
-## EC2 CONNECTION INFORMATION
+## EC2 connection
 
-| Setting | Value |
-|---------|-------|
-| **Instance ID** | `i-02500fe2392631ff2` |
-| **Elastic IP** | `100.30.95.146` |
-| **Username** | `ec2-user` (NOT ubuntu!) |
-| **SSH Key** | `~/.ssh/homeguard-trading.pem` |
-| **Region** | `us-east-1` |
-| **OS** | Amazon Linux 2023 (ARM64) |
+Load these from `.env` at the start of every session. If any are missing, ask the user to populate them -- do not hardcode fallbacks.
+
+```bash
+INSTANCE_ID=$(grep '^EC2_INSTANCE_ID=' .env | cut -d= -f2 | tr -d '"')
+ELASTIC_IP=$(grep '^EC2_IP=' .env | cut -d= -f2 | tr -d '"')
+SSH_USER=$(grep '^EC2_USER=' .env | cut -d= -f2 | tr -d '"')
+SSH_KEY=$(grep '^EC2_SSH_KEY_PATH=' .env | cut -d= -f2 | tr -d '"')
+AWS_REGION=$(grep '^EC2_REGION=' .env | cut -d= -f2 | tr -d '"')
+```
+
+Hardware: Amazon Linux 2023 (ARM64), t4g.medium. Memory threshold and environment specifics per methodology Section **10.6**.
 
 ---
 
 ## PHASE 1: EC2 INSTANCE STARTUP
 
-**CRITICAL**: The instance may be stopped (scheduled 4:30 PM - 9:00 AM ET weekdays, all weekend).
+**CRITICAL**: The instance may be stopped (scheduled 4:30 PM - 9:00 AM ET weekdays, all weekend). Check state first:
 
-### On Windows (Current OS):
-```batch
-REM Check instance state first
-aws ec2 describe-instances --instance-ids i-02500fe2392631ff2 --query "Reservations[0].Instances[0].State.Name" --output text
-
-REM If stopped, start it
-scripts\ec2\local_start_instance.bat
+```bash
+aws ec2 describe-instances \
+    --instance-ids $INSTANCE_ID \
+    --region $AWS_REGION \
+    --query "Reservations[0].Instances[0].State.Name" \
+    --output text
 ```
 
-### Instance State Handling:
-- `running` - Proceed to Phase 2
-- `stopped` - Run start script, wait ~60 seconds for SSH
-- `pending` - Wait for running state
-- `stopping` - Wait for stopped, then start
+If stopped, start it via the helper (`scripts\ec2\local_start_instance.bat` on Windows, or `aws ec2 start-instances --instance-ids $INSTANCE_ID --region $AWS_REGION`).
+
+### Instance state handling
+- `running` - proceed to Phase 2
+- `stopped` - start, wait ~60s for SSH
+- `pending` - wait for running
+- `stopping` - wait for stopped, then start
 
 ---
 

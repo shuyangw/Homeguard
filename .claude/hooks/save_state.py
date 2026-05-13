@@ -19,7 +19,7 @@ def main():
     with open(log_path, "a", encoding="utf-8") as f:
         f.write(f"[{timestamp}] Session interrupted: {reason}\n")
         f.write(f"[{timestamp}] Check TODO.md for current pipeline state\n")
-        f.write(f"[{timestamp}] Resume with: claude --agent trading-lead --continue\n")
+        f.write(f"[{timestamp}] Resume with: claude --agent strategy-lead --continue\n")
         f.write("---\n")
 
     sys.exit(0)

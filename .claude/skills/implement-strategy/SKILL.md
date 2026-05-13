@@ -1,5 +1,7 @@
 # Skill: Implement RAMP Options Strategy
 
+**Methodology**: Consult `docs/methodology/backtesting.md` Sections **1** (bias prevention -- every signal must use `.shift(1)` or equivalent; no full-sample statistics in features; no `bfill` on price data) and **7** (point-in-time data conventions -- fundamentals lag, news timestamps, index membership) before writing strategy code. Section **11** also applies when Section 11 lands and the strategy has any non-time-based exit (stops, targets, trailing rules): the trade log must include `mae_pct`, `mfe_pct`, `hit_stop`, `hit_target`, `exit_reason`, `bars_held` per 11.6.
+
 ## When to Use
 When implementing a new options strategy that overlays the existing RAMP equity strategy.
 

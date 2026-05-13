@@ -1,5 +1,5 @@
 ---
-name: trading-lead
+name: strategy-lead
 description: Orchestrator for the algorithmic trading strategy pipeline. Reads TODO.md, dispatches to specialist agents, enforces backtest integrity at every phase, and manages session recovery across rate limit interruptions.
 tools: Read, Write, Edit, MultiEdit, Bash, Glob, Grep, Agent
 model: sonnet

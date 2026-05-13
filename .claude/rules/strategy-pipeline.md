@@ -26,7 +26,7 @@ These rules load alongside CLAUDE.md at session start. They apply to the orchest
 ### All agents
 - Subagents have NO context from your session — prompts must be self-contained
 - Include ALL relevant Homeguard file paths in every dispatch prompt
-- Include the applicable integrity rules (from trading-lead.md Section 2) in every dispatch
+- Include the applicable integrity rules (from strategy-lead.md Section 2) in every dispatch
 - Include data frequency from the strategy spec in every backtest/optimizer dispatch
 - Include data coverage rule: use FULL available data range, never a subset window
 - After return: read the output files, don't trust the summary alone

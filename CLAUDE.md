@@ -193,7 +193,7 @@ Strategy skill: `.claude/skills/implement-strategy/`
 | Backtest Driver | `.claude/agents/backtest-driver.md` | Autonomous backtest execution |
 | Backtest Optimizer | `.claude/agents/backtest-optimizer.md` | Parameter optimization runs |
 | Codebase Analyzer | `.claude/agents/codebase-analyzer.md` | Code quality and coverage gaps |
-| Trading Lead | `.claude/agents/trading-lead.md` | Strategy pipeline orchestration |
+| Strategy Lead | `.claude/agents/strategy-lead.md` | Strategy pipeline orchestration (formerly trading-lead) |
 | Code Architect | `.claude/agents/code-architect.md` | Architecture analysis |
 | Code Explorer | `.claude/agents/code-explorer.md` | Codebase navigation/discovery |
 | Code Reviewer | `.claude/agents/code-reviewer.md` | Pre-commit code review |
