@@ -524,6 +524,57 @@ def _create_output_dir(config: 'BacktestConfig', mode_suffix: str = "") -> Optio
     return output_dir
 
 
+def _resolve_costs(config: 'BacktestConfig') -> tuple:
+    """Return (fees, slippage) honoring `costs.tier` per methodology Section 4.
+
+    If `costs.tier` is set, derive the round-trip cost from the tier table and
+    split as per-side `fees` (slippage = 0 since the tier already covers spread).
+    If `costs.tier` is None, fall back to the deprecated raw
+    `backtest.fees` / `backtest.slippage` and warn once.
+    """
+    tier = getattr(getattr(config, 'costs', None), 'tier', None)
+    if tier is None:
+        logger.warning(
+            f"[costs] {config.strategy.name}: backtest config uses raw fees/slippage; "
+            "set costs.tier per methodology Section 4 to unlock cost-sensitivity gate."
+        )
+        return config.backtest.fees, config.backtest.slippage
+
+    override_bps = getattr(config.costs, 'bps_override', None)
+
+    if override_bps is not None:
+        round_trip_bps = float(override_bps)
+    else:
+        # Equity / leveraged-ETF / small-cap tiers come from costs.equities;
+        # crypto from costs.crypto. Other asset classes (FX, futures, options)
+        # use specialized models and are out of scope for this fees/slippage path.
+        equity_tiers = {'large_cap_liquid', 'mid_cap', 'leveraged_etf', 'small_cap'}
+        crypto_tiers = {'crypto_major', 'crypto_alt'}
+        if tier in equity_tiers:
+            from src.backtesting.costs import equities_round_trip_bps
+            round_trip_bps = equities_round_trip_bps(tier)
+        elif tier in crypto_tiers:
+            from src.backtesting.costs import crypto_round_trip_bps
+            pair_tier = 'major' if tier == 'crypto_major' else 'altcoin'
+            round_trip_bps = crypto_round_trip_bps(pair_tier)
+        else:
+            raise ValueError(
+                f"costs.tier='{tier}' is not yet supported by run_*_from_config. "
+                "Supported: large_cap_liquid, mid_cap, leveraged_etf, small_cap, "
+                "crypto_major, crypto_alt. Use bps_override for other asset classes."
+            )
+
+    # The engine charges `fees` on each side (entry and exit) and applies `slippage`
+    # on each fill. Put the entire round-trip in per-side fees; leave slippage at 0
+    # since the tier round-trip already encompasses spread.
+    per_side_fees = round_trip_bps / 10_000.0 / 2.0
+    logger.info(
+        f"[costs] {config.strategy.name}: tier={tier} -> "
+        f"round_trip={round_trip_bps:.1f} bps, per_side_fees={per_side_fees:.5f}"
+    )
+    return per_side_fees, 0.0
+
+
 def _append_to_registry(
     config: 'BacktestConfig',
     portfolio,
@@ -631,10 +682,12 @@ def run_single_from_config(config: 'BacktestConfig') -> None:
             max_positions=config.risk.max_positions,
         )
 
+    fees, slippage = _resolve_costs(config)
+
     engine = BacktestEngine(
         initial_capital=config.backtest.initial_capital,
-        fees=config.backtest.fees,
-        slippage=config.backtest.slippage,
+        fees=fees,
+        slippage=slippage,
         allow_shorts=config.backtest.allow_shorts,
         risk_config=risk_config,
         timeframe=config.backtest.timeframe,

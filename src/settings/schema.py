@@ -67,11 +67,34 @@ class DatesConfig(BaseModel):
         return self
 
 
+class CostsSettings(BaseModel):
+    """Per-asset-class cost-tier settings per docs/methodology/backtesting.md Section 4.
+
+    When `tier` is set, the backtest engine derives `fees` from the tier's
+    round-trip bps via src.backtesting.costs and ignores the raw
+    `backtest.fees` / `backtest.slippage`. When `tier` is None, the engine
+    falls back to the raw values (deprecated path; will hard-fail in a
+    future PR once all configs are migrated).
+    """
+    tier: Optional[str] = Field(
+        default=None,
+        description="Cost tier: 'large_cap_liquid' | 'mid_cap' | 'leveraged_etf' | 'small_cap' | 'fx_major' | 'fx_minor' | 'crypto_major' | 'crypto_alt' | 'futures' | 'options_liquid'",
+    )
+    bps_override: Optional[float] = Field(
+        default=None, ge=0, le=10000,
+        description="Optional explicit round-trip bps that bypasses the tier table",
+    )
+    stop_slippage_multiplier: float = Field(
+        default=1.5, ge=1.0, le=5.0,
+        description="Multiplier on per-side slippage when a stop order fills (per Section 4)",
+    )
+
+
 class BacktestSettings(BaseModel):
     """Core backtest execution settings."""
     initial_capital: float = Field(default=100000.0, gt=0, description="Starting capital")
-    fees: float = Field(default=0.001, ge=0, le=0.1, description="Trading fees as decimal")
-    slippage: float = Field(default=0.0005, ge=0, le=0.1, description="Slippage as decimal")
+    fees: float = Field(default=0.001, ge=0, le=0.1, description="Trading fees as decimal (deprecated when costs.tier set)")
+    slippage: float = Field(default=0.0005, ge=0, le=0.1, description="Slippage as decimal (deprecated when costs.tier set)")
     benchmark: str = Field(default="SPY", description="Benchmark symbol for comparison")
     market_hours_only: bool = Field(default=True, description="Filter to market hours only")
     allow_shorts: bool = Field(default=False, description="Allow short selling")
@@ -150,6 +173,7 @@ class BacktestConfig(BaseModel):
     symbols: SymbolsConfig = Field(..., description="Symbol configuration")
     dates: DatesConfig = Field(..., description="Date range configuration")
     backtest: BacktestSettings = Field(default_factory=BacktestSettings, description="Backtest settings")
+    costs: CostsSettings = Field(default_factory=CostsSettings, description="Cost-tier settings per methodology Section 4")
     risk: RiskSettings = Field(default_factory=RiskSettings, description="Risk management settings")
     sweep: SweepSettings = Field(default_factory=SweepSettings, description="Sweep mode settings")
     optimization: OptimizationSettings = Field(default_factory=OptimizationSettings, description="Optimization settings")

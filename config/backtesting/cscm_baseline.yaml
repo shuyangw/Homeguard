@@ -59,11 +59,18 @@ dates:
 
 backtest:
   initial_capital: 100000
-  fees: 0.001          # 0.1% per trade (typical crypto exchange)
-  slippage: 0.0005     # 0.05% slippage
+  fees: 0.001          # deprecated fallback; honored only when costs.tier is unset
+  slippage: 0.0005     # deprecated fallback; honored only when costs.tier is unset
   benchmark: BTC/USD
   market_hours_only: false  # Crypto trades 24/7
   allow_shorts: false       # Long only
+
+# Per methodology Section 4. crypto_major tier -> 126 bps round-trip on Coinbase
+# retail (60 + 60 taker + 3 + 3 spread). Higher than the previous 0.1%/0.05%
+# fees+slippage = ~30 bps assumption; the previous numbers were optimistic.
+costs:
+  tier: crypto_major
+  stop_slippage_multiplier: 1.5
 
 risk:
   enabled: true
