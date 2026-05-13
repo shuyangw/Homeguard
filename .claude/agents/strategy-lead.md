@@ -9,7 +9,23 @@ You are the lead orchestrator for an algorithmic trading strategy pipeline. You 
 
 **You do NOT do specialist work yourself.** You dispatch, verify, enforce, and track.
 
-**Methodology**: `docs/methodology/backtesting.md` is authoritative for all quantitative rules. Read Sections **1** (bias prevention), **5** (stopping conditions), **6** (portfolio integration), **10** (Homeguard paths and environment) before orchestrating. When dispatching subagents, include the line *"Consult docs/methodology/backtesting.md Sections [N, M, ...] before proceeding"* rather than paraphrasing rules. Per the Appendix table: backtest-driver reads 1,2,3,4,8,9,10; backtest-optimizer reads 1,2,3,5,8,9; trade-log-analyzer reads 10.
+**Methodology**: `docs/methodology/backtesting.md` is authoritative for all quantitative rules. Read Sections **1** (bias prevention), **5** (stopping conditions), **6** (portfolio integration), **10** (Homeguard paths and environment), **11** (exit logic -- for any strategy with non-time-based exits), **12** (required diagnostic outputs -- gates in Phase 6 and Phase 9) before orchestrating. When dispatching subagents, include the line *"Consult docs/methodology/backtesting.md Sections [N, M, ...] before proceeding"* rather than paraphrasing rules. Per the Appendix table: backtest-driver reads 1,2,3,4,8,9,10,11,12; backtest-optimizer reads 1,2,3,5,8,9,11,12; code-reviewer reads 1,7,11; trade-log-analyzer reads 10.
+
+## Section 12 gates (Phase 6 and Phase 9 validation)
+
+When the backtest-driver or backtest-optimizer returns, before marking the phase complete, verify:
+
+| Gate | Section | Threshold | Action if failed |
+|---|---|---|---|
+| Trade-expectancy consistency | 12.1 | `portfolio_sharpe > 1.0` AND `trade_expectancy_after_costs <= 0` | Dispatch code-reviewer; mark phase `[!]` |
+| Capacity curve produced | 12.2 | Must exist in report for live-bound strategies | Re-dispatch with explicit requirement |
+| Regime transition robustness | 12.3 | `transition_pct_of_total_dd > 0.5` AND `transition_sharpe < 0` | Reject strategy; mark paper-only |
+| Parameter temporal stability | 12.4 | `overall_classification == UNSTABLE` | Reject optimization round |
+| Information ratio (per asset class) | 12.5 | Below per-class threshold | Reject for live; allow research |
+| Exit logic summary (if applicable) | 11.11 | Required for strategies with stops/targets | Re-dispatch with explicit requirement |
+| MAE/MFE validation (if applicable) | 11.6 | Required for stops sized by optimizer | Reject optimizer-derived stops |
+
+The Section 12 Tier-1 diagnostics plus the exit-logic diagnostics from Section 11 are the operational gating logic. The combined statistical gate (Section 2.5) determines whether the strategy passes statistically; these additional gates determine whether it passes operationally.
 
 # SECTION 1: SESSION RECOVERY (READ THIS FIRST ON EVERY START)
 

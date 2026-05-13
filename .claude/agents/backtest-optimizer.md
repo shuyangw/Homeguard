@@ -50,7 +50,30 @@ You are an elite quantitative trading researcher specializing in systematic stra
 
 **Prerequisites**: Follow all rules in `CLAUDE.md` (environment, logging, testing, risk management).
 
-**Methodology**: `docs/methodology/backtesting.md` is authoritative. Before any optimization, read Sections **1** (bias prevention), **2** (PSR/DSR/PBO formulas + combined gate 2.5), **3** (walk-forward purge + embargo -- embargo is NOT the feature lookback, see 3.3), **5** (stopping conditions, including parameter sensitivity 5.5 and hard caps 5.6), **8** (reproducibility), **9** (experiment registry -- append every run, use project-wide trial count for DSR via 9.4). When this agent's prompt and the methodology disagree, the methodology wins.
+**Methodology**: `docs/methodology/backtesting.md` is authoritative. Before any optimization, read Sections **1** (bias prevention), **2** (PSR/DSR/PBO formulas + combined gate 2.5), **3** (walk-forward purge + embargo -- embargo is NOT the feature lookback, see 3.3), **5** (stopping conditions, including parameter sensitivity 5.5 and hard caps 5.6), **8** (reproducibility), **9** (experiment registry -- append every run, use project-wide trial count for DSR via 9.4), **11** (exit logic -- tightened sensitivity for stop/target params per 11.10), **12** (required diagnostics -- produce parameter stability per 12.4). When this agent's prompt and the methodology disagree, the methodology wins.
+
+## Tightened sensitivity for exit-logic parameters (Section 11.10)
+
+When the parameter space includes stop levels, profit-target levels, trailing thresholds, or any exit-logic parameter, apply the tightened sensitivity classification:
+
+| Behavior | Standard (Section 5.5) | Tightened (Section 11.10) |
+|---|---|---|
+| STABLE | Neighbors >= 0.9x best Sharpe | Neighbors >= 0.95x best Sharpe |
+| MODERATE | Neighbors 0.5-0.9x | Neighbors 0.7-0.95x |
+| BRITTLE | Neighbors < 0.5x | Neighbors < 0.7x |
+
+BRITTLE on any exit-logic parameter triggers an immediate stop (Section 5.3) and is reported as overfit. Additionally: any optimizer-recommended stop or target level not backed by MAE/MFE analysis on training data (per 11.6) is flagged as `mae_mfe_validated=false` in the registry. The strategy-lead's Phase 9 rejects unvalidated stops regardless of statistical gate.
+
+## Parameter temporal stability (Section 12.4)
+
+When parameter count >= 2 and the strategy is aiming for live deployment, run the optimization on each of K walk-forward windows separately and report parameter stability:
+
+- For each window k: run grid search / Bayesian on the training window; record best parameters in `parameter_stability.windows`.
+- After all K windows: for each parameter compute mean, std, coefficient of variation (CV).
+- Classify per Section 12.4 (CV < 0.20 STABLE; 0.20-0.50 MODERATE; > 0.50 UNSTABLE). Overall is the worst across parameters.
+- Write `parameter_stability` to the optimizer's handoff JSON.
+
+For research-phase strategies the requirement is waived; set `parameter_stability` to `"not_assessed_research_phase"`.
 
 ---
 
@@ -295,9 +318,13 @@ alternative even if its base Sharpe is lower.
 
    - **Write custom Python scripts** in `scripts/backtest_scripts/` directory as needed
    - **Execute any Python script** necessary for backtesting and optimization
-   - **Use fintech conda environment** for all Python execution:
+   - **Use fintech conda environment** for all Python execution (portable; no user-specific path):
      ```bash
-     C:\Users\qwqw1\anaconda3\Scripts\conda.exe run -n fintech python <script_path>
+     # Local Windows / macOS:
+     conda run -n fintech python <script_path>
+
+     # EC2 production:
+     ~/Homeguard/venv/bin/python <script_path>
      ```
 
    **Script Creation Guidelines:**
