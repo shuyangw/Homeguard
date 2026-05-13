@@ -54,49 +54,13 @@ You are an elite quantitative trading researcher specializing in systematic stra
 
 ---
 
-## DATA LAYER (read before any optimization)
+## Data layer
 
-**Storage root**: always resolve via `from src.settings import get_local_storage_dir` (Windows: `H:\Stock_Data`, EC2: `/home/ec2-user/stock_data`). Never hardcode `F:` or `H:` paths in scripts you create.
+Storage paths, available data on disk, and unified `DataAcquisitionManager` usage are specified in `docs/methodology/backtesting.md` Section **10.5**. Always resolve storage root via `from src.settings import get_local_storage_dir`. Use `DataAcquisitionManager` from `src/data/acquisition.py` for downloads; never write ad-hoc downloaders.
 
-### Available data on disk (as of 2026-04)
+**Cross-asset implication for optimization**: when proposing parameter spaces or universes, do not default to equities-only. Futures (ES/NQ for index, CL/GC for commodities), FX, and crypto are immediately available -- propose at least one cross-asset variant for index, commodity, or pairs work. (Asset class list and coverage in methodology Section 10.5.)
 
-| Asset class | Path under storage root | Symbols | Frequency | Coverage |
-|-------------|-------------------------|---------|-----------|----------|
-| Equities | `equities_1min/`, `equities_1hour`, `equities_1day` | 3,492 | 1-min / 1-hour / daily | 2017+ (varies) |
-| Futures (Databento GLBX.MDP3, continuous `.c.0`) | `futures_1min/` | 9: ES, NQ, YM, RTY, CL, GC, ZN, 6E, ZC | 1-min | 2010-10 -> 2026-02 (~34M bars) |
-| FX | `fx_1min/` | 50 pairs | 1-min | varies |
-| Crypto | `crypto_1min/`, `crypto_1hour/`, `crypto_1day/` | 33 pairs | 1m / 1h / 1d | varies |
-| Options | `options/{chains,gex_daily,options_combined}/` | varies | EOD | varies |
-| News | `news/symbol={SYM}/` | 502 symbols | per-event | varies |
-
-**Cross-asset implication**: when proposing strategies or universes, do not default to equities-only. Futures (ES/NQ for index, CL/GC for commodities), FX, and crypto are immediately available — propose at least one cross-asset variant for index, commodity, or pairs work.
-
-### Unified data acquisition (use this, do NOT write ad-hoc downloaders)
-
-```python
-from src.data.acquisition import DataAcquisitionManager
-
-mgr = DataAcquisitionManager()
-
-# Pre-flight: verify coverage BEFORE launching a multi-hour optimization
-status = mgr.get_status('equities')
-# -> {'total': N, 'complete': M, 'failed': K, 'pending': P}
-
-# Catch up missing data (resumable via manifest at {storage}/_manifests/{source}.json)
-result = mgr.download(source='futures', symbols=['ES','NQ'],
-                      start_date='2026-02-22', skip_existing=True)
-```
-
-Sources: `equities`, `crypto`, `futures`, `news`. Manifest tracks per-symbol-month status so optimization re-runs after interruption skip already-downloaded work.
-
-### Loading data inside optimizer scripts
-
-| Use case | Tool | Why |
-|----------|------|-----|
-| Pre-built multi-symbol minute cache | `load_minute_cache_polars` + `run_generic_parameter_sweep` (`src/backtesting/optimization/`) | 10-20x faster than pandas; threaded sweep shares 5GB data across workers without duplication |
-| Memory-bounded multi-year minute backtest | `StreamingDataLoader` (`src/backtesting/engine/streaming_data_loader.py`) | Chunked load; avoids OOM |
-| Direct partition read for ad-hoc | `pd.read_parquet({storage}/{class}_1min/symbol={S}/year={Y}/month={M}/data.parquet)` | Lowest level, partition-aware |
-| Live-style fallback chain | `CompositeDataProvider` (`src/data/providers/composite.py`) | Alpaca -> yfinance -> cache; mirrors live behavior for paper-vs-live consistency |
+For data loading in scripts (Polars cache, streaming loader, direct partition reads, CompositeDataProvider fallback), see methodology Section 10.5.
 
 ---
 

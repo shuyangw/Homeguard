@@ -62,39 +62,11 @@ You are an autonomous backtest execution agent. Run backtests, validate results,
 
 ---
 
-## DATA LAYER (read before any backtest)
+## Data layer
 
-**Storage root**: always resolve via `from src.settings import get_local_storage_dir` (Windows: `H:\Stock_Data`, EC2: `/home/ec2-user/stock_data`). Never hardcode `F:` or `H:` paths.
+Storage paths, available data on disk, and unified `DataAcquisitionManager` usage are specified in `docs/methodology/backtesting.md` Section **10.5**. Always resolve storage root via `from src.settings import get_local_storage_dir`. Use `DataAcquisitionManager` from `src/data/acquisition.py` for downloads; never write ad-hoc downloaders.
 
-### Available data on disk (as of 2026-04)
-
-| Asset class | Path under storage root | Symbols | Frequency | Coverage |
-|-------------|-------------------------|---------|-----------|----------|
-| Equities | `equities_1min/`, `equities_1hour`, `equities_1day` | 3,492 | 1-min / 1-hour / daily | 2017+ (varies) |
-| Futures (Databento GLBX.MDP3, continuous `.c.0`) | `futures_1min/` | 9: ES, NQ, YM, RTY, CL, GC, ZN, 6E, ZC | 1-min | 2010-10 -> 2026-02 (~34M bars) |
-| FX | `fx_1min/` | 50 pairs | 1-min | varies |
-| Crypto | `crypto_1min/`, `crypto_1hour/`, `crypto_1day/` | 33 pairs | 1m / 1h / 1d | varies |
-| Options | `options/{chains,gex_daily,options_combined}/` | varies | EOD | varies |
-| News | `news/symbol={SYM}/` | 502 symbols | per-event | varies |
-
-### Pre-flight: check coverage BEFORE running
-
-```python
-from src.data.acquisition import DataAcquisitionManager
-status = DataAcquisitionManager().get_status('equities')
-# {'total': N, 'complete': M, 'failed': K, 'pending': P}
-```
-
-If `pending` or `failed` is non-zero for a symbol you need, do `mgr.download(source=..., symbols=[...], skip_existing=True)` first. Manifest at `{storage}/_manifests/{source}.json` tracks per-symbol-month status, so re-runs skip completed work.
-
-### Loading data inside the backtest
-
-| Use case | Tool | Why |
-|----------|------|-----|
-| Single symbol, daily | `CompositeDataProvider` (`src/data/providers/composite.py`) | Alpaca -> yfinance -> cache fallback |
-| Pre-built multi-symbol cache | `load_minute_cache_polars` (`src/backtesting/optimization/data_loader.py`) | 10-20x faster than pandas |
-| Memory-bounded long backtest | `StreamingDataLoader` (`src/backtesting/engine/streaming_data_loader.py`) | Chunked load; avoids OOM on multi-GB caches |
-| Direct partition read | `pd.read_parquet({storage}/equities_1min/symbol={S}/year={Y}/month={M}/data.parquet)` | Lowest level |
+For loading data in scripts you write, the available tools (Polars cache loader, streaming loader, direct partition reads, CompositeDataProvider fallback chain) are listed in methodology Section 10.5.
 
 ---
 
