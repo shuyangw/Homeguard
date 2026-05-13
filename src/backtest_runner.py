@@ -13,7 +13,8 @@ Usage:
 
 import argparse
 import sys
-from datetime import datetime
+import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, Any, Optional, List
 
@@ -523,6 +524,76 @@ def _create_output_dir(config: 'BacktestConfig', mode_suffix: str = "") -> Optio
     return output_dir
 
 
+def _append_to_registry(
+    config: 'BacktestConfig',
+    portfolio,
+    symbols: List[str],
+    start_date: str,
+    end_date: str,
+    wall_clock_start: datetime,
+    *,
+    agent_name: str = 'backtest-runner',
+    phase: str = 'initial',
+    parent_run_id: Optional[str] = None,
+    combinations_in_run: int = 1,
+) -> Optional[str]:
+    """Append a run row to the experiment registry per methodology Section 9.
+
+    Best-effort during the initial rollout: if append fails (DB locked, env
+    issue), log a warning and continue so existing backtests don't break.
+    Once stable, switch to fatal by removing the try/except.
+    """
+    try:
+        from src.experiments import append_run, n_trials_project_wide
+    except Exception as e:  # noqa
+        logger.warning(f"[registry] import failed, skipping append: {e}")
+        return None
+    try:
+        stats = portfolio.stats() if hasattr(portfolio, 'stats') else None
+        metrics: Dict[str, Any] = {}
+        if stats:
+            metrics = {
+                'sharpe': float(stats.get('Sharpe Ratio', 0.0) or 0.0),
+                'total_return_pct': float(stats.get('Total Return [%]', 0.0) or 0.0),
+                'annual_return_pct': float(stats.get('Annual Return [%]', 0.0) or 0.0),
+                'max_drawdown_pct': float(stats.get('Max Drawdown [%]', 0.0) or 0.0),
+                'win_rate_pct': float(stats.get('Win Rate [%]', 0.0) or 0.0),
+                'trade_count': int(stats.get('Total Trades', 0) or 0),
+                'start_value': float(stats.get('Start Value', 0.0) or 0.0),
+                'end_value': float(stats.get('End Value', 0.0) or 0.0),
+            }
+
+        params: Dict[str, Any] = {}
+        try:
+            if config.strategy and getattr(config.strategy, 'parameters', None):
+                params = dict(config.strategy.parameters)
+        except Exception:
+            params = {}
+
+        return append_run(
+            strategy_name=config.strategy.name,
+            agent_name=agent_name,
+            phase=phase,
+            parent_run_id=parent_run_id,
+            params=params,
+            universe_name=str(config.symbols.universe) if getattr(config, 'symbols', None) and getattr(config.symbols, 'universe', None) else None,
+            asset_class=None,  # populated by Phase 7 cost-tier wiring
+            data_frequency=getattr(config.backtest, 'timeframe', None),
+            window_start=start_date,
+            window_end=end_date,
+            metrics=metrics,
+            combinations_in_run=combinations_in_run,
+            combinations_project=n_trials_project_wide(),
+            config_payload=getattr(config, 'model_dump', lambda: None)() if hasattr(config, 'model_dump') else None,
+            wall_clock_start=wall_clock_start,
+            wall_clock_end=datetime.now(tz=timezone.utc),
+            verdict='PENDING',
+        )
+    except Exception as e:  # noqa
+        logger.warning(f"[registry] append failed: {e}")
+        return None
+
+
 def run_single_from_config(config: 'BacktestConfig') -> None:
     """
     Run single backtest from config.
@@ -531,6 +602,8 @@ def run_single_from_config(config: 'BacktestConfig') -> None:
         config: Validated BacktestConfig object
     """
     from src.backtesting.utils.risk_config import RiskConfig
+
+    wall_clock_start = datetime.now(tz=timezone.utc)
 
     symbols = _resolve_symbols(config)
     start_date, end_date = _resolve_dates(config)
@@ -677,6 +750,22 @@ def run_single_from_config(config: 'BacktestConfig') -> None:
     logger.success(f"Backtest complete: {config.strategy.name}")
     if output_dir:
         logger.info(f"Results saved to: {output_dir}")
+
+    # Append to the experiment registry per methodology Section 9. Best-effort
+    # during initial rollout: log-and-continue on failure so existing backtests
+    # aren't broken by a registry outage.
+    run_id = _append_to_registry(
+        config=config,
+        portfolio=portfolio,
+        symbols=symbols,
+        start_date=start_date,
+        end_date=end_date,
+        wall_clock_start=wall_clock_start,
+        agent_name='backtest-runner',
+        phase='initial',
+    )
+    if run_id:
+        logger.info(f"[registry] appended run_id={run_id}")
 
 
 def run_sweep_from_config(config: 'BacktestConfig') -> None:
