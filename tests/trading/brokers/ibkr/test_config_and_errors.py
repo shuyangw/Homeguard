@@ -2,6 +2,8 @@
 Tests for IBKRConfig and error handling.
 """
 
+import os
+
 import pytest
 
 from src.trading.brokers.ibkr.config import IBKRConfig
@@ -20,24 +22,41 @@ from src.trading.brokers.interfaces.base import (
 )
 
 
+@pytest.fixture
+def isolated_ibkr_env(monkeypatch, tmp_path):
+    """Isolate IBKRConfig from the dev .env and config/ibkr.yaml layered values.
+
+    The IBKRConfig validator merges defaults <- YAML <- env vars. The dev
+    environment has IBKR_CLIENT_ID=10 in .env (auto-loaded into os.environ
+    on import) and config/ibkr.yaml with client_id: 10, so plain
+    IBKRConfig() in tests would pick these up. This fixture chdirs to a
+    clean tmp dir (no YAML found) and clears every IBKR_ env var, so
+    `IBKRConfig()` returns the class defaults.
+    """
+    monkeypatch.chdir(tmp_path)
+    for key in list(os.environ):
+        if key.startswith("IBKR_"):
+            monkeypatch.delenv(key, raising=False)
+    return tmp_path
+
+
 class TestIBKRConfig:
 
-    def test_defaults(self, monkeypatch, tmp_path):
-        """Test class defaults when no YAML config is present."""
-        monkeypatch.chdir(tmp_path)
+    def test_defaults(self, isolated_ibkr_env):
+        """Test class defaults when no YAML config and no env overrides are present."""
         config = IBKRConfig()
         assert config.host == "127.0.0.1"
         assert config.port == 4002
         assert config.client_id == 1
         assert config.readonly is False
 
-    def test_paper_detection(self):
+    def test_paper_detection(self, isolated_ibkr_env):
         assert IBKRConfig(port=4002).is_paper is True
         assert IBKRConfig(port=7497).is_paper is True
         assert IBKRConfig(port=4001).is_paper is False
         assert IBKRConfig(port=7496).is_paper is False
 
-    def test_gateway_type_label(self):
+    def test_gateway_type_label(self, isolated_ibkr_env):
         assert "Gateway" in IBKRConfig(port=4002).gateway_type
         assert "paper" in IBKRConfig(port=4002).gateway_type
         assert "TWS" in IBKRConfig(port=7496).gateway_type

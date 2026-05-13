@@ -286,24 +286,19 @@ class WalkForwardValidator:
             # 2. Test on out-of-sample period with optimal params
             test_strategy = strategy_class(**best_params)
 
-            # Load test data
-            test_data = self.engine.data_loader.load_symbols(
-                symbols if isinstance(symbols, list) else [symbols],
-                window.test_start,
-                window.test_end
-            )
-
-            # Run backtest on test period
             if isinstance(symbols, str):
                 symbols = [symbols]
 
+            # Engine loads data internally from (start_date, end_date). The
+            # old API accepted pre-loaded data positionally; the new API
+            # signature is (strategy, symbol, start, end, price_type).
             if len(symbols) == 1:
                 test_portfolio = self.engine._run_single_symbol(
-                    test_strategy, test_data, symbols[0], 'close'
+                    test_strategy, symbols[0], window.test_start, window.test_end, 'close'
                 )
             else:
                 test_portfolio = self.engine._run_multiple_symbols(
-                    test_strategy, test_data, symbols, 'close'
+                    test_strategy, symbols, window.test_start, window.test_end, 'close'
                 )
 
             # Get out-of-sample stats

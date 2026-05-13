@@ -828,14 +828,18 @@ def run_sweep_from_config(config: 'BacktestConfig') -> None:
     Args:
         config: Validated BacktestConfig object
     """
+    wall_clock_start = datetime.now(tz=timezone.utc)
+
     symbols = _resolve_symbols(config)
     start_date, end_date = _resolve_dates(config)
     strategy = _get_strategy_instance(config)
 
+    fees, slippage = _resolve_costs(config)
+
     engine = BacktestEngine(
         initial_capital=config.backtest.initial_capital,
-        fees=config.backtest.fees,
-        slippage=config.backtest.slippage,
+        fees=fees,
+        slippage=slippage,
         allow_shorts=config.backtest.allow_shorts,
         timeframe=config.backtest.timeframe,
         market_hours_only=config.backtest.market_hours_only,
@@ -867,6 +871,23 @@ def run_sweep_from_config(config: 'BacktestConfig') -> None:
     if output_dir:
         logger.info(f"Results saved to: {output_dir}")
 
+    # Aggregate sweep row: per-symbol detail is in SweepRunner's CSV/HTML.
+    # The registry gets one parent row; per-config wiring (per-symbol or
+    # per-param row) is a follow-up that needs SweepRunner to expose results.
+    run_id = _append_to_registry(
+        config=config,
+        portfolio=None,
+        symbols=symbols,
+        start_date=start_date,
+        end_date=end_date,
+        wall_clock_start=wall_clock_start,
+        agent_name='backtest-runner',
+        phase='sweep',
+        combinations_in_run=len(symbols),
+    )
+    if run_id:
+        logger.info(f"[registry] appended sweep run_id={run_id}")
+
 
 def run_optimize_from_config(config: 'BacktestConfig') -> None:
     """
@@ -877,14 +898,18 @@ def run_optimize_from_config(config: 'BacktestConfig') -> None:
     """
     from src.strategies.registry import get_strategy_class
 
+    wall_clock_start = datetime.now(tz=timezone.utc)
+
     symbols = _resolve_symbols(config)
     start_date, end_date = _resolve_dates(config)
     strategy_cls = get_strategy_class(config.strategy.name)
 
+    fees, slippage = _resolve_costs(config)
+
     engine = BacktestEngine(
         initial_capital=config.backtest.initial_capital,
-        fees=config.backtest.fees,
-        slippage=config.backtest.slippage,
+        fees=fees,
+        slippage=slippage,
         allow_shorts=config.backtest.allow_shorts,
         timeframe=config.backtest.timeframe,
         market_hours_only=config.backtest.market_hours_only,
@@ -908,6 +933,27 @@ def run_optimize_from_config(config: 'BacktestConfig') -> None:
     logger.metric(f"Best parameters: {results['best_params']}")
     logger.metric(f"Best {config.optimization.metric}: {results['best_value']:.4f}")
 
+    # Approximate combinations count from param_grid (product of value-list lengths).
+    n_combos = 1
+    for v in (config.optimization.param_grid or {}).values():
+        try:
+            n_combos *= max(1, len(v))
+        except TypeError:
+            pass
+    run_id = _append_to_registry(
+        config=config,
+        portfolio=results.get('best_portfolio') if isinstance(results, dict) else None,
+        symbols=symbols,
+        start_date=start_date,
+        end_date=end_date,
+        wall_clock_start=wall_clock_start,
+        agent_name='backtest-optimizer',
+        phase='optimization',
+        combinations_in_run=n_combos,
+    )
+    if run_id:
+        logger.info(f"[registry] appended optimization run_id={run_id} (combinations={n_combos})")
+
 
 def run_walk_forward_from_config(config: 'BacktestConfig') -> None:
     """
@@ -921,6 +967,8 @@ def run_walk_forward_from_config(config: 'BacktestConfig') -> None:
     from src.backtesting.engine.backtest_engine import BacktestEngine
     from src.strategies.registry import get_strategy_class
 
+    wall_clock_start = datetime.now(tz=timezone.utc)
+
     symbols = _resolve_symbols(config)
     start_date, end_date = _resolve_dates(config)
     strategy_cls = get_strategy_class(config.strategy.name)
@@ -931,10 +979,12 @@ def run_walk_forward_from_config(config: 'BacktestConfig') -> None:
 
     output_dir = _create_output_dir(config, "_walk_forward")
 
+    fees, slippage = _resolve_costs(config)
+
     engine = BacktestEngine(
         initial_capital=config.backtest.initial_capital,
-        fees=config.backtest.fees,
-        slippage=config.backtest.slippage,
+        fees=fees,
+        slippage=slippage,
         allow_shorts=config.backtest.allow_shorts,
         timeframe=config.backtest.timeframe,
         market_hours_only=config.backtest.market_hours_only,
@@ -961,6 +1011,26 @@ def run_walk_forward_from_config(config: 'BacktestConfig') -> None:
         logger.info(f"Walk-forward results saved to: {output_dir}")
 
     logger.success("Walk-forward validation complete!")
+
+    n_combos = 1
+    for v in (config.optimization.param_grid or {}).values():
+        try:
+            n_combos *= max(1, len(v))
+        except TypeError:
+            pass
+    run_id = _append_to_registry(
+        config=config,
+        portfolio=None,
+        symbols=symbols,
+        start_date=start_date,
+        end_date=end_date,
+        wall_clock_start=wall_clock_start,
+        agent_name='backtest-optimizer',
+        phase='walk_forward',
+        combinations_in_run=n_combos,
+    )
+    if run_id:
+        logger.info(f"[registry] appended walk-forward run_id={run_id} (combinations={n_combos})")
 
 
 def run_from_config(config: 'BacktestConfig') -> None:
