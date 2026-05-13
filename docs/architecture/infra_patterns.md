@@ -150,3 +150,12 @@ output:
 - **Never use print()** - always logger
 - **Environment**: `fintech` conda environment for all Python execution
 - **Platform**: Windows (cp1252 encoding) - ASCII only in all code and docs
+
+## Operations agents
+
+Two agents handle EC2 / live-system interaction. They are deliberately split by capability:
+
+- **`trade-log-analyzer`** -- diagnostics-only, read-only. Analyzes today's logs in ET, identifies errors, and *proposes* (does not implement) fixes. Best for "what went wrong today" questions. Never modifies state.
+- **`live-ops`** -- routine ops with state-changing capability. Canned recipes for status, metrics, journal tails, instance start/stop, dashboard sync, service restarts. State changes require explicit user yes/no confirmation. Best for "do X to the system" tasks. Never modifies code, strategy configs, or trading state.
+
+Both load EC2 identifiers from `.env` (`EC2_INSTANCE_ID`, `EC2_IP`, `EC2_USER`, `EC2_SSH_KEY_PATH`, `EC2_REGION`) rather than hardcoding. The strategy-pipeline agents (`strategy-lead` and its specialists) are separate from these ops agents -- they don't touch live infrastructure.

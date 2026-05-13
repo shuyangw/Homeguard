@@ -194,6 +194,7 @@ Strategy skill: `.claude/skills/implement-strategy/`
 | Backtest Optimizer | `.claude/agents/backtest-optimizer.md` | Parameter optimization runs |
 | Codebase Analyzer | `.claude/agents/codebase-analyzer.md` | Code quality and coverage gaps |
 | Strategy Lead | `.claude/agents/strategy-lead.md` | Strategy pipeline orchestration (formerly trading-lead) |
+| Live Ops | `.claude/agents/live-ops.md` | Routine EC2 ops (status, metrics, journal, restart) -- state-changing recipes confirm first |
 | Code Architect | `.claude/agents/code-architect.md` | Architecture analysis |
 | Code Explorer | `.claude/agents/code-explorer.md` | Codebase navigation/discovery |
 | Code Reviewer | `.claude/agents/code-reviewer.md` | Pre-commit code review |
