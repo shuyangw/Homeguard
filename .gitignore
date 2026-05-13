@@ -300,6 +300,15 @@ docs/*
 !docs/methodology/
 !docs/methodology/**
 
+# KEEP: Planning docs (rollout plans, implementation strategies)
+# NOTE: docs/planning/ directory allow-listed; individual files must be reviewed
+# for hardcoded operational identifiers before being committed. Several prior
+# planning docs (Dec 2025) contain EC2 IPs and instance IDs that need scrubbing
+# first; only commit new plans authored after .env-driven identifiers became
+# the convention (2026-05-12+).
+!docs/planning/
+!docs/planning/20260512*.md
+
 # Hide everything else (new files only - previously tracked files remain):
 # - docs/api/ (can be generated from code)
 # - docs/guides/ (user guides, wiki material)
