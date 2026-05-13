@@ -1,0 +1,8 @@
+symbol,tier,added_date,effective_start_date,massive_ticker,notes
+USDNOK,1,2026-05-13,2010-01-01,C:USD-NOK,G10 Scandi major
+USDSEK,1,2026-05-13,2010-01-01,C:USD-SEK,G10 Scandi major
+NZDCHF,2,2026-05-13,2010-01-01,C:NZD-CHF,Antipodean-haven cross
+CADCHF,2,2026-05-13,2010-01-01,C:CAD-CHF,Commodity-haven cross
+GBPNZD,2,2026-05-13,2010-01-01,C:GBP-NZD,GBP-antipodean cross
+EURSGD,2,2026-05-13,2010-01-01,C:EUR-SGD,EUR-Asia cross
+SGDJPY,2,2026-05-13,2015-01-01,C:SGD-JPY,Asia cross; late start (0% historical 2014)
