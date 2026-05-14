@@ -29,42 +29,33 @@ def main() -> int:
     args = parser.parse_args()
 
     rows = list(csv.DictReader(args.universe.open(encoding="utf-8")))
-    plugin = DatabentoFuturesPlugin()
-
-    # Group by tier so we can pass the right schema set
     tier1_symbols = [r["symbol"] for r in rows if int(r["tier"]) == 1]
     tier2_symbols = [r["symbol"] for r in rows if int(r["tier"]) == 2]
+    earliest_start = min(date.fromisoformat(r["effective_start_date"]) for r in rows)
 
-    logger.info(f"Tier 1 symbols ({len(tier1_symbols)}): ohlcv-1m + mbp-1 (if in --schemas)")
+    logger.info(f"Tier 1 symbols ({len(tier1_symbols)}): ohlcv-1m + mbp-1 (if in schemas)")
     logger.info(f"Tier 2 symbols ({len(tier2_symbols)}): ohlcv-1m only")
 
-    # NOTE: actual download invocation depends on DatabentoFuturesPlugin's public API.
-    # The existing entry point is:
-    #   plugin.download(symbols, start_date, end_date, skip_existing)
-    # where `plugin` is constructed with schema="ohlcv-1m" or schema="mbp-1".
-    # For a two-schema pull, instantiate once per schema:
-    #
-    #   ohlcv_plugin = DatabentoFuturesPlugin(schema="ohlcv-1m")
-    #   ohlcv_plugin.download(tier1_symbols + tier2_symbols, "2010-06-06",
-    #                         args.end.isoformat(), skip_existing=True)
-    #
-    #   if "mbp-1" in args.schemas:
-    #       mbp1_plugin = DatabentoFuturesPlugin(schema="mbp-1")
-    #       mbp1_plugin.download(tier1_symbols, "2010-06-06",
-    #                            args.end.isoformat(), skip_existing=True)
-    #
-    # However, _fetch_symbol_data currently routes mbp-1 to the same trades path
-    # (_normalize_trades) and _get_storage_subdir returns "futures_trades" for any
-    # non-ohlcv-1m schema. Before executing a real mbp-1 pull, extend those two
-    # methods to handle mbp-1 (route to _write_mbp1_partition instead of pandas
-    # parquet). That wiring is the remaining follow-up item.
-
-    raise NotImplementedError(
-        "Bulk-pull invocation TBD -- the plugin's download() -> _fetch_symbol_data() "
-        "pipeline does not yet route mbp-1 through _write_mbp1_partition. "
-        "Extend _fetch_symbol_data and _get_storage_subdir for mbp-1, then replace "
-        "this stub with the two-plugin loop shown in the comments above."
-    )
+    for schema in args.schemas:
+        # All tier 1+2 get ohlcv-1m; only tier 1 gets mbp-1
+        symbols = tier1_symbols if schema == "mbp-1" else (tier1_symbols + tier2_symbols)
+        if not symbols:
+            logger.info(f"  no symbols for schema={schema}; skipping")
+            continue
+        logger.info(f"  schema={schema}: {len(symbols)} symbols, {earliest_start} -> {args.end}")
+        plugin = DatabentoFuturesPlugin(schema=schema)
+        # Per-symbol start dates would be cleaner, but BaseDownloader uses one
+        # start for all. Use earliest_start; Databento returns nothing for pre-listing
+        # dates and the plugin handles that gracefully (empty df).
+        try:
+            result = plugin.download(
+                symbols, start_date=earliest_start.isoformat(),
+                end_date=args.end.isoformat(), skip_existing=True,
+            )
+            logger.info(f"  {schema} done: {result.succeeded}/{result.total_symbols} symbols, {result.total_rows:,} rows")
+        except Exception as e:
+            logger.error(f"  {schema} FAILED: {e}")
+    return 0
 
 
 if __name__ == "__main__":

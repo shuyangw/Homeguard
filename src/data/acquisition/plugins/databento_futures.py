@@ -124,6 +124,8 @@ class DatabentoFuturesPlugin(BaseDownloader):
 
         if self._schema == "ohlcv-1m":
             return self._normalize_ohlcv(df)
+        elif self._schema == "mbp-1":
+            return self._normalize_mbp1(df)
         else:
             return self._normalize_trades(df)
 
@@ -161,6 +163,25 @@ class DatabentoFuturesPlugin(BaseDownloader):
             }
         )
 
+    def _normalize_mbp1(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Convert Databento mbp-1 DataFrame to canonical MBP1 schema.
+
+        Databento mbp-1 includes many columns; we keep only top-of-book snapshot.
+        Timestamps cast to [us, UTC].
+        """
+        ts_series = (
+            df.index if df.index.name == "ts_event" else df["ts_event"]
+        )
+        return pd.DataFrame({
+            "ts_event": pd.to_datetime(ts_series, utc=True).astype(
+                "datetime64[us, UTC]"
+            ),
+            "bid_px": df["bid_px_00"].astype(float) if "bid_px_00" in df.columns else df["bid_px"].astype(float),
+            "ask_px": df["ask_px_00"].astype(float) if "ask_px_00" in df.columns else df["ask_px"].astype(float),
+            "bid_sz": df["bid_sz_00"].astype(int) if "bid_sz_00" in df.columns else df["bid_sz"].astype(int),
+            "ask_sz": df["ask_sz_00"].astype(int) if "ask_sz_00" in df.columns else df["ask_sz"].astype(int),
+        })
+
     def _normalize_trades(self, df: pd.DataFrame) -> pd.DataFrame:
         """Convert Databento trades DataFrame to our trades schema."""
         ts_series = (
@@ -179,7 +200,36 @@ class DatabentoFuturesPlugin(BaseDownloader):
     def _get_schema(self) -> list[str]:
         if self._schema == "ohlcv-1m":
             return CANONICAL_OHLCV_SCHEMA
+        if self._schema == "mbp-1":
+            return MBP1_CANONICAL_COLUMNS
         return FUTURES_TRADES_SCHEMA
+
+    def _save_partitioned(self, df: pd.DataFrame, symbol: str) -> int:
+        """Override to handle mbp-1 schema which uses ts_event (not timestamp)."""
+        if self._schema != "mbp-1":
+            return super()._save_partitioned(df, symbol)
+
+        output_dir = self._get_output_dir()
+        fs_symbol = self._normalize_symbol(symbol)
+
+        df = df.copy()
+        ts_col = pd.to_datetime(df["ts_event"])
+        df["_year"] = ts_col.dt.year
+        df["_month"] = ts_col.dt.month
+
+        rows_saved = 0
+        for (year, month), group in df.groupby(["_year", "_month"]):
+            partition_dir = (
+                output_dir
+                / f"symbol={fs_symbol}"
+                / f"year={year}"
+                / f"month={month}"
+            )
+            partition_dir.mkdir(parents=True, exist_ok=True)
+            data_to_save = group.drop(columns=["_year", "_month"])
+            data_to_save.to_parquet(partition_dir / "data.parquet", index=False)
+            rows_saved += len(data_to_save)
+        return rows_saved
 
     def _get_storage_subdir(self) -> str:
         if self._storage_subdir_override:
