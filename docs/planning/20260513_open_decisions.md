@@ -169,6 +169,20 @@ Re-evaluate when 5+ live strategies exist or correlation analysis becomes a recu
 
 ---
 
+## Decision 10 -- Section 11.5 stop-slippage multiplier wiring PR (future)
+
+**Question**: How to wire `CostsSettings.stop_slippage_multiplier` through `portfolio_simulator.py` and its numba kernel so Section 11.5's 1.5x-3.0x multipliers actually fire on stop fills?
+
+**Status**: Confirmed not wired today (`_resolve_costs` doesn't read it; engine has uniform `slippage` at 4 fill sites; the numba kernel inherits the same uniform value). Gated in `strategy-lead` Phase 9 today so no stop-bearing strategy can graduate to live without it. Affects: Darwinex FX MR, ORB variants, hurst_mr_baseline, ml_crypto_mr_baseline, RAMP-CSP.
+
+**Design note (per Shuyang, 2026-05-13)**: prefer **two specialized numba kernels** -- with-multiplier vs without -- dispatched at sweep entry, over passing arrays or per-call multipliers. Cleaner separation, no-stops path stays full speed, branch is at dispatch (cheap) not per-fill (expensive). This is a design call for the actual PR.
+
+**Effort estimate**: ~half day including the dual-kernel split, exit-reason threading through the kernel, and a synthetic test verifying 1.5x slippage on stop exits vs entries.
+
+**Default recommendation**: separate PR, scheduled when one of the affected strategies is ready for Phase 9 promotion. Until then the gate keeps the methodology consistent.
+
+---
+
 ## Decision 9 -- ZC futures roll-splicing helper
 
 **Question**: Build the roll-discontinuity handling now, or defer until a futures backtest is on the agenda?

@@ -621,6 +621,32 @@ def _append_to_registry(
         except Exception:
             params = {}
 
+        # Cost-tier provenance: populate the registry's cost_tier_used and
+        # cost_bps columns so DSR / cost-sensitivity follow-ups can read
+        # what was actually used at runtime (not just what was in config).
+        cost_tier_used: Optional[str] = None
+        cost_bps_val: Optional[float] = None
+        try:
+            costs_cfg = getattr(config, 'costs', None)
+            if costs_cfg is not None and getattr(costs_cfg, 'tier', None):
+                cost_tier_used = costs_cfg.tier
+                # Resolve the round-trip bps the same way _resolve_costs does.
+                override = getattr(costs_cfg, 'bps_override', None)
+                if override is not None:
+                    cost_bps_val = float(override)
+                else:
+                    equity_tiers = {'large_cap_liquid', 'mid_cap', 'leveraged_etf', 'small_cap'}
+                    crypto_tiers = {'crypto_major', 'crypto_alt'}
+                    if cost_tier_used in equity_tiers:
+                        from src.backtesting.costs import equities_round_trip_bps
+                        cost_bps_val = float(equities_round_trip_bps(cost_tier_used))
+                    elif cost_tier_used in crypto_tiers:
+                        from src.backtesting.costs import crypto_round_trip_bps
+                        pair_tier = 'major' if cost_tier_used == 'crypto_major' else 'altcoin'
+                        cost_bps_val = float(crypto_round_trip_bps(pair_tier))
+        except Exception:
+            pass  # best-effort; missing provenance does not fail the append
+
         return append_run(
             strategy_name=config.strategy.name,
             agent_name=agent_name,
@@ -629,6 +655,8 @@ def _append_to_registry(
             params=params,
             universe_name=str(config.symbols.universe) if getattr(config, 'symbols', None) and getattr(config.symbols, 'universe', None) else None,
             asset_class=None,  # populated by Phase 7 cost-tier wiring
+            cost_tier_used=cost_tier_used,
+            cost_bps=cost_bps_val,
             data_frequency=getattr(config.backtest, 'timeframe', None),
             window_start=start_date,
             window_end=end_date,
