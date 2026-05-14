@@ -1,0 +1,30 @@
+series_id,category,notes
+DGS1MO,us_rates_curve,1-month Treasury
+DGS3MO,us_rates_curve,3-month Treasury
+DGS6MO,us_rates_curve,6-month Treasury
+DGS1,us_rates_curve,1-year Treasury
+DGS2,us_rates_curve,2-year Treasury
+DGS5,us_rates_curve,5-year Treasury
+DGS10,us_rates_curve,10-year Treasury
+DGS30,us_rates_curve,30-year Treasury
+SOFR,sofr,SOFR overnight
+SOFR30DAYAVG,sofr,SOFR 30-day average
+SOFR90DAYAVG,sofr,SOFR 90-day average
+SOFR180DAYAVG,sofr,SOFR 180-day average
+DFF,fed_funds,Federal Funds effective rate (daily)
+FEDFUNDS,fed_funds,Federal Funds effective rate (monthly)
+ECBDFR,foreign_policy,ECB deposit facility rate
+IRLTLT01EZM156N,foreign_policy,Eurozone long-term rate
+IRSTCB01CHM156N,foreign_policy,Switzerland short-term rate
+IRLTLT01JPM156N,foreign_policy,Japan long-term rate
+T5YIE,inflation,5-year TIPS breakeven
+T10YIE,inflation,10-year TIPS breakeven
+DEXUSEU,fx_fixings,USD/EUR daily fixing
+DEXJPUS,fx_fixings,JPY/USD daily fixing
+DEXUSUK,fx_fixings,USD/GBP daily fixing
+DEXSZUS,fx_fixings,CHF/USD daily fixing
+DEXCAUS,fx_fixings,CAD/USD daily fixing
+DEXUSAL,fx_fixings,USD/AUD daily fixing
+DEXUSNZ,fx_fixings,USD/NZD daily fixing
+DEXNOUS,fx_fixings,NOK/USD daily fixing
+DEXSDUS,fx_fixings,SEK/USD daily fixing
