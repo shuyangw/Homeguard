@@ -25,7 +25,7 @@ from src.utils.logger import get_logger
 logger = get_logger(__name__)
 
 # CFTC TFF historical archive (annual files)
-TFF_HISTORICAL_BASE = "https://www.cftc.gov/files/dea/history/fut_disagg_txt_"
+TFF_HISTORICAL_BASE = "https://www.cftc.gov/files/dea/history/fut_fin_txt_"
 
 # CFTC contract market codes for FX futures
 COT_INSTRUMENTS = {
@@ -57,14 +57,14 @@ def parse_tff_csv(raw: bytes, contract_market_code: str) -> pl.DataFrame:
     df = df.filter(pl.col("CFTC_Contract_Market_Code").cast(pl.Utf8).str.zfill(6) == contract_market_code)
     # Map raw column names to canonical
     column_map = {
-        "Report_Date_as_MM_DD_YYYY": "report_date_raw",
+        "Report_Date_as_YYYY-MM-DD": "report_date_raw",
         "Dealer_Positions_Long_All": "dealer_long",
         "Dealer_Positions_Short_All": "dealer_short",
     }
     df = df.rename({k: v for k, v in column_map.items() if k in df.columns})
     if "report_date_raw" in df.columns:
         df = df.with_columns(
-            pl.col("report_date_raw").str.strptime(pl.Date, format="%m/%d/%Y").dt.strftime("%Y-%m-%d").alias("report_date"),
+            pl.col("report_date_raw").str.strptime(pl.Date, format="%Y-%m-%d").dt.strftime("%Y-%m-%d").alias("report_date"),
         )
     cols = [c for c in ["report_date", "dealer_long", "dealer_short"] if c in df.columns]
     return df.select(cols)
@@ -111,8 +111,9 @@ class CFTCCOTPlugin:
                     all_rows.append(parsed)
                 except Exception as e:
                     logger.warning(f"  {instrument} {year}: {e}")
-            if all_rows:
-                combined = pl.concat([d for d in all_rows if d.height > 0])
+            nonempty = [d for d in all_rows if d.height > 0]
+            if nonempty:
+                combined = pl.concat(nonempty)
                 self.write_instrument(instrument, combined)
                 summary[instrument] = f"wrote {combined.height} rows"
             else:

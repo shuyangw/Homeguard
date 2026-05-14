@@ -13,8 +13,8 @@ from src.data.acquisition.plugins.cftc_cot import (
 )
 
 # Minimal valid TFF CSV (real headers; abbreviated rows)
-SAMPLE_TFF_CSV = b"""Report_Date_as_MM_DD_YYYY,Market_and_Exchange_Names,CFTC_Contract_Market_Code,Dealer_Positions_Long_All,Dealer_Positions_Short_All
-01/02/2024,EURO FX - CHICAGO MERCANTILE EXCHANGE,099741,12345,67890
+SAMPLE_TFF_CSV = b"""Report_Date_as_YYYY-MM-DD,Market_and_Exchange_Names,CFTC_Contract_Market_Code,Dealer_Positions_Long_All,Dealer_Positions_Short_All
+2024-01-02,EURO FX - CHICAGO MERCANTILE EXCHANGE,099741,12345,67890
 """
 
 
