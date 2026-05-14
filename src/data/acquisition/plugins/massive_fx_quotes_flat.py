@@ -105,27 +105,45 @@ def parse_day(raw_gz: bytes, target_tickers: set[str]) -> dict[str, list[list]]:
 
     Returns LIST OF LISTS for memory efficiency (vs list of dicts).
     Row format: [timestamp_ns, bid_price, ask_price, bid_exchange, ask_exchange]
+
+    Actual Massive quotes_v1 CSV header (alphabetical order):
+      ticker, ask_exchange, ask_price, bid_exchange, bid_price, participant_timestamp
+    Parser builds a header-keyed index map so column order is robust.
     """
     text = gzip.decompress(raw_gz).decode("utf-8")
     out: dict[str, list[list]] = {}
     lines = text.splitlines()
-    # Skip header
+    if not lines:
+        return out
+    header = [h.strip() for h in lines[0].split(",")]
+    try:
+        i_ticker = header.index("ticker")
+        i_ts = header.index("participant_timestamp")
+        i_bid_px = header.index("bid_price")
+        i_ask_px = header.index("ask_price")
+        i_bid_ex = header.index("bid_exchange")
+        i_ask_ex = header.index("ask_exchange")
+    except ValueError as e:
+        logger.error(f"unexpected quote CSV header: {header} ({e})")
+        return out
+
     for line in lines[1:]:
-        # ticker,participant_timestamp,bid_price,ask_price,bid_exchange,ask_exchange
         comma1 = line.find(",")
         if comma1 < 0:
             continue
-        ticker = line[:comma1]
+        fields = line.split(",")
+        if len(fields) <= max(i_ticker, i_ts, i_bid_px, i_ask_px, i_bid_ex, i_ask_ex):
+            continue
+        ticker = fields[i_ticker]
         if ticker not in target_tickers:
             continue
         try:
-            fields = line.split(",")
             row = [
-                int(fields[1]),                          # timestamp ns
-                float(fields[2]),                        # bid_price
-                float(fields[3]),                        # ask_price
-                int(fields[4]) if fields[4] else 0,     # bid_exchange
-                int(fields[5]) if fields[5] else 0,     # ask_exchange
+                int(fields[i_ts]),                                # timestamp ns
+                float(fields[i_bid_px]),                          # bid_price
+                float(fields[i_ask_px]),                          # ask_price
+                int(fields[i_bid_ex]) if fields[i_bid_ex] else 0, # bid_exchange
+                int(fields[i_ask_ex]) if fields[i_ask_ex] else 0, # ask_exchange
             ]
         except (ValueError, IndexError) as e:
             logger.warning(f"skipping malformed quote for {ticker}: {e!r}")
