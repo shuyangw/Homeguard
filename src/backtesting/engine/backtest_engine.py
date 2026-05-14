@@ -455,6 +455,103 @@ class BacktestEngine:
 
         return portfolio
 
+    def _run_single_symbol_with_data(
+        self,
+        strategy: BaseStrategy,
+        symbol_data,
+        symbol: str,
+        price_type: str
+    ) -> Portfolio:
+        """Pre-loaded-data variant of _run_single_symbol.
+
+        Skips the data_loader fetch and operates directly on a caller-supplied
+        DataFrame (timestamp index, columns include `price_type`). Used by the
+        optimizers and walk-forward analyzer to avoid re-loading the same data
+        N times across parameter combinations -- one load, many runs.
+
+        `symbol_data` may be either a pandas DataFrame indexed on timestamp,
+        or a polars DataFrame with a `timestamp` column. The signal-generation
+        and portfolio path is otherwise identical to `_run_single_symbol`.
+        """
+        import pandas as pd
+        if hasattr(symbol_data, 'to_pandas'):
+            symbol_data = symbol_data.to_pandas()
+
+        # Slice multi-symbol DataFrames down to just this symbol so the
+        # downstream simulator sees a flat DatetimeIndex. Optimizers that
+        # pre-load N symbols and reuse the same frame across configs hit
+        # this path; the engine's data_loader.load_symbol path doesn't.
+        if isinstance(symbol_data.index, pd.MultiIndex):
+            level_names = symbol_data.index.names
+            if 'symbol' in level_names:
+                symbol_data = symbol_data.xs(symbol, level='symbol')
+            else:
+                symbol_data = symbol_data.xs(symbol, level=0)
+        if not isinstance(symbol_data.index, pd.DatetimeIndex) and 'timestamp' in symbol_data.columns:
+            symbol_data = symbol_data.set_index('timestamp')
+
+        price = symbol_data[price_type]
+
+        if isinstance(strategy, LongShortStrategy):
+            long_entries, long_exits, short_entries, short_exits = strategy.generate_signals(symbol_data)
+            long_entries = long_entries.fillna(False).astype(bool)
+            long_exits = long_exits.fillna(False).astype(bool)
+            short_entries = short_entries.fillna(False).astype(bool)
+            short_exits = short_exits.fillna(False).astype(bool)
+            combined_entries = long_entries | short_exits
+            combined_exits = long_exits | short_entries
+            portfolio = from_signals(
+                close=price,
+                entries=combined_entries,
+                exits=combined_exits,
+                init_cash=self.initial_capital,
+                fees=self.fees,
+                slippage=self.slippage,
+                freq=self.freq,
+                market_hours_only=self.market_hours_only,
+                risk_config=self.risk_config,
+                price_data=symbol_data,
+                allow_shorts=self.allow_shorts,
+                fractional_shares=self.fractional_shares,
+            )
+        else:
+            entries, exits = strategy.generate_signals(symbol_data)
+            entries = entries.fillna(False).astype(bool)
+            exits = exits.fillna(False).astype(bool)
+            portfolio = from_signals(
+                close=price,
+                entries=entries,
+                exits=exits,
+                init_cash=self.initial_capital,
+                fees=self.fees,
+                slippage=self.slippage,
+                freq=self.freq,
+                market_hours_only=self.market_hours_only,
+                risk_config=self.risk_config,
+                price_data=symbol_data,
+                allow_shorts=self.allow_shorts,
+                fractional_shares=self.fractional_shares,
+            )
+
+        return portfolio
+
+    def _run_multiple_symbols_with_data(
+        self,
+        strategy: BaseStrategy,
+        symbol_data,
+        symbols: List[str],
+        price_type: str
+    ) -> Portfolio:
+        """Pre-loaded-data variant of _run_multiple_symbols. See note on
+        `_run_multiple_symbols` -- currently simplified to first symbol only.
+        """
+        if len(symbols) > 1:
+            logger.warning(
+                f"Multi-symbol sweep simplified to first symbol only ({symbols[0]}). "
+                f"Use portfolio_mode='multi' for multi-symbol backtests."
+            )
+        return self._run_single_symbol_with_data(strategy, symbol_data, symbols[0], price_type)
+
     def _run_multiple_symbols(
         self,
         strategy: BaseStrategy,

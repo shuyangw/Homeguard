@@ -289,16 +289,22 @@ class WalkForwardValidator:
             if isinstance(symbols, str):
                 symbols = [symbols]
 
-            # Engine loads data internally from (start_date, end_date). The
-            # old API accepted pre-loaded data positionally; the new API
-            # signature is (strategy, symbol, start, end, price_type).
+            # Pre-load the test window once and pass to the engine's
+            # _with_data variant -- same fast-path pattern as
+            # GridSearchOptimizer. The engine's single-loader path
+            # requires `data_loader.load_symbol`; pre-loading via
+            # `load_symbols` keeps this compatible with MockDataLoader
+            # (tests) and the real streaming loader.
+            test_data = self.engine.data_loader.load_symbols(
+                symbols, window.test_start, window.test_end
+            )
             if len(symbols) == 1:
-                test_portfolio = self.engine._run_single_symbol(
-                    test_strategy, symbols[0], window.test_start, window.test_end, 'close'
+                test_portfolio = self.engine._run_single_symbol_with_data(
+                    test_strategy, test_data, symbols[0], 'close'
                 )
             else:
-                test_portfolio = self.engine._run_multiple_symbols(
-                    test_strategy, symbols, window.test_start, window.test_end, 'close'
+                test_portfolio = self.engine._run_multiple_symbols_with_data(
+                    test_strategy, test_data, symbols, 'close'
                 )
 
             # Get out-of-sample stats

@@ -339,9 +339,9 @@ class GridSearchOptimizer:
                     # Use proper multi-symbol execution
                     portfolio = self.engine._run_multi_symbol_strategy(strategy, data, symbols, 'close')
                 elif len(symbols) == 1:
-                    portfolio = self.engine._run_single_symbol(strategy, data, symbols[0], 'close')
+                    portfolio = self.engine._run_single_symbol_with_data(strategy, data, symbols[0], 'close')
                 else:
-                    portfolio = self.engine._run_multiple_symbols(strategy, data, symbols, 'close')
+                    portfolio = self.engine._run_multiple_symbols_with_data(strategy, data, symbols, 'close')
 
                 # Get performance statistics
                 stats = portfolio.stats()
@@ -553,11 +553,11 @@ class GridSearchOptimizer:
                                     best_strategy, data, symbols, price_type
                                 )
                             elif len(symbols) == 1:
-                                best_portfolio = self.engine._run_single_symbol(
+                                best_portfolio = self.engine._run_single_symbol_with_data(
                                     best_strategy, data, symbols[0], price_type
                                 )
                             else:
-                                best_portfolio = self.engine._run_multiple_symbols(
+                                best_portfolio = self.engine._run_multiple_symbols_with_data(
                                     best_strategy, data, symbols, price_type
                                 )
 
@@ -638,11 +638,11 @@ class GridSearchOptimizer:
                                     best_strategy, data, symbols, price_type
                                 )
                             elif len(symbols) == 1:
-                                best_portfolio = self.engine._run_single_symbol(
+                                best_portfolio = self.engine._run_single_symbol_with_data(
                                     best_strategy, data, symbols[0], price_type
                                 )
                             else:
-                                best_portfolio = self.engine._run_multiple_symbols(
+                                best_portfolio = self.engine._run_multiple_symbols_with_data(
                                     best_strategy, data, symbols, price_type
                                 )
 
