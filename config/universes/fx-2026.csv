@@ -5,4 +5,4 @@ NZDCHF,2,2026-05-13,2010-01-01,C:NZD-CHF,Antipodean-haven cross
 CADCHF,2,2026-05-13,2010-01-01,C:CAD-CHF,Commodity-haven cross
 GBPNZD,2,2026-05-13,2010-01-01,C:GBP-NZD,GBP-antipodean cross
 EURSGD,2,2026-05-13,2010-01-01,C:EUR-SGD,EUR-Asia cross
-SGDJPY,2,2026-05-13,2015-01-01,C:SGD-JPY,Asia cross; late start (0% historical 2014)
+SGDJPY,2,2026-05-13,2020-01-01,C:SGD-JPY,Asia cross; Polygon archive starts 2020 (verified empirically; 0% in 2014 probe)

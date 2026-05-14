@@ -20,7 +20,7 @@ Reference for all market data on `H:/Stock_Data/` (Windows) / `/home/ec2-user/st
 | `futures_definitions/` | Databento | 103.6M | 189 | 2.2 GB | 2010-06 → 2026-02 |
 | `futures_statistics/` | Databento | 464.1M | 189 | 8.3 GB | 2010-06 → 2026-02 |
 | `futures_status/` | Databento (status, .v.0 + .FUT) | 281.5M | 17 | 1.4 GB | 2010-06 → 2026-02 |
-| `fx_1min/` | (mixed) | 257.6M | 9,019 | 6.8 GB | 2011-01 → 2026-04 |
+| `fx_1min/` | Polygon/Massive | 284.6M | 9,903 | 6.8 GB | 2010-01 → 2026-05 |
 | `options/` | ThetaData / IBKR | 24.1B | 4,510 | 250.0 GB | 2012-06 → 2026-02 |
 | `news/` | Alpaca / Benzinga | 587K | 2,985 | 0.15 GB | 2020-01 → 2025-12 |
 | `sentiment/` | derived (FinBERT) | 424K | 1,719 | 0.05 GB | 2020-01 → 2025-12 |
@@ -160,10 +160,19 @@ All futures were pulled in the bulk plan execution on 2026-05-07. Plan source: `
 
 ### `fx_1min/`
 
-- **Schema**: `timestamp, open, high, low, close, volume, trade_count, vwap` (canonical OHLCV)
-- **Partitioning**: `symbol={SYM}/year={YYYY}/month={M}/data.parquet`
-- 257.6M rows across 2011-2026
-- Source mixed: historical from Polygon/HistData; recent rolling from broker feeds
+- **Schema**: `timestamp, open, high, low, close, volume, trade_count, vwap` (canonical OHLCV; `[ns, UTC]` -- off-spec but internally consistent)
+- **Partitioning**: `symbol={SYM}/year={YYYY}/month={M}/data.parquet` (unpadded month)
+- **55 symbols**, 9,903 partitions, 284.6M rows across 2010-2026
+- **Source**: Polygon/Massive flat-files (S3 bucket `flatfiles`, path `global_forex/minute_aggs_v1/{YYYY}/{MM}/{YYYY-MM-DD}.csv.gz`). Authenticated via `MASSIVE_S3_*` env vars (separate from REST `MASSIVE_API_KEY`).
+- **Ingestion**: `src/data/acquisition/plugins/massive_fx_flat.py` + `scripts/data/download_fx.py`. Universe at `config/universes/fx-2026.csv`. Per-day all-pairs CSV.gz files (1,200+ tickers), parsed and filtered per-symbol-per-month into Parquet matching canonical schema.
+- **Coverage notes**:
+  - 16-year depth (2010-onward) for 54 pairs; SGDJPY starts 2020 (Polygon's archive limit for this cross)
+  - Sparse early-2010s for EM pairs: USDBRL, USDCLP, USDINR, USDKRW, USDRUB minute coverage thin pre-2017; daily coverage existed but minute didn't
+  - USDCNH starts 2014-04; XAGUSD starts 2013-07 (Polygon archive limits)
+  - 2019-09: cross-asset thin month for multiple G10 pairs (4-5% density) — Polygon-side gap; deferred Dukascopy patch
+  - 2020-10/11 EURUSD outage: Polygon-specific, deferred Dukascopy patch
+- **`volume` field**: FX is OTC market with no centralized volume; `volume == trade_count` in flat-file source (tick count, not value)
+- **`vwap` field**: Polygon's flat-file schema omits vwap; new pairs from `massive_fx_flat.py` set `vwap = close` as documented approximation. Existing 50 pairs (pre-2026-05-13) have a separate vwap value (provider-computed).
 
 ---
 
