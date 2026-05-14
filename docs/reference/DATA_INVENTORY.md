@@ -20,7 +20,7 @@ Reference for all market data on `H:/Stock_Data/` (Windows) / `/home/ec2-user/st
 | `futures_definitions/` | Databento | 103.6M | 189 | 2.2 GB | 2010-06 → 2026-02 |
 | `futures_statistics/` | Databento | 464.1M | 189 | 8.3 GB | 2010-06 → 2026-02 |
 | `futures_status/` | Databento (status, .v.0 + .FUT) | 281.5M | 17 | 1.4 GB | 2010-06 → 2026-02 |
-| `fx_1min/` | Polygon/Massive | 284.6M | 9,903 | 6.8 GB | 2010-01 → 2026-05 |
+| `fx_1min/` | Polygon/Massive | 383.4M | 13,321 | 8.6 GB | 2010-01 → 2026-05 |
 | `options/` | ThetaData / IBKR | 24.1B | 4,510 | 250.0 GB | 2012-06 → 2026-02 |
 | `news/` | Alpaca / Benzinga | 587K | 2,985 | 0.15 GB | 2020-01 → 2025-12 |
 | `sentiment/` | derived (FinBERT) | 424K | 1,719 | 0.05 GB | 2020-01 → 2025-12 |
@@ -162,7 +162,7 @@ All futures were pulled in the bulk plan execution on 2026-05-07. Plan source: `
 
 - **Schema**: `timestamp, open, high, low, close, volume, trade_count, vwap` (canonical OHLCV; `[ns, UTC]` -- off-spec but internally consistent)
 - **Partitioning**: `symbol={SYM}/year={YYYY}/month={M}/data.parquet` (unpadded month)
-- **55 symbols**, 9,903 partitions, 284.6M rows across 2010-2026
+- **80 symbols**, 13,321 partitions, 383.4M rows across 2010-2026 (Phase A expansion 2026-05-14 added 25 net new pairs: G10 crosses + metals crosses + EUR/AUD/GBP-EM crosses)
 - **Source**: Polygon/Massive flat-files (S3 bucket `flatfiles`, path `global_forex/minute_aggs_v1/{YYYY}/{MM}/{YYYY-MM-DD}.csv.gz`). Authenticated via `MASSIVE_S3_*` env vars (separate from REST `MASSIVE_API_KEY`).
 - **Ingestion**: `src/data/acquisition/plugins/massive_fx_flat.py` + `scripts/data/download_fx.py`. Universe at `config/universes/fx-2026.csv`. Per-day all-pairs CSV.gz files (1,200+ tickers), parsed and filtered per-symbol-per-month into Parquet matching canonical schema.
 - **Coverage notes**:
@@ -173,6 +173,46 @@ All futures were pulled in the bulk plan execution on 2026-05-07. Plan source: `
   - 2020-10/11 EURUSD outage: Polygon-specific, deferred Dukascopy patch
 - **`volume` field**: FX is OTC market with no centralized volume; `volume == trade_count` in flat-file source (tick count, not value)
 - **`vwap` field**: Polygon's flat-file schema omits vwap; new pairs from `massive_fx_flat.py` set `vwap = close` as documented approximation. Existing 50 pairs (pre-2026-05-13) have a separate vwap value (provider-computed).
+
+---
+
+## Alternative data
+
+### `alt_data/fred/`
+
+- **Schema**: `date (pl.Date), value (pl.Float64)`
+- **Partitioning**: `{series_id}/daily.parquet`
+- 28 FRED series, 173k rows, ~0.8 MB total
+- Source: FRED API via `pandas-datareader` (already in `requirements.txt:49`)
+- Categories: US Treasury curve (DGS1MO/3MO/6MO/1/2/5/10/30), SOFR family, Fed Funds, foreign policy rates, TIPS inflation expectations, FX daily fixings
+- Plugin: `C:\Users\qwqw1\Dropbox\cs\github\Homeguard\src\data\acquisition\plugins\fred_rates.py`
+- Universe: `C:\Users\qwqw1\Dropbox\cs\github\Homeguard\config\universes\fred_series-2026.csv`
+
+### `alt_data/cot/`
+
+- **Schema**: `report_date, dealer_long, dealer_short` (canonical subset of CFTC TFF's ~87 columns)
+- **Partitioning**: `{instrument}/weekly.parquet`
+- 11 CME FX futures instruments (6E, 6J, 6B, 6S, 6C, 6A, 6N, 6M, 6L, 6Z, 6R), 6,189 weekly rows total
+- Source: CFTC TFF historical archive (`https://www.cftc.gov/files/dea/history/fut_fin_txt_{YEAR}.zip`)
+- Coverage: 2010-2026 (RUB delisted 2022, lower row count)
+- Plugin: `C:\Users\qwqw1\Dropbox\cs\github\Homeguard\src\data\acquisition\plugins\cftc_cot.py`
+- Universe: `C:\Users\qwqw1\Dropbox\cs\github\Homeguard\config\universes\cot_instruments-2026.csv`
+
+### FX-adjacent equity ETFs
+
+27 ETFs added to existing `equities_1min/` via `C:\Users\qwqw1\Dropbox\cs\github\Homeguard\scripts\data\download_fx_adjacent_equity.py` (Phase D, 2026-05-14):
+- **Currency ETFs (9)**: FXE (EUR), FXY (JPY), FXB (GBP), FXA (AUD), FXC (CAD), FXF (CHF), FXS (SEK), UUP (USD bull), UDN (USD bear)
+- **Country equity ETFs (14)**: EWJ, EWZ, EWW, EWA, EWC, FXI, MCHI, INDA, EZA, EWY, EWS, EWG, EWU, ILF
+- **EM bond ETFs (4)**: EMB, EMLC, LEMB, PCY
+- 18.1M rows total
+- Universe: `C:\Users\qwqw1\Dropbox\cs\github\Homeguard\config\universes\fx_adjacent_equity-2026.csv`
+
+### CME FX futures (Phase C — plugin extension committed; bulk pull deferred)
+
+- Plugin extended for `mbp-1` schema support: `C:\Users\qwqw1\Dropbox\cs\github\Homeguard\src\data\acquisition\plugins\databento_futures.py` (added `MBP1_CANONICAL_COLUMNS`, `_is_supported_schema`, `_write_mbp1_partition`)
+- New partition tree designated: `futures_mbp1/symbol={SYM}/year={Y}/month={M}/data.parquet` (not yet populated)
+- Universe defined: `C:\Users\qwqw1\Dropbox\cs\github\Homeguard\config\universes\cme_fx_futures-2026.csv` (17 contracts)
+- CLI stub: `C:\Users\qwqw1\Dropbox\cs\github\Homeguard\scripts\data\download_cme_fx_futures.py` — raises `NotImplementedError` pending plugin internal-routing follow-up (`_fetch_symbol_data` needs to dispatch `mbp-1` schema to the new partition writer)
 
 ---
 
