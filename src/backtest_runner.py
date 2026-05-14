@@ -527,20 +527,25 @@ def _create_output_dir(config: 'BacktestConfig', mode_suffix: str = "") -> Optio
 def _resolve_costs(config: 'BacktestConfig') -> tuple:
     """Return (fees, slippage) honoring `costs.tier` per methodology Section 4.
 
-    If `costs.tier` is set, derive the round-trip cost from the tier table and
-    split as per-side `fees` (slippage = 0 since the tier already covers spread).
-    If `costs.tier` is None, fall back to the deprecated raw
-    `backtest.fees` / `backtest.slippage` and warn once.
+    Hard-fail when both `costs.tier` AND `costs.bps_override` are None
+    (Section 4 governance). Strategies that don't fit the bps-tier model
+    -- e.g., options strategies that need the alpha-of-half-spread fill
+    model from Section 4.5 -- declare an explicit `costs.bps_override`
+    as the opt-out, with a comment pointing at the deferred wiring.
     """
     tier = getattr(getattr(config, 'costs', None), 'tier', None)
-    if tier is None:
-        logger.warning(
-            f"[costs] {config.strategy.name}: backtest config uses raw fees/slippage; "
-            "set costs.tier per methodology Section 4 to unlock cost-sensitivity gate."
-        )
-        return config.backtest.fees, config.backtest.slippage
+    override_bps = getattr(getattr(config, 'costs', None), 'bps_override', None)
 
-    override_bps = getattr(config.costs, 'bps_override', None)
+    if tier is None and override_bps is None:
+        raise ValueError(
+            f"[costs] {config.strategy.name}: backtest config has neither "
+            "costs.tier nor costs.bps_override set. Section 4 requires every "
+            "backtest to declare its cost basis. Pick a tier from "
+            "{large_cap_liquid, mid_cap, leveraged_etf, small_cap, "
+            "crypto_major, crypto_alt} OR set costs.bps_override with a "
+            "comment naming the asset-class model the bps approximates. "
+            "Reference: docs/methodology/backtesting.md Section 4."
+        )
 
     if override_bps is not None:
         round_trip_bps = float(override_bps)
@@ -590,15 +595,12 @@ def _append_to_registry(
 ) -> Optional[str]:
     """Append a run row to the experiment registry per methodology Section 9.
 
-    Best-effort during the initial rollout: if append fails (DB locked, env
-    issue), log a warning and continue so existing backtests don't break.
-    Once stable, switch to fatal by removing the try/except.
+    Fatal on failure (Section 9.3 -- "if the append fails, the run fails.
+    no silent success"). Transient Windows file-lock errors from Dropbox
+    contention are retried inside `_connect_with_retry`; anything that
+    survives the retries propagates to the caller.
     """
-    try:
-        from src.experiments import append_run, n_trials_project_wide
-    except Exception as e:  # noqa
-        logger.warning(f"[registry] import failed, skipping append: {e}")
-        return None
+    from src.experiments import append_run, n_trials_project_wide
     try:
         stats = portfolio.stats() if hasattr(portfolio, 'stats') else None
         metrics: Dict[str, Any] = {}
@@ -669,8 +671,11 @@ def _append_to_registry(
             verdict='PENDING',
         )
     except Exception as e:  # noqa
-        logger.warning(f"[registry] append failed: {e}")
-        return None
+        # Section 9.3: "if the append fails, the run fails. no silent success."
+        # Transient Dropbox-style file locks are retried inside
+        # _connect_with_retry; anything reaching here is a real failure.
+        logger.error(f"[registry] append failed (fatal per Section 9.3): {e}")
+        raise
 
 
 def run_single_from_config(config: 'BacktestConfig') -> None:

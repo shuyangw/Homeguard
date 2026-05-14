@@ -26,12 +26,46 @@ import pandas as pd
 DEFAULT_DB_PATH = Path("output/experiments.duckdb")
 _SCHEMA_PATH = Path(__file__).parent / "schema.sql"
 
+# Retry policy for transient Windows file-lock contention. The registry
+# can live inside a Dropbox-synced folder; Dropbox's indexer periodically
+# opens the file for read, which collides with DuckDB's exclusive write.
+# Catch the OSError / IOError / duckdb.IOException, backoff briefly, retry.
+_RETRY_ATTEMPTS = 5
+_RETRY_BASE_DELAY = 0.2  # seconds; doubled each attempt
+
+
+def _is_lock_error(exc: BaseException) -> bool:
+    """True if `exc` is a transient file-lock error we should retry on."""
+    msg = str(exc).lower()
+    return (
+        "being used by another process" in msg
+        or "io error" in msg
+        or "cannot open file" in msg
+        or "permission denied" in msg
+    )
+
+
+def _connect_with_retry(db_path: Path, *, read_only: bool = False):
+    """Open a DuckDB connection, retrying briefly on transient lock errors."""
+    import time as _time
+    last_exc: Optional[BaseException] = None
+    for attempt in range(_RETRY_ATTEMPTS):
+        try:
+            return duckdb.connect(str(db_path), read_only=read_only)
+        except (OSError, IOError, duckdb.IOException) as exc:
+            if not _is_lock_error(exc) or attempt == _RETRY_ATTEMPTS - 1:
+                raise
+            last_exc = exc
+            _time.sleep(_RETRY_BASE_DELAY * (2 ** attempt))
+    # Unreachable; the loop either returns or raises.
+    raise RuntimeError(f"unreachable: lock retries exhausted (last={last_exc})")
+
 
 def init_db(db_path: Path = DEFAULT_DB_PATH) -> None:
     """Create the registry file and schema if missing. Idempotent."""
     db_path.parent.mkdir(parents=True, exist_ok=True)
     schema_sql = _SCHEMA_PATH.read_text(encoding="utf-8")
-    con = duckdb.connect(str(db_path))
+    con = _connect_with_retry(db_path)
     try:
         con.execute(schema_sql)
     finally:
@@ -183,7 +217,7 @@ def append_run(
     placeholders = ", ".join("?" for _ in columns)
     insert_sql = f"INSERT INTO runs ({', '.join(columns)}) VALUES ({placeholders})"
 
-    con = duckdb.connect(str(db_path))
+    con = _connect_with_retry(db_path)
     try:
         con.begin()
         con.execute(insert_sql, [row[c] for c in columns])
@@ -225,7 +259,7 @@ def n_trials_project_wide(db_path: Path = DEFAULT_DB_PATH) -> int:
     Returns 0 if the registry is empty.
     """
     init_db(db_path)
-    con = duckdb.connect(str(db_path), read_only=True)
+    con = _connect_with_retry(db_path, read_only=True)
     try:
         row = con.execute(
             "SELECT COALESCE(SUM(combinations_in_run), 0) FROM runs "
@@ -248,7 +282,7 @@ def incumbent_return_streams(
     Empty DataFrame if no qualifying run exists.
     """
     init_db(db_path)
-    con = duckdb.connect(str(db_path), read_only=True)
+    con = _connect_with_retry(db_path, read_only=True)
     try:
         run_id_row = con.execute(
             """

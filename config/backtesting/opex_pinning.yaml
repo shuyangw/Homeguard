@@ -59,6 +59,19 @@ backtest:
   # Data requirements
   data_frequency: daily     # Daily OHLCV data
 
+# OpEx pinning is an options strategy. Methodology Section 4.5 specifies an
+# alpha-fraction-of-half-spread fill model rather than a flat-bps tier, but
+# the bps-tier wiring path (src/backtest_runner.py::_resolve_costs) doesn't
+# implement that model yet. As a temporary opt-out we declare an explicit
+# bps_override approximating SPY/QQQ/IWM ATM options round-trip costs:
+#   half-spread ~ $0.02 per share, alpha=0.4 (very liquid index ETF ATM)
+#   -> per-side $0.008 on a ~$5 contract -> ~16 bps per side -> ~32 bps RT
+# Replace this with the alpha-of-half-spread model once it lands in
+# src/backtesting/costs/options.py and is wired through _resolve_costs.
+costs:
+  bps_override: 32.0
+  stop_slippage_multiplier: 1.5
+
 # Validation settings
 validation:
   # Walk-forward parameters
