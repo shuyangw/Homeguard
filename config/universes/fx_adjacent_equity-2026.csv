@@ -1,0 +1,28 @@
+symbol,bucket,added_date,effective_start_date,notes
+FXE,currency,2026-05-14,2005-12-09,EUR/USD ETF
+FXY,currency,2026-05-14,2007-02-12,JPY ETF
+FXB,currency,2026-05-14,2006-06-21,GBP ETF
+FXA,currency,2026-05-14,2006-06-21,AUD ETF
+FXC,currency,2026-05-14,2006-06-21,CAD ETF
+FXF,currency,2026-05-14,2006-06-21,CHF ETF
+FXS,currency,2026-05-14,2008-06-25,SEK ETF
+UUP,currency,2026-05-14,2007-02-20,USD index bull
+UDN,currency,2026-05-14,2007-02-20,USD index bear
+EWJ,country_equity,2026-05-14,1996-03-12,Japan
+EWZ,country_equity,2026-05-14,2000-07-10,Brazil
+EWW,country_equity,2026-05-14,1996-03-12,Mexico
+EWA,country_equity,2026-05-14,1996-03-12,Australia
+EWC,country_equity,2026-05-14,1996-03-12,Canada
+FXI,country_equity,2026-05-14,2004-10-05,China large-cap
+MCHI,country_equity,2026-05-14,2011-03-29,China broad
+INDA,country_equity,2026-05-14,2012-02-02,India
+EZA,country_equity,2026-05-14,2003-02-03,South Africa
+EWY,country_equity,2026-05-14,2000-05-09,South Korea
+EWS,country_equity,2026-05-14,1996-03-12,Singapore
+EWG,country_equity,2026-05-14,1996-03-12,Germany
+EWU,country_equity,2026-05-14,1996-03-12,UK
+ILF,country_equity,2026-05-14,2001-10-25,Latin America 40
+EMB,em_bond,2026-05-14,2007-12-19,USD EM bond
+EMLC,em_bond,2026-05-14,2010-07-22,Local-currency EM bond
+LEMB,em_bond,2026-05-14,2011-10-18,Local-currency EM bond
+PCY,em_bond,2026-05-14,2007-10-24,USD EM sovereign bond
