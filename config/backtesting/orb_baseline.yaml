@@ -41,11 +41,17 @@ dates:
 
 backtest:
   initial_capital: 100000
-  fees: 0.001
-  slippage: 0.0005
+  fees: 0.001          # deprecated fallback; honored only when costs.tier is unset
+  slippage: 0.0005     # deprecated fallback; honored only when costs.tier is unset
   benchmark: SPY
   market_hours_only: true
   allow_shorts: true
+
+
+# Per methodology Section 4. leveraged_etf tier -> TQQQ/SOXL/UPRO/TNA/TECL: ~22.5 bps round-trip.
+costs:
+  tier: leveraged_etf
+  stop_slippage_multiplier: 1.5
 
 risk:
   enabled: true

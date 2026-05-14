@@ -55,14 +55,20 @@ dates:
 
 backtest:
   initial_capital: 100000
-  fees: 0.001
-  slippage: 0.0005
+  fees: 0.001          # deprecated fallback; honored only when costs.tier is unset
+  slippage: 0.0005     # deprecated fallback; honored only when costs.tier is unset
   benchmark: BTC_USD
   market_hours_only: false
   allow_shorts: true
   portfolio_mode: single
   timeframe: crypto_1hour
   fractional_shares: true
+
+
+# Per methodology Section 4. crypto_alt tier -> YFI/BCH/LINK/MKR/ETH mix: altcoin tier ~140 bps round-trip.
+costs:
+  tier: crypto_alt
+  stop_slippage_multiplier: 1.5
 
 risk:
   enabled: true

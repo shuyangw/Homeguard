@@ -47,13 +47,19 @@ dates:
 
 backtest:
   initial_capital: 100000
-  fees: 0.005              # 0.5% for slippage/spreads
-  slippage: 0.0            # Included in fees
+  fees: 0.005          # deprecated fallback; honored only when costs.tier is unset
+  slippage: 0.0     # deprecated fallback; honored only when costs.tier is unset
   benchmark: BTC_USD
   market_hours_only: false # Crypto 24/7
   allow_shorts: true       # FRS can go short in mean-reverting regime
   portfolio_mode: single
   timeframe: crypto_1day
+
+
+# Per methodology Section 4. crypto_major tier -> BTC-only: ~126 bps round-trip.
+costs:
+  tier: crypto_major
+  stop_slippage_multiplier: 1.5
 
 risk:
   enabled: true
