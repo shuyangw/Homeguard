@@ -1,0 +1,18 @@
+symbol,tier,added_date,effective_start_date,notes
+6E,1,2026-05-14,2010-06-06,Euro FX (full size); tier 1 = ohlcv-1m + MBP-1
+6J,1,2026-05-14,2010-06-06,Japanese Yen; tier 1
+6B,1,2026-05-14,2010-06-06,British Pound; tier 1
+6C,1,2026-05-14,2010-06-06,Canadian Dollar; tier 1
+6A,1,2026-05-14,2010-06-06,Australian Dollar; tier 1
+6N,1,2026-05-14,2010-06-06,New Zealand Dollar; tier 1
+6S,1,2026-05-14,2010-06-06,Swiss Franc; tier 1
+M6E,2,2026-05-14,2019-01-28,E-micro Euro FX; tier 2 = ohlcv-1m only
+M6A,2,2026-05-14,2019-01-28,E-micro AUD; tier 2
+M6B,2,2026-05-14,2019-01-28,E-micro GBP; tier 2
+M6C,2,2026-05-14,2019-01-28,E-micro CAD; tier 2
+M6J,2,2026-05-14,2019-01-28,E-micro JPY; tier 2
+M6S,2,2026-05-14,2019-01-28,E-micro CHF; tier 2
+6M,1,2026-05-14,2010-06-06,Mexican Peso; tier 1
+6L,1,2026-05-14,2010-06-06,Brazilian Real; tier 1
+6Z,1,2026-05-14,2010-06-06,South African Rand; tier 1
+6R,1,2026-05-14,2010-06-06,Russian Ruble (delisted 2022); tier 1 minute only

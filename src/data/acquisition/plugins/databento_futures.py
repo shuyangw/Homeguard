@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any, List, Optional
 
 import pandas as pd
+import polars as pl
 
 from src.data.acquisition.aggregators import trades_to_ohlcv_1m
 from src.data.acquisition.base import BaseDownloader, DownloadResult
@@ -50,6 +51,8 @@ BULK_PULL_START = "2010-06-06"  # GLBX.MDP3 dataset floor
 
 VALID_ROLL_RULES = ("v", "n", "c")  # volume, open-interest, calendar
 
+MBP1_CANONICAL_COLUMNS = ["ts_event", "bid_px", "ask_px", "bid_sz", "ask_sz"]
+
 
 class DatabentoFuturesPlugin(BaseDownloader):
     """Downloads futures data from Databento GLBX.MDP3.
@@ -81,8 +84,8 @@ class DatabentoFuturesPlugin(BaseDownloader):
             raise ImportError(
                 "databento package not installed. Run: pip install databento"
             )
-        if schema not in ("ohlcv-1m", "trades"):
-            raise ValueError(f"schema must be 'ohlcv-1m' or 'trades', got '{schema}'")
+        if schema not in ("ohlcv-1m", "trades", "mbp-1"):
+            raise ValueError(f"schema must be 'ohlcv-1m', 'trades', or 'mbp-1', got '{schema}'")
         if roll_rule not in VALID_ROLL_RULES:
             raise ValueError(
                 f"roll_rule must be one of {VALID_ROLL_RULES}, got '{roll_rule}'"
@@ -183,6 +186,8 @@ class DatabentoFuturesPlugin(BaseDownloader):
             return self._storage_subdir_override
         if self._schema == "ohlcv-1m":
             return "futures_1min"
+        if self._schema == "mbp-1":
+            return "futures_mbp1"
         return "futures_trades"
 
     def _normalize_symbol(self, symbol: str) -> str:
@@ -271,3 +276,24 @@ class DatabentoFuturesPlugin(BaseDownloader):
                 ohlcv_df.to_parquet(out_dir / "data.parquet", index=False)
 
             logger.info(f"Reconstructed OHLCV-1m for {symbol}")
+
+    def _is_supported_schema(self, schema: str) -> bool:
+        return schema in ("ohlcv-1m", "trades", "mbp-1")
+
+    def _write_mbp1_partition(self, df, symbol: str, year: int,
+                              month: int, root=None) -> Path:
+        """Write MBP-1 data to futures_mbp1/ partition tree."""
+        from src.settings import get_local_storage_dir
+        root = root if root is not None else get_local_storage_dir()
+        out_dir = root / "futures_mbp1" / f"symbol={symbol}" / f"year={year}" / f"month={month}"
+        out_dir.mkdir(parents=True, exist_ok=True)
+        out = out_dir / "data.parquet"
+
+        pl_df = pl.from_pandas(df).select(MBP1_CANONICAL_COLUMNS).with_columns(
+            pl.col("ts_event").cast(pl.Datetime(time_unit="ns", time_zone="UTC")),
+        ).sort("ts_event")
+
+        tmp = out.with_suffix(out.suffix + ".tmp")
+        pl_df.write_parquet(tmp)
+        os.replace(tmp, out)
+        return out

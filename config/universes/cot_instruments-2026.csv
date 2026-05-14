@@ -1,0 +1,12 @@
+instrument,cftc_code,name,notes
+6E,099741,Euro FX,
+6J,097741,Japanese Yen,
+6B,096742,British Pound,
+6S,092741,Swiss Franc,
+6C,090741,Canadian Dollar,
+6A,232741,Australian Dollar,
+6N,112741,New Zealand Dollar,
+6M,095741,Mexican Peso,
+6L,102741,Brazilian Real,
+6Z,122741,South African Rand,
+6R,089741,Russian Ruble,delisted 2022
