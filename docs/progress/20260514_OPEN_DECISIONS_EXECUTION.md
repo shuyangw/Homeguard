@@ -10,6 +10,38 @@ Executed five of the open decisions from yesterday's plan (`2 -> 1 -> 6 -> 3+5 -
 
 Six commits shipped to `main`. All quality gates that ran are green (58 tests pass across registry / statistics / costs / walk-forward / IBKR config / IBKR contracts / walk-forward chunking with the new `_with_data` path).
 
+---
+
+## NEXT ACTIONS (start here on the next session)
+
+Prioritized follow-up work. The retrospective sections below explain context.
+
+### Blocking (work is already gated waiting on these)
+
+1. **Section 11.5 stop-slippage multiplier wiring PR** -- the actual code change. `portfolio_simulator.py` and its numba kernel currently apply uniform slippage to every fill regardless of exit reason. `CostsSettings.stop_slippage_multiplier` is defined but inert at the fill site. Until this PR lands, five queued strategies cannot graduate to live: **Darwinex FX MR, ORB variants, hurst_mr_baseline, ml_crypto_mr_baseline, RAMP-CSP**. The hard gate in `strategy-lead.md` Phase 9 (commit `8cd4963`) rejects them. Effort: ~half day including numba kernel + a synthetic test verifying 1.5x slippage on stop exits vs entries. Design note (per Shuyang): **two specialized numba kernels** (with-multiplier vs without) dispatched at sweep entry, NOT a per-fill branch. No-stops path stays full speed.
+
+### Unblocked but waiting on consumers
+
+2. **`src/backtesting/utils/futures_roll.py`** -- the real fix for the 277 ZC/futures roll discontinuities that Decision 9-lite surfaced. Per-contract return splicing OR back-adjustment. Defer until a futures backtest is queued; without a concrete consumer the API would be guessed. The canary script (`scripts/data/check_roll_discontinuities.py`) documents the problem in the meantime so no one is blindsided.
+
+3. **`opex_pinning.yaml` options cost model wiring** -- currently uses `bps_override: 32.0` (approximating SPY/QQQ/IWM ATM round-trip) as a placeholder. When `src/backtesting/costs/options.py`'s alpha-of-half-spread model gets wired through `_resolve_costs`, replace the override with a proper tier declaration. Effort: ~2 hours including the `_resolve_costs` branch + opex_pinning re-test.
+
+### Cleanup
+
+4. **Per-config row wiring inside the 5 optimizer modules** under `src/backtesting/optimization/` (grid_search, sweep_runner, random_search, bayesian_optimizer, genetic_optimizer). Today's PR 1b wired only the three remaining `run_*_from_config` paths in `backtest_runner.py` -- each appends one parent registry row. The per-config children (sharing a `parent_run_id`, each combo's metrics) would let DSR pull a richer N from the registry. Effort: ~1 hour per optimizer = 5 hours total.
+
+5. **`hurst_mr_baseline.yaml` pre-existing ValidationError** on `risk.position_sizing_method`. Predates the cost-tier migration; not caused by today's work. Quick fix: align the YAML's enum value with `PositionSizingMethod` in `src/settings/schema.py`. ~10 min.
+
+### Process improvements
+
+6. **Branch-switch guard**: a parallel Claude session uses this same worktree for `feature/fx-comprehensive-expansion` and silently switches the branch under us. This session lost two commits to the wrong branch (Decision 9-lite, then a stray revert) and lost the working-tree copy of this doc multiple times. **Mitigation for next session**: work from a dedicated worktree (`git worktree add ../homeguard-main main`) so the main-branch checkout can't be moved by other agents. Alternatively a pre-commit hook that aborts on `feature/*` when the change is destined for main.
+
+### Out of scope but documented
+
+7. New agents (`portfolio-integrator`, `strategy-architect`, `strategy-implementer`) per decision B -- defer until concrete trigger. Triggers documented in methodology Appendix.
+
+---
+
 ## Pre-Decision-2 amendments (commit `8cd4963`)
 
 Hard-gates and methodology callouts added BEFORE Decision 2 ran, per user direction:
