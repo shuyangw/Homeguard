@@ -1156,6 +1156,39 @@ class RAMPLiveAdapter(StrategyAdapter):
 
             # ---- Execution ----
             with self._stage(rec, "execution"):
+                if getattr(self, 'use_target_planner', False):
+                    # F2: compute the plan from current signals + positions
+                    from src.strategies.advanced.ramp_target_planner import compute_plan
+                    try:
+                        spy_dd_value = 0.0
+                        if self._ramp_signals._spy_cache is not None and len(self._ramp_signals._spy_cache) > 0:
+                            spy_series = self._ramp_signals._spy_cache
+                            rolling_max = spy_series.rolling(252, min_periods=20).max()
+                            spy_dd_value = float(
+                                (spy_series.iloc[-1] - rolling_max.iloc[-1]) / rolling_max.iloc[-1]
+                            )
+                        vix_value = 20.0
+                        if self._ramp_signals._vix_cache is not None and len(self._ramp_signals._vix_cache) > 0:
+                            vix_value = float(self._ramp_signals._vix_cache.iloc[-1])
+                        self._latest_plan = compute_plan(
+                            as_of=tz.now(),
+                            regime=self._ramp_signals._current_regime,
+                            regime_confidence=self._ramp_signals._regime_confidence,
+                            regime_scores={},
+                            top_n=self._ramp_signals.current_top_n,
+                            momentum_scores=self._ramp_signals.calculate_momentum_scores(),
+                            current_positions=current_positions,
+                            vix=vix_value,
+                            spy_drawdown=spy_dd_value,
+                            max_capital_allocation=self.max_capital_allocation,
+                            vix_threshold=self.vix_threshold,
+                            spy_dd_threshold=self.spy_dd_threshold,
+                            reduced_exposure=self.reduced_exposure,
+                        )
+                    except Exception as e:
+                        logger.error(f"[RAMP] Failed to compute plan: {e}; falling back to legacy path")
+                        self._latest_plan = None
+                        self.use_target_planner = False  # one-shot fallback for this rebalance
                 self._execute_rebalance(signals, current_positions, rec=rec)
 
             # ---- Post-state ----
@@ -1633,16 +1666,142 @@ class RAMPLiveAdapter(StrategyAdapter):
     ) -> None:
         """Target-aware execution path (Phase 4 F2).
 
-        Reads a RampPlan, computes trades = target_value - current_value
-        for every name, sells before buys, sequential cash tracking.
+        Reads self._latest_plan (a RampPlan), computes trades for every
+        name in plan.targets and plan.exits, sells before buys, applies
+        crash-protection exposure to all holdings.
 
-        Implementation lands in Task 9.
+        Sells are submitted first (exits then trims), then buys with
+        sequential cash tracking (re-read broker cash before each BUY).
+
+        Sizing:
+            target_value = equity_base * target_weight
+            trade_value  = target_value - current_market_value
+
+        Skips trades whose |trade_value| < min_trade_value_usd.
+        Applies cash_buffer_pct (default 0.25%) for slippage headroom.
         """
-        raise NotImplementedError(
-            "_execute_rebalance_target_aware lands in Task 9 of "
-            "RAMP Phase 4 Phase A. Set use_target_planner=False to "
-            "use the legacy path."
-        )
+        plan = getattr(self, '_latest_plan', None)
+        if plan is None:
+            logger.error("[RAMP] _execute_rebalance_target_aware called without _latest_plan; aborting")
+            return
+
+        account = self.broker.get_account()
+        portfolio_value = float(account.get('portfolio_value', 0))
+        if portfolio_value <= 0:
+            logger.error("[RAMP] Portfolio value is zero or negative; aborting")
+            return
+
+        equity_base = self.initial_capital
+        cash_buffer_pct = getattr(self, 'cash_buffer_pct', 0.0025)
+        min_trade_value = getattr(self, 'min_trade_value_usd', 100.0)
+
+        logger.info(f"[RAMP] Target-aware rebalance: regime={plan.regime}, "
+                    f"top_n={plan.top_n}, exposure_pct={plan.exposure_pct:.0%}")
+
+        broker_positions = self.broker.get_positions() or []
+        pos_by_sym = {p['symbol']: p for p in broker_positions}
+
+        # --- Phase 1: SELLS (exits and trims) ---
+        # Full exits: positions that fell out of the top-N or are force-exited
+        for sym, reason in plan.exits.items():
+            if sym not in pos_by_sym:
+                continue
+            pos = pos_by_sym[sym]
+            qty = int(pos['quantity'])
+            if qty <= 0:
+                continue
+            try:
+                logger.info(f"[RAMP] EXIT {sym}: SELL {qty} ({reason})")
+                self.execution_engine.execute_order(
+                    symbol=sym,
+                    quantity=qty,
+                    side=OrderSide.SELL,
+                    order_type=OrderType.MARKET,
+                )
+            except Exception as e:
+                logger.error(f"[RAMP] Error exiting {sym}: {e}")
+
+        # Trims: target_value < current_value by more than min_trade_value
+        trims = []
+        for sym, target in plan.targets.items():
+            target_value = equity_base * target.target_weight
+            current_value = current_positions.get(sym, 0.0)
+            delta = target_value - current_value
+            if delta < -min_trade_value:
+                trims.append((sym, target_value, current_value, abs(delta)))
+
+        for sym, target_value, current_value, abs_delta in trims:
+            if sym not in pos_by_sym:
+                continue
+            pos = pos_by_sym[sym]
+            current_price = float(pos.get('current_price', 0.0))
+            if current_price <= 0:
+                continue
+            shares_to_sell = int(abs_delta / current_price)
+            if shares_to_sell <= 0:
+                continue
+            try:
+                logger.info(
+                    f"[RAMP] TRIM {sym}: SELL {shares_to_sell} "
+                    f"(current ${current_value:.0f} -> target ${target_value:.0f})"
+                )
+                self.execution_engine.execute_order(
+                    symbol=sym,
+                    quantity=shares_to_sell,
+                    side=OrderSide.SELL,
+                    order_type=OrderType.MARKET,
+                )
+            except Exception as e:
+                logger.error(f"[RAMP] Error trimming {sym}: {e}")
+
+        # --- Phase 2: BUYS (entries and top-ups) with sequential cash tracking ---
+        buys = []
+        for sym, target in plan.targets.items():
+            target_value = equity_base * target.target_weight
+            current_value = current_positions.get(sym, 0.0)
+            delta = target_value - current_value
+            if delta > min_trade_value:
+                rank = target.rank if target.rank is not None else 999
+                buys.append((sym, target_value, current_value, delta, rank))
+
+        buys.sort(key=lambda x: x[4])  # best rank first
+
+        for sym, target_value, current_value, delta, rank in buys:
+            # Re-read cash before each BUY (sequential cash tracking)
+            account = self.broker.get_account()
+            cash = float(account.get('cash', 0))
+            spendable_cash = cash * (1.0 - cash_buffer_pct)
+            if spendable_cash <= 0:
+                logger.warning(f"[RAMP] Cash exhausted; skipping BUY for {sym}")
+                continue
+            trade_value = min(delta, spendable_cash)
+            if trade_value < min_trade_value:
+                continue
+            quote = self.broker.get_latest_quote(sym)
+            if not quote:
+                logger.warning(f"[RAMP] No quote for {sym}; skipping")
+                continue
+            price = float(quote.get('ask', 0)) or float(quote.get('bid', 0))
+            if price <= 0:
+                continue
+            shares = int(trade_value / price)
+            if shares <= 0:
+                continue
+            try:
+                logger.info(
+                    f"[RAMP] BUY {sym}: {shares} @ ${price:.2f} "
+                    f"(rank={rank}, target ${target_value:.0f})"
+                )
+                self.execution_engine.execute_order(
+                    symbol=sym,
+                    quantity=shares,
+                    side=OrderSide.BUY,
+                    order_type=OrderType.MARKET,
+                )
+            except Exception as e:
+                logger.error(f"[RAMP] Error buying {sym}: {e}")
+
+        logger.info("[RAMP] Target-aware rebalance execution complete")
 
     def get_schedule(self) -> Dict[str, any]:
         """
