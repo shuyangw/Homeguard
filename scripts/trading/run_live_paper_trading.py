@@ -1115,6 +1115,9 @@ def create_ramp_adapter(broker, data_provider=None, initial_capital=None, metric
         logger.info(f"  Using data provider: {data_provider.name}")
     if initial_capital is not None:
         logger.info(f"  Capital cap: ${initial_capital:,.0f}")
+    # Phase 4 Phase A (2026-05-15): use_target_planner=True activates the
+    # target-aware execution path (per docs/superpowers/specs/2026-05-15-ramp-phase4-phaseA-design.md).
+    # Paper validation gate: >=5 consecutive clean sessions per A7.
     return RAMPLiveAdapter(
         broker=broker,
         broker_name=broker_name,
@@ -1122,6 +1125,7 @@ def create_ramp_adapter(broker, data_provider=None, initial_capital=None, metric
         data_provider=data_provider,
         initial_capital=initial_capital,
         metrics_registry=metrics_registry,
+        use_target_planner=True,
     )
 
 

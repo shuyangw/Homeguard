@@ -29,16 +29,57 @@ INFO_ROUNDING_USD = 50.0
 
 
 def _recompute_plan(strategy_inputs: Dict[str, Any]) -> Dict[str, Any]:
-    """Recompute a RampPlan-like dict from the same inputs the strategy saw.
+    """Recompute a RampPlan from the strategy_inputs captured in the decision log.
 
-    Returns a dict with target_weights, regime, exposure_pct.
+    The decision log records the inputs the strategy saw at trigger time
+    (regime, vix, spy_drawdown_pct, momentum_scores, regime_params). Replaying
+    those inputs through compute_plan() should produce the SAME plan the
+    strategy executed -- divergences indicate the planner is non-deterministic
+    or the adapter executed something other than the plan.
 
-    NOTE: For unit tests this function is mocked. For real use, it would
-    instantiate the planner and pass through real market data. The full
-    paper-vs-plan reconciliation across sessions is a follow-up; this
-    function gives the comparator its inputs.
+    Returns dict with target_weights, regime, exposure_pct.
     """
-    return {"target_weights": {}, "regime": "UNKNOWN", "exposure_pct": 1.0}
+    import pandas as pd
+    from datetime import datetime
+    from src.strategies.advanced.ramp_target_planner import compute_plan
+
+    regime = strategy_inputs.get("regime") or "STRONG_BULL"
+    regime_confidence = float(strategy_inputs.get("regime_confidence") or 0.5)
+    regime_scores = strategy_inputs.get("regime_scores") or {}
+    vix = float(strategy_inputs.get("vix") or 20.0)
+    spy_drawdown = float(strategy_inputs.get("spy_drawdown_pct") or -0.02)
+
+    momentum_dict = strategy_inputs.get("momentum_scores") or {}
+    if not momentum_dict:
+        return {"target_weights": {}, "regime": regime, "exposure_pct": 1.0}
+
+    momentum_clean = {sym: float(v) for sym, v in momentum_dict.items() if v is not None}
+    if not momentum_clean:
+        return {"target_weights": {}, "regime": regime, "exposure_pct": 1.0}
+    momentum_scores = pd.Series(momentum_clean)
+
+    regime_params = strategy_inputs.get("regime_params") or {}
+    top_n = int(regime_params.get("top_n") or 10)
+
+    plan = compute_plan(
+        as_of=datetime.now(),
+        regime=regime,
+        regime_confidence=regime_confidence,
+        regime_scores=regime_scores,
+        top_n=top_n,
+        momentum_scores=momentum_scores,
+        current_positions={},
+        vix=vix,
+        spy_drawdown=spy_drawdown,
+        max_capital_allocation=1.0,
+        diagnostics={},
+    )
+
+    return {
+        "target_weights": {sym: t.target_weight for sym, t in plan.targets.items()},
+        "regime": plan.regime,
+        "exposure_pct": plan.exposure_pct,
+    }
 
 
 def compare_session(log_path: Path) -> Dict[str, Any]:
