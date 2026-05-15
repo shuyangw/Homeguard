@@ -1,6 +1,6 @@
 # Data Inventory
 
-Reference for all market data on `H:/Stock_Data/` (Windows) / `/home/ec2-user/stock_data` (Linux/EC2). Resolve at runtime via `from src.settings import get_local_storage_dir`. Last updated 2026-05-09.
+Reference for all market data on `H:/Stock_Data/` (Windows) / `/home/ec2-user/stock_data` (Linux/EC2). Resolve at runtime via `from src.settings import get_local_storage_dir`. Last updated 2026-05-15.
 
 ## Summary
 
@@ -12,7 +12,7 @@ Reference for all market data on `H:/Stock_Data/` (Windows) / `/home/ec2-user/st
 | `crypto_1hour/` | Alpaca | 657K | 919 | 0.04 GB | 2021-07 → 2025-12 |
 | `crypto_1day/` | Alpaca | 33K | 1,092 | 0.01 GB | 2021-10 → 2025-09 |
 | `crypto_1min_alpaca_archive/` | Alpaca (archive) | 29.7M | 919 | 1.2 GB | 2021-10 → 2025-09 |
-| `futures_1min/` | Databento (.v.0) | 164.5M | 7,839 | 1.5 GB | 2010-06 → 2026-02 |
+| `futures_1min/` | Databento (.v.0) | 164.5M | 9,180 | 1.7 GB | 2010-06 → 2026-04 |
 | `futures_1min_oi_roll/` | Databento (GC.n.0) | 5.5M | 189 | 0.06 GB | 2010-06 → 2026-02 |
 | `futures_per_contract_1min/` | Databento (.FUT) | 578.0M | 189 | 8.3 GB | 2010-06 → 2026-02 |
 | `futures_per_contract_daily/root=ED/` | Databento (GE.FUT, ohlcv-1d) | 1.2M | 14 | 0.02 GB | 2010-06 → 2023-12 |
@@ -21,16 +21,19 @@ Reference for all market data on `H:/Stock_Data/` (Windows) / `/home/ec2-user/st
 | `futures_statistics/` | Databento | 464.1M | 189 | 8.3 GB | 2010-06 → 2026-02 |
 | `futures_status/` | Databento (status, .v.0 + .FUT) | 281.5M | 17 | 1.4 GB | 2010-06 → 2026-02 |
 | `fx_1min/` | Polygon/Massive | 383.4M | 13,321 | 8.6 GB | 2010-01 → 2026-05 |
+| `fx_quotes_raw/` | Polygon/Massive | 4.02B | 985 | 14.0 GB | 2010-01 → 2026-05 |
+| `fx_quotes_minute_aggregated/` | Derived | 30.0M | 985 | 0.9 GB | 2010-01 → 2026-05 |
 | `options/` | ThetaData / IBKR | 24.1B | 4,510 | 250.0 GB | 2012-06 → 2026-02 |
 | `news/` | Alpaca / Benzinga | 587K | 2,985 | 0.15 GB | 2020-01 → 2025-12 |
 | `sentiment/` | derived (FinBERT) | 424K | 1,719 | 0.05 GB | 2020-01 → 2025-12 |
 | `futures_trades/` | Databento (stub) | 374K | 1 | <0.01 GB | 2024-01 (single day) |
 
-**Total: ~27.0B rows across ~371 GB.** All timestamps `[us, UTC]` except crypto (`[ns, UTC]`, off-spec, see "Known dtype drift" below).
+**Total: ~31.0B rows across ~386 GB.** All timestamps `[us, UTC]` except crypto and fx (`[ns, UTC]`, off-spec, see "Known dtype drift" below).
 
 **Pulled but not on disk:**
 - `futures_mbp1/` — MBP-1 tick data for ES/MES/NQ/MNQ Aug 2025-Feb 2026. Job F at Databento (5.9 GB partial dbn.zst staging only; full pull = 486 GB tick stream). Decision pending: resume the 480 GB download or drop entirely.
 - `futures_trades_window/` — Trades schema for ES+MES, last hour daily, 5y. Job submission rejected with `402 account_insufficient_funds` (full 5y pull cost = $1040.68; 1y = $89.30; ES-only 5y = $601.52). Pending budget decision.
+- `futures_mbp1/` (CME FX, Phase C extension) — MBP-1 for 11 Tier-1 CME FX contracts (6E, 6J, 6B, 6C, 6A, 6N, 6S, 6M, 6L, 6Z, 6R). Plugin extended and tested; all 11 submission attempts rejected with `402 account_insufficient_funds` on 2026-05-14. Pending budget decision.
 
 ---
 
@@ -87,12 +90,14 @@ All futures were pulled in the bulk plan execution on 2026-05-07. Plan source: `
 
 - **Schema**: `timestamp, open, high, low, close, volume` (6 cols; Databento ohlcv-1m has no trade_count/vwap)
 - **Partitioning**: `symbol={ROOT}/year={YYYY}/month={M}/data.parquet` (unpadded month)
-- **Symbols (53)**: equity index full + micros, energy, metals, rates, FX, ag, crypto
+- **Symbols (62)**: equity index full + micros, energy, metals, rates, FX, ag, crypto
   - `ES, NQ, YM, RTY, MES, MNQ, M2K, MYM` (equity index)
   - `CL, NG, HO, RB, BZ, MCL, MNG` (energy)
   - `GC, SI, HG, PL, MGC, SIL` (metals)
   - `ZT, ZF, ZN, TN, ZB, UB, SR3, SR1, 10Y, 30Y, 5YY, 2YY` (rates)
-  - `6E, 6J, 6B, 6A, 6C, 6S, 6N, 6M` (FX)
+  - `6E, 6J, 6B, 6A, 6C, 6S, 6N, 6M` (FX G10 majors)
+  - `6L, 6Z, 6R` (FX EM: BRL, ZAR, RUB; Phase C 2026-05-14)
+  - `M6E, M6A, M6B, M6C, M6J, M6S` (FX E-micros; Phase C 2026-05-14)
   - `ZC, ZS, ZW, KE, ZL, ZM, LE, HE` (ag)
   - `BTC, MBT, ETH, MET` (crypto)
 - **Roll rule**: volume (`.v.0`) — replaced the broken calendar-roll (`.c.0`) which had ~7 bars/day on metals/grains. New density: ~1117 bars/day on GC (160× improvement).
@@ -174,6 +179,28 @@ All futures were pulled in the bulk plan execution on 2026-05-07. Plan source: `
 - **`volume` field**: FX is OTC market with no centralized volume; `volume == trade_count` in flat-file source (tick count, not value)
 - **`vwap` field**: Polygon's flat-file schema omits vwap; new pairs from `massive_fx_flat.py` set `vwap = close` as documented approximation. Existing 50 pairs (pre-2026-05-13) have a separate vwap value (provider-computed).
 
+### `fx_quotes_raw/` — raw BBO quote events (Phase B Tier 1, 2026-05-14/15)
+
+- **Schema**: `timestamp, bid_price, ask_price, bid_exchange, ask_exchange` (5 cols: `Datetime[ns, UTC]`, Float64, Float64, Int32, Int32)
+- **Partitioning**: `symbol={SYM}/year={YYYY}/month={M}/data.parquet` (unpadded month)
+- **5 symbols × 197 months = 985 partitions**, 4.02B quote events, 14 GB
+  - `EURUSD` (878.4M rows), `USDJPY` (836.1M rows), `GBPUSD` (929.1M rows), `AUDUSD` (692.8M rows), `USDCAD` (683.4M rows)
+- **Coverage**: 2010-01 → 2026-05 (16+ years, every trading day)
+- **Source**: Polygon/Massive S3 flat-files, path `global_forex/quotes_v1/{YYYY}/{MM}/{YYYY-MM-DD}.csv.gz`. One daily file = ALL FX pairs combined (~80 MB decompressed; we filter post-download). Authenticated via `MASSIVE_S3_*` env vars.
+- **Ingestion**: `src/data/acquisition/plugins/massive_fx_quotes_flat.py` + `scripts/data/download_fx_quotes.py`. Universe at `config/universes/fx_quotes_tier1-2026.csv`.
+- **Streaming parser**: gzipped CSV is iterated line-by-line via `io.TextIOWrapper(gzip.GzipFile(...))` to keep RAM bounded under concurrency (dense days exceed 5M rows / 1 GB if naively `.splitlines()`'d). Column indices are mapped from the actual CSV header (alphabetical: `ticker, ask_exchange, ask_price, bid_exchange, bid_price, participant_timestamp`), not from positional assumptions.
+- **Month-level skip-existing**: if all target pairs already have a `data.parquet` for a (year, month), the whole month's per-day downloads are short-circuited (avoids re-pulling 20+ GB of daily CSVs on resume).
+- **Use**: spread microstructure analysis, execution-cost research, derivative datasets like `fx_quotes_minute_aggregated/`.
+
+### `fx_quotes_minute_aggregated/` — 1-minute derived bars from raw BBO
+
+- **Schema**: `timestamp, bid_open, bid_high, bid_low, bid_close, ask_open, ask_high, ask_low, ask_close, spread_mean, spread_p50, spread_p95, spread_p99, quote_count` (14 cols; `Datetime[ns, UTC]` + Float64×12 + UInt32)
+- **Partitioning**: `symbol={SYM}/year={YYYY}/month={M}/data.parquet` (unpadded month, same shape as `fx_quotes_raw/`)
+- **5 symbols × 197 months = 985 partitions**, 30.0M minute bars, 0.9 GB
+- **Source**: derived from `fx_quotes_raw/` via `scripts/data/aggregate_fx_quotes_to_minute.py` (polars `group_by_dynamic("1m")` on raw events, separate OHLC per side, percentile-based spread distribution)
+- **Sanity-check**: mid-price (`(bid_close+ask_close)/2`) vs `fx_1min/` `close` on overlapping 2025-12 minutes — EURUSD: mean 0.38 bps / median 0.30 bps / p99 1.79 bps; USDJPY: mean 0.37 bps / median 0.32 bps / p99 1.38 bps. Internally consistent with the existing OHLCV store.
+- **Use**: spread-aware execution simulation, microstructure features (bid-ask imbalance, quoted spread vs realized spread), backtest realism upgrades over close-to-close fills.
+
 ---
 
 ## Alternative data
@@ -207,12 +234,13 @@ All futures were pulled in the bulk plan execution on 2026-05-07. Plan source: `
 - 18.1M rows total
 - Universe: `C:\Users\qwqw1\Dropbox\cs\github\Homeguard\config\universes\fx_adjacent_equity-2026.csv`
 
-### CME FX futures (Phase C — plugin extension committed; bulk pull deferred)
+### CME FX futures (Phase C — OHLCV-1m DONE, MBP-1 deferred on billing)
 
-- Plugin extended for `mbp-1` schema support: `C:\Users\qwqw1\Dropbox\cs\github\Homeguard\src\data\acquisition\plugins\databento_futures.py` (added `MBP1_CANONICAL_COLUMNS`, `_is_supported_schema`, `_write_mbp1_partition`)
-- New partition tree designated: `futures_mbp1/symbol={SYM}/year={Y}/month={M}/data.parquet` (not yet populated)
-- Universe defined: `C:\Users\qwqw1\Dropbox\cs\github\Homeguard\config\universes\cme_fx_futures-2026.csv` (17 contracts)
-- CLI stub: `C:\Users\qwqw1\Dropbox\cs\github\Homeguard\scripts\data\download_cme_fx_futures.py` — raises `NotImplementedError` pending plugin internal-routing follow-up (`_fetch_symbol_data` needs to dispatch `mbp-1` schema to the new partition writer)
+- **OHLCV-1m**: 17 contracts pulled into `futures_1min/` on 2026-05-14 (`6E, 6J, 6B, 6C, 6A, 6N, 6S, 6M, 6L, 6Z, 6R, M6E, M6A, M6B, M6C, M6J, M6S`). 9 of those are new; the original 8 G10 (6E/6J/6B/6A/6C/6S/6N/6M) already existed and were left as-is.
+- **MBP-1**: plugin extended and tested but all 11 Tier-1 submissions rejected with Databento `402 account_insufficient_funds` on 2026-05-14. Code is ready (`MBP1_CANONICAL_COLUMNS`, `_is_supported_schema`, `_save_partitioned` override for `ts_event`-based partitioning); pending budget decision before retry. Target tree: `futures_mbp1/symbol={SYM}/year={Y}/month={M}/data.parquet`.
+- Plugin: `C:\Users\qwqw1\Dropbox\cs\github\Homeguard\src\data\acquisition\plugins\databento_futures.py`
+- Universe: `C:\Users\qwqw1\Dropbox\cs\github\Homeguard\config\universes\cme_fx_futures-2026.csv` (17 contracts; tier 1 = 11, tier 2 e-micros = 6)
+- CLI: `C:\Users\qwqw1\Dropbox\cs\github\Homeguard\scripts\data\download_cme_fx_futures.py` — supports `--schema ohlcv-1m` (done) and `--schema mbp-1` (blocked on billing).
 
 ---
 
