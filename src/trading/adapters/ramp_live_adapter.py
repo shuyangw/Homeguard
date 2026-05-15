@@ -314,7 +314,8 @@ class RAMPLiveAdapter(StrategyAdapter):
         data_provider: Optional[Union["DataProviderInterface", "LiveDataProvider"]] = None,
         metrics_registry: Optional[Any] = None,
         *,
-        broker_name: str
+        broker_name: str,
+        use_target_planner: bool = False
     ):
         """
         Initialize RAMP live adapter.
@@ -338,6 +339,9 @@ class RAMPLiveAdapter(StrategyAdapter):
             data_provider: Data provider - supports both DataProviderInterface (polling)
                           and LiveDataProvider (streaming). If LiveDataProvider, uses
                           real-time WebSocket data. If not provided, falls back to broker.
+            use_target_planner: When True, route _execute_rebalance to the
+                               target-aware path (Phase 4 F2). Default False
+                               preserves legacy production behavior.
         """
         # Use default S&P 500 symbols if not specified
         if symbols is None:
@@ -425,6 +429,9 @@ class RAMPLiveAdapter(StrategyAdapter):
         logger.info(f"[RAMP]   Rebalance time: 3:55 PM EST")
         logger.info(f"[RAMP]   Portfolio health checks: ENABLED")
         logger.info("[RAMP]   Regime-specific parameters loaded")
+
+        self.use_target_planner = use_target_planner
+        logger.info(f"[RAMP]   Use target planner: {use_target_planner}")
 
     @property
     def broker_name(self) -> str:
@@ -1317,12 +1324,34 @@ class RAMPLiveAdapter(StrategyAdapter):
         *,
         rec=None
     ) -> None:
-        """
-        Execute rebalance based on signals.
+        """Dispatch to the legacy or target-aware execution path.
 
-        Args:
-            signals: List of trading signals
-            current_positions: Current position values by symbol
+        Selection is controlled by the constructor flag use_target_planner.
+        Default False (legacy path, current production behavior).
+        """
+        if getattr(self, 'use_target_planner', False):
+            return self._execute_rebalance_target_aware(
+                signals, current_positions, rec=rec
+            )
+        return self._execute_rebalance_legacy(
+            signals, current_positions, rec=rec
+        )
+
+    def _execute_rebalance_legacy(
+        self,
+        signals: List[Signal],
+        current_positions: Dict[str, float],
+        *,
+        rec=None
+    ) -> None:
+        """Legacy execution path (pre-Phase 4 F2).
+
+        KNOWN BUG: does not multiply risk_exposure into BUY sizing. Crash
+        protection's exposure reduction is not propagated to new entries or
+        existing holds. Kept under the use_target_planner=False flag during
+        Phase 4 Phase A; replaced by _execute_rebalance_target_aware in Task 9.
+
+        Scheduled for removal after F2 has been live for X sessions.
         """
         try:
             account = self.broker.get_account()
@@ -1588,12 +1617,32 @@ class RAMPLiveAdapter(StrategyAdapter):
             logger.info("[RAMP] Rebalance execution complete")
 
         except Exception as e:
-            logger.error(f"[RAMP] Error in _execute_rebalance: {e}")
+            logger.error(f"[RAMP] Error in _execute_rebalance_legacy: {e}")
             if self._metrics_registry is not None:
                 try:
                     self._metrics_registry.inc_rebalance_error('other')
                 except Exception:
                     pass
+
+    def _execute_rebalance_target_aware(
+        self,
+        signals: List[Signal],
+        current_positions: Dict[str, float],
+        *,
+        rec=None
+    ) -> None:
+        """Target-aware execution path (Phase 4 F2).
+
+        Reads a RampPlan, computes trades = target_value - current_value
+        for every name, sells before buys, sequential cash tracking.
+
+        Implementation lands in Task 9.
+        """
+        raise NotImplementedError(
+            "_execute_rebalance_target_aware lands in Task 9 of "
+            "RAMP Phase 4 Phase A. Set use_target_planner=False to "
+            "use the legacy path."
+        )
 
     def get_schedule(self) -> Dict[str, any]:
         """
