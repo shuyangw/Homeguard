@@ -1189,7 +1189,30 @@ class RAMPLiveAdapter(StrategyAdapter):
                         logger.error(f"[RAMP] Failed to compute plan: {e}; falling back to legacy path")
                         self._latest_plan = None
                         self.use_target_planner = False  # one-shot fallback for this rebalance
+                    else:
+                        # F5: backfill StrategyInputs with plan-derived fields
+                        if self._latest_plan is not None and rec.inputs is not None:
+                            rec.inputs.regime_scores = dict(getattr(self._latest_plan, "regime_scores", {}) or {})
+                            rec.inputs.exposure_multiplier = float(self._latest_plan.exposure_pct)
                 self._execute_rebalance(signals, current_positions, rec=rec)
+                # F5: enrich LogicDecisions with post-execution realized state
+                if rec.logic_decisions is not None:
+                    try:
+                        post_account = self.broker.get_account()
+                        post_portfolio_value = float(post_account.get("portfolio_value", 0))
+                        cash_after = float(post_account.get("cash", 0))
+                        post_positions = self.broker.get_positions() or []
+                        realized_weights = {}
+                        if post_portfolio_value > 0:
+                            realized_weights = {
+                                p["symbol"]: float(p.get("market_value", 0)) / post_portfolio_value
+                                for p in post_positions
+                                if p.get("symbol")
+                            }
+                        rec.logic_decisions.realized_weights = realized_weights
+                        rec.logic_decisions.cash_after_rebalance_usd = cash_after
+                    except Exception as e:
+                        logger.error(f"[RAMP] F5 enrichment of logic_decisions failed: {e}")
 
             # ---- Post-state ----
             with self._stage(rec, "post_state"):

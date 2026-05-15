@@ -10,7 +10,7 @@ from dataclasses import dataclass, field, asdict
 from typing import Any, Dict, List, Optional
 
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 
 @dataclass
@@ -64,6 +64,12 @@ class StrategyInputs:
     data_completeness_pct: float = 0.0
     cache_source: str = ""
     momentum_scores: Dict[str, Optional[float]] = field(default_factory=dict)
+    # F5 enrichments (Phase 4 Phase A):
+    regime_scores: Dict[str, float] = field(default_factory=dict)    # all 5 regime scores
+    vix_percentile: Optional[float] = None                            # trailing-252d percentile
+    breadth_pct_above_50d: Optional[float] = None                     # pct of universe above 50d MA
+    exposure_multiplier: Optional[float] = None                       # 0.0, 0.5, or 1.0
+    fallback_mode_used: Optional[str] = None                          # "no_rebalance" | "hold_only" | None
     extra: Dict[str, Any] = field(default_factory=dict)
 
     @classmethod
@@ -82,6 +88,12 @@ class LogicDecisions:
     exit_signals: List[str]
     hold_signals: List[str]
     skip_reasons: Dict[str, str]
+    # F5 enrichments (Phase 4 Phase A):
+    realized_weights: Dict[str, float] = field(default_factory=dict)
+    realized_turnover_usd: Optional[float] = None
+    expected_cost_bps: Optional[float] = None
+    actual_cost_usd: Optional[float] = None
+    cash_after_rebalance_usd: Optional[float] = None
 
 
 @dataclass

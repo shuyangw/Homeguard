@@ -114,3 +114,60 @@ def test_run_once_records_blocked_when_health_check_fails(ramp_adapter):
     rec = latest("ramp")
     assert rec.preconditions.health_check.passed is False
     assert rec.executions == []
+
+
+# ---------------------------------------------------------------------------
+# F5 schema enrichment tests (SCHEMA_VERSION 2)
+# ---------------------------------------------------------------------------
+
+from src.trading.decision_log.record import SCHEMA_VERSION, StrategyInputs, LogicDecisions  # noqa: E402
+
+
+class TestF5SchemaEnrichment:
+    def test_schema_version_is_2(self):
+        assert SCHEMA_VERSION == 2
+
+    def test_strategy_inputs_has_new_f5_fields(self):
+        si = StrategyInputs()
+        assert si.regime_scores == {}
+        assert si.vix_percentile is None
+        assert si.breadth_pct_above_50d is None
+        assert si.exposure_multiplier is None
+        assert si.fallback_mode_used is None
+
+    def test_strategy_inputs_accepts_new_field_values(self):
+        si = StrategyInputs(
+            regime="STRONG_BULL",
+            regime_scores={
+                "STRONG_BULL": 0.9,
+                "WEAK_BULL": 0.05,
+                "SIDEWAYS": 0.02,
+                "UNPREDICTABLE": 0.02,
+                "BEAR": 0.01,
+            },
+            vix_percentile=0.45,
+            breadth_pct_above_50d=0.62,
+            exposure_multiplier=1.0,
+            fallback_mode_used=None,
+        )
+        assert si.regime_scores["STRONG_BULL"] == 0.9
+        assert si.vix_percentile == 0.45
+        assert si.breadth_pct_above_50d == 0.62
+
+    def test_logic_decisions_has_new_f5_fields(self):
+        ld = LogicDecisions(
+            top_n=10,
+            target_symbols=["AAPL", "MSFT"],
+            target_weights={"AAPL": 0.1, "MSFT": 0.1},
+            target_value_usd={"AAPL": 10000.0, "MSFT": 10000.0},
+            reduce_exposure=False,
+            exposure_pct=1.0,
+            exit_signals=[],
+            hold_signals=[],
+            skip_reasons={},
+        )
+        assert ld.realized_weights == {}
+        assert ld.realized_turnover_usd is None
+        assert ld.expected_cost_bps is None
+        assert ld.actual_cost_usd is None
+        assert ld.cash_after_rebalance_usd is None
