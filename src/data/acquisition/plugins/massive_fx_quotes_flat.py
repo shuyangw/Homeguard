@@ -110,12 +110,15 @@ def parse_day(raw_gz: bytes, target_tickers: set[str]) -> dict[str, list[list]]:
       ticker, ask_exchange, ask_price, bid_exchange, bid_price, participant_timestamp
     Parser builds a header-keyed index map so column order is robust.
     """
-    text = gzip.decompress(raw_gz).decode("utf-8")
     out: dict[str, list[list]] = {}
-    lines = text.splitlines()
-    if not lines:
+    # Stream-decompress + iterate line-by-line to bound memory on dense days
+    # (some daily quote files exceed 80 MB decompressed = 5M+ lines = OOM on
+    # text.splitlines() with concurrency > 1).
+    reader = io.TextIOWrapper(gzip.GzipFile(fileobj=io.BytesIO(raw_gz)), encoding="utf-8")
+    header_line = reader.readline()
+    if not header_line:
         return out
-    header = [h.strip() for h in lines[0].split(",")]
+    header = [h.strip() for h in header_line.rstrip("\n").split(",")]
     try:
         i_ticker = header.index("ticker")
         i_ts = header.index("participant_timestamp")
@@ -126,16 +129,18 @@ def parse_day(raw_gz: bytes, target_tickers: set[str]) -> dict[str, list[list]]:
     except ValueError as e:
         logger.error(f"unexpected quote CSV header: {header} ({e})")
         return out
+    max_idx = max(i_ticker, i_ts, i_bid_px, i_ask_px, i_bid_ex, i_ask_ex)
 
-    for line in lines[1:]:
+    for line in reader:
+        if "," not in line:
+            continue
+        # Cheap pre-filter: only do full split if the first field matches a target
         comma1 = line.find(",")
-        if comma1 < 0:
-            continue
-        fields = line.split(",")
-        if len(fields) <= max(i_ticker, i_ts, i_bid_px, i_ask_px, i_bid_ex, i_ask_ex):
-            continue
-        ticker = fields[i_ticker]
+        ticker = line[:comma1]
         if ticker not in target_tickers:
+            continue
+        fields = line.rstrip("\n").split(",")
+        if len(fields) <= max_idx:
             continue
         try:
             row = [
