@@ -226,6 +226,20 @@ def download_pairs(
     }
 
     for year, month, days in iter_days_by_month(start_date, end_date):
+        # Short-circuit: if skip_existing and ALL target outputs already exist
+        # for this (year, month), skip the per-day downloads entirely.
+        if skip_existing:
+            all_exist = all(
+                (root / "fx_quotes_raw" / f"symbol={p.hg_symbol}"
+                 / f"year={year}" / f"month={month}" / "data.parquet").exists()
+                for p in pairs
+            )
+            if all_exist:
+                for p in pairs:
+                    summary["months_skipped_existing"] += 1
+                logger.info(f"[skip-existing-month] all pairs done for {year}-{month}")
+                continue
+
         # Per-pair accumulator for this month. List of rows.
         month_buffers: dict[str, list[list]] = defaultdict(list)
 
