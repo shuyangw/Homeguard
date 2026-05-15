@@ -236,3 +236,78 @@ class TestComputePlanCore:
         total_target = sum(t.target_weight for t in plan.targets.values())
         assert total_target == 0.0
         assert "SYM00" in plan.exits
+
+
+class TestPlannerCrashProtectionParity:
+    """A5: 8-scenario matrix at the planner level.
+
+    All scenarios MUST pass at the planner level (planner correctly derives
+    exposure_pct from VIX/SPY-DD inputs).
+
+    NOTE: Scenario 7 (BEAR + crash trigger, SPY-DD=-8%) expects 0.5 here --
+    the DESIGN-CORRECT value -- differing from the A0 diagnostic which used
+    1.0 (current production behavior at the time). Task 3 in the progress doc
+    flagged this as a plan inconsistency caught at this layer. The planner
+    applies crash-protection regardless of regime label.
+    """
+
+    SCENARIOS = [
+        ("STRONG_BULL", 18, -0.02, 20, 1.0),   # no trigger
+        ("STRONG_BULL", 26, -0.02, 20, 0.5),   # VIX trigger
+        ("STRONG_BULL", 18, -0.07, 20, 0.5),   # SPY DD trigger
+        ("STRONG_BULL", 26, -0.07, 20, 0.5),   # both triggers
+        ("SIDEWAYS",    18, -0.02,  5, 1.0),
+        ("SIDEWAYS",    26, -0.02,  5, 0.5),
+        ("BEAR",        22, -0.08, 10, 0.5),   # DESIGN-CORRECT: SPY-DD trigger fires
+    ]
+
+    @pytest.mark.parametrize("regime,vix,spy_dd,top_n,expected_gross", SCENARIOS)
+    def test_planner_target_gross_matches_expected(self, regime, vix, spy_dd, top_n, expected_gross):
+        """compute_plan() must produce the correct total target weight for each scenario."""
+        from src.strategies.advanced.ramp_target_planner import compute_plan
+        scores = pd.Series(
+            np.linspace(0.10, 0.01, top_n + 5),
+            index=[f"SYM{i:02d}" for i in range(top_n + 5)],
+        )
+        plan = compute_plan(
+            as_of=datetime(2026, 5, 15),
+            regime=regime,
+            regime_confidence=0.9,
+            regime_scores={regime: 0.9},
+            top_n=top_n,
+            momentum_scores=scores,
+            current_positions={},
+            vix=vix,
+            spy_drawdown=spy_dd,
+            max_capital_allocation=1.0,
+            diagnostics={},
+        )
+        total = sum(t.target_weight for t in plan.targets.values())
+        assert abs(total - expected_gross) < 1e-6, (
+            f"Regime={regime}, VIX={vix}, DD={spy_dd:.0%}: "
+            f"expected gross={expected_gross}, got={total}"
+        )
+
+    def test_planner_bear_to_cash_targets_zero_gross(self):
+        """bear_to_cash=True AND regime==BEAR -> total target weight = 0."""
+        from src.strategies.advanced.ramp_target_planner import compute_plan
+        scores = pd.Series(
+            np.linspace(0.10, 0.01, 15),
+            index=[f"SYM{i:02d}" for i in range(15)],
+        )
+        plan = compute_plan(
+            as_of=datetime(2026, 5, 15),
+            regime="BEAR",
+            regime_confidence=0.8,
+            regime_scores={"BEAR": 0.8},
+            top_n=10,
+            momentum_scores=scores,
+            current_positions={"SYM00": 5000.0},
+            vix=22.0,
+            spy_drawdown=-0.08,
+            max_capital_allocation=1.0,
+            diagnostics={},
+            bear_to_cash=True,
+        )
+        total = sum(t.target_weight for t in plan.targets.values())
+        assert total == 0.0
