@@ -408,3 +408,47 @@ class TestRateLimitBackoff:
             assert any(s >= 10.0 for s in sleep_calls), (
                 f"Expected >=10s sleep after 429, got {sleep_calls}"
             )
+
+
+class TestJsonlEventLog:
+    def test_download_complete_emits_jsonl_event(self):
+        import json
+        with tempfile.TemporaryDirectory() as tmpdir:
+            plugin = StubPlugin(output_dir=Path(tmpdir), num_threads=1)
+            plugin.download(["AAPL"], "2024-01-01", "2024-01-02")
+
+            log_path = (
+                Path(tmpdir) / "_manifests" / "test_data.progress.jsonl"
+            )
+            assert log_path.exists(), "JSONL log should exist after download"
+            lines = log_path.read_text(encoding="utf-8").strip().splitlines()
+            events = [json.loads(line) for line in lines]
+            event_types = {e["event"] for e in events}
+            assert "download_complete" in event_types
+            complete = next(e for e in events if e["event"] == "download_complete")
+            assert complete["symbol"] == "AAPL"
+            assert "rows" in complete
+            assert "ts" in complete
+
+    def test_download_failed_emits_jsonl_event(self):
+        import json
+
+        def always_fail(symbol, start, end):
+            raise ValueError("simulated failure")
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            plugin = StubPlugin(
+                fetch_fn=always_fail,
+                output_dir=Path(tmpdir),
+                num_threads=1,
+                retry_delay=0.001,
+            )
+            plugin.download(["AAPL"], "2024-01-01", "2024-01-02")
+
+            log_path = (
+                Path(tmpdir) / "_manifests" / "test_data.progress.jsonl"
+            )
+            lines = log_path.read_text(encoding="utf-8").strip().splitlines()
+            events = [json.loads(line) for line in lines]
+            event_types = {e["event"] for e in events}
+            assert "download_failed" in event_types
