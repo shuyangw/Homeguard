@@ -75,6 +75,23 @@ class DownloadManifest:
                 if v.get("status") == status
             }
 
+    def reap_in_progress(self) -> list[str]:
+        """Downgrade any 'in_progress' entries to 'pending'.
+
+        Used at resume time after a crash. Returns the list of reaped symbols.
+        """
+        reaped: list[str] = []
+        with self._lock:
+            for key, entry in self._data["entries"].items():
+                if entry.get("status") == "in_progress":
+                    entry["interrupted_at"] = entry.get("updated_at")
+                    entry["status"] = "pending"
+                    entry["updated_at"] = (
+                        datetime.now(timezone.utc).isoformat()
+                    )
+                    reaped.append(key)
+        return reaped
+
     def summary(self) -> dict[str, int]:
         with self._lock:
             entries = self._data["entries"]
