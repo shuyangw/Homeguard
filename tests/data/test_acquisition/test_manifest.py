@@ -131,3 +131,28 @@ class TestManifestThreadSafety:
 
             assert len(errors) == 0
             assert len(manifest.get_all_entries()) == 60  # 5 symbols x 12 months
+
+
+class TestReapInProgress:
+    def test_reap_in_progress_downgrades_to_pending(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            manifest = DownloadManifest(Path(tmpdir), "equities_1min_sip_raw")
+            manifest.set_entry("AAPL", status="complete", rows=100)
+            manifest.set_entry("MSFT", status="in_progress")
+            manifest.set_entry("GOOG", status="in_progress")
+            manifest.set_entry("TSLA", status="failed", error="x")
+
+            reaped = manifest.reap_in_progress()
+
+            assert set(reaped) == {"MSFT", "GOOG"}
+            assert manifest.get_entry("MSFT")["status"] == "pending"
+            assert manifest.get_entry("GOOG")["status"] == "pending"
+            assert "interrupted_at" in manifest.get_entry("MSFT")
+            assert manifest.get_entry("AAPL")["status"] == "complete"
+            assert manifest.get_entry("TSLA")["status"] == "failed"
+
+    def test_reap_in_progress_empty_manifest(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            manifest = DownloadManifest(Path(tmpdir), "equities_1min_sip_raw")
+            reaped = manifest.reap_in_progress()
+            assert reaped == []
