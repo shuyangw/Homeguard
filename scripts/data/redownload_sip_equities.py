@@ -27,6 +27,11 @@ load_dotenv()
 
 import logging
 
+import pandas as pd
+from alpaca.trading.client import TradingClient
+
+from src.api_key import API_KEY, API_SECRET
+from src.data.acquisition.alpaca_universe import list_active_us_equities
 from src.settings import get_local_storage_dir, get_output_dir
 from src.utils.logger import get_logger
 
@@ -72,6 +77,38 @@ def parse_args(argv=None):
     return parser.parse_args(argv)
 
 
+def resolve_universe(
+    symbols_from: str, universe_dir: Path
+) -> list[str]:
+    """Resolve universe from --symbols-from arg.
+
+    'alpaca' -> live API snapshot to dated CSV in config/universes/
+    <path>   -> load from existing CSV (must have Symbol column)
+    """
+    if symbols_from.lower() == "alpaca":
+        date_str = datetime.utcnow().strftime("%Y%m%d")
+        save_to = universe_dir / f"alpaca_active-{date_str}.csv"
+        client = TradingClient(API_KEY, API_SECRET, paper=False)
+        return list_active_us_equities(client, save_to=save_to)
+
+    csv_path = Path(symbols_from)
+    if not csv_path.is_absolute():
+        csv_path = PROJECT_ROOT / csv_path
+    if not csv_path.exists():
+        raise FileNotFoundError(f"Universe CSV not found: {csv_path}")
+    df = pd.read_csv(csv_path)
+    col = next(
+        (c for c in df.columns if c.lower() in ("symbol", "ticker")),
+        None,
+    )
+    if col is None:
+        raise ValueError(f"No Symbol/Ticker column in {csv_path}")
+    symbols = (
+        df[col].dropna().astype(str).str.strip().str.upper().tolist()
+    )
+    return sorted(set(s for s in symbols if s))
+
+
 def setup_file_logger(log_path: Path) -> None:
     """Tee root logger output into a per-run log file."""
     log_path.parent.mkdir(parents=True, exist_ok=True)
@@ -105,7 +142,14 @@ def main(argv=None) -> int:
         f"symbols_from={args.symbols_from}"
     )
     logger.info(f"Storage base: {get_local_storage_dir()}")
-    logger.info("(Universe resolution and download passes not yet implemented.)")
+
+    universe_dir = PROJECT_ROOT / "config" / "universes"
+    try:
+        universe = resolve_universe(args.symbols_from, universe_dir)
+    except (FileNotFoundError, ValueError) as e:
+        logger.error(f"Universe resolution failed: {e}")
+        return 3
+    logger.info(f"Universe size: {len(universe)} symbols")
     return 0
 
 
