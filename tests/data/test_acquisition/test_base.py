@@ -250,3 +250,72 @@ class TestManifestIntegration:
             entry = plugin2.manifest.get_entry("AAPL")
             assert entry is not None
             assert entry["status"] == "complete"
+
+
+class TestAtomicParquetWrite:
+    def test_save_partitioned_writes_via_tmp_then_rename(self, monkeypatch):
+        """Verify _save_partitioned writes to .tmp file first, then atomically renames."""
+        import os
+        with tempfile.TemporaryDirectory() as tmpdir:
+            plugin = StubPlugin(output_dir=Path(tmpdir))
+            df = pd.DataFrame(
+                {
+                    "timestamp": pd.to_datetime(
+                        ["2024-01-02 09:30:00"], utc=True
+                    ),
+                    "open": [100.0], "high": [101.0], "low": [99.0],
+                    "close": [100.5], "volume": [1000.0],
+                    "trade_count": [50.0], "vwap": [100.2],
+                }
+            )
+
+            tmp_paths_seen = []
+            real_to_parquet = pd.DataFrame.to_parquet
+
+            def capture_tmp(self, path, *args, **kwargs):
+                tmp_paths_seen.append(str(path))
+                return real_to_parquet(self, path, *args, **kwargs)
+
+            monkeypatch.setattr(pd.DataFrame, "to_parquet", capture_tmp)
+
+            plugin._save_partitioned(df, "AAPL")
+
+            assert tmp_paths_seen, "to_parquet was never called"
+            assert all(p.endswith(".tmp") for p in tmp_paths_seen), (
+                f"Expected all writes to .tmp paths, got: {tmp_paths_seen}"
+            )
+            final_path = (
+                Path(tmpdir) / "test_data" / "symbol=AAPL"
+                / "year=2024" / "month=1" / "data.parquet"
+            )
+            assert final_path.exists()
+            assert not Path(str(final_path) + ".tmp").exists()
+
+    def test_save_partitioned_no_partial_file_on_failure(self, monkeypatch):
+        """Simulated kill in to_parquet leaves no data.parquet."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            plugin = StubPlugin(output_dir=Path(tmpdir))
+            df = pd.DataFrame(
+                {
+                    "timestamp": pd.to_datetime(
+                        ["2024-01-02 09:30:00"], utc=True
+                    ),
+                    "open": [100.0], "high": [101.0], "low": [99.0],
+                    "close": [100.5], "volume": [1000.0],
+                    "trade_count": [50.0], "vwap": [100.2],
+                }
+            )
+
+            def boom(self, path, *args, **kwargs):
+                raise OSError("simulated kill")
+
+            monkeypatch.setattr(pd.DataFrame, "to_parquet", boom)
+
+            with pytest.raises(OSError):
+                plugin._save_partitioned(df, "AAPL")
+
+            final_path = (
+                Path(tmpdir) / "test_data" / "symbol=AAPL"
+                / "year=2024" / "month=1" / "data.parquet"
+            )
+            assert not final_path.exists()
