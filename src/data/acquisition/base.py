@@ -1,5 +1,6 @@
 """Base downloader with shared infrastructure for all data acquisition plugins."""
 
+import os
 import threading
 import time
 from abc import ABC, abstractmethod
@@ -117,7 +118,11 @@ class BaseDownloader(ABC):
         return existing
 
     def _save_partitioned(self, df: pd.DataFrame, symbol: str) -> int:
-        """Save DataFrame in hive-partitioned format. Returns row count."""
+        """Save DataFrame in hive-partitioned format. Returns row count.
+
+        Writes via .tmp + os.replace for atomicity -- crash mid-write
+        leaves no partial data.parquet behind.
+        """
         output_dir = self._get_output_dir()
         fs_symbol = self._normalize_symbol(symbol)
 
@@ -135,8 +140,11 @@ class BaseDownloader(ABC):
                 / f"month={month}"
             )
             partition_dir.mkdir(parents=True, exist_ok=True)
+            final_path = partition_dir / "data.parquet"
+            tmp_path = partition_dir / "data.parquet.tmp"
             data_to_save = group.drop(columns=["_year", "_month"])
-            data_to_save.to_parquet(partition_dir / "data.parquet", index=False)
+            data_to_save.to_parquet(tmp_path, index=False)
+            os.replace(tmp_path, final_path)
             rows_saved += len(data_to_save)
 
         return rows_saved
