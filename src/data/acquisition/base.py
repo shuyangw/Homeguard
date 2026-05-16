@@ -1,12 +1,13 @@
 """Base downloader with shared infrastructure for all data acquisition plugins."""
 
+import json
 import os
 import threading
 import time
 from abc import ABC, abstractmethod
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, List, Optional, Set, Tuple
 
@@ -110,6 +111,19 @@ class BaseDownloader(ABC):
             setattr(_thread_local, attr, self._create_client())
         return getattr(_thread_local, attr)
 
+    def _emit_event(self, event: str, **fields: Any) -> None:
+        """Append one JSON event line to <subdir>.progress.jsonl. Crash-safe."""
+        log_dir = self.base_output_dir / "_manifests"
+        log_dir.mkdir(parents=True, exist_ok=True)
+        log_path = log_dir / f"{self._get_storage_subdir()}.progress.jsonl"
+        record = {
+            "ts": datetime.now(timezone.utc).isoformat(),
+            "event": event,
+            **fields,
+        }
+        with open(log_path, "a", encoding="utf-8") as f:
+            f.write(json.dumps(record, default=str) + "\n")
+
     def get_existing_symbols(self) -> Set[str]:
         output_dir = self._get_output_dir()
         existing = set()
@@ -157,12 +171,18 @@ class BaseDownloader(ABC):
     ) -> Tuple[str, bool, int, Optional[str]]:
         """Download a single symbol with retry logic."""
         tid = threading.current_thread().name
+        self._emit_event("download_start", symbol=symbol, thread=tid)
 
         for attempt in range(1, self.max_retries + 1):
             try:
                 if attempt > 1:
                     logger.info(
                         f"[{tid}] {symbol}: Retry {attempt}/{self.max_retries}"
+                    )
+                    self._emit_event(
+                        "retry",
+                        symbol=symbol,
+                        attempt=attempt,
                     )
 
                 self.manifest.set_entry(symbol, status="in_progress")
@@ -172,18 +192,23 @@ class BaseDownloader(ABC):
                 if df.empty:
                     logger.warning(f"[{tid}] {symbol}: No data returned")
                     self.manifest.set_entry(symbol, status="complete", rows=0)
+                    self._emit_event("download_complete", symbol=symbol, rows=0)
                     return (symbol, True, 0, None)
 
                 validate_schema(df, self._get_schema())
                 rows = self._save_partitioned(df, symbol)
                 self.manifest.set_entry(symbol, status="complete", rows=rows)
                 logger.info(f"[{tid}] {symbol}: Saved {rows:,} rows")
+                self._emit_event("download_complete", symbol=symbol, rows=rows)
                 return (symbol, True, rows, None)
 
             except SchemaValidationError as e:
                 error_msg = str(e)
                 logger.error(f"[{tid}] {symbol}: Schema error - {error_msg}")
                 self.manifest.set_entry(symbol, status="failed", error=error_msg)
+                self._emit_event(
+                    "download_failed", symbol=symbol, error=error_msg
+                )
                 return (symbol, False, 0, error_msg)
 
             except Exception as e:
@@ -204,6 +229,9 @@ class BaseDownloader(ABC):
                     self.manifest.set_entry(
                         symbol, status="failed", error=error_msg
                     )
+                    self._emit_event(
+                        "download_failed", symbol=symbol, error=error_msg
+                    )
                     return (symbol, False, 0, error_msg)
 
         return (symbol, False, 0, "Max retries exceeded")
@@ -219,6 +247,11 @@ class BaseDownloader(ABC):
         end_date = end_date or datetime.now().strftime("%Y-%m-%d")
         output_dir = self._get_output_dir()
         output_dir.mkdir(parents=True, exist_ok=True)
+        self._emit_event(
+            "pass_start",
+            subdir=self._get_storage_subdir(),
+            symbol_count=len(symbols),
+        )
 
         if skip_existing:
             existing = self.get_existing_symbols()
@@ -305,6 +338,14 @@ class BaseDownloader(ABC):
 
         elapsed = time.time() - start_time
         self.manifest.save()
+
+        self._emit_event(
+            "pass_end",
+            subdir=self._get_storage_subdir(),
+            succeeded=succeeded,
+            failed=len(failed_list),
+            total_rows=total_rows,
+        )
 
         return DownloadResult(
             total_symbols=len(symbols),
