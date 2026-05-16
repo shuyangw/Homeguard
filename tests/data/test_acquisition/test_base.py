@@ -352,3 +352,59 @@ class TestPeriodicManifestFlush:
     def test_manifest_flush_every_constant_is_25(self):
         from src.data.acquisition.base import BaseDownloader
         assert BaseDownloader.MANIFEST_FLUSH_EVERY == 25
+
+
+class TestRateLimitBackoff:
+    def test_429_triggers_extra_sleep_before_retry(self, monkeypatch):
+        from alpaca.common.exceptions import APIError
+
+        sleep_calls = []
+        monkeypatch.setattr(
+            "src.data.acquisition.base.time.sleep",
+            lambda s: sleep_calls.append(s),
+        )
+
+        # First call raises 429, second call returns valid df.
+        # APIError.status_code is a read-only property derived from the
+        # underlying http_error.response.status_code -- build a minimal
+        # mock chain so getattr(e, "status_code", None) returns 429.
+        mock_response = MagicMock()
+        mock_response.status_code = 429
+        mock_http_err = MagicMock()
+        mock_http_err.response = mock_response
+        api_err = APIError(
+            '{"code": 429, "message": "rate limited"}',
+            http_error=mock_http_err,
+        )
+        assert api_err.status_code == 429
+        call_count = [0]
+
+        def fetch_with_429(symbol, start, end):
+            call_count[0] += 1
+            if call_count[0] == 1:
+                raise api_err
+            return pd.DataFrame(
+                {
+                    "timestamp": pd.to_datetime(
+                        ["2024-01-02 09:30:00"], utc=True
+                    ),
+                    "open": [100.0], "high": [101.0], "low": [99.0],
+                    "close": [100.5], "volume": [1000.0],
+                    "trade_count": [50.0], "vwap": [100.2],
+                }
+            )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            plugin = StubPlugin(
+                fetch_fn=fetch_with_429,
+                output_dir=Path(tmpdir),
+                num_threads=1,
+                retry_delay=0.01,
+            )
+            plugin.download(["AAPL"], "2024-01-01", "2024-01-02")
+
+            assert call_count[0] >= 2
+            # Look for the extra 10s 429-specific sleep
+            assert any(s >= 10.0 for s in sleep_calls), (
+                f"Expected >=10s sleep after 429, got {sleep_calls}"
+            )
