@@ -28,10 +28,13 @@ load_dotenv()
 import logging
 
 import pandas as pd
+from alpaca.data.enums import Adjustment, DataFeed
 from alpaca.trading.client import TradingClient
 
 from src.api_key import API_KEY, API_SECRET
 from src.data.acquisition.alpaca_universe import list_active_us_equities
+from src.data.acquisition.plugins.alpaca_equities import AlpacaEquitiesPlugin
+from src.data.acquisition.status_tracker import rebuild_tracker, write_tracker_csv
 from src.settings import get_local_storage_dir, get_output_dir
 from src.utils.logger import get_logger
 
@@ -121,6 +124,75 @@ def setup_file_logger(log_path: Path) -> None:
     logging.getLogger().addHandler(file_handler)
 
 
+PASS_CONFIGS = {
+    "raw": (DataFeed.SIP, Adjustment.RAW, "equities_1min_sip_raw"),
+    "split": (DataFeed.SIP, Adjustment.SPLIT, "equities_1min_sip_split"),
+}
+
+
+def run_pass(
+    feed_name: str,
+    universe: list[str],
+    start: str,
+    end: str,
+    num_threads: int,
+    retry_failed: bool,
+) -> dict:
+    """Run one download pass; returns summary dict."""
+    data_feed, adjustment, subdir = PASS_CONFIGS[feed_name]
+    base_dir = get_local_storage_dir()
+
+    logger.info(
+        f"=== Pass '{feed_name}' starting: feed={data_feed.value} "
+        f"adjustment={adjustment.value} subdir={subdir} ==="
+    )
+    plugin = AlpacaEquitiesPlugin(
+        feed=data_feed,
+        adjustment=adjustment,
+        storage_subdir_override=subdir,
+        num_threads=num_threads,
+    )
+
+    reaped = plugin.manifest.reap_in_progress()
+    if reaped:
+        logger.info(f"Reaped {len(reaped)} in-progress entries to pending: {reaped[:10]}...")
+        plugin._emit_event("interrupted_reaped", subdir=subdir, count=len(reaped))
+
+    completed_symbols: set[str] = {
+        sym for sym, e in plugin.manifest.get_all_entries().items()
+        if e.get("status") == "complete"
+    }
+    failed_symbols: set[str] = {
+        sym for sym, e in plugin.manifest.get_all_entries().items()
+        if e.get("status") == "failed"
+    }
+
+    universe_set = set(universe)
+    symbols_remaining = sorted(universe_set - completed_symbols)
+    if retry_failed:
+        symbols_remaining = sorted(set(symbols_remaining) | failed_symbols)
+
+    logger.info(
+        f"[{feed_name}] {len(completed_symbols)} complete, "
+        f"{len(failed_symbols)} failed, {len(symbols_remaining)} to download"
+    )
+
+    result = plugin.download(symbols_remaining, start_date=start, end_date=end)
+
+    tracker_rows = rebuild_tracker(
+        base_dir=base_dir, subdir=subdir, universe=universe
+    )
+    tracker_path = base_dir / "_manifests" / f"{subdir}.status.csv"
+    write_tracker_csv(tracker_path, tracker_rows)
+
+    return {
+        "feed_name": feed_name,
+        "subdir": subdir,
+        "result": result,
+        "tracker_path": str(tracker_path),
+    }
+
+
 def main(argv=None) -> int:
     args = parse_args(argv)
 
@@ -150,6 +222,30 @@ def main(argv=None) -> int:
         logger.error(f"Universe resolution failed: {e}")
         return 3
     logger.info(f"Universe size: {len(universe)} symbols")
+
+    summaries = []
+    for feed_name in requested:
+        try:
+            summary = run_pass(
+                feed_name=feed_name,
+                universe=universe,
+                start=args.start,
+                end=args.end,
+                num_threads=args.threads,
+                retry_failed=args.retry_failed,
+            )
+            summaries.append(summary)
+        except KeyboardInterrupt:
+            logger.warning(f"Pass '{feed_name}' interrupted by user")
+            raise
+
+    for s in summaries:
+        r = s["result"]
+        logger.info(
+            f"[{s['feed_name']}] succeeded={r.succeeded} failed={r.failed} "
+            f"rows={r.total_rows:,} elapsed={r.elapsed_seconds:.1f}s "
+            f"tracker={s['tracker_path']}"
+        )
     return 0
 
 
