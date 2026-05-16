@@ -319,3 +319,36 @@ class TestAtomicParquetWrite:
                 / "year=2024" / "month=1" / "data.parquet"
             )
             assert not final_path.exists()
+
+
+class TestPeriodicManifestFlush:
+    def test_manifest_saved_periodically_during_run(self):
+        """Verify manifest.save() is called every MANIFEST_FLUSH_EVERY completions."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            plugin = StubPlugin(
+                output_dir=Path(tmpdir), num_threads=1
+            )
+            save_calls = []
+            original_save = plugin.manifest.save
+
+            def counting_save():
+                save_calls.append(len(save_calls))
+                return original_save()
+
+            plugin.manifest.save = counting_save
+
+            # 50 symbols, flush every 25 -> expect at least 2 mid-run saves
+            # plus the final save in download()
+            symbols = [f"SYM{i:03d}" for i in range(50)]
+            plugin.download(symbols, "2024-01-01", "2024-01-02")
+
+            # At least 2 flushes during the loop + 1 final = 3 total.
+            # Be lenient with timing-based flush.
+            assert len(save_calls) >= 3, (
+                f"Expected >=3 manifest saves for 50 symbols at flush_every=25, "
+                f"got {len(save_calls)}"
+            )
+
+    def test_manifest_flush_every_constant_is_25(self):
+        from src.data.acquisition.base import BaseDownloader
+        assert BaseDownloader.MANIFEST_FLUSH_EVERY == 25

@@ -55,6 +55,8 @@ class BaseDownloader(ABC):
     MAX_RETRIES = 3
     END_RETRY_ROUNDS = 3
     RETRY_DELAY = 5.0  # seconds
+    MANIFEST_FLUSH_EVERY = 25  # completions
+    MANIFEST_FLUSH_INTERVAL_SEC = 60.0
 
     def __init__(
         self,
@@ -231,6 +233,9 @@ class BaseDownloader(ABC):
         failed_list: List[Tuple[str, str]] = []
         total_rows = 0
 
+        last_flush_time = time.time()
+        completions_since_flush = 0
+
         with ThreadPoolExecutor(max_workers=self.num_threads) as executor:
             futures = {
                 executor.submit(
@@ -245,6 +250,16 @@ class BaseDownloader(ABC):
                     total_rows += rows
                 else:
                     failed_list.append((symbol, error or "Unknown"))
+
+                completions_since_flush += 1
+                now = time.time()
+                if (
+                    completions_since_flush >= self.MANIFEST_FLUSH_EVERY
+                    or now - last_flush_time >= self.MANIFEST_FLUSH_INTERVAL_SEC
+                ):
+                    self.manifest.save()
+                    completions_since_flush = 0
+                    last_flush_time = now
 
         # End-of-run retry rounds
         for retry_round in range(1, self.END_RETRY_ROUNDS + 1):
@@ -268,6 +283,17 @@ class BaseDownloader(ABC):
                         total_rows += rows
                     else:
                         failed_list.append((symbol, error or "Unknown"))
+
+                    completions_since_flush += 1
+                    now = time.time()
+                    if (
+                        completions_since_flush >= self.MANIFEST_FLUSH_EVERY
+                        or now - last_flush_time
+                        >= self.MANIFEST_FLUSH_INTERVAL_SEC
+                    ):
+                        self.manifest.save()
+                        completions_since_flush = 0
+                        last_flush_time = now
 
         elapsed = time.time() - start_time
         self.manifest.save()
