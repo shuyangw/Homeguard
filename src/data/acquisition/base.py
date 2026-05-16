@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any, List, Optional, Set, Tuple
 
 import pandas as pd
+from alpaca.common.exceptions import APIError
 
 from src.data.acquisition.manifest import DownloadManifest
 from src.data.acquisition.schemas import SchemaValidationError, validate_schema
@@ -191,7 +192,14 @@ class BaseDownloader(ABC):
                     f"[{tid}] {symbol}: Attempt {attempt} failed - {error_msg}"
                 )
                 if attempt < self.max_retries:
-                    time.sleep(self.retry_delay * attempt)
+                    base_delay = self.retry_delay * attempt
+                    if (
+                        isinstance(e, APIError)
+                        and getattr(e, "status_code", None) in (429, 500, 502, 503, 504)
+                    ):
+                        time.sleep(base_delay + 10.0)
+                    else:
+                        time.sleep(base_delay)
                 else:
                     self.manifest.set_entry(
                         symbol, status="failed", error=error_msg
