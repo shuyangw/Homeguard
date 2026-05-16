@@ -91,7 +91,7 @@ def resolve_universe(
     if symbols_from.lower() == "alpaca":
         date_str = datetime.utcnow().strftime("%Y%m%d")
         save_to = universe_dir / f"alpaca_active-{date_str}.csv"
-        client = TradingClient(API_KEY, API_SECRET, paper=False)
+        client = TradingClient(API_KEY, API_SECRET, paper=True)
         return list_active_us_equities(client, save_to=save_to)
 
     csv_path = Path(symbols_from)
