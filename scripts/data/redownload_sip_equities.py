@@ -193,7 +193,57 @@ def run_pass(
     }
 
 
+def write_session_summary(
+    summary_path: Path,
+    args: argparse.Namespace,
+    universe_size: int,
+    summaries: list[dict],
+    total_elapsed_sec: float,
+) -> None:
+    """Write final session summary markdown."""
+    summary_path.parent.mkdir(parents=True, exist_ok=True)
+
+    lines = [
+        f"# SIP Redownload Session Summary",
+        f"",
+        f"**Started**: {datetime.utcnow().isoformat()}Z",
+        f"**Universe size**: {universe_size}",
+        f"**Args**: threads={args.threads}, start={args.start}, end={args.end}, "
+        f"feeds={args.feeds}, retry_failed={args.retry_failed}",
+        f"**Total elapsed**: {total_elapsed_sec:.1f}s",
+        f"",
+        f"## Per-pass results",
+        f"",
+    ]
+    for s in summaries:
+        r = s["result"]
+        lines.extend([
+            f"### {s['feed_name']} (`{s['subdir']}`)",
+            f"",
+            f"- succeeded: {r.succeeded}",
+            f"- failed:    {r.failed}",
+            f"- total_rows: {r.total_rows:,}",
+            f"- elapsed:   {r.elapsed_seconds:.1f}s",
+            f"- tracker:   `{s['tracker_path']}`",
+            f"",
+        ])
+        if r.failed_symbols:
+            lines.append("**Failed symbols:**")
+            lines.append("")
+            for sym, err in r.failed_symbols[:50]:
+                lines.append(f"- `{sym}`: {err}")
+            if len(r.failed_symbols) > 50:
+                lines.append(f"- ... and {len(r.failed_symbols) - 50} more")
+            lines.append("")
+
+    summary_path.write_text("\n".join(lines), encoding="utf-8")
+    logger.info(f"Session summary written: {summary_path}")
+
+
 def main(argv=None) -> int:
+    import time as _time
+    run_start = _time.time()
+
     args = parse_args(argv)
 
     requested = [f.strip() for f in args.feeds.split(",") if f.strip()]
@@ -246,6 +296,15 @@ def main(argv=None) -> int:
             f"rows={r.total_rows:,} elapsed={r.elapsed_seconds:.1f}s "
             f"tracker={s['tracker_path']}"
         )
+
+    total_elapsed = _time.time() - run_start
+    summary_path = (
+        get_output_dir() / "data_acquisition"
+        / f"sip_redownload-{ts}-summary.md"
+    )
+    write_session_summary(
+        summary_path, args, len(universe), summaries, total_elapsed
+    )
     return 0
 
 
