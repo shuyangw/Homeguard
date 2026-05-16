@@ -143,3 +143,23 @@ class TestFeedAndAdjustment:
             # SDK uses None as "API default" sentinel for both
             assert request_arg.feed is None
             assert request_arg.adjustment is None
+
+
+class TestStorageSubdirOverride:
+    def test_override_routes_storage_subdir(self):
+        from src.data.acquisition.plugins.alpaca_equities import (
+            AlpacaEquitiesPlugin,
+        )
+
+        plugin = AlpacaEquitiesPlugin.__new__(AlpacaEquitiesPlugin)
+        plugin._storage_subdir_override = "equities_1min_sip_raw"
+        assert plugin._get_storage_subdir() == "equities_1min_sip_raw"
+
+    def test_no_override_returns_default(self):
+        from src.data.acquisition.plugins.alpaca_equities import (
+            AlpacaEquitiesPlugin,
+        )
+
+        plugin = AlpacaEquitiesPlugin.__new__(AlpacaEquitiesPlugin)
+        plugin._storage_subdir_override = None
+        assert plugin._get_storage_subdir() == "equities_1min"
