@@ -179,11 +179,18 @@ def run_pass(
 
     result = plugin.download(symbols_remaining, start_date=start, end_date=end)
 
-    tracker_rows = rebuild_tracker(
-        base_dir=base_dir, subdir=subdir, universe=universe
-    )
     tracker_path = base_dir / "_manifests" / f"{subdir}.status.csv"
-    write_tracker_csv(tracker_path, tracker_rows)
+    pass_did_work = bool(symbols_remaining) or bool(reaped)
+    if pass_did_work or not tracker_path.exists():
+        tracker_rows = rebuild_tracker(
+            base_dir=base_dir, subdir=subdir, universe=universe
+        )
+        write_tracker_csv(tracker_path, tracker_rows)
+    else:
+        logger.info(
+            f"[{feed_name}] No symbols downloaded and tracker CSV exists; "
+            f"skipping rebuild (saved tracker scan)"
+        )
 
     return {
         "feed_name": feed_name,
