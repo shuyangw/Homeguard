@@ -88,6 +88,40 @@ Validate a completed pass:
 - `84d898a` feat(scripts): validate_sip_dataset.py (OHLCV invariants + coverage + low-bar)
 - `5aa83ce` feat(scripts): compare_raw_vs_split.py cross-feed consistency check
 - `188a59d` test(data): SIP redownload end-to-end integration test (gated)
+- `32fcfba` fix(scripts): use paper trading endpoint for universe snapshot (env has paper keys)
+- `3176afd` perf(scripts): skip rebuild_tracker when pass had no work (saves ~50min on resume)
+
+## Full-universe pull results (2026-05-16/17)
+
+Executed the full ~10k-symbol pull. Pipeline ran successfully across two real-world
+crashes (terminal closed mid-run, deliberate kill mid-split to bump from 12 to 24
+threads). Resume worked correctly in both cases via the manifest reap + skip-existing
+mechanism — zero data lost, zero parquet corruption.
+
+| Metric | Raw pass | Split pass |
+|---|---|---|
+| Universe size | 12,345 | 12,345 |
+| `status=good` | 12,043 (97.6%) | 12,043 (97.6%) |
+| `status=incomplete` (zero-row, no SIP data) | 302 (2.4%) | 302 (2.4%) |
+| `status=failed` | **0** | **0** |
+| Total bars on disk | 3,022,010,033 | 3,022,010,033 |
+| Median bars per symbol | 74,484 | 74,484 |
+| Earliest first_date | 2016-01-01 | 2016-01-01 |
+| Latest last_date | 2026-05-16 | 2026-05-16 |
+| On-disk size | 94 GB | 90 GB |
+
+Combined ~6 billion 1-min SIP bars, ~184 GB total on H:. Identical bar counts and
+date ranges across passes (by design — adjustment changes prices but not timestamps
+or trade counts). 302 "incomplete" symbols are tickers where Alpaca had no SIP data
+at all (likely delisted pre-2016 or class-share variants).
+
+**Wall-clock summary**:
+- Raw pass: ~13h (including 1 crash + resume gap)
+- Inter-pass tracker rebuild: ~52 min
+- Split pass: ~8h (post-restart with 24 threads; ~3h with 12 threads pre-restart)
+- Total: ~24h with planned 12->24 thread bump mid-run
+
+**Frozen universe snapshot**: `config/universes/alpaca_active-20260516.csv` (12,346 symbols).
 
 ## Known Issues / Remaining Work
 
