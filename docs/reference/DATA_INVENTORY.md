@@ -163,6 +163,8 @@ All futures were pulled in the bulk plan execution on 2026-05-07. Plan source: `
 
 ## FX
 
+For a consolidated FX-only reference (all three FX datasets, CME FX futures, FX-adjacent ETFs, FRED rates, CFTC positioning, plus provider/auth/caveats), see [`FX_DATA.md`](FX_DATA.md). The sections below are the dataset-by-dataset slice; `FX_DATA.md` is the FX-domain summary.
+
 ### `fx_1min/`
 
 - **Schema**: `timestamp, open, high, low, close, volume, trade_count, vwap` (canonical OHLCV; `[ns, UTC]` -- off-spec but internally consistent)
