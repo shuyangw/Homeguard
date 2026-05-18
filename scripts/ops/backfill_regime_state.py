@@ -13,7 +13,7 @@ Spec: docs/superpowers/specs/2026-05-16-grafana-gap-backfill-design.md
 from __future__ import annotations
 
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Iterator, List, Tuple
 
 import pandas as pd
@@ -127,6 +127,34 @@ def iter_regime_history(
         close_ts = day_ts.normalize() + pd.Timedelta(hours=21)
         ts_ms = int(close_ts.timestamp() * 1000)
         yield ts_ms, state_code, sma_20, sma_50, sma_200, time_in_state
+
+
+def _build_provider():
+    """Construct the data provider chain. Extracted for testability."""
+    from src.data.providers.factory import create_data_provider
+    return create_data_provider()  # No broker needed for historical bars
+
+
+def fetch_spy_vix(since: datetime, until: datetime) -> Tuple[pd.Series, pd.Series]:
+    """Fetch SPY + VIX daily close series with 280-day warmup buffer.
+
+    Aborts the script (SystemExit) if either series is unavailable from both
+    Alpaca and yfinance fallback. The detector needs 252 days of VIX history
+    for percentile calculations, so a 280-trading-day warmup is requested.
+    """
+    from src.utils.logger import logger
+
+    fetch_start = since - timedelta(days=400)  # 280 trading days = ~400 calendar
+    provider = _build_provider()
+    spy_df = provider.get_historical_bars('SPY', fetch_start, until, timeframe='1D')
+    vix_df = provider.get_historical_bars('VIX', fetch_start, until, timeframe='1D')
+    if spy_df is None or spy_df.empty:
+        logger.error('[backfill] SPY data unavailable from all providers; aborting')
+        raise SystemExit(2)
+    if vix_df is None or vix_df.empty:
+        logger.error('[backfill] VIX data unavailable from all providers; aborting')
+        raise SystemExit(2)
+    return spy_df['close'], vix_df['close']
 
 
 def main() -> int:

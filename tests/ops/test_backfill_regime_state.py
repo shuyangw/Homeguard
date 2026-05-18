@@ -8,6 +8,7 @@ from scripts.ops.backfill_regime_state import (
     format_regime_lines,
     classify_with_indicators,
     iter_regime_history,
+    fetch_spy_vix,
 )
 
 
@@ -135,3 +136,21 @@ def test_time_in_state_resets_on_regime_change(monkeypatch):
     assert time_in_state[2] == 2 * one_day
     assert time_in_state[3] == 0
     assert time_in_state[4] == one_day
+
+
+def test_fetch_spy_vix_aborts_when_vix_missing(monkeypatch):
+    """If neither Alpaca nor yfinance can serve VIX, abort with non-zero exit."""
+    class FakeProvider:
+        def get_historical_bars(self, symbol, start, end, timeframe='1D', **kw):
+            if symbol == 'SPY':
+                idx = pd.date_range('2024-01-01', periods=300, freq='B')
+                return pd.DataFrame({'close': 400.0 + np.arange(300) * 0.1}, index=idx)
+            return None  # No VIX from any provider
+
+    monkeypatch.setattr(
+        'scripts.ops.backfill_regime_state._build_provider',
+        lambda: FakeProvider(),
+    )
+    with pytest.raises(SystemExit) as exc_info:
+        fetch_spy_vix(datetime(2024, 1, 1), datetime(2024, 12, 31))
+    assert exc_info.value.code != 0
