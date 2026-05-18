@@ -253,6 +253,19 @@ def test_main_dry_run_writes_to_stdout_no_post(monkeypatch, capsys):
     assert posted == []  # dry-run: no POST
 
 
+def test_post_openmetrics_aborts_on_url_error(monkeypatch):
+    """VM POST failure raises SystemExit with non-zero code."""
+    import urllib.error
+    from scripts.ops.backfill_regime_state import _post_openmetrics
+    monkeypatch.setattr(
+        'scripts.ops.backfill_regime_state.urllib.request.urlopen',
+        lambda *a, **kw: (_ for _ in ()).throw(urllib.error.URLError('Connection refused')),
+    )
+    with pytest.raises(SystemExit) as exc_info:
+        _post_openmetrics(b'fake metrics body\n')
+    assert exc_info.value.code != 0
+
+
 def test_main_aborts_when_no_since_and_vm_empty(monkeypatch):
     """If --since absent and VM has no samples, abort."""
     monkeypatch.setattr(

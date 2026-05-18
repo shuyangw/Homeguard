@@ -213,9 +213,13 @@ def _post_openmetrics(body: bytes) -> None:
         headers={'Content-Type': 'text/plain'},
         method='POST',
     )
-    with urllib.request.urlopen(req) as resp:
-        from src.utils.logger import logger
-        logger.info(f'[backfill] VM response: {resp.status} {resp.reason}')
+    from src.utils.logger import logger
+    try:
+        with urllib.request.urlopen(req) as resp:
+            logger.info(f'[backfill] VM response: {resp.status} {resp.reason}')
+    except urllib.error.URLError as exc:
+        logger.error(f'[backfill] VM POST failed ({VM_URL}): {exc}')
+        raise SystemExit(2)
 
 
 def _parse_args(argv=None):

@@ -99,7 +99,9 @@ def main() -> int:
             continue
         _post_annotation(args.grafana_url, args.api_key, args.dashboard_uid, entry)
         created += 1
-    print(f'sync_grafana_annotations: {created} new, {len(spec) - created} already present')
+    # Stdlib-only; not using src.utils.logger to keep the script importable
+    # without project dependencies. sys.stdout for consistent piping.
+    sys.stdout.write(f'sync_grafana_annotations: {created} new, {len(spec) - created} already present\n')
     return 0
 
 
