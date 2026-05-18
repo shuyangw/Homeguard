@@ -152,6 +152,7 @@ gui_config/  # legacy; now under artifacts/gui/
 !examples/**/*.json
 !tests/**/*.json
 !config/monitoring/grafana/dashboards/*.json
+!config/monitoring/grafana/annotations/*.json
 
 # ============================================================================
 # USER-SPECIFIC FILES
