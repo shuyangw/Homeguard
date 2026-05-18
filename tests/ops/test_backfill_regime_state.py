@@ -223,3 +223,44 @@ def test_query_vm_earliest_sample_picks_min_across_series():
         mock_open.return_value.__enter__.return_value = mock_resp
         earliest = query_vm_earliest_sample('hg_regime_state_code')
     assert earliest == datetime.utcfromtimestamp(1714435200)
+
+
+def test_main_dry_run_writes_to_stdout_no_post(monkeypatch, capsys):
+    """--dry-run prints OpenMetrics body to stdout and skips the POST."""
+    spy, vix = _synthetic_spy_vix(n=300)
+    monkeypatch.setattr(
+        'scripts.ops.backfill_regime_state.fetch_spy_vix',
+        lambda since, until: (spy, vix),
+    )
+    monkeypatch.setattr(
+        'scripts.ops.backfill_regime_state.classify_with_indicators',
+        lambda rs, s, v: (3, 100.0, 99.0, 98.0),
+    )
+    posted = []
+    monkeypatch.setattr(
+        'scripts.ops.backfill_regime_state._post_openmetrics',
+        lambda body: posted.append(body),
+    )
+    monkeypatch.setattr(
+        'sys.argv',
+        ['backfill_regime_state.py', '--since', '2024-08-01', '--until', '2024-08-07', '--dry-run'],
+    )
+    from scripts.ops.backfill_regime_state import main
+    rc = main()
+    assert rc == 0
+    captured = capsys.readouterr()
+    assert 'hg_regime_state_code' in captured.out
+    assert posted == []  # dry-run: no POST
+
+
+def test_main_aborts_when_no_since_and_vm_empty(monkeypatch):
+    """If --since absent and VM has no samples, abort."""
+    monkeypatch.setattr(
+        'scripts.ops.backfill_regime_state.query_vm_earliest_sample',
+        lambda name: None,
+    )
+    monkeypatch.setattr('sys.argv', ['backfill_regime_state.py'])
+    from scripts.ops.backfill_regime_state import main
+    with pytest.raises(SystemExit) as exc_info:
+        main()
+    assert exc_info.value.code != 0

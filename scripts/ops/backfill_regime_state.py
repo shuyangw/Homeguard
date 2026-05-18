@@ -12,6 +12,7 @@ Spec: docs/superpowers/specs/2026-05-16-grafana-gap-backfill-design.md
 
 from __future__ import annotations
 
+import argparse
 import json
 import sys
 import urllib.error
@@ -205,7 +206,63 @@ def query_vm_earliest_sample(metric_name: str) -> Optional[datetime]:
     return datetime.utcfromtimestamp(earliest)
 
 
+def _post_openmetrics(body: bytes) -> None:
+    """POST OpenMetrics body to VictoriaMetrics import endpoint."""
+    req = urllib.request.Request(
+        VM_URL, data=body,
+        headers={'Content-Type': 'text/plain'},
+        method='POST',
+    )
+    with urllib.request.urlopen(req) as resp:
+        from src.utils.logger import logger
+        logger.info(f'[backfill] VM response: {resp.status} {resp.reason}')
+
+
+def _parse_args(argv=None):
+    p = argparse.ArgumentParser(description='Backfill regime state into VictoriaMetrics.')
+    p.add_argument('--since', type=str, default=None,
+                   help='YYYY-MM-DD. Defaults to earliest existing sample in VM.')
+    p.add_argument('--until', type=str, default=None,
+                   help='YYYY-MM-DD. Defaults to today (UTC).')
+    p.add_argument('--dry-run', action='store_true',
+                   help='Print OpenMetrics body to stdout; skip VM POST.')
+    return p.parse_args(argv)
+
+
 def main() -> int:
+    from src.utils.logger import logger
+    args = _parse_args()
+
+    # Resolve since/until
+    if args.since:
+        since = datetime.strptime(args.since, '%Y-%m-%d')
+    else:
+        since = query_vm_earliest_sample('hg_regime_state_code')
+        if since is None:
+            logger.error(
+                '[backfill] No --since provided and VM has no existing samples '
+                'for hg_regime_state_code. Pass --since YYYY-MM-DD explicitly.'
+            )
+            raise SystemExit(2)
+    if args.until:
+        until = datetime.strptime(args.until, '%Y-%m-%d')
+    else:
+        until = datetime.utcnow()
+
+    logger.info(f'[backfill] Backfilling regime state from {since.date()} to {until.date()}')
+    spy_prices, vix_prices = fetch_spy_vix(since, until)
+    all_lines: List[str] = []
+    for ts_ms, code, sma_20, sma_50, sma_200, tis in iter_regime_history(
+        spy_prices, vix_prices, since, until,
+    ):
+        all_lines.extend(format_regime_lines(ts_ms, code, sma_20, sma_50, sma_200, tis))
+
+    body = ('\n'.join(all_lines) + '\n').encode('utf-8')
+    if args.dry_run:
+        sys.stdout.write(body.decode('utf-8'))
+        return 0
+    logger.info(f'[backfill] Posting {len(all_lines)} lines to {VM_URL}')
+    _post_openmetrics(body)
     return 0
 
 
