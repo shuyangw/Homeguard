@@ -20,6 +20,8 @@ import pandas as pd
 
 LABEL_BASE = 'instance="127.0.0.1:8082",job="homeguard-ramp"'
 VM_URL = 'http://127.0.0.1:8428/api/v1/import/prometheus'
+VIX_SYMBOL = '^VIX'  # yfinance convention; CBOE volatility index
+SPY_SYMBOL = 'SPY'
 
 
 def format_regime_lines(
@@ -146,13 +148,13 @@ def fetch_spy_vix(since: datetime, until: datetime) -> Tuple[pd.Series, pd.Serie
 
     fetch_start = since - timedelta(days=400)  # 280 trading days = ~400 calendar
     provider = _build_provider()
-    spy_df = provider.get_historical_bars('SPY', fetch_start, until, timeframe='1D')
-    vix_df = provider.get_historical_bars('VIX', fetch_start, until, timeframe='1D')
+    spy_df = provider.get_historical_bars(SPY_SYMBOL, fetch_start, until, timeframe='1D')
+    vix_df = provider.get_historical_bars(VIX_SYMBOL, fetch_start, until, timeframe='1D')
     if spy_df is None or spy_df.empty:
-        logger.error('[backfill] SPY data unavailable from all providers; aborting')
+        logger.error(f'[backfill] SPY data unavailable ({SPY_SYMBOL}) from all providers; aborting')
         raise SystemExit(2)
     if vix_df is None or vix_df.empty:
-        logger.error('[backfill] VIX data unavailable from all providers; aborting')
+        logger.error(f'[backfill] VIX data unavailable ({VIX_SYMBOL}) from all providers; aborting')
         raise SystemExit(2)
     return spy_df['close'], vix_df['close']
 

@@ -145,7 +145,10 @@ def test_fetch_spy_vix_aborts_when_vix_missing(monkeypatch):
             if symbol == 'SPY':
                 idx = pd.date_range('2024-01-01', periods=300, freq='B')
                 return pd.DataFrame({'close': 400.0 + np.arange(300) * 0.1}, index=idx)
-            return None  # No VIX from any provider
+            elif symbol == '^VIX':
+                return None  # explicit VIX-missing case
+            else:
+                raise AssertionError(f"Unexpected symbol: {symbol}")
 
     monkeypatch.setattr(
         'scripts.ops.backfill_regime_state._build_provider',
