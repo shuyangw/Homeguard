@@ -194,3 +194,32 @@ def test_query_vm_earliest_sample_returns_none_when_empty():
         mock_resp.read.return_value = json.dumps(fake_response).encode()
         mock_open.return_value.__enter__.return_value = mock_resp
         assert query_vm_earliest_sample('hg_regime_state_code') is None
+
+
+def test_query_vm_earliest_sample_aborts_on_connection_error():
+    """Raises SystemExit when VM is unreachable."""
+    import urllib.error
+    with patch('scripts.ops.backfill_regime_state.urllib.request.urlopen',
+               side_effect=urllib.error.URLError('Connection refused')):
+        with pytest.raises(SystemExit) as exc_info:
+            query_vm_earliest_sample('hg_regime_state_code')
+        assert exc_info.value.code != 0
+
+
+def test_query_vm_earliest_sample_picks_min_across_series():
+    """Multi-series response: returns the earliest timestamp across all entries."""
+    fake_response = {
+        'status': 'success',
+        'data': {
+            'result': [
+                {'metric': {'instance': 'old'}, 'values': [[1714608000, '3']]},
+                {'metric': {'instance': 'new'}, 'values': [[1714435200, '3']]},  # earlier
+            ],
+        },
+    }
+    with patch('scripts.ops.backfill_regime_state.urllib.request.urlopen') as mock_open:
+        mock_resp = MagicMock()
+        mock_resp.read.return_value = json.dumps(fake_response).encode()
+        mock_open.return_value.__enter__.return_value = mock_resp
+        earliest = query_vm_earliest_sample('hg_regime_state_code')
+    assert earliest == datetime.utcfromtimestamp(1714435200)

@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import sys
+import urllib.error
 import urllib.parse
 import urllib.request
 from datetime import datetime, timedelta
@@ -164,31 +165,44 @@ def fetch_spy_vix(since: datetime, until: datetime) -> Tuple[pd.Series, pd.Serie
 
 
 def query_vm_earliest_sample(metric_name: str) -> Optional[datetime]:
-    """Query VM for the earliest existing sample of `metric_name`.
+    """Query VM for the earliest existing sample of `metric_name` from the
+    RAMP scrape (job="homeguard-ramp"). Scans all returned series and returns
+    the minimum timestamp across them, or None if no samples exist.
 
-    Uses a 1-year range query at large step to keep response small. Returns
-    None when the metric has no samples in VM.
+    Uses a 1-year range query at hourly resolution.
     """
     end = datetime.utcnow()
     start = end - timedelta(days=365)
+    selector = f'{metric_name}{{job="homeguard-ramp"}}'
     params = urllib.parse.urlencode({
-        'query': metric_name,
+        'query': selector,
         'start': int(start.timestamp()),
         'end': int(end.timestamp()),
-        'step': '3600',  # 1-hour resolution; we only need the earliest tick
+        'step': '3600',
     })
     url = f'{VM_QUERY_RANGE_URL}?{params}'
     req = urllib.request.Request(url, method='GET')
-    with urllib.request.urlopen(req) as resp:
-        body = json.loads(resp.read().decode())
+    try:
+        with urllib.request.urlopen(req) as resp:
+            body = json.loads(resp.read().decode())
+    except urllib.error.URLError as exc:
+        from src.utils.logger import logger
+        logger.error(f'[backfill] VM unreachable at {VM_QUERY_RANGE_URL}: {exc}')
+        raise SystemExit(2)
     result = body.get('data', {}).get('result') or []
     if not result:
         return None
-    values = result[0].get('values') or []
-    if not values:
+    earliest = None
+    for entry in result:
+        values = entry.get('values') or []
+        if not values:
+            continue
+        ts = float(values[0][0])
+        if earliest is None or ts < earliest:
+            earliest = ts
+    if earliest is None:
         return None
-    earliest_unix = float(values[0][0])
-    return datetime.utcfromtimestamp(earliest_unix)
+    return datetime.utcfromtimestamp(earliest)
 
 
 def main() -> int:
