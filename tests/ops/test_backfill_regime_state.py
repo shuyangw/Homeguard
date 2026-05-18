@@ -31,8 +31,11 @@ def test_format_regime_lines_produces_five_metrics():
 
 
 def _synthetic_spy_vix(n: int = 300):
-    """Generate enough SPY+VIX history for the detector's 252-day warmup."""
-    idx = pd.date_range('2024-01-01', periods=n, freq='B', tz='America/New_York')
+    """Generate enough SPY+VIX history for the detector's 252-day warmup.
+
+    Uses session-open-like timestamps (09:30 in NY tz) to match real Alpaca daily bars.
+    """
+    idx = pd.date_range('2024-01-01', periods=n, freq='B', tz='America/New_York') + pd.Timedelta(hours=9, minutes=30)
     spy = pd.Series(
         400.0 + np.arange(n, dtype=float) * 0.1,  # gentle uptrend
         index=idx, name='spy',
@@ -84,6 +87,24 @@ def test_iter_regime_history_skips_non_trading_days(monkeypatch):
     # Timestamps are sorted ascending
     timestamps = [r[0] for r in results]
     assert timestamps == sorted(timestamps)
+
+
+def test_iter_regime_history_includes_until_day_with_session_open_timestamps(monkeypatch):
+    """Regression: Alpaca daily bars (09:30 ET timestamps) must include until day."""
+    spy, vix = _synthetic_spy_vix(n=300)
+    monkeypatch.setattr(
+        'scripts.ops.backfill_regime_state.classify_with_indicators',
+        lambda rs, s, v: (3, 100.0, 99.0, 98.0),
+    )
+    since = datetime(2024, 8, 1)
+    until = datetime(2024, 8, 7)
+    results = list(iter_regime_history(spy, vix, since, until))
+    # Aug 7 is Wednesday; with session-open timestamps the bar MUST be included.
+    assert len(results) == 5
+    last_ts_ms = results[-1][0]
+    # The last timestamp should fall on Aug 7 (UTC): 2024-08-07 21:00 UTC = 1723064400 sec
+    expected_last = int(pd.Timestamp('2024-08-07 21:00:00+00:00').timestamp() * 1000)
+    assert last_ts_ms == expected_last
 
 
 def test_time_in_state_resets_on_regime_change(monkeypatch):

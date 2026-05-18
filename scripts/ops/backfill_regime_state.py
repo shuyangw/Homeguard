@@ -91,10 +91,16 @@ def iter_regime_history(
     ramp = RAMPSignals(symbols=[])
 
     # Trading days = SPY index entries inside [since, until]
-    since_ts = pd.Timestamp(since).tz_localize(None) if pd.Timestamp(since).tz is None else pd.Timestamp(since)
-    until_ts = pd.Timestamp(until).tz_localize(None) if pd.Timestamp(until).tz is None else pd.Timestamp(until)
+    since_ts = pd.Timestamp(since)
+    if since_ts.tz is not None:
+        since_ts = since_ts.tz_localize(None)
+    until_ts = pd.Timestamp(until)
+    if until_ts.tz is not None:
+        until_ts = until_ts.tz_localize(None)
     spy_index_naive = spy_prices.index.tz_localize(None) if spy_prices.index.tz is not None else spy_prices.index
-    mask = (spy_index_naive >= since_ts.normalize()) & (spy_index_naive <= until_ts.normalize())
+    # Upper bound is until_ts.normalize() + 1 day so Alpaca daily bars timestamped
+    # at session-open (09:30 ET = 13:30 UTC) on the until day are included.
+    mask = (spy_index_naive >= since_ts.normalize()) & (spy_index_naive <= until_ts.normalize() + pd.Timedelta(days=1))
     trading_days = spy_prices.index[mask]
 
     prev_state_code: int = -1
@@ -109,8 +115,16 @@ def iter_regime_history(
             prev_change_day = i
             prev_state_code = state_code
         time_in_state = (i - prev_change_day) * 24 * 3600.0
-        # 21:00 UTC = 16:00 ET = market close
-        close_ts = pd.Timestamp(day).normalize() + pd.Timedelta(hours=21)
+        # 21:00 UTC = 16:00 ET = market close.
+        # Build close_ts in UTC explicitly: tz-naive .timestamp() treats the value as
+        # local wall-clock time (host-dependent). If `day` is tz-aware, convert to UTC
+        # then normalize to UTC-midnight before adding 21h. If naive, localize to UTC.
+        day_ts = pd.Timestamp(day)
+        if day_ts.tz is not None:
+            day_ts = day_ts.tz_convert('UTC')
+        else:
+            day_ts = day_ts.tz_localize('UTC')
+        close_ts = day_ts.normalize() + pd.Timedelta(hours=21)
         ts_ms = int(close_ts.timestamp() * 1000)
         yield ts_ms, state_code, sma_20, sma_50, sma_200, time_in_state
 
