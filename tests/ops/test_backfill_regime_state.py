@@ -1,8 +1,14 @@
 """Tests for scripts/ops/backfill_regime_state.py."""
+from datetime import datetime
+
 import pandas as pd
 import numpy as np
 import pytest
-from scripts.ops.backfill_regime_state import format_regime_lines, classify_with_indicators
+from scripts.ops.backfill_regime_state import (
+    format_regime_lines,
+    classify_with_indicators,
+    iter_regime_history,
+)
 
 
 def test_format_regime_lines_produces_five_metrics():
@@ -55,3 +61,56 @@ def test_classify_with_indicators_returns_known_keys():
     assert sma_20 > 0
     assert sma_50 > 0
     assert sma_200 > 0
+
+
+def test_iter_regime_history_skips_non_trading_days(monkeypatch):
+    """Iterator emits one tuple per Alpaca-returned trading day, weekends skipped."""
+    spy, vix = _synthetic_spy_vix(n=300)
+    # Use a fixed-classifier mock so we focus on date iteration.
+    def fake_classify(rs, s, v):
+        return 3, 100.0, 99.0, 98.0
+    monkeypatch.setattr(
+        'scripts.ops.backfill_regime_state.classify_with_indicators',
+        fake_classify,
+    )
+    since = datetime(2024, 8, 1)
+    until = datetime(2024, 8, 7)  # Thursday
+    results = list(iter_regime_history(spy, vix, since, until))
+    # Aug 1-7 has 5 trading days (no holidays in that window)
+    assert len(results) == 5
+    for ts_ms, code, sma_20, sma_50, sma_200, tis in results:
+        assert code == 3
+        assert sma_20 == 100.0
+    # Timestamps are sorted ascending
+    timestamps = [r[0] for r in results]
+    assert timestamps == sorted(timestamps)
+
+
+def test_time_in_state_resets_on_regime_change(monkeypatch):
+    """time_in_state seconds reset to 0 when regime_name transitions."""
+    spy, vix = _synthetic_spy_vix(n=300)
+    # Inject a regime sequence: 3, 3, 3, 2, 2 - change on the 4th observation.
+    sequence = iter([
+        (3, 100.0, 99.0, 98.0),
+        (3, 101.0, 99.0, 98.0),
+        (3, 102.0, 99.0, 98.0),
+        (2, 103.0, 99.0, 98.0),
+        (2, 104.0, 99.0, 98.0),
+    ])
+    monkeypatch.setattr(
+        'scripts.ops.backfill_regime_state.classify_with_indicators',
+        lambda rs, s, v: next(sequence),
+    )
+    since = datetime(2024, 8, 1)
+    until = datetime(2024, 8, 7)
+    results = list(iter_regime_history(spy, vix, since, until))
+    assert len(results) == 5
+    time_in_state = [r[5] for r in results]
+    # Day 1: 0 (first observation), Day 2: 1 day, Day 3: 2 days,
+    # Day 4: regime change -> 0, Day 5: 1 day
+    one_day = 24 * 3600
+    assert time_in_state[0] == 0
+    assert time_in_state[1] == one_day
+    assert time_in_state[2] == 2 * one_day
+    assert time_in_state[3] == 0
+    assert time_in_state[4] == one_day

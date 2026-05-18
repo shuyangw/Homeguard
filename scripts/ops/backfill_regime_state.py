@@ -13,7 +13,8 @@ Spec: docs/superpowers/specs/2026-05-16-grafana-gap-backfill-design.md
 from __future__ import annotations
 
 import sys
-from typing import List, Tuple
+from datetime import datetime
+from typing import Iterator, List, Tuple
 
 import pandas as pd
 
@@ -70,6 +71,48 @@ def classify_with_indicators(
     sma_50 = float(indicators.get('sma_50') or 0.0)
     sma_200 = float(indicators.get('sma_200') or 0.0)
     return state_code, sma_20, sma_50, sma_200
+
+
+def iter_regime_history(
+    spy_prices: pd.Series,
+    vix_prices: pd.Series,
+    since: datetime,
+    until: datetime,
+) -> Iterator[Tuple[int, int, float, float, float, float]]:
+    """Yield (timestamp_ms, state_code, sma_20, sma_50, sma_200, time_in_state).
+
+    One sample per trading day in [since, until]. Trading days are inferred from
+    the index of `spy_prices` (Alpaca-returned bars). Time-in-state seconds are
+    tracked across the loop and reset to 0 on each regime transition.
+
+    Timestamp for each sample is 21:00 UTC (NYSE close) on the trading day.
+    """
+    from src.strategies.advanced.ramp_strategy import RAMPSignals
+    ramp = RAMPSignals(symbols=[])
+
+    # Trading days = SPY index entries inside [since, until]
+    since_ts = pd.Timestamp(since).tz_localize(None) if pd.Timestamp(since).tz is None else pd.Timestamp(since)
+    until_ts = pd.Timestamp(until).tz_localize(None) if pd.Timestamp(until).tz is None else pd.Timestamp(until)
+    spy_index_naive = spy_prices.index.tz_localize(None) if spy_prices.index.tz is not None else spy_prices.index
+    mask = (spy_index_naive >= since_ts.normalize()) & (spy_index_naive <= until_ts.normalize())
+    trading_days = spy_prices.index[mask]
+
+    prev_state_code: int = -1
+    prev_change_day: int = 0  # index into trading_days where last change happened
+    for i, day in enumerate(trading_days):
+        spy_slice = spy_prices.loc[:day]
+        vix_slice = vix_prices.loc[:day]
+        state_code, sma_20, sma_50, sma_200 = classify_with_indicators(
+            ramp, spy_slice, vix_slice,
+        )
+        if state_code != prev_state_code:
+            prev_change_day = i
+            prev_state_code = state_code
+        time_in_state = (i - prev_change_day) * 24 * 3600.0
+        # 21:00 UTC = 16:00 ET = market close
+        close_ts = pd.Timestamp(day).normalize() + pd.Timedelta(hours=21)
+        ts_ms = int(close_ts.timestamp() * 1000)
+        yield ts_ms, state_code, sma_20, sma_50, sma_200, time_in_state
 
 
 def main() -> int:
