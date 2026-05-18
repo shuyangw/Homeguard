@@ -297,6 +297,10 @@ docs/*
 !docs/trading/
 !docs/trading/**
 
+# KEEP: Cross-cutting operator runbooks (backfill, ops procedures)
+!docs/runbooks/
+!docs/runbooks/**
+
 # KEEP: Methodology (authoritative backtesting / statistics / portfolio rules)
 !docs/methodology/
 !docs/methodology/**
