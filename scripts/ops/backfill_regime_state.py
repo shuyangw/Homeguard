@@ -49,7 +49,16 @@ def classify_with_indicators(
     Mirrors the live emission path in scripts/trading/run_live_paper_trading.py:
     _emit_strategy_specific_metrics. state_code maps via MarketRegimeDetector.REGIMES
     (1-indexed; unknown regime falls back to 0).
+
+    Precondition: both spy_prices and vix_prices must contain at least 252 rows;
+    otherwise the underlying detector short-circuits and SMA indicators would be zero.
     """
+    if len(spy_prices) < 252 or len(vix_prices) < 252:
+        raise ValueError(
+            f"classify_with_indicators requires >= 252 rows for both series "
+            f"(got spy={len(spy_prices)}, vix={len(vix_prices)}; threshold=252)"
+        )
+
     from src.strategies.advanced.market_regime_detector import MarketRegimeDetector
 
     regime_name, _ = ramp_signals.detect_regime(spy_prices, vix_prices)

@@ -1,6 +1,7 @@
 """Tests for scripts/ops/backfill_regime_state.py."""
 import pandas as pd
 import numpy as np
+import pytest
 from scripts.ops.backfill_regime_state import format_regime_lines, classify_with_indicators
 
 
@@ -35,6 +36,13 @@ def _synthetic_spy_vix(n: int = 300):
         index=idx, name='vix',
     )
     return spy, vix
+
+
+def test_classify_with_indicators_raises_on_short_input():
+    short_spy = pd.Series([1.0] * 100, index=pd.date_range('2024-01-01', periods=100, freq='B'))
+    short_vix = pd.Series([15.0] * 100, index=pd.date_range('2024-01-01', periods=100, freq='B'))
+    with pytest.raises(ValueError, match="252"):
+        classify_with_indicators(None, short_spy, short_vix)
 
 
 def test_classify_with_indicators_returns_known_keys():
