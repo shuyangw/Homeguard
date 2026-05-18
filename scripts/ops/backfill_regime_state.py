@@ -12,14 +12,18 @@ Spec: docs/superpowers/specs/2026-05-16-grafana-gap-backfill-design.md
 
 from __future__ import annotations
 
+import json
 import sys
+import urllib.parse
+import urllib.request
 from datetime import datetime, timedelta
-from typing import Iterator, List, Tuple
+from typing import Iterator, List, Optional, Tuple
 
 import pandas as pd
 
 LABEL_BASE = 'instance="127.0.0.1:8082",job="homeguard-ramp"'
 VM_URL = 'http://127.0.0.1:8428/api/v1/import/prometheus'
+VM_QUERY_RANGE_URL = 'http://127.0.0.1:8428/api/v1/query_range'
 VIX_SYMBOL = '^VIX'  # yfinance convention; CBOE volatility index
 SPY_SYMBOL = 'SPY'
 
@@ -157,6 +161,34 @@ def fetch_spy_vix(since: datetime, until: datetime) -> Tuple[pd.Series, pd.Serie
         logger.error(f'[backfill] VIX data unavailable ({VIX_SYMBOL}) from all providers; aborting')
         raise SystemExit(2)
     return spy_df['close'], vix_df['close']
+
+
+def query_vm_earliest_sample(metric_name: str) -> Optional[datetime]:
+    """Query VM for the earliest existing sample of `metric_name`.
+
+    Uses a 1-year range query at large step to keep response small. Returns
+    None when the metric has no samples in VM.
+    """
+    end = datetime.utcnow()
+    start = end - timedelta(days=365)
+    params = urllib.parse.urlencode({
+        'query': metric_name,
+        'start': int(start.timestamp()),
+        'end': int(end.timestamp()),
+        'step': '3600',  # 1-hour resolution; we only need the earliest tick
+    })
+    url = f'{VM_QUERY_RANGE_URL}?{params}'
+    req = urllib.request.Request(url, method='GET')
+    with urllib.request.urlopen(req) as resp:
+        body = json.loads(resp.read().decode())
+    result = body.get('data', {}).get('result') or []
+    if not result:
+        return None
+    values = result[0].get('values') or []
+    if not values:
+        return None
+    earliest_unix = float(values[0][0])
+    return datetime.utcfromtimestamp(earliest_unix)
 
 
 def main() -> int:

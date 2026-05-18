@@ -1,5 +1,7 @@
 """Tests for scripts/ops/backfill_regime_state.py."""
+import json
 from datetime import datetime
+from unittest.mock import patch, MagicMock
 
 import pandas as pd
 import numpy as np
@@ -9,6 +11,7 @@ from scripts.ops.backfill_regime_state import (
     classify_with_indicators,
     iter_regime_history,
     fetch_spy_vix,
+    query_vm_earliest_sample,
 )
 
 
@@ -157,3 +160,37 @@ def test_fetch_spy_vix_aborts_when_vix_missing(monkeypatch):
     with pytest.raises(SystemExit) as exc_info:
         fetch_spy_vix(datetime(2024, 1, 1), datetime(2024, 12, 31))
     assert exc_info.value.code != 0
+
+
+def test_query_vm_earliest_sample_parses_range_query_response():
+    """Parse the timestamp of the earliest sample for a metric from VM."""
+    fake_response = {
+        'status': 'success',
+        'data': {
+            'resultType': 'matrix',
+            'result': [{
+                'metric': {'__name__': 'hg_regime_state_code'},
+                'values': [
+                    [1714435200, '3'],
+                    [1714521600, '3'],
+                    [1714608000, '2'],
+                ],
+            }],
+        },
+    }
+    with patch('scripts.ops.backfill_regime_state.urllib.request.urlopen') as mock_open:
+        mock_resp = MagicMock()
+        mock_resp.read.return_value = json.dumps(fake_response).encode()
+        mock_open.return_value.__enter__.return_value = mock_resp
+        earliest = query_vm_earliest_sample('hg_regime_state_code')
+    assert earliest == datetime.utcfromtimestamp(1714435200)
+
+
+def test_query_vm_earliest_sample_returns_none_when_empty():
+    """Returns None when VM has no samples for the metric."""
+    fake_response = {'status': 'success', 'data': {'result': []}}
+    with patch('scripts.ops.backfill_regime_state.urllib.request.urlopen') as mock_open:
+        mock_resp = MagicMock()
+        mock_resp.read.return_value = json.dumps(fake_response).encode()
+        mock_open.return_value.__enter__.return_value = mock_resp
+        assert query_vm_earliest_sample('hg_regime_state_code') is None
