@@ -1,10 +1,11 @@
 """Alpaca equities plugin for the unified data acquisition module."""
 
 from datetime import datetime
-from typing import Any
+from typing import Any, Optional
 
 import pandas as pd
 from alpaca.data import StockHistoricalDataClient, TimeFrame
+from alpaca.data.enums import Adjustment, DataFeed
 from alpaca.data.requests import StockBarsRequest
 
 from src.api_key import API_KEY, API_SECRET
@@ -18,6 +19,18 @@ logger = get_logger(__name__)
 class AlpacaEquitiesPlugin(BaseDownloader):
     """Downloads equity OHLCV data from Alpaca."""
 
+    def __init__(
+        self,
+        feed: Optional[DataFeed] = None,
+        adjustment: Optional[Adjustment] = None,
+        storage_subdir_override: Optional[str] = None,
+        **kwargs: Any,
+    ):
+        self._feed = feed
+        self._adjustment = adjustment
+        self._storage_subdir_override = storage_subdir_override
+        super().__init__(**kwargs)
+
     def _create_client(self) -> Any:
         return StockHistoricalDataClient(API_KEY, API_SECRET)
 
@@ -29,6 +42,8 @@ class AlpacaEquitiesPlugin(BaseDownloader):
             timeframe=TimeFrame.Minute,
             start=datetime.strptime(start, "%Y-%m-%d"),
             end=datetime.strptime(end, "%Y-%m-%d"),
+            feed=self._feed,
+            adjustment=self._adjustment,
         )
         bars = client.get_stock_bars(request)
         df = bars.df
@@ -44,7 +59,7 @@ class AlpacaEquitiesPlugin(BaseDownloader):
         return CANONICAL_OHLCV_SCHEMA
 
     def _get_storage_subdir(self) -> str:
-        return "equities_1min"
+        return self._storage_subdir_override or "equities_1min"
 
     def _normalize_symbol(self, symbol: str) -> str:
         return symbol

@@ -152,6 +152,7 @@ gui_config/  # legacy; now under artifacts/gui/
 !examples/**/*.json
 !tests/**/*.json
 !config/monitoring/grafana/dashboards/*.json
+!config/monitoring/grafana/annotations/*.json
 
 # ============================================================================
 # USER-SPECIFIC FILES
@@ -295,6 +296,10 @@ docs/*
 # KEEP: Trading runbooks (operational procedures for live/paper trading)
 !docs/trading/
 !docs/trading/**
+
+# KEEP: Cross-cutting operator runbooks (backfill, ops procedures)
+!docs/runbooks/
+!docs/runbooks/**
 
 # KEEP: Methodology (authoritative backtesting / statistics / portfolio rules)
 !docs/methodology/

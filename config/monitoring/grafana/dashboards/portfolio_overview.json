@@ -1,6 +1,26 @@
 {
   "annotations": {
-    "list": []
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {"type": "grafana", "uid": "-- Grafana --"},
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      },
+      {
+        "datasource": {"type": "grafana", "uid": "-- Grafana --"},
+        "enable": true,
+        "iconColor": "rgba(255, 96, 96, 0.6)",
+        "limit": 100,
+        "matchAny": false,
+        "name": "Instance Offline",
+        "tags": ["instance-off"],
+        "type": "tags"
+      }
+    ]
   },
   "editable": true,
   "fiscalYearStartMonth": 0,

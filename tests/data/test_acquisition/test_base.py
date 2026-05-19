@@ -250,3 +250,205 @@ class TestManifestIntegration:
             entry = plugin2.manifest.get_entry("AAPL")
             assert entry is not None
             assert entry["status"] == "complete"
+
+
+class TestAtomicParquetWrite:
+    def test_save_partitioned_writes_via_tmp_then_rename(self, monkeypatch):
+        """Verify _save_partitioned writes to .tmp file first, then atomically renames."""
+        import os
+        with tempfile.TemporaryDirectory() as tmpdir:
+            plugin = StubPlugin(output_dir=Path(tmpdir))
+            df = pd.DataFrame(
+                {
+                    "timestamp": pd.to_datetime(
+                        ["2024-01-02 09:30:00"], utc=True
+                    ),
+                    "open": [100.0], "high": [101.0], "low": [99.0],
+                    "close": [100.5], "volume": [1000.0],
+                    "trade_count": [50.0], "vwap": [100.2],
+                }
+            )
+
+            tmp_paths_seen = []
+            real_to_parquet = pd.DataFrame.to_parquet
+
+            def capture_tmp(self, path, *args, **kwargs):
+                tmp_paths_seen.append(str(path))
+                return real_to_parquet(self, path, *args, **kwargs)
+
+            monkeypatch.setattr(pd.DataFrame, "to_parquet", capture_tmp)
+
+            plugin._save_partitioned(df, "AAPL")
+
+            assert tmp_paths_seen, "to_parquet was never called"
+            assert all(p.endswith(".tmp") for p in tmp_paths_seen), (
+                f"Expected all writes to .tmp paths, got: {tmp_paths_seen}"
+            )
+            final_path = (
+                Path(tmpdir) / "test_data" / "symbol=AAPL"
+                / "year=2024" / "month=1" / "data.parquet"
+            )
+            assert final_path.exists()
+            assert not Path(str(final_path) + ".tmp").exists()
+
+    def test_save_partitioned_no_partial_file_on_failure(self, monkeypatch):
+        """Simulated kill in to_parquet leaves no data.parquet."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            plugin = StubPlugin(output_dir=Path(tmpdir))
+            df = pd.DataFrame(
+                {
+                    "timestamp": pd.to_datetime(
+                        ["2024-01-02 09:30:00"], utc=True
+                    ),
+                    "open": [100.0], "high": [101.0], "low": [99.0],
+                    "close": [100.5], "volume": [1000.0],
+                    "trade_count": [50.0], "vwap": [100.2],
+                }
+            )
+
+            def boom(self, path, *args, **kwargs):
+                raise OSError("simulated kill")
+
+            monkeypatch.setattr(pd.DataFrame, "to_parquet", boom)
+
+            with pytest.raises(OSError):
+                plugin._save_partitioned(df, "AAPL")
+
+            final_path = (
+                Path(tmpdir) / "test_data" / "symbol=AAPL"
+                / "year=2024" / "month=1" / "data.parquet"
+            )
+            assert not final_path.exists()
+
+
+class TestPeriodicManifestFlush:
+    def test_manifest_saved_periodically_during_run(self):
+        """Verify manifest.save() is called every MANIFEST_FLUSH_EVERY completions."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            plugin = StubPlugin(
+                output_dir=Path(tmpdir), num_threads=1
+            )
+            save_calls = []
+            original_save = plugin.manifest.save
+
+            def counting_save():
+                save_calls.append(len(save_calls))
+                return original_save()
+
+            plugin.manifest.save = counting_save
+
+            # 50 symbols, flush every 25 -> expect at least 2 mid-run saves
+            # plus the final save in download()
+            symbols = [f"SYM{i:03d}" for i in range(50)]
+            plugin.download(symbols, "2024-01-01", "2024-01-02")
+
+            # At least 2 flushes during the loop + 1 final = 3 total.
+            # Be lenient with timing-based flush.
+            assert len(save_calls) >= 3, (
+                f"Expected >=3 manifest saves for 50 symbols at flush_every=25, "
+                f"got {len(save_calls)}"
+            )
+
+    def test_manifest_flush_every_constant_is_25(self):
+        from src.data.acquisition.base import BaseDownloader
+        assert BaseDownloader.MANIFEST_FLUSH_EVERY == 25
+
+
+class TestRateLimitBackoff:
+    def test_429_triggers_extra_sleep_before_retry(self, monkeypatch):
+        from alpaca.common.exceptions import APIError
+
+        sleep_calls = []
+        monkeypatch.setattr(
+            "src.data.acquisition.base.time.sleep",
+            lambda s: sleep_calls.append(s),
+        )
+
+        # First call raises 429, second call returns valid df.
+        # APIError.status_code is a read-only property derived from the
+        # underlying http_error.response.status_code -- build a minimal
+        # mock chain so getattr(e, "status_code", None) returns 429.
+        mock_response = MagicMock()
+        mock_response.status_code = 429
+        mock_http_err = MagicMock()
+        mock_http_err.response = mock_response
+        api_err = APIError(
+            '{"code": 429, "message": "rate limited"}',
+            http_error=mock_http_err,
+        )
+        assert api_err.status_code == 429
+        call_count = [0]
+
+        def fetch_with_429(symbol, start, end):
+            call_count[0] += 1
+            if call_count[0] == 1:
+                raise api_err
+            return pd.DataFrame(
+                {
+                    "timestamp": pd.to_datetime(
+                        ["2024-01-02 09:30:00"], utc=True
+                    ),
+                    "open": [100.0], "high": [101.0], "low": [99.0],
+                    "close": [100.5], "volume": [1000.0],
+                    "trade_count": [50.0], "vwap": [100.2],
+                }
+            )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            plugin = StubPlugin(
+                fetch_fn=fetch_with_429,
+                output_dir=Path(tmpdir),
+                num_threads=1,
+                retry_delay=0.01,
+            )
+            plugin.download(["AAPL"], "2024-01-01", "2024-01-02")
+
+            assert call_count[0] >= 2
+            # Look for the extra 10s 429-specific sleep
+            assert any(s >= 10.0 for s in sleep_calls), (
+                f"Expected >=10s sleep after 429, got {sleep_calls}"
+            )
+
+
+class TestJsonlEventLog:
+    def test_download_complete_emits_jsonl_event(self):
+        import json
+        with tempfile.TemporaryDirectory() as tmpdir:
+            plugin = StubPlugin(output_dir=Path(tmpdir), num_threads=1)
+            plugin.download(["AAPL"], "2024-01-01", "2024-01-02")
+
+            log_path = (
+                Path(tmpdir) / "_manifests" / "test_data.progress.jsonl"
+            )
+            assert log_path.exists(), "JSONL log should exist after download"
+            lines = log_path.read_text(encoding="utf-8").strip().splitlines()
+            events = [json.loads(line) for line in lines]
+            event_types = {e["event"] for e in events}
+            assert "download_complete" in event_types
+            complete = next(e for e in events if e["event"] == "download_complete")
+            assert complete["symbol"] == "AAPL"
+            assert "rows" in complete
+            assert "ts" in complete
+
+    def test_download_failed_emits_jsonl_event(self):
+        import json
+
+        def always_fail(symbol, start, end):
+            raise ValueError("simulated failure")
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            plugin = StubPlugin(
+                fetch_fn=always_fail,
+                output_dir=Path(tmpdir),
+                num_threads=1,
+                retry_delay=0.001,
+            )
+            plugin.download(["AAPL"], "2024-01-01", "2024-01-02")
+
+            log_path = (
+                Path(tmpdir) / "_manifests" / "test_data.progress.jsonl"
+            )
+            lines = log_path.read_text(encoding="utf-8").strip().splitlines()
+            events = [json.loads(line) for line in lines]
+            event_types = {e["event"] for e in events}
+            assert "download_failed" in event_types

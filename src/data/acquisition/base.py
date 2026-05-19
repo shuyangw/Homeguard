@@ -1,15 +1,18 @@
 """Base downloader with shared infrastructure for all data acquisition plugins."""
 
+import json
+import os
 import threading
 import time
 from abc import ABC, abstractmethod
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, List, Optional, Set, Tuple
 
 import pandas as pd
+from alpaca.common.exceptions import APIError
 
 from src.data.acquisition.manifest import DownloadManifest
 from src.data.acquisition.schemas import SchemaValidationError, validate_schema
@@ -54,6 +57,8 @@ class BaseDownloader(ABC):
     MAX_RETRIES = 3
     END_RETRY_ROUNDS = 3
     RETRY_DELAY = 5.0  # seconds
+    MANIFEST_FLUSH_EVERY = 25  # completions
+    MANIFEST_FLUSH_INTERVAL_SEC = 60.0
 
     def __init__(
         self,
@@ -106,6 +111,19 @@ class BaseDownloader(ABC):
             setattr(_thread_local, attr, self._create_client())
         return getattr(_thread_local, attr)
 
+    def _emit_event(self, event: str, **fields: Any) -> None:
+        """Append one JSON event line to <subdir>.progress.jsonl. Crash-safe."""
+        log_dir = self.base_output_dir / "_manifests"
+        log_dir.mkdir(parents=True, exist_ok=True)
+        log_path = log_dir / f"{self._get_storage_subdir()}.progress.jsonl"
+        record = {
+            "ts": datetime.now(timezone.utc).isoformat(),
+            "event": event,
+            **fields,
+        }
+        with open(log_path, "a", encoding="utf-8") as f:
+            f.write(json.dumps(record, default=str) + "\n")
+
     def get_existing_symbols(self) -> Set[str]:
         output_dir = self._get_output_dir()
         existing = set()
@@ -117,7 +135,11 @@ class BaseDownloader(ABC):
         return existing
 
     def _save_partitioned(self, df: pd.DataFrame, symbol: str) -> int:
-        """Save DataFrame in hive-partitioned format. Returns row count."""
+        """Save DataFrame in hive-partitioned format. Returns row count.
+
+        Writes via .tmp + os.replace for atomicity -- crash mid-write
+        leaves no partial data.parquet behind.
+        """
         output_dir = self._get_output_dir()
         fs_symbol = self._normalize_symbol(symbol)
 
@@ -135,8 +157,11 @@ class BaseDownloader(ABC):
                 / f"month={month}"
             )
             partition_dir.mkdir(parents=True, exist_ok=True)
+            final_path = partition_dir / "data.parquet"
+            tmp_path = partition_dir / "data.parquet.tmp"
             data_to_save = group.drop(columns=["_year", "_month"])
-            data_to_save.to_parquet(partition_dir / "data.parquet", index=False)
+            data_to_save.to_parquet(tmp_path, index=False)
+            os.replace(tmp_path, final_path)
             rows_saved += len(data_to_save)
 
         return rows_saved
@@ -146,12 +171,18 @@ class BaseDownloader(ABC):
     ) -> Tuple[str, bool, int, Optional[str]]:
         """Download a single symbol with retry logic."""
         tid = threading.current_thread().name
+        self._emit_event("download_start", symbol=symbol, thread=tid)
 
         for attempt in range(1, self.max_retries + 1):
             try:
                 if attempt > 1:
                     logger.info(
                         f"[{tid}] {symbol}: Retry {attempt}/{self.max_retries}"
+                    )
+                    self._emit_event(
+                        "retry",
+                        symbol=symbol,
+                        attempt=attempt,
                     )
 
                 self.manifest.set_entry(symbol, status="in_progress")
@@ -161,18 +192,23 @@ class BaseDownloader(ABC):
                 if df.empty:
                     logger.warning(f"[{tid}] {symbol}: No data returned")
                     self.manifest.set_entry(symbol, status="complete", rows=0)
+                    self._emit_event("download_complete", symbol=symbol, rows=0)
                     return (symbol, True, 0, None)
 
                 validate_schema(df, self._get_schema())
                 rows = self._save_partitioned(df, symbol)
                 self.manifest.set_entry(symbol, status="complete", rows=rows)
                 logger.info(f"[{tid}] {symbol}: Saved {rows:,} rows")
+                self._emit_event("download_complete", symbol=symbol, rows=rows)
                 return (symbol, True, rows, None)
 
             except SchemaValidationError as e:
                 error_msg = str(e)
                 logger.error(f"[{tid}] {symbol}: Schema error - {error_msg}")
                 self.manifest.set_entry(symbol, status="failed", error=error_msg)
+                self._emit_event(
+                    "download_failed", symbol=symbol, error=error_msg
+                )
                 return (symbol, False, 0, error_msg)
 
             except Exception as e:
@@ -181,10 +217,20 @@ class BaseDownloader(ABC):
                     f"[{tid}] {symbol}: Attempt {attempt} failed - {error_msg}"
                 )
                 if attempt < self.max_retries:
-                    time.sleep(self.retry_delay * attempt)
+                    base_delay = self.retry_delay * attempt
+                    if (
+                        isinstance(e, APIError)
+                        and getattr(e, "status_code", None) in (429, 500, 502, 503, 504)
+                    ):
+                        time.sleep(base_delay + 10.0)
+                    else:
+                        time.sleep(base_delay)
                 else:
                     self.manifest.set_entry(
                         symbol, status="failed", error=error_msg
+                    )
+                    self._emit_event(
+                        "download_failed", symbol=symbol, error=error_msg
                     )
                     return (symbol, False, 0, error_msg)
 
@@ -201,6 +247,11 @@ class BaseDownloader(ABC):
         end_date = end_date or datetime.now().strftime("%Y-%m-%d")
         output_dir = self._get_output_dir()
         output_dir.mkdir(parents=True, exist_ok=True)
+        self._emit_event(
+            "pass_start",
+            subdir=self._get_storage_subdir(),
+            symbol_count=len(symbols),
+        )
 
         if skip_existing:
             existing = self.get_existing_symbols()
@@ -223,6 +274,9 @@ class BaseDownloader(ABC):
         failed_list: List[Tuple[str, str]] = []
         total_rows = 0
 
+        last_flush_time = time.time()
+        completions_since_flush = 0
+
         with ThreadPoolExecutor(max_workers=self.num_threads) as executor:
             futures = {
                 executor.submit(
@@ -237,6 +291,16 @@ class BaseDownloader(ABC):
                     total_rows += rows
                 else:
                     failed_list.append((symbol, error or "Unknown"))
+
+                completions_since_flush += 1
+                now = time.time()
+                if (
+                    completions_since_flush >= self.MANIFEST_FLUSH_EVERY
+                    or now - last_flush_time >= self.MANIFEST_FLUSH_INTERVAL_SEC
+                ):
+                    self.manifest.save()
+                    completions_since_flush = 0
+                    last_flush_time = now
 
         # End-of-run retry rounds
         for retry_round in range(1, self.END_RETRY_ROUNDS + 1):
@@ -261,8 +325,27 @@ class BaseDownloader(ABC):
                     else:
                         failed_list.append((symbol, error or "Unknown"))
 
+                    completions_since_flush += 1
+                    now = time.time()
+                    if (
+                        completions_since_flush >= self.MANIFEST_FLUSH_EVERY
+                        or now - last_flush_time
+                        >= self.MANIFEST_FLUSH_INTERVAL_SEC
+                    ):
+                        self.manifest.save()
+                        completions_since_flush = 0
+                        last_flush_time = now
+
         elapsed = time.time() - start_time
         self.manifest.save()
+
+        self._emit_event(
+            "pass_end",
+            subdir=self._get_storage_subdir(),
+            succeeded=succeeded,
+            failed=len(failed_list),
+            total_rows=total_rows,
+        )
 
         return DownloadResult(
             total_symbols=len(symbols),
