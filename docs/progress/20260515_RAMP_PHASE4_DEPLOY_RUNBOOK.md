@@ -90,69 +90,90 @@ Confirm at the next rebalance window (15:55 ET) that the log shows:
 (or equivalent log from _execute_rebalance_target_aware)
 
 
-## Step 4: Run >=5 consecutive clean paper sessions
+## Step 4: Set up the EC2-resident A7 check
 
-After each daily paper rebalance, run locally (or on EC2 with PYTHON set):
+After the branch is deployed and paper trading is active, install the systemd timer
+that runs the per-session check automatically on EC2.
 
-    bash scripts/ops/check_ramp_paper_session.sh
+On EC2:
 
-This script:
-1. Reads data/trading/decisions/_latest/ramp.json (most recent rebalance).
-2. Runs scripts/trading/compare_paper_vs_plan.py against it.
-3. Prints the comparator status (PASS / FAIL + any divergences).
-4. Tracks the consecutive-clean count in docs/progress/.a7_clean_sessions.
+    sudo cp /home/ec2-user/Homeguard/infra/ec2/services/homeguard-ramp-paper-check.service /etc/systemd/system/
+    sudo cp /home/ec2-user/Homeguard/infra/ec2/services/homeguard-ramp-paper-check.timer   /etc/systemd/system/
+    sudo systemctl daemon-reload
+    sudo systemctl enable --now homeguard-ramp-paper-check.timer
 
-To override the JSON path (e.g. to check a specific date):
+Verify:
 
-    LATEST_JSON=data/trading/decisions/ramp_20260516.jsonl bash scripts/ops/check_ramp_paper_session.sh
+    systemctl list-timers homeguard-ramp-paper-check.timer
+    cat /var/lib/homeguard/a7_clean_sessions     # initially nonexistent
+    sudo journalctl -u homeguard-ramp-paper-check --since "1h ago"
 
-NOTE: if pointing at a multi-line JSONL file, extract one line first:
-    tail -1 data/trading/decisions/ramp_20260516.jsonl > /tmp/ramp_latest.json
-    LATEST_JSON=/tmp/ramp_latest.json bash scripts/ops/check_ramp_paper_session.sh
+After the next 16:05 ET trigger:
 
-Possible outcomes:
+    cat /var/lib/homeguard/a7_clean_sessions     # 1 if clean, 0 if failed
+    cat /var/lib/homeguard/a7_last_session_date  # today's UTC date
 
-  [CLEAN] -- count increments. After 5, the gate is passed.
-  [GATE PASSED] -- printed when count >= 5. Proceed to Step 5.
-
-  [FAILED] -- count resets to 0. Investigate:
-    1. Check the divergence lines printed by the comparator.
-    2. Look at the decision log for the failing session.
-    3. Check adapter logs for exceptions or fallback-mode triggers.
-    4. If a bug is found: fix, commit, redeploy, restart the 5-session
-       count from 0.
+Grafana dashboard: the gauge `hg_a7_clean_sessions` appears automatically once
+VM scrapes node_exporter's textfile output. Optionally add a single-stat panel
+to portfolio_overview.json.
 
 
-## Step 5: Task 14 -- production resume (after 5 clean sessions)
+## Step 4a: "Clean session" semantics
 
-After docs/progress/.a7_clean_sessions reads >= 5:
+| Case | Counter behavior |
+|---|---|
+| Comparator PASS (positions match plan within rounding) | increment by 1 |
+| Comparator FAIL (positions diverge from plan) | reset to 0 |
+| Comparator setup error (decision log missing) | unchanged; `hg_a7_check_error=1` |
+| Regime returned SAFE_MODE / no rebalance fired today | unchanged (no decision log update for today) |
+| Market holiday or EC2 was off when timer would have fired | unchanged |
+| Multiple triggers in one day (defensive) | only the first counts; subsequent runs see the marker file and skip |
 
-1. Market timing guard (CRITICAL):
-       TZ='America/New_York' date '+%H:%M'
-   If the output is between 15:42 and 16:00, WAIT until after 16:00.
-   Never change the toggle during the rebalance window.
 
-2. RAMP is already re-enabled for paper (Step 3). If paper and production
-   share the same EC2 toggle file, production is already live. If they
-   are separate deployments, enable production-side toggle separately.
+## Step 5: Production resume gate + rollback
 
-3. Run the closeout script to finalize the progress doc:
+Production resumes ONLY when ALL four pre-conditions hold:
 
-       bash scripts/ops/ramp_phase4_close_progress_doc.sh
+1. `cat /var/lib/homeguard/a7_clean_sessions` returns >= 5.
+2. Current UTC time is OUTSIDE the [15:42, 16:00] ET market guard window
+   (see scripts/ops/ramp_phase4_close_progress_doc.sh for the canonical check).
+3. EC2's config/trading/strategy_toggle.yaml currently has `ramp.enabled: false`
+   (verifies the pause was in fact active).
+4. Runner is using `use_target_planner=True`:
 
-   This script checks that the 5-session gate is met before making any
-   changes. If the gate is not met it exits 1 without touching anything.
+       sudo journalctl -u homeguard-multi -n 200 | grep "use_target_planner=True"
 
-4. Push the branch (or merge to main) and close out the spec.
+When all four pass, run on EC2:
+
+    cd /home/ec2-user/Homeguard
+    bash scripts/ops/ramp_phase4_close_progress_doc.sh
+
+That script:
+- toggles `ramp.enabled: true` in the EC2 yaml,
+- updates docs/progress/20260515_RAMP_PHASE4.md status to COMPLETE,
+- creates the closing commit on the ramp branch.
+
+
+### Rollback paths
+
+| Failure mode | Action |
+|---|---|
+| Resume produces zero orders for two consecutive sessions | toggle `ramp.enabled: false`; tail journal `homeguard-multi`; investigate why no signals fire |
+| Resume produces orders that diverge from planner output (live comparator FAIL) | toggle `ramp.enabled: false`; manually flatten any opened real positions via IBKR UI; investigate decision logs |
+| `use_target_planner` regression (logged as `False` after deploy) | revert to last known-good commit; redeploy; `sudo systemctl restart homeguard-multi` |
+| A7 helper writes corrupted counter | `echo 0 | sudo tee /var/lib/homeguard/a7_clean_sessions`; restart the timer; resume validation from session 1 |
 
 
 ## Reference paths
 
 - Decision log root:   data/trading/decisions/
 - Latest snapshot:     data/trading/decisions/_latest/ramp.json
-- Clean session count: docs/progress/.a7_clean_sessions
+- Clean session count: /var/lib/homeguard/a7_clean_sessions (EC2)
+- Last session date:   /var/lib/homeguard/a7_last_session_date (EC2)
 - Comparator:         scripts/trading/compare_paper_vs_plan.py
-- Session check:      scripts/ops/check_ramp_paper_session.sh
+- Session check:      scripts/ops/check_ramp_paper_session.sh (invoked by systemd timer on EC2)
+- Timer unit:         infra/ec2/services/homeguard-ramp-paper-check.timer
+- Service unit:       infra/ec2/services/homeguard-ramp-paper-check.service
 - Closeout script:    scripts/ops/ramp_phase4_close_progress_doc.sh
 - Progress doc:       docs/progress/20260515_RAMP_PHASE4.md
 - Toggle file (EC2):  config/trading/strategy_toggle.yaml
