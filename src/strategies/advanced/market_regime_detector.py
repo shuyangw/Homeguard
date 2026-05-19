@@ -103,6 +103,10 @@ class MarketRegimeDetector:
         # Populated for downstream metrics emission (SPY SMAs feed Grafana
         # `hg_regime_sma_signal{period=...}`). None until first classification.
         self.last_indicators: Optional[Dict] = None
+        # Per-regime confidence scores from the most recent classify_regime
+        # call. Consumed by the Phase 4 harness so variants can build target
+        # weights from the full score vector rather than just the winner.
+        self.last_regime_scores: Optional[Dict[str, float]] = None
 
     def classify_regime(
         self,
@@ -169,6 +173,10 @@ class MarketRegimeDetector:
         for regime, criteria in self.REGIME_CRITERIA.items():
             score = self._score_regime(indicators, criteria)
             regime_scores[regime] = score
+
+        # Persist for harness consumption (variants need the full score vector,
+        # not just the winner) before we collapse to best_regime.
+        self.last_regime_scores = dict(regime_scores)
 
         # Select regime with highest score
         best_regime = max(regime_scores, key=regime_scores.get)
