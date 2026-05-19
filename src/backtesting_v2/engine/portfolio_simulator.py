@@ -74,6 +74,7 @@ class PortfolioV2(Portfolio):
         use_numba: bool = True,
         fractional_shares: bool = False,
         track_state: bool = False,
+        stop_slippage_multiplier: float = 1.0,
     ):
         """
         Initialize portfolio with optional state tracking.
@@ -126,6 +127,7 @@ class PortfolioV2(Portfolio):
             allow_shorts=allow_shorts,
             use_numba=use_numba,
             fractional_shares=fractional_shares,
+            stop_slippage_multiplier=stop_slippage_multiplier,
         )
 
     # === Hook overrides for state tracking ===
@@ -412,6 +414,7 @@ def from_signals_v2(
     use_numba: bool = True,
     fractional_shares: bool = False,
     track_state: bool = False,
+    stop_slippage_multiplier: float = 1.0,
     **kwargs,
 ) -> PortfolioV2:
     """
@@ -452,4 +455,5 @@ def from_signals_v2(
         use_numba=use_numba,
         fractional_shares=fractional_shares,
         track_state=track_state,
+        stop_slippage_multiplier=stop_slippage_multiplier,
     )

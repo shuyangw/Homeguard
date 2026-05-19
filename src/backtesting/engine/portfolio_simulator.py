@@ -54,7 +54,8 @@ class Portfolio(BasePortfolio):
         price_data: Optional[pd.DataFrame] = None,
         allow_shorts: bool = False,
         use_numba: bool = True,
-        fractional_shares: bool = False
+        fractional_shares: bool = False,
+        stop_slippage_multiplier: float = 1.0,
     ):
         """
         Initialize portfolio.
@@ -73,6 +74,8 @@ class Portfolio(BasePortfolio):
             allow_shorts: If True, enable short selling (default: False)
             use_numba: If True, use Numba JIT compilation for performance (default: True)
             fractional_shares: If True, allow fractional share quantities (for crypto)
+            stop_slippage_multiplier: Multiplier applied to slippage on stop-loss
+                exits per methodology Section 11.5. Default 1.0 (no multiplier).
         """
         # Initialize base class (handles init_cash, fees, slippage, freq, market_hours_only,
         # market hours constants, and equity_curve/_stats)
@@ -93,6 +96,7 @@ class Portfolio(BasePortfolio):
         self.allow_shorts = allow_shorts
         self.use_numba = use_numba
         self.fractional_shares = fractional_shares
+        self.stop_slippage_multiplier = stop_slippage_multiplier
         self.borrow_cost = 0.0030  # 30 bps/year for short positions
 
         self.trades: List[Dict[str, Any]] = []
@@ -358,7 +362,8 @@ class Portfolio(BasePortfolio):
             use_time_stop=use_time_stop,
             max_bars_in_position=max_bars_in_position,
             allow_shorts=self.allow_shorts,
-            fractional_shares=self.fractional_shares
+            fractional_shares=self.fractional_shares,
+            stop_slippage_multiplier=self.stop_slippage_multiplier,
         )
 
         # Unpack results
@@ -987,6 +992,7 @@ def from_signals(
     use_numba: bool = True,
     fractional_shares: bool = False,
     track_state: bool = False,
+    stop_slippage_multiplier: float = 1.0,
     **kwargs
 ):
     """
@@ -1037,6 +1043,7 @@ def from_signals(
             use_numba=use_numba,
             fractional_shares=fractional_shares,
             track_state=track_state,
+            stop_slippage_multiplier=stop_slippage_multiplier,
             **kwargs
         )
     except ImportError:
@@ -1056,5 +1063,6 @@ def from_signals(
         price_data=price_data,
         allow_shorts=allow_shorts,
         use_numba=use_numba,
-        fractional_shares=fractional_shares
+        fractional_shares=fractional_shares,
+        stop_slippage_multiplier=stop_slippage_multiplier
     )

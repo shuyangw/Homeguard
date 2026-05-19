@@ -525,13 +525,18 @@ def _create_output_dir(config: 'BacktestConfig', mode_suffix: str = "") -> Optio
 
 
 def _resolve_costs(config: 'BacktestConfig') -> tuple:
-    """Return (fees, slippage) honoring `costs.tier` per methodology Section 4.
+    """Return (fees, slippage, stop_slippage_multiplier) honoring `costs.tier`
+    per methodology Section 4.
 
     Hard-fail when both `costs.tier` AND `costs.bps_override` are None
     (Section 4 governance). Strategies that don't fit the bps-tier model
     -- e.g., options strategies that need the alpha-of-half-spread fill
     model from Section 4.5 -- declare an explicit `costs.bps_override`
     as the opt-out, with a comment pointing at the deferred wiring.
+
+    stop_slippage_multiplier is sourced from `costs.stop_slippage_multiplier`
+    (default 1.5 per methodology Section 11.5) and applied to slippage on
+    stop-loss exits only.
     """
     tier = getattr(getattr(config, 'costs', None), 'tier', None)
     override_bps = getattr(getattr(config, 'costs', None), 'bps_override', None)
@@ -573,11 +578,15 @@ def _resolve_costs(config: 'BacktestConfig') -> tuple:
     # on each fill. Put the entire round-trip in per-side fees; leave slippage at 0
     # since the tier round-trip already encompasses spread.
     per_side_fees = round_trip_bps / 10_000.0 / 2.0
+    stop_slippage_multiplier = getattr(
+        getattr(config, 'costs', None), 'stop_slippage_multiplier', 1.0
+    ) or 1.0
     logger.info(
         f"[costs] {config.strategy.name}: tier={tier} -> "
-        f"round_trip={round_trip_bps:.1f} bps, per_side_fees={per_side_fees:.5f}"
+        f"round_trip={round_trip_bps:.1f} bps, per_side_fees={per_side_fees:.5f}, "
+        f"stop_slippage_multiplier={stop_slippage_multiplier:.2f}"
     )
-    return per_side_fees, 0.0
+    return per_side_fees, 0.0, stop_slippage_multiplier
 
 
 def _append_to_registry(
@@ -715,7 +724,7 @@ def run_single_from_config(config: 'BacktestConfig') -> None:
             max_positions=config.risk.max_positions,
         )
 
-    fees, slippage = _resolve_costs(config)
+    fees, slippage, stop_slip_mult = _resolve_costs(config)
 
     engine = BacktestEngine(
         initial_capital=config.backtest.initial_capital,
@@ -725,6 +734,7 @@ def run_single_from_config(config: 'BacktestConfig') -> None:
         risk_config=risk_config,
         timeframe=config.backtest.timeframe,
         market_hours_only=config.backtest.market_hours_only,
+        stop_slippage_multiplier=stop_slip_mult,
     )
 
     output_dir = _create_output_dir(config)
@@ -867,7 +877,7 @@ def run_sweep_from_config(config: 'BacktestConfig') -> None:
     start_date, end_date = _resolve_dates(config)
     strategy = _get_strategy_instance(config)
 
-    fees, slippage = _resolve_costs(config)
+    fees, slippage, stop_slip_mult = _resolve_costs(config)
 
     engine = BacktestEngine(
         initial_capital=config.backtest.initial_capital,
@@ -876,6 +886,7 @@ def run_sweep_from_config(config: 'BacktestConfig') -> None:
         allow_shorts=config.backtest.allow_shorts,
         timeframe=config.backtest.timeframe,
         market_hours_only=config.backtest.market_hours_only,
+        stop_slippage_multiplier=stop_slip_mult,
     )
 
     sweep_runner = SweepRunner(
@@ -937,7 +948,7 @@ def run_optimize_from_config(config: 'BacktestConfig') -> None:
     start_date, end_date = _resolve_dates(config)
     strategy_cls = get_strategy_class(config.strategy.name)
 
-    fees, slippage = _resolve_costs(config)
+    fees, slippage, stop_slip_mult = _resolve_costs(config)
 
     engine = BacktestEngine(
         initial_capital=config.backtest.initial_capital,
@@ -946,6 +957,7 @@ def run_optimize_from_config(config: 'BacktestConfig') -> None:
         allow_shorts=config.backtest.allow_shorts,
         timeframe=config.backtest.timeframe,
         market_hours_only=config.backtest.market_hours_only,
+        stop_slippage_multiplier=stop_slip_mult,
     )
 
     if not config.optimization.param_grid:
@@ -1012,7 +1024,7 @@ def run_walk_forward_from_config(config: 'BacktestConfig') -> None:
 
     output_dir = _create_output_dir(config, "_walk_forward")
 
-    fees, slippage = _resolve_costs(config)
+    fees, slippage, stop_slip_mult = _resolve_costs(config)
 
     engine = BacktestEngine(
         initial_capital=config.backtest.initial_capital,
@@ -1021,6 +1033,7 @@ def run_walk_forward_from_config(config: 'BacktestConfig') -> None:
         allow_shorts=config.backtest.allow_shorts,
         timeframe=config.backtest.timeframe,
         market_hours_only=config.backtest.market_hours_only,
+        stop_slippage_multiplier=stop_slip_mult,
     )
 
     base_optimizer = GridSearchOptimizer(engine)
