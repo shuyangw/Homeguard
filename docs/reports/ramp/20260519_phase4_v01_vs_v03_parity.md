@@ -9,11 +9,11 @@ fresh-portfolio baseline (V01) that ignores crash exposure?
 
 | Metric | V01 | V03 | Delta (V03 - V01) |
 |---|---:|---:|---:|
-| Sharpe | 0.554 | 0.620 | 0.066 |
-| CAGR | 129.22% | 95.04% | -34.18% |
-| Max DD | -66.84% | -44.43% | 22.40% |
-| Avg turnover | 91.39% | 72.53% | -18.85% |
-| Cost drag | 33.17% | 30.61% | -2.56% |
+| Sharpe | 0.282 | 0.077 | -0.204 |
+| CAGR | 3.74% | -0.84% | -4.58% |
+| Max DD | -79.88% | -66.76% | 13.12% |
+| Avg turnover | 90.64% | 72.67% | -17.98% |
+| Cost drag | 75.28% | 110.88% | 35.60% |
 
 ## Conclusion
 
