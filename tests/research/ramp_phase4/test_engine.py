@@ -5,7 +5,7 @@ import pandas as pd
 import pytest
 
 from src.research.ramp_phase4.config import HarnessConfig
-from src.research.ramp_phase4.engine import HarnessState, DailyRecord, run_variant
+from src.research.ramp_phase4.engine import HarnessState, DailyRecord, compute_trades, run_variant
 
 
 def _tiny_cfg(tmp_path):
@@ -132,3 +132,41 @@ def test_run_variant_handles_nan_pricing_with_forced_exit(tmp_path, monkeypatch)
     # After day 3 (NaN), positions should be empty (forced exit).
     # Verify by checking day 4 has no AAA position implied in target_weights.
     assert len(records) == 4
+
+
+def test_compute_trades_no_change_when_target_equals_current():
+    state = HarnessState(cash_usd=50000.0, positions={'AAA': 100.0})
+    prices = pd.Series({'AAA': 100.0})  # AAA position = $10000, cash = $50000, total = $60000
+    target_weights = {'AAA': 10000.0 / 60000.0}
+    trades = compute_trades(state, target_weights, prices, total_value=60000.0, min_trade_value_usd=100.0)
+    assert trades == []
+
+
+def test_compute_trades_buy_to_open_position():
+    state = HarnessState(cash_usd=100000.0, positions={})
+    prices = pd.Series({'AAA': 100.0})
+    target_weights = {'AAA': 0.10}  # $10000 of AAA -> 100 shares
+    trades = compute_trades(state, target_weights, prices, total_value=100000.0, min_trade_value_usd=100.0)
+    assert len(trades) == 1
+    assert trades[0]['symbol'] == 'AAA'
+    assert trades[0]['delta_shares'] == 100
+    assert trades[0]['trade_value_usd'] == 10000.0
+
+
+def test_compute_trades_sell_to_close_position():
+    state = HarnessState(cash_usd=90000.0, positions={'AAA': 100.0})
+    prices = pd.Series({'AAA': 100.0})
+    target_weights: dict = {}  # target absent -> exit
+    trades = compute_trades(state, target_weights, prices, total_value=100000.0, min_trade_value_usd=100.0)
+    assert len(trades) == 1
+    assert trades[0]['symbol'] == 'AAA'
+    assert trades[0]['delta_shares'] == -100
+    assert trades[0]['trade_value_usd'] == -10000.0
+
+
+def test_compute_trades_skips_undersize():
+    state = HarnessState(cash_usd=100000.0, positions={})
+    prices = pd.Series({'AAA': 100.0})
+    target_weights = {'AAA': 0.0005}  # $50 target -> 0 whole shares with $100 min
+    trades = compute_trades(state, target_weights, prices, total_value=100000.0, min_trade_value_usd=100.0)
+    assert trades == []

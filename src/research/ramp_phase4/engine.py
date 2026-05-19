@@ -6,6 +6,7 @@ Tasks 7-11 will extend the loop with MTM, trades, costs, and regime tracking.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Callable, Dict, List, Protocol
@@ -125,3 +126,46 @@ def _current_weights(state: HarnessState, prices: pd.Series, total_value: float)
             continue
         out[sym] = (shares * px) / total_value
     return out
+
+
+def compute_trades(
+    state: HarnessState,
+    target_weights: Dict[str, float],
+    prices: pd.Series,
+    total_value: float,
+    min_trade_value_usd: float,
+) -> List[Dict]:
+    """Compute the delta trades from current positions to target weights.
+
+    Whole-share rounding. Drops trades below `min_trade_value_usd`.
+    Sells appear with negative trade_value_usd; buys positive.
+
+    Each trade dict: {symbol, delta_shares, trade_value_usd, side}.
+    """
+    if total_value <= 0:
+        return []
+
+    # Build union of current + target symbols.
+    all_syms = set(state.positions.keys()) | set(target_weights.keys())
+    trades: List[Dict] = []
+    for sym in all_syms:
+        px = prices.get(sym)
+        if px is None or pd.isna(px) or px <= 0:
+            continue
+        current_shares = state.positions.get(sym, 0.0)
+        target_value = target_weights.get(sym, 0.0) * total_value
+        target_shares_float = target_value / px
+        target_shares = math.floor(target_shares_float) if target_shares_float >= 0 else math.ceil(target_shares_float)
+        delta = target_shares - current_shares
+        if delta == 0:
+            continue
+        trade_value = delta * px
+        if abs(trade_value) < min_trade_value_usd:
+            continue
+        trades.append({
+            'symbol': sym,
+            'delta_shares': int(delta),
+            'trade_value_usd': float(trade_value),
+            'side': 'buy' if delta > 0 else 'sell',
+        })
+    return trades
