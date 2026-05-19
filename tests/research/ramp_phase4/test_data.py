@@ -5,7 +5,10 @@ from unittest.mock import patch
 import pandas as pd
 import pytest
 
-from src.research.ramp_phase4.data import load_universe_panel
+from src.research.ramp_phase4.data import (
+    load_universe_panel,
+    _aggregate_symbol_daily,
+)
 
 
 @pytest.fixture
@@ -49,6 +52,35 @@ def test_load_universe_panel_includes_spy_and_vix(fake_universe_csv, fake_panel)
         )
     assert 'SPY' in result.columns
     assert 'VIX' in result.columns
+
+
+def test_aggregate_symbol_daily_groups_by_rth_close(tmp_path):
+    sym_dir = tmp_path / 'symbol=FAKE'
+    month_dir = sym_dir / 'year=2024' / 'month=1'
+    month_dir.mkdir(parents=True)
+    # Two RTH days, mix of pre-/post-market bars; RTH last close should win.
+    rows = []
+    # 2024-01-02 ET: pre-market 08:00, RTH 10:00 + 15:59, post-market 17:00
+    rows.append({'timestamp': pd.Timestamp('2024-01-02 13:00', tz='UTC'),
+                 'close': 100.0})  # 08:00 ET pre-market
+    rows.append({'timestamp': pd.Timestamp('2024-01-02 15:00', tz='UTC'),
+                 'close': 101.0})  # 10:00 ET RTH
+    rows.append({'timestamp': pd.Timestamp('2024-01-02 20:59', tz='UTC'),
+                 'close': 102.0})  # 15:59 ET RTH last
+    rows.append({'timestamp': pd.Timestamp('2024-01-02 22:00', tz='UTC'),
+                 'close': 999.0})  # 17:00 ET post-market (must be ignored)
+    # 2024-01-03 ET
+    rows.append({'timestamp': pd.Timestamp('2024-01-03 15:30', tz='UTC'),
+                 'close': 110.0})  # 10:30 ET RTH
+    rows.append({'timestamp': pd.Timestamp('2024-01-03 20:55', tz='UTC'),
+                 'close': 115.0})  # 15:55 ET RTH last
+    pd.DataFrame(rows).to_parquet(month_dir / 'data.parquet', index=False)
+
+    daily = _aggregate_symbol_daily(sym_dir, datetime(2024, 1, 1), datetime(2024, 1, 31))
+    assert daily is not None
+    assert len(daily) == 2
+    assert daily.loc['2024-01-02'] == 102.0
+    assert daily.loc['2024-01-03'] == 115.0
 
 
 def test_load_universe_panel_propagates_nans_for_delisted_symbol(fake_universe_csv):
