@@ -954,7 +954,7 @@ Strategies that hold across known gap risks (e.g., overnight equity positions th
 
 ### 11.5 Stop-specific slippage
 
-> **WIRING IN FLIGHT (as of 2026-05-13)**: the multipliers below are NOT yet applied by `portfolio_simulator.py` or its numba kernel. `_resolve_costs` exposes `stop_slippage_multiplier` in `CostsSettings`, but the engine treats all fills with a single uniform `slippage` value. Until that PR lands, any strategy whose exit type is `fixed_pct_stop`, `vol_scaled_stop`, `trailing_stop`, `time_stop_with_pct_stop`, or `scale_out` is hard-gated from graduating to live (see strategy-lead Phase 9 -- "Section 11.5 wiring gate"). Strategies in the queue affected: Darwinex FX MR, ORB variants, hurst_mr_baseline, ml_crypto_mr_baseline, RAMP-CSP.
+> **WIRED (as of 2026-05-14)**: the multipliers in the table below are applied by `simulate_portfolio_numba` at stop-loss fill sites only (exit_reason == EXIT_STOP_LOSS). Configure via `costs.stop_slippage_multiplier` in strategy YAML; default 1.5. The previous "WIRING IN FLIGHT" hard gate in `strategy-lead.md` Phase 9 has been lifted.
 
 Stops execute as market orders at trigger. Slippage on stops is structurally worse than slippage on limit entries.
 
