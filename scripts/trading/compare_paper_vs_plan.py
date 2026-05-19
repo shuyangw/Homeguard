@@ -92,8 +92,10 @@ def compare_session(log_path: Path) -> Dict[str, Any]:
         - plan_total_gross
     """
     rec = json.loads(Path(log_path).read_text())
-    log_weights = rec.get("logic_decisions", {}).get("target_weights", {})
-    strategy_inputs = rec.get("strategy_inputs", {})
+    # logic_decisions may be None for pre-F5 decision logs OR SAFE_MODE days;
+    # treat absent as empty so the comparator doesn't crash on None.get().
+    log_weights = (rec.get("logic_decisions") or {}).get("target_weights") or {}
+    strategy_inputs = rec.get("strategy_inputs") or {}
 
     plan = _recompute_plan(strategy_inputs)
     plan_weights = plan["target_weights"]
