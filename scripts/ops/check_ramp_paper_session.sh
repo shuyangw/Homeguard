@@ -80,7 +80,10 @@ if [[ ! -f "$LATEST_JSON" ]]; then
 fi
 
 echo "[CHECK] $LATEST_JSON"
-"$PYTHON" "$COMPARATOR" "$LATEST_JSON"
+# Module-style invocation so `from src.* import ...` inside the comparator resolves.
+# Direct `$PYTHON $COMPARATOR ...` would put the script dir on sys.path instead
+# of REPO_ROOT, causing ModuleNotFoundError on `import src.strategies...`.
+(cd "$REPO_ROOT" && "$PYTHON" -m scripts.trading.compare_paper_vs_plan "$LATEST_JSON")
 RC=$?
 
 if [[ "$RC" -eq 0 ]]; then
