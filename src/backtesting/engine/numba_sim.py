@@ -69,7 +69,8 @@ def simulate_portfolio_numba(
     max_bars_in_position: int,
     allow_shorts: bool,
     fractional_shares: bool = False,
-    max_trades: int = 10000
+    max_trades: int = 10000,
+    stop_slippage_multiplier: float = 1.0,
 ) -> tuple:
     """
     JIT-compiled portfolio simulation with complete feature parity.
@@ -96,6 +97,12 @@ def simulate_portfolio_numba(
         allow_shorts: Whether short selling is enabled
         fractional_shares: If True, allow fractional share quantities (for crypto)
         max_trades: Maximum number of trades to track (pre-allocation)
+        stop_slippage_multiplier: Slippage multiplier applied ONLY at stop-loss
+            exits (exit_reason == EXIT_STOP_LOSS). Default 1.0 = no multiplier.
+            Methodology Section 11.5 prescribes 1.5x-3.0x depending on conditions;
+            the caller configures this via `costs.stop_slippage_multiplier`.
+            Profit-target, time-stop, and signal exits use the base `slippage`
+            unchanged. Entries use the base `slippage` unchanged.
 
     Returns:
         Tuple containing:
@@ -198,9 +205,19 @@ def simulate_portfolio_numba(
 
         # === EXECUTE RISK EXIT ===
         if exit_triggered and trade_idx < max_trades:
+            # Section 11.5: stop-loss exits get worse fills than signal /
+            # profit-target / time-stop exits because they're triggered by
+            # adverse price moves into thin liquidity. Multiplier defaults
+            # to 1.0 (no change) unless the caller overrides it via
+            # costs.stop_slippage_multiplier.
+            if exit_reason == np.int8(1):  # EXIT_STOP_LOSS
+                effective_slippage = slippage * stop_slippage_multiplier
+            else:
+                effective_slippage = slippage
+
             if position > 0:
                 # Close long position (sell)
-                slippage_adj = price * (1 - slippage)
+                slippage_adj = price * (1 - effective_slippage)
                 proceeds = position * slippage_adj
                 fee = proceeds * fees
                 net_proceeds = proceeds - fee
@@ -226,7 +243,8 @@ def simulate_portfolio_numba(
 
             else:  # position < 0, close short
                 # Buy to cover (buy at higher price due to slippage)
-                slippage_adj = price * (1 + slippage)
+                # effective_slippage is set above based on exit_reason
+                slippage_adj = price * (1 + effective_slippage)
                 cost_to_cover = abs(position) * slippage_adj
                 fee = cost_to_cover * fees
                 total_cost = cost_to_cover + fee
