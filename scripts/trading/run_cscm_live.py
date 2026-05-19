@@ -342,9 +342,12 @@ def main():
 
     parser.add_argument(
         '--check-interval',
-        type=int,
+        type=float,
         default=1,
-        help='Hours between rebalance checks (default: 1)'
+        help='Hours between rebalance checks (default: 1). Use sub-hour values '
+             '(e.g. 0.0833 = 5min) when the EC2 weekend window is tight; the '
+             'hourly default can phase-shift past the EventBridge stop time '
+             'when the EC2 is started outside the scheduled Sat 23:00 UTC slot.'
     )
 
     parser.add_argument(
