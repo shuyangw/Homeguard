@@ -14,7 +14,11 @@ from typing import Callable, Dict, List, Protocol
 import pandas as pd
 
 from src.research.ramp_phase4.config import HarnessConfig
+from src.research.ramp_phase4.costs import flat_bps_cost
 from src.research.ramp_phase4.data import load_universe_panel
+
+
+OVERLEVERAGE_EPSILON = 1e-3
 
 
 @dataclass
@@ -72,27 +76,40 @@ def run_variant(cfg: HarnessConfig, variant_spec: VariantLike) -> List[DailyReco
         if not (cfg.start_date <= ts <= cfg.end_date):
             continue
 
-        # 1. Mark-to-market + forced exits for NaN-priced holdings.
-        forced_exits = _handle_nan_exits(state, prices)
+        # 1. MTM + forced exits.
+        _handle_nan_exits(state, prices)
         cur_value = _portfolio_value(state, prices)
 
-        # 2. Compute target weights from variant.
+        # 2. Variant produces target weights.
         target_weights = variant_spec.plan_fn(ts, state, panel, cfg) or {}
+        weight_sum = sum(target_weights.values())
+        if weight_sum > 1.0 + OVERLEVERAGE_EPSILON:
+            raise ValueError(
+                f'Variant {variant_spec.id} returned overleverage at {ts.date()}: '
+                f'sum(weights)={weight_sum:.4f}'
+            )
 
-        # 3. (Tasks 8-10 implement actual trades here.) For now, capture intent.
-        realized_weights = _current_weights(state, prices, cur_value)
+        # 3. Compute trades + cost, apply.
+        trades = compute_trades(state, target_weights, prices, cur_value, cfg.min_trade_value_usd)
+        cost = flat_bps_cost(trades, cfg.cost_bps_per_side)
+        turnover = sum(abs(t['trade_value_usd']) for t in trades)
+        apply_trades(state, trades, cost_usd=cost)
 
-        daily_ret = (cur_value / prev_value) - 1.0 if prev_value > 0 else 0.0
+        # 4. Post-trade MTM.
+        post_value = _portfolio_value(state, prices)
+        daily_ret = (post_value / prev_value) - 1.0 if prev_value > 0 else 0.0
+        realized_weights = _current_weights(state, prices, post_value)
+
         records.append(DailyRecord(
             date=ts, regime='STUB',
             target_weights=dict(target_weights),
             realized_weights=realized_weights,
-            turnover_usd=0.0,
-            cost_usd=0.0,
-            portfolio_value=cur_value,
+            turnover_usd=turnover,
+            cost_usd=cost,
+            portfolio_value=post_value,
             daily_return=daily_ret,
         ))
-        prev_value = cur_value
+        prev_value = post_value
 
     return records
 

@@ -65,7 +65,6 @@ def test_run_variant_empty_variant_returns_per_day_records(tmp_path, monkeypatch
     assert all(r.daily_return == 0.0 for r in records)
 
 
-@pytest.mark.xfail(reason='trades implemented in Task 8')
 def test_run_variant_marks_to_market_correctly(tmp_path, monkeypatch):
     """Hold 100 shares of AAA from day 1; portfolio_value follows price."""
     cfg = _tiny_cfg(tmp_path)
@@ -195,3 +194,45 @@ def test_apply_trades_full_exit_removes_symbol_from_positions():
     trades = [{'symbol': 'AAA', 'delta_shares': -100, 'trade_value_usd': -10000.0, 'side': 'sell'}]
     apply_trades(state, trades, cost_usd=5.0)
     assert 'AAA' not in state.positions
+
+
+def test_run_variant_applies_cost_to_cash(tmp_path, monkeypatch):
+    """Force a single trade on day 1; assert cost is deducted from cash."""
+    cfg_with_cost = HarnessConfig(
+        start_date=datetime(2024, 1, 2),
+        end_date=datetime(2024, 1, 3),
+        universe_csv=(tmp_path / 'u.csv'),
+        initial_capital=100000.0,
+        cost_bps_per_side=10.0,  # 10 bps cost
+    )
+    cfg_with_cost.universe_csv.write_text('symbol\nAAA\n')
+    idx = pd.date_range('2024-01-02', periods=2, freq='B')
+    panel = pd.DataFrame({
+        'AAA': [100.0, 101.0], 'SPY': [400.0, 401.0], 'VIX': [15.0, 15.1],
+    }, index=idx)
+    monkeypatch.setattr('src.research.ramp_phase4.engine.load_universe_panel', lambda c, s, e: panel)
+
+    call = {'n': 0}
+    def variant_fn(t, st, pn, cf):
+        call['n'] += 1
+        if call['n'] == 1:
+            return {'AAA': 0.10}  # buy $10k of AAA
+        # Day 2 -- match current weight to avoid more trades
+        cur = st.positions.get('AAA', 0.0) * pn.loc[t, 'AAA']
+        pv = st.cash_usd + cur
+        return {'AAA': cur / pv} if pv > 0 else {}
+
+    spec = type('Spec', (), {'id': 'COST', 'plan_fn': staticmethod(variant_fn)})()
+    records = run_variant(cfg_with_cost, spec)
+    # Day 1 buy: $10000 notional at 10 bps -> $10 cost.
+    assert records[0].cost_usd == pytest.approx(10.0, abs=0.01)
+    assert records[0].turnover_usd == pytest.approx(10000.0, abs=1.0)
+
+
+def test_run_variant_aborts_on_overleverage(tmp_path, monkeypatch):
+    cfg = _tiny_cfg(tmp_path)
+    panel = _tiny_panel()
+    monkeypatch.setattr('src.research.ramp_phase4.engine.load_universe_panel', lambda c, s, e: panel)
+    spec = type('Spec', (), {'id': 'BAD', 'plan_fn': staticmethod(lambda t, st, pn, cf: {'AAA': 1.5})})()
+    with pytest.raises(ValueError, match='overleverage'):
+        run_variant(cfg, spec)
