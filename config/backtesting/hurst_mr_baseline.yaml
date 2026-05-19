@@ -72,7 +72,7 @@ costs:
 
 risk:
   enabled: true
-  position_sizing_method: fixed_percentage
+  position_sizing_method: fixed_percent
   position_size_pct: 0.20       # 20% per symbol (100% total exposure)
   max_positions: 5
   use_stop_loss: true
