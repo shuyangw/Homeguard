@@ -97,10 +97,33 @@ def _variant_v01(t: datetime, state, panel: pd.DataFrame, cfg) -> Dict[str, floa
     return out
 
 
+def _variant_v03(t: datetime, state, panel: pd.DataFrame, cfg) -> Dict[str, float]:
+    """V03: target-weight-correct production.
+
+    Same selection as V01 but honors planner's exposure_pct
+    (1.0 normally, 0.5 in crash regimes).
+    """
+    plan = _compute_plan_from_panel(t, panel)
+    if plan is None:
+        return {'__regime__': 'SAFE_MODE'}
+    targets = list(plan.targets.keys())
+    if not targets:
+        return {'__regime__': plan.regime}
+    per_weight = float(plan.exposure_pct) / len(targets)
+    out: Dict[str, float] = {sym: per_weight for sym in targets}
+    out['__regime__'] = plan.regime
+    return out
+
+
 REGISTRY: Dict[str, VariantSpec] = {
     'V01': VariantSpec(
         id='V01',
         description='Fresh portfolio every day; production REGIME_PARAMS; ignores crash exposure',
         plan_fn=_variant_v01,
+    ),
+    'V03': VariantSpec(
+        id='V03',
+        description='Target-weight-correct production; honors planner exposure_pct',
+        plan_fn=_variant_v03,
     ),
 }
