@@ -236,3 +236,32 @@ def test_run_variant_aborts_on_overleverage(tmp_path, monkeypatch):
     spec = type('Spec', (), {'id': 'BAD', 'plan_fn': staticmethod(lambda t, st, pn, cf: {'AAA': 1.5})})()
     with pytest.raises(ValueError, match='overleverage'):
         run_variant(cfg, spec)
+
+
+def test_run_variant_records_regime_when_variant_provides(tmp_path, monkeypatch):
+    cfg = _tiny_cfg(tmp_path)
+    panel = _tiny_panel()
+    monkeypatch.setattr('src.research.ramp_phase4.engine.load_universe_panel', lambda c, s, e: panel)
+    def variant_fn(t, st, pn, cf):
+        return {'__regime__': 'STRONG_BULL', 'AAA': 0.05}
+    spec = type('Spec', (), {'id': 'R', 'plan_fn': staticmethod(variant_fn)})()
+    records = run_variant(cfg, spec)
+    assert all(r.regime == 'STRONG_BULL' for r in records)
+
+
+def test_run_variant_safe_mode_skips_rebalance(tmp_path, monkeypatch):
+    """If variant returns {'__regime__': 'SAFE_MODE'} the engine holds current weights."""
+    cfg = _tiny_cfg(tmp_path)
+    panel = _tiny_panel()
+    monkeypatch.setattr('src.research.ramp_phase4.engine.load_universe_panel', lambda c, s, e: panel)
+    call = {'n': 0}
+    def variant_fn(t, st, pn, cf):
+        call['n'] += 1
+        if call['n'] == 1:
+            return {'__regime__': 'STRONG_BULL', 'AAA': 0.10}
+        return {'__regime__': 'SAFE_MODE'}  # subsequent days are safe-mode
+    spec = type('Spec', (), {'id': 'SAFE', 'plan_fn': staticmethod(variant_fn)})()
+    records = run_variant(cfg, spec)
+    # After day 1 buy, days 2-4 stay safe-mode and produce zero turnover.
+    assert records[1].regime == 'SAFE_MODE'
+    assert records[1].turnover_usd == 0.0

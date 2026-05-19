@@ -80,8 +80,25 @@ def run_variant(cfg: HarnessConfig, variant_spec: VariantLike) -> List[DailyReco
         _handle_nan_exits(state, prices)
         cur_value = _portfolio_value(state, prices)
 
-        # 2. Variant produces target weights.
-        target_weights = variant_spec.plan_fn(ts, state, panel, cfg) or {}
+        # 2. Variant produces target weights + optional regime sentinel.
+        plan_output = variant_spec.plan_fn(ts, state, panel, cfg) or {}
+        regime_label = str(plan_output.pop('__regime__', 'STUB'))
+        target_weights = plan_output
+
+        if regime_label == 'SAFE_MODE':
+            # Hold current positions; no trades.
+            post_value = cur_value
+            daily_ret = (post_value / prev_value) - 1.0 if prev_value > 0 else 0.0
+            records.append(DailyRecord(
+                date=ts, regime=regime_label,
+                target_weights=dict(target_weights),
+                realized_weights=_current_weights(state, prices, post_value),
+                turnover_usd=0.0, cost_usd=0.0,
+                portfolio_value=post_value, daily_return=daily_ret,
+            ))
+            prev_value = post_value
+            continue
+
         weight_sum = sum(target_weights.values())
         if weight_sum > 1.0 + OVERLEVERAGE_EPSILON:
             raise ValueError(
@@ -101,7 +118,7 @@ def run_variant(cfg: HarnessConfig, variant_spec: VariantLike) -> List[DailyReco
         realized_weights = _current_weights(state, prices, post_value)
 
         records.append(DailyRecord(
-            date=ts, regime='STUB',
+            date=ts, regime=regime_label,
             target_weights=dict(target_weights),
             realized_weights=realized_weights,
             turnover_usd=turnover,
