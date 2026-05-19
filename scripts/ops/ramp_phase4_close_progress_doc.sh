@@ -14,7 +14,7 @@
 set -eu
 
 PROGRESS_DOC="docs/progress/20260515_RAMP_PHASE4.md"
-COUNTER_FILE="docs/progress/.a7_clean_sessions"
+COUNTER_FILE="${COUNTER_FILE:-/var/lib/homeguard/a7_clean_sessions}"
 REQUIRED_CLEAN=5
 CLOSE_DATE="$(TZ='America/New_York' date '+%Y-%m-%d %H:%M ET' 2>/dev/null || date '+%Y-%m-%d %H:%M ET')"
 

@@ -36,6 +36,7 @@ mkdir -p "$(dirname "$TEXTFILE_OUT")"
 write_gauges() {
     local clean_count="$1"
     local error_flag="$2"
+    local tmp="${TEXTFILE_OUT}.tmp.$$"
     {
         echo "# HELP hg_a7_clean_sessions Consecutive clean RAMP paper sessions."
         echo "# TYPE hg_a7_clean_sessions gauge"
@@ -43,7 +44,8 @@ write_gauges() {
         echo "# HELP hg_a7_check_error 1 if the most recent session check errored, 0 otherwise."
         echo "# TYPE hg_a7_check_error gauge"
         echo "hg_a7_check_error ${error_flag}"
-    } > "$TEXTFILE_OUT"
+    } > "$tmp"
+    mv "$tmp" "$TEXTFILE_OUT"
 }
 
 read_counter() {
