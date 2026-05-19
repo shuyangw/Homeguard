@@ -89,3 +89,36 @@ def build_variant_report(
     out.append('')
 
     return '\n'.join(out)
+
+
+def _row(label, v01_val, v03_val, fmt='{:.2%}'):
+    delta = v03_val - v01_val
+    return f'| {label} | {fmt.format(v01_val)} | {fmt.format(v03_val)} | {fmt.format(delta)} |'
+
+
+def build_parity_report(*, v01_records: List, v03_records: List, cost_bps: float) -> str:
+    eq01, ret01 = _equity_curve(v01_records), _returns(v01_records)
+    eq03, ret03 = _equity_curve(v03_records), _returns(v03_records)
+
+    out: List[str] = []
+    out.append('# Phase 4 V01 vs V03 Parity Finding\n')
+    out.append('## Question\n')
+    out.append('Does applying crash exposure correctly (V03) improve net Sharpe over the')
+    out.append('fresh-portfolio baseline (V01) that ignores crash exposure?\n')
+    out.append(f'## Side-by-side at {cost_bps} bps per side\n')
+    out.append('| Metric | V01 | V03 | Delta (V03 - V01) |')
+    out.append('|---|---:|---:|---:|')
+    out.append(_row('Sharpe',         sharpe_ratio(ret01), sharpe_ratio(ret03), fmt='{:.3f}'))
+    out.append(_row('CAGR',           cagr(eq01),           cagr(eq03)))
+    out.append(_row('Max DD',         max_drawdown(eq01),   max_drawdown(eq03)))
+    out.append(_row('Avg turnover',   avg_daily_turnover(v01_records), avg_daily_turnover(v03_records)))
+    out.append(_row('Cost drag',      cost_drag_pct(v01_records),      cost_drag_pct(v03_records)))
+    out.append('')
+    out.append('## Conclusion\n')
+    out.append('Pick ONE based on the metrics:\n')
+    out.append('1. **V03 wins net.** Advance to Wave 1 turnover-control on V03 base.')
+    out.append('2. **V03 wins gross but loses net to cost.** Phase 3A generalized; turnover-control needed before V03 is viable.')
+    out.append('3. **No material difference.** Investigate signal/regime overlay/sector concentration in Phase C.\n')
+    out.append('## Next step\n')
+    out.append('Documented in docs/progress/<this-session>.md at completion.')
+    return '\n'.join(out)

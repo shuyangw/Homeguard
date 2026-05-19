@@ -4,6 +4,7 @@ import pandas as pd
 import pytest
 
 from src.research.ramp_phase4.reports import build_variant_report
+from src.research.ramp_phase4.reports import build_parity_report
 
 
 def _fake_records(n=10, regime='STRONG_BULL', daily_return=0.001):
@@ -52,3 +53,13 @@ def test_build_variant_report_includes_regime_attribution_section():
     )
     assert '## Regime attribution' in md
     assert 'STRONG_BULL' in md
+
+
+def test_build_parity_report_produces_side_by_side_table():
+    v01_records = _fake_records(daily_return=0.001)
+    v03_records = _fake_records(daily_return=0.0008)  # slightly worse
+    md = build_parity_report(v01_records=v01_records, v03_records=v03_records, cost_bps=5.0)
+    assert '# Phase 4 V01 vs V03' in md
+    assert '| V01 |' in md
+    assert '| V03 |' in md
+    assert 'EXT-OOS Sharpe' in md or 'Sharpe' in md
