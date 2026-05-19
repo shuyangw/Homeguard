@@ -5,7 +5,7 @@ Pure functions over pandas Series / list[DailyRecord]. No engine internals.
 
 from __future__ import annotations
 
-from typing import List
+from typing import Dict, List
 import numpy as np
 import pandas as pd
 
@@ -49,3 +49,52 @@ def max_drawdown(equity_curve: pd.Series) -> float:
     running_max = eq.cummax()
     drawdowns = (eq - running_max) / running_max
     return float(drawdowns.min())
+
+
+def avg_daily_turnover(records: List) -> float:
+    """Average of (turnover_usd / portfolio_value) across days where portfolio_value > 0."""
+    ratios = []
+    for r in records:
+        if r.portfolio_value > 0:
+            ratios.append(r.turnover_usd / r.portfolio_value)
+    if not ratios:
+        return 0.0
+    return float(np.mean(ratios))
+
+
+def cost_drag_pct(records: List) -> float:
+    """Total cost / total gross return, as a fraction.
+
+    Returns 0.0 if gross return is non-positive.
+    """
+    if not records:
+        return 0.0
+    total_cost = sum(r.cost_usd for r in records)
+    initial_value = records[0].portfolio_value
+    if initial_value <= 0:
+        return 0.0
+    net_return = 1.0
+    for r in records:
+        net_return *= (1 + r.daily_return)
+    net_return -= 1.0
+    gross_return = net_return + total_cost / initial_value
+    if gross_return <= 0:
+        return 0.0
+    return (total_cost / initial_value) / gross_return
+
+
+def regime_attribution(records: List) -> Dict[str, Dict[str, float]]:
+    """Per-regime aggregates: days and net_return (compounded)."""
+    by_regime: Dict[str, Dict[str, float]] = {}
+    for r in records:
+        if r.regime not in by_regime:
+            by_regime[r.regime] = {'days': 0, '_compound': 1.0}
+        by_regime[r.regime]['days'] += 1
+        by_regime[r.regime]['_compound'] *= (1 + r.daily_return)
+    out: Dict[str, Dict[str, float]] = {}
+    for regime, d in by_regime.items():
+        out[regime] = {
+            'days': int(d['days']),
+            'net_return': float(d['_compound'] - 1.0),
+        }
+    return out
