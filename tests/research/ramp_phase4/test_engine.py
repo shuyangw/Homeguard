@@ -6,6 +6,7 @@ import pytest
 
 from src.research.ramp_phase4.config import HarnessConfig
 from src.research.ramp_phase4.engine import HarnessState, DailyRecord, compute_trades, run_variant
+from src.research.ramp_phase4.engine import apply_trades
 
 
 def _tiny_cfg(tmp_path):
@@ -170,3 +171,27 @@ def test_compute_trades_skips_undersize():
     target_weights = {'AAA': 0.0005}  # $50 target -> 0 whole shares with $100 min
     trades = compute_trades(state, target_weights, prices, total_value=100000.0, min_trade_value_usd=100.0)
     assert trades == []
+
+
+def test_apply_trades_updates_cash_and_positions():
+    state = HarnessState(cash_usd=100000.0)
+    trades = [{'symbol': 'AAA', 'delta_shares': 100, 'trade_value_usd': 10000.0, 'side': 'buy'}]
+    apply_trades(state, trades, cost_usd=5.0)
+    assert state.cash_usd == 100000.0 - 10000.0 - 5.0
+    assert state.positions == {'AAA': 100.0}
+
+
+def test_apply_trades_sells_reduce_position_and_credit_cash():
+    state = HarnessState(cash_usd=90000.0, positions={'AAA': 100.0})
+    trades = [{'symbol': 'AAA', 'delta_shares': -50, 'trade_value_usd': -5000.0, 'side': 'sell'}]
+    apply_trades(state, trades, cost_usd=2.5)
+    # Sell 50 of 100 -> 50 left. Cash += 5000 - 2.5
+    assert state.positions == {'AAA': 50.0}
+    assert state.cash_usd == 90000.0 + 5000.0 - 2.5
+
+
+def test_apply_trades_full_exit_removes_symbol_from_positions():
+    state = HarnessState(cash_usd=90000.0, positions={'AAA': 100.0})
+    trades = [{'symbol': 'AAA', 'delta_shares': -100, 'trade_value_usd': -10000.0, 'side': 'sell'}]
+    apply_trades(state, trades, cost_usd=5.0)
+    assert 'AAA' not in state.positions

@@ -169,3 +169,29 @@ def compute_trades(
             'side': 'buy' if delta > 0 else 'sell',
         })
     return trades
+
+
+def apply_trades(state: HarnessState, trades: List[Dict], cost_usd: float) -> None:
+    """Mutate state to apply the given trades + cost.
+
+    Sells execute first to free cash. Buys execute in input order (caller
+    should sort by rank if cash is tight). After this call, state.cash_usd
+    is decreased by total buy notional + cost, increased by total sell notional.
+
+    Symbols with zero shares are removed from state.positions.
+    """
+    # Process sells first so cash is available for buys.
+    sells = [t for t in trades if t['delta_shares'] < 0]
+    buys = [t for t in trades if t['delta_shares'] > 0]
+    for t in sells + buys:
+        sym = t['symbol']
+        current = state.positions.get(sym, 0.0)
+        new_shares = current + t['delta_shares']
+        state.cash_usd -= t['trade_value_usd']  # buy: trade_value_usd > 0 -> reduces cash
+        if new_shares == 0:
+            state.positions.pop(sym, None)
+        else:
+            state.positions[sym] = float(new_shares)
+        state.turnover_to_date_usd += abs(t['trade_value_usd'])
+    state.cash_usd -= cost_usd
+    state.cost_to_date_usd += cost_usd
