@@ -1,0 +1,13 @@
+[Unit]
+Description=Daily RAMP A7 paper-validation check ~5min after rebalance
+Documentation=https://github.com/shuyangw/Homeguard/blob/main/docs/progress/20260515_RAMP_PHASE4_DEPLOY_RUNBOOK.md
+
+[Timer]
+# RAMP rebalances at 15:55 ET (M-F). Check fires at 16:05 ET.
+# systemd resolves America/New_York handling DST automatically.
+OnCalendar=Mon..Fri *-*-* 16:05:00 America/New_York
+Persistent=true
+Unit=homeguard-ramp-paper-check.service
+
+[Install]
+WantedBy=timers.target
