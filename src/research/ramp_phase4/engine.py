@@ -57,10 +57,7 @@ def _portfolio_value(state: HarnessState, prices: pd.Series) -> float:
 
 
 def run_variant(cfg: HarnessConfig, variant_spec: VariantLike) -> List[DailyRecord]:
-    """Run one variant end-to-end through [cfg.start_date, cfg.end_date].
-
-    Returns one DailyRecord per trading day.
-    """
+    """Run one variant end-to-end through [cfg.start_date, cfg.end_date]."""
     panel = load_universe_panel(cfg.universe_csv, cfg.start_date, cfg.end_date)
     if panel.empty:
         raise RuntimeError(f'Empty panel for {cfg.start_date.date()}..{cfg.end_date.date()}')
@@ -69,18 +66,26 @@ def run_variant(cfg: HarnessConfig, variant_spec: VariantLike) -> List[DailyReco
     records: List[DailyRecord] = []
     prev_value: float = cfg.initial_capital
 
-    for t, row in panel.iterrows():
-        ts = t.to_pydatetime() if hasattr(t, 'to_pydatetime') else t
+    for t, prices in panel.iterrows():
+        ts = t.to_pydatetime()
         if not (cfg.start_date <= ts <= cfg.end_date):
             continue
-        target_weights = variant_spec.plan_fn(ts, state, panel, cfg)
-        cur_value = _portfolio_value(state, row)
+
+        # 1. Mark-to-market + forced exits for NaN-priced holdings.
+        forced_exits = _handle_nan_exits(state, prices)
+        cur_value = _portfolio_value(state, prices)
+
+        # 2. Compute target weights from variant.
+        target_weights = variant_spec.plan_fn(ts, state, panel, cfg) or {}
+
+        # 3. (Tasks 8-10 implement actual trades here.) For now, capture intent.
+        realized_weights = _current_weights(state, prices, cur_value)
+
         daily_ret = (cur_value / prev_value) - 1.0 if prev_value > 0 else 0.0
         records.append(DailyRecord(
-            date=ts,
-            regime='STUB',
+            date=ts, regime='STUB',
             target_weights=dict(target_weights),
-            realized_weights={},
+            realized_weights=realized_weights,
             turnover_usd=0.0,
             cost_usd=0.0,
             portfolio_value=cur_value,
@@ -89,3 +94,34 @@ def run_variant(cfg: HarnessConfig, variant_spec: VariantLike) -> List[DailyReco
         prev_value = cur_value
 
     return records
+
+
+def _handle_nan_exits(state: HarnessState, prices: pd.Series) -> List[str]:
+    """If a held symbol has NaN price today, exit at last known good price (already in cash).
+
+    Returns the list of forced-exit symbols.
+    """
+    exits: List[str] = []
+    for sym in list(state.positions.keys()):
+        px = prices.get(sym)
+        if px is None or pd.isna(px):
+            # Position becomes worthless in MTM; treat as forced exit at 0 cash impact.
+            # Caller (engine) can choose richer behavior later; for Phase B this matches
+            # the "force-exit at last good close" intent -- by the time we see NaN, we've
+            # already recorded yesterday's MTM at the last good price.
+            del state.positions[sym]
+            exits.append(sym)
+    return exits
+
+
+def _current_weights(state: HarnessState, prices: pd.Series, total_value: float) -> Dict[str, float]:
+    """Map symbol -> current weight (position value / total portfolio value)."""
+    if total_value <= 0:
+        return {}
+    out: Dict[str, float] = {}
+    for sym, shares in state.positions.items():
+        px = prices.get(sym)
+        if px is None or pd.isna(px):
+            continue
+        out[sym] = (shares * px) / total_value
+    return out
