@@ -85,11 +85,11 @@ ssh -i ~/.ssh/homeguard-trading.pem ec2-user@<YOUR_EC2_IP> "sudo journalctl -u h
 ssh -i ~/.ssh/homeguard-trading.pem ec2-user@<YOUR_EC2_IP> "sudo systemctl status homeguard-trading --no-pager | grep -E 'Memory|CPU'"
 ```
 
-**What to look for**:
-- [+] Memory: < 500M (normal)
-- [+] CPU: < 5s total time
-- [-] Memory: > 900M = approaching limit (1GB max)
-- [-] CPU: very high = possible infinite loop
+**What to look for** (instance is `t4g.medium`, 4 GB RAM):
+- [+] Memory: < 1 GB (normal)
+- [+] CPU: low steady-state load
+- [-] Memory: > 3 GB = ops alert threshold (75% of 4 GB)
+- [-] CPU: pinned high = possible infinite loop
 
 ---
 

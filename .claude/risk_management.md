@@ -73,4 +73,4 @@ Strategies MUST: accept `RiskConfig`, use configured sizing, apply stop losses, 
 
 - [`docs/guides/RISK_MANAGEMENT_GUIDE.md`](../docs/guides/RISK_MANAGEMENT_GUIDE.md) - Complete risk management guide
 - [`docs/guides/POSITION_SIZING_METHODS.md`](../docs/guides/POSITION_SIZING_METHODS.md) - Position sizing formulas and examples
-- [`backtest_guidelines/guidelines.md`](../backtest_guidelines/guidelines.md) - Common backtesting pitfalls
+- [`docs/methodology/backtesting.md`](../docs/methodology/backtesting.md) - Authoritative backtesting methodology (replaces former `backtest_guidelines/`)

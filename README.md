@@ -30,13 +30,12 @@ See [SETUP.md](SETUP.md) for detailed setup instructions.
 
 | Component | Description | Documentation |
 |-----------|-------------|---------------|
-| **Backtesting Engine** | VectorBT-based backtesting with GUI and CLI | [BACKTESTING_ENGINE.md](src/backtesting/BACKTESTING_ENGINE.md) |
-| **Live Trading** | Alpaca paper/live trading with strategy adapters | [LIVE_TRADING_SYSTEM.md](src/trading/LIVE_TRADING_SYSTEM.md) |
-| **Strategies** | 20+ strategies (production and research) | [STRATEGY_FRAMEWORK.md](src/strategies/STRATEGY_FRAMEWORK.md) |
-| **Data Engine** | Multi-threaded data ingestion and storage | [DATA_ENGINE.md](src/data_engine/DATA_ENGINE.md) |
-| **Streaming** | Real-time WebSocket market data | [STREAMING.md](src/streaming/STREAMING.md) |
-| **Web UI** | React frontend + FastAPI backend | [WEB.md](src/web/WEB.md) |
-| **Desktop GUI** | PyQt-based desktop interface | [GUI.md](src/gui/GUI.md) |
+| **Backtesting Engine** | Config-driven backtesting (Polars + Numba) with walk-forward, regimes, reporting | [BACKTESTING_ENGINE.md](src/backtesting/BACKTESTING_ENGINE.md) |
+| **Live Trading** | IBKR/Alpaca/Coinbase paper trading with strategy adapters | [LIVE_TRADING_SYSTEM.md](src/trading/LIVE_TRADING_SYSTEM.md) |
+| **Strategies** | OMR, RAMP, CSCM (production) + research strategies | [STRATEGY_FRAMEWORK.md](src/strategies/STRATEGY_FRAMEWORK.md) |
+| **Data Acquisition** | Plugin-based downloaders (Alpaca, Databento, Massive/Polygon, FRED, CFTC, yfinance) | [DATA_PROVIDERS.md](src/data/DATA_PROVIDERS.md) |
+| **Streaming** | Real-time WebSocket market data (Alpaca + IBKR) | [STREAMING.md](src/streaming/STREAMING.md) |
+| **Discord Bot** | Claude-powered read-only operational monitoring | [DISCORD_BOT_ARCHITECTURE.md](src/discord_bot/DISCORD_BOT_ARCHITECTURE.md) |
 
 ---
 

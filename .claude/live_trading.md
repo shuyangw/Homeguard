@@ -69,31 +69,7 @@ When the model encounters a symbol it wasn't trained on:
 - The symbol is silently skipped (no trades)
 - This causes confusion when "no signals" are generated
 
-**Before Deploying**:
-```bash
-# Retrain model with current production universe
-python scripts/trading/retrain_bayesian_model.py
-
-# Verify model coverage
-python -c "
-from src.strategies.advanced.bayesian_reversion_model import BayesianReversionModel
-model = BayesianReversionModel()
-print(f'Model trained on {len(model.trained_symbols)} symbols')
-print(f'Symbols: {model.trained_symbols}')
-"
-```
-
-**Configuration Alignment**:
-The trading universe is defined in `config/trading/production.yaml`:
-```yaml
-symbols:
-  - SPY
-  - QQQ
-  - IWM
-  # ... all 20 production symbols
-```
-
-The model must be retrained whenever:
+**Before deploying**, retrain via the scripts under `scripts/trading/` and verify the model loads against the current OMR universe (see `config/trading/omr_trading_config.yaml` for the live universe). The model must be retrained whenever:
 1. Adding new symbols to the universe
 2. Removing symbols from the universe
 3. Updating the model architecture
@@ -140,8 +116,9 @@ assert_et_timezone(df, context="broker data")
 ### 5. Market Hours and Schedule
 
 Live trading only executes during market hours:
-- **Entry time**: 3:50 PM ET (configurable)
-- **Exit time**: 9:35 AM ET (next trading day)
+- **OMR entry**: 3:50 PM ET (configurable)
+- **OMR exit**: 9:31 AM ET (next trading day; one minute after market open per `src/strategies/advanced/overnight_mean_reversion.py:9`)
+- **RAMP rebalance**: 3:55 PM ET
 - **Pre-fetch time**: 3:45 PM ET (data caching)
 
 The system automatically:
@@ -184,7 +161,7 @@ Before deploying live trading updates:
 
 ## EC2 Connection
 
-Use connection scripts in `scripts/ec2/`: `connect.bat` (Windows), `local_connect.sh` (Linux/Mac).
+Use connection scripts in `infra/ec2/`: `local_connect.bat` (Windows), `local_connect.sh` (Linux/Mac).
 Username is `ec2-user` (not `ubuntu`). See `docs/INFRASTRUCTURE_OVERVIEW.md` for full details.
 
 ## Common "No Signals" Causes
@@ -267,7 +244,7 @@ journalctl -u homeguard-cscm -f
 - Live adapter: `src/trading/adapters/cscm_live_adapter.py`
 - Signals: `src/strategies/advanced/cscm_signals.py`
 - Config: `config/trading/cscm_live.yaml`
-- Service: `scripts/ec2/services/homeguard-cscm.service`
+- Service: `infra/ec2/services/homeguard-cscm.service`
 
 ### Common Issues
 

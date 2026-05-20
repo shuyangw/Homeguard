@@ -826,27 +826,31 @@ The trade-log-analyzer must check IBKR (`ib_async`) error patterns for OMR/RAMP 
 
 | Service | Purpose |
 |---|---|
-| `homeguard-omr.service` | OMR live trading |
-| `homeguard-ramp.service` | RAMP live trading |
+| `homeguard-multi.service` | Active stocks trading unit (currently runs `--strategy ramp`; supersedes the per-strategy units below) |
+| `homeguard-omr.service` | Legacy OMR unit (file exists, **disabled**) |
+| `homeguard-ramp.service` | Legacy RAMP unit (file exists, **disabled**) |
 | `homeguard-cscm.service` | CSCM live trading |
 | `homeguard-cscm-paper.service` | CSCM paper |
 | `homeguard-cscm-demo.service` | CSCM demo |
 | `homeguard-trading.target` | Grouping target -- checking this alone does not surface individual service failures |
 
-Always check individual services via `systemctl status homeguard-*.service`, not only the target.
+Always check individual services via `systemctl status homeguard-*.service`, not only the target. See `CLAUDE.md` "Production Strategies" for the canonical current-state description.
 
 ### 10.5 Available data on disk
 
 (Resolve storage root via `from src.settings import get_local_storage_dir`.)
 
-| Asset class | Path | Coverage |
-|---|---|---|
-| Equities (1min/1hour/1day) | `equities_1min/`, `equities_1hour/`, `equities_1day/` | 3492 symbols, 2017+ |
-| Futures (GLBX continuous .c.0) | `futures_1min/` | 9 contracts (ES, NQ, YM, RTY, CL, GC, ZN, 6E, ZC), 2010-10 to current |
-| FX | `fx_1min/` | 50 pairs, varies by pair |
-| Crypto | `crypto_1min/`, `crypto_1hour/`, `crypto_1day/` | 33 pairs, varies |
-| Options | `options/{chains,gex_daily,options_combined}/` | EOD, varies |
-| News | `news/symbol={SYM}/` | 502 symbols, per-event |
+The **authoritative inventory** of what is on disk -- with row counts, file counts, byte sizes, date ranges, and dtype quirks -- lives in [`docs/reference/DATA_INVENTORY.md`](../reference/DATA_INVENTORY.md), regenerated regularly. Consult that file before any backtest depending on a specific asset class. Quick orientation:
+
+| Asset class | Path |
+|---|---|
+| Equities (1min) | `equities_1min/`, plus the by-date mirror `equities_1min_by_date/` |
+| Futures | `futures_1min/`, `futures_per_contract_1min/`, `futures_per_contract_daily/`, `futures_1min_oi_roll/`, `futures_status/` |
+| FX | `fx_1min/`, `fx_quotes_raw/`, `fx_quotes_minute_aggregated/` |
+| Crypto | `crypto_1min/` (Alpaca-sourced) plus `crypto_1min_alpaca_archive/` snapshot |
+| Options | `options/options_combined/` (with stubs at `options/{chains,gex_daily}/`) |
+| News & sentiment | `news/`, `sentiment/` |
+| Alt-data | `alt_data/fred/`, `alt_data/cot/` |
 
 ### 10.6 Environment
 

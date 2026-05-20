@@ -26,9 +26,10 @@ Reference for all market data on `H:/Stock_Data/` (Windows) / `/home/ec2-user/st
 | `options/` | ThetaData / IBKR | 24.1B | 4,510 | 250.0 GB | 2012-06 → 2026-02 |
 | `news/` | Alpaca / Benzinga | 587K | 2,985 | 0.15 GB | 2020-01 → 2025-12 |
 | `sentiment/` | derived (FinBERT) | 424K | 1,719 | 0.05 GB | 2020-01 → 2025-12 |
-| `futures_trades/` | Databento (stub) | 374K | 1 | <0.01 GB | 2024-01 (single day) |
 
 **Total: ~31.0B rows across ~386 GB.** All timestamps `[us, UTC]` except crypto and fx (`[ns, UTC]`, off-spec, see "Known dtype drift" below).
+
+> `futures_trades/` (the Databento trades-schema stub for 2024-01) was previously listed here but is **no longer present on disk**. The block was deleted after pulls were paused pending budget decisions on `futures_mbp1/` and `futures_trades_window/` below.
 
 **Pulled but not on disk:**
 - `futures_mbp1/` — MBP-1 tick data for ES/MES/NQ/MNQ Aug 2025-Feb 2026. Job F at Databento (5.9 GB partial dbn.zst staging only; full pull = 486 GB tick stream). Decision pending: resume the 480 GB download or drop entirely.
@@ -134,12 +135,6 @@ All futures were pulled in the bulk plan execution on 2026-05-07. Plan source: `
 - **Schema**: `timestamp, ts_recv, ts_ref, price, quantity, stat_type, update_action, stat_flags, symbol, …` (15 cols)
 - **Partitioning**: `year={YYYY}/month={M}/data.parquet` (filename-based)
 - `stat_type` indicates the event kind: settlement, open interest, cleared volume, indicative open/close, etc. (see Databento docs for stat_type code table)
-
-### `futures_trades/` — stub
-
-- Only one parquet file present (`symbol=ES/year=2024/month=1/data.parquet`) from an early test run
-- Schema: `timestamp, price, size` (raw trade events)
-- Not actively maintained
 
 ### `futures_status/` — exchange status events (added 2026-05-09)
 
