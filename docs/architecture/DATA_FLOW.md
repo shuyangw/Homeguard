@@ -1,7 +1,7 @@
 # Homeguard Data Flow Documentation
 
-**Version**: 1.1
-**Last Updated**: 2025-12-15
+**Version**: 1.2
+**Last Updated**: 2026-05-17
 **Purpose**: Comprehensive data flow diagrams for all system operations
 
 ---
@@ -9,16 +9,15 @@
 ## Table of Contents
 
 1. [Data Ingestion Flow](#data-ingestion-flow)
-2. [Streaming Data Flow](#streaming-data-flow) (NEW)
-3. [News & Sentiment Pipeline Flow](#news--sentiment-pipeline-flow) (NEW)
+2. [Streaming Data Flow](#streaming-data-flow)
+3. [News & Sentiment Pipeline Flow](#news--sentiment-pipeline-flow)
 4. [Single Symbol Backtest Flow](#single-symbol-backtest-flow)
 5. [Multi-Symbol Sweep Flow](#multi-symbol-sweep-flow)
 6. [Multi-Asset Portfolio Flow](#multi-asset-portfolio-flow)
-7. [GUI Backtest Flow](#gui-backtest-flow)
-8. [Live Trading Execution Flow](#live-trading-execution-flow) (NEW)
-9. [Visualization Pipeline Flow](#visualization-pipeline-flow)
-10. [Risk Management Flow](#risk-management-flow)
-11. [Signal Generation Flow](#signal-generation-flow)
+7. [Live Trading Execution Flow](#live-trading-execution-flow)
+8. [Visualization Pipeline Flow](#visualization-pipeline-flow)
+9. [Risk Management Flow](#risk-management-flow)
+10. [Signal Generation Flow](#signal-generation-flow)
 
 ---
 
@@ -29,16 +28,16 @@
 ```
 User Input (Symbol List, Date Range)
     v
-IngestionPipeline
-    ├─-> SymbolLoader (load symbol list)
+DataAcquisitionManager  (python -m src.data.acquisition)
+    ├─-> Plugin dispatch (equities / crypto / futures / news / fx / fred / cot)
     ├─-> ThreadPoolExecutor (spawn workers)
-    │   ├─ Worker 1: AlpacaClient -> ParquetStorage (AAPL)
-    │   ├─ Worker 2: AlpacaClient -> ParquetStorage (MSFT)
-    │   ├─ Worker 3: AlpacaClient -> ParquetStorage (GOOGL)
-    │   └─ Worker 4: AlpacaClient -> ParquetStorage (TSLA)
-    └─-> MetadataStore (update metadata)
+    │   ├─ Worker 1: Plugin client -> Parquet (AAPL)
+    │   ├─ Worker 2: Plugin client -> Parquet (MSFT)
+    │   ├─ Worker 3: Plugin client -> Parquet (GOOGL)
+    │   └─ Worker 4: Plugin client -> Parquet (TSLA)
+    └─-> Manifest update (per-source partition manifest)
         v
-Data stored in Parquet files
+Data stored in Parquet files (Hive-partitioned by symbol/date)
 ```
 
 ### Detailed Flow
@@ -53,13 +52,14 @@ Data stored in Parquet files
                  │
                  ▼
 ┌──────────────────────────────────────────────────────────────┐
-│ 2. INGESTION PIPELINE (src/run_ingestion.py)                │
-│    pipeline = IngestionPipeline(data_dir='data/')           │
-│    pipeline.run(symbols, start, end, timeframe, workers=4)  │
+│ 2. ACQUISITION MANAGER (src/data/acquisition/manager.py)     │
+│    manager = DataAcquisitionManager()                        │
+│    manager.download(source="equities", symbols=symbols,      │
+│                     start_date=start, end_date=end)          │
+│    CLI: python -m src.data.acquisition --source equities ... │
 └────────────────┬─────────────────────────────────────────────┘
                  │
-                 ├─-> Load symbol list
-                 │   SymbolLoader.load_from_csv('symbols.csv')
+                 ├─-> Resolve symbol list (--csv or --symbols)
                  │
                  ├─-> Initialize workers
                  │   ThreadPoolExecutor(max_workers=4)
@@ -839,93 +839,6 @@ SweepRunner
 
 ---
 
-## GUI Backtest Flow
-
-### Thread-Safe GUI Communication
-
-```
-┌──────────────────────────────────────────────────────────────┐
-│ 1. USER INTERACTION (Main Thread - GUI)                     │
-│    User clicks "Run Backtest" button in SetupView           │
-│    ├─ Strategy: MovingAverageCrossover                       │
-│    ├─ Symbols: ['AAPL', 'MSFT', 'GOOGL']                   │
-│    ├─ Date range: 2023-01-01 to 2024-01-01                  │
-│    └─ Workers: 4                                             │
-└────────────────┬─────────────────────────────────────────────┘
-                 │
-                 ▼
-┌──────────────────────────────────────────────────────────────┐
-│ 2. GUI CONTROLLER (gui/workers/gui_controller.py)           │
-│    controller = GUIBacktestController(sweep_runner)          │
-│    controller.start(strategy, symbols, start, end)           │
-│                                                              │
-│    Creates:                                                  │
-│    ├─ worker_thread = Thread(target=run_backtest)           │
-│    ├─ progress_queue = Queue()  # Thread-safe queue         │
-│    └─ result_queue = Queue()                                 │
-│                                                              │
-│    worker_thread.start()  # Starts in background            │
-│    return immediately -> GUI stays responsive                 │
-└────────────────┬─────────────────────────────────────────────┘
-                 │
-        ┌────────┴────────┐
-        │                 │
-        ▼                 ▼
-┌──────────────┐   ┌──────────────────┐
-│ MAIN THREAD  │   │  WORKER THREAD   │
-│   (GUI)      │   │  (Backtest)      │
-└──────┬───────┘   └────────┬─────────┘
-       │                    │
-       │                    ├─-> SweepRunner.run_sweep(...)
-       │                    │
-       │                    ├─-> Callback: on_symbol_start('AAPL')
-       │                    │   progress_queue.put({
-       │                    │       'type': 'start',
-       │                    │       'symbol': 'AAPL'
-       │                    │   })
-       │                    │
-       ├── Poll queue every 100ms
-       │   update = progress_queue.get_nowait()
-       │   if update['type'] == 'start':
-       │       RunView.update_status('Starting AAPL...')
-       │                    │
-       │                    ├─-> Run backtest for AAPL
-       │                    │   (Load data, signals, simulate)
-       │                    │
-       │                    ├─-> Callback: on_symbol_complete('AAPL', portfolio)
-       │                    │   progress_queue.put({
-       │                    │       'type': 'complete',
-       │                    │       'symbol': 'AAPL',
-       │                    │       'stats': portfolio.stats()
-       │                    │   })
-       │                    │
-       ├── Poll queue
-       │   update = progress_queue.get_nowait()
-       │   if update['type'] == 'complete':
-       │       RunView.update_progress('AAPL: [+] 25.3%')
-       │       RunView.progress_bar.value = 0.33  # 1/3 complete
-       │                    │
-       │                    ├─-> Repeat for MSFT, GOOGL
-       │                    │
-       │                    ├─-> All symbols complete
-       │                    │   result_queue.put({
-       │                    │       'type': 'complete',
-       │                    │       'portfolios': [...]
-       │                    │   })
-       │                    │
-       ├── Poll queue
-       │   result = result_queue.get_nowait()
-       │   if result['type'] == 'complete':
-       │       Navigate to ResultsView
-       │       Display metrics table
-       │                    │
-       │                    └─-> Thread exits
-       │
-       └─-> Continue polling (cleanup)
-```
-
----
-
 ## Portfolio Simulation Flow (Bar-by-Bar)
 
 ### Detailed Execution Logic
@@ -1243,24 +1156,27 @@ State Manager
 
 ```
 +--------------------------------------------------------------+
-| 1. SCHEDULED EXECUTION (systemd timer)                       |
+| 1. SCHEDULED EXECUTION (systemd)                             |
 |    Schedule:                                                 |
-|    - OMR Entry: 3:50 PM ET (Mon-Fri)                         |
-|    - OMR Exit: 9:31 AM ET (Mon-Fri)                          |
+|    - OMR Entry: 3:50 PM ET (Mon-Fri)  [disabled via toggle]  |
+|    - OMR Exit: 9:31 AM ET (Mon-Fri)   [disabled via toggle]  |
 |    - RAMP Rebalance: 3:55 PM ET (Mon-Fri)                    |
 |                                                              |
-|    systemctl start homeguard-omr.service                     |
-|    systemctl start homeguard-ramp.service                    |
+|    systemctl start homeguard-multi.service                   |
+|    (runs run_live_paper_trading.py --strategy ramp)          |
 +--------------------------------------------------------------+
                  |
                  v
 +--------------------------------------------------------------+
 | 2. STRATEGY ADAPTER INITIALIZATION                           |
-|    # OMR Adapter (trading/adapters/omr_live_adapter.py)      |
-|    adapter = OMRLiveAdapter(                                 |
-|        broker=AlpacaBroker(),                                |
-|        provider=LiveDataProvider(),  # or CompositeProvider  |
-|        config=load_omr_config()                              |
+|    # Adapter selected by --strategy; broker resolved via     |
+|    # config/trading/broker_routing.yaml                      |
+|    # RAMP -> IBKRBroker (paper, port 4002)                   |
+|    # OMR  -> IBKRBroker (paper) when enabled                 |
+|    adapter = RAMPLiveAdapter(                                |
+|        broker=broker_factory.create_from_yaml(...),          |
+|        provider=LiveDataProvider(),                          |
+|        config=load_ramp_config()                             |
 |    )                                                         |
 +--------------------------------------------------------------+
                  |
@@ -1321,7 +1237,8 @@ State Manager
                  |
                  v
 +--------------------------------------------------------------+
-| 6. ORDER SUBMISSION (broker/alpaca_broker.py)                |
+| 6. ORDER SUBMISSION (broker resolved per broker_routing.yaml)|
+|    # RAMP routes to src/trading/brokers/ibkr/ibkr_broker.py  |
 |    for signal in signals:                                    |
 |        # Calculate position size                             |
 |        shares = calculate_shares(                            |
@@ -1387,19 +1304,26 @@ State Manager
 ### Multi-Strategy Coordination
 
 ```
-homeguard-trading.target
+homeguard-multi.service   (runs run_live_paper_trading.py --strategy ramp)
     |
-    +-- homeguard-omr.service (3:50 PM entry, 9:31 AM exit)
-    |   |-- Leveraged ETF universe (TQQQ, SOXL, UPRO, ...)
-    |   +-- Max 5 concurrent positions at 20% each
+    +-- RAMP adapter (3:55 PM rebalance)
+    |   |-- S&P 500 universe
+    |   |-- Dynamic 1/N momentum sizing, 5-regime gating
+    |   +-- Broker: IBKR paper (port 4002) via broker_routing.yaml
     |
-    +-- homeguard-ramp.service (3:55 PM rebalance)
-        |-- S&P 500 universe
-        +-- Top 10 by momentum, dynamic 1/N sizing
+    +-- OMR adapter (disabled in strategy_toggle.yaml; legacy)
+        |-- Leveraged ETF universe (TQQQ, SOXL, UPRO, ...)
+        +-- Would route to IBKR paper when re-enabled
+
+homeguard-cscm.service    (separate weekly Sunday 0:00 UTC tick)
+    +-- CSCM: cross-sectional crypto momentum, BTC regime filter
+
+Legacy units `homeguard-omr.service` and `homeguard-ramp.service` exist on
+disk but are `disabled` and superseded by `homeguard-multi`.
 
 Coordination:
-    - Non-overlapping universes (no conflicts)
-    - Execution lock for 3:50-4:00 PM window
+    - Single process per active strategy (no in-process lock needed)
+    - Strategy enable/shutdown via config/trading/strategy_toggle.yaml
     - Shared state file with atomic writes
 ```
 
@@ -1456,17 +1380,16 @@ Portfolio object
 
 | Operation | Entry Point | Data Path | Output |
 |-----------|-------------|-----------|--------|
-| **Data Ingestion** | `run_ingestion.py` | AlpacaAPI -> ParquetStorage -> Metadata | Parquet files |
+| **Data Ingestion** | `python -m src.data.acquisition` | DataAcquisitionManager -> Plugin -> Parquet -> Manifest | Parquet files |
 | **Streaming Data** | `LiveDataProvider` | WebSocket -> StreamManager -> BarBuffer -> Strategy | Real-time prices |
 | **News/Sentiment** | `NewsDownloader` | NewsAPI -> Parquet -> SentimentAnalyzer -> Cache | Sentiment scores |
 | **Single Backtest (CLI)** | `backtest_runner.py` | DataLoader -> Strategy -> PortfolioSim -> Visualizer | Reports/Charts |
 | **Multi-Symbol Sweep** | `backtest_runner.py` | SweepRunner -> [Parallel Engines] -> Aggregator | Comparison tables |
 | **Multi-Asset Portfolio** | `backtest_runner.py` | DataLoader -> MultiAssetPortfolio -> Visualizer | Portfolio reports |
-| **GUI Backtest** | `gui/__main__.py` | GUIController -> [Worker Thread] SweepRunner -> Queue -> UI | Interactive results |
-| **Live Trading** | `homeguard-*.service` | Adapter -> Provider -> Signals -> Broker -> StateManager | Orders/Positions |
+| **Live Trading** | `homeguard-multi.service` | Adapter -> Provider -> Signals -> Broker (IBKR/Alpaca per `broker_routing.yaml`) -> StateManager | Orders/Positions |
 
 ---
 
-**Last Updated**: 2025-12-15
+**Last Updated**: 2026-05-17
 **Maintainers**: Update when adding new data flows or changing execution paths
 **Related Docs**: [ARCHITECTURE_OVERVIEW.md](ARCHITECTURE_OVERVIEW.md), [MODULE_REFERENCE.md](MODULE_REFERENCE.md)

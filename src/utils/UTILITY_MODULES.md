@@ -1,8 +1,8 @@
 # Utility Modules
 
-**Shared utilities for logging, timezone handling, caching, and data providers used across the application.**
+**Shared utilities for logging, timezone handling, VIX data, trade logging, and backtest result caching.**
 
-**Last Updated**: 2025-12-08
+**Last Updated**: 2026-05-17
 
 ---
 
@@ -12,19 +12,22 @@
 - Provides centralized colored logging via Rich console
 - Handles timezone-aware timestamps for trading (ET default)
 - Manages VIX data fetching with fallback providers
-- Provides caching utilities for performance
+- Persists structured trade logs (JSON Lines) for live trading audit
+- Caches backtest results and configurations for quick retrieval
 
 ### Key Features
 - **Colored Logging**: Rich-based console output with semantic colors
 - **Timezone Management**: Consistent ET (Eastern Time) handling
 - **VIX Provider**: Multiple fallback sources for VIX data
-- **Cache Manager**: Generic caching with TTL support
+- **TradeLogWriter**: Append-only JSON Lines trade log with per-day rotation
+- **Backtest CacheManager**: Persistent on-disk cache keyed by config hash
 
 ### Use Cases
 - Log trading events with color-coded output
 - Get consistent timestamps across platforms (Windows, macOS, EC2)
 - Fetch VIX data reliably for strategy calculations
-- Cache expensive computations
+- Record every live entry/exit with realized P&L for later analysis
+- Skip re-running an identical backtest by loading the cached results
 
 ---
 
@@ -32,20 +35,21 @@
 
 ```
 src/utils/
-├── __init__.py              # Logger exports
-├── logger.py                # Rich-based colored logging
-├── timezone.py              # ET timezone handling
-├── vix_provider.py          # VIX data with fallbacks
-├── cache_manager.py         # Generic TTL caching
-└── trading_logger.py        # Trade-specific logging
+|-- __init__.py              # Exports the logger surface
+|-- logger.py                # Rich-based colored logging + file logging
+|-- timezone.py              # ET timezone handling (tz singleton + helpers)
+|-- vix_provider.py          # VIX data with fallbacks (yfinance -> FRED -> cache)
+|-- cache_manager.py         # Persistent backtest-result cache (config-hashed)
+`-- trading_logger.py        # Live-trading log setup + TradeLogWriter (JSONL)
 ```
 
 ### Design Philosophy
 
-1. **Single Source of Truth**: All logging through one module
+1. **Single Source of Truth**: All console logging through `logger.py`
 2. **Timezone Safety**: ET-aware timestamps for trading
 3. **Resilience**: Multiple fallbacks for external data
-4. **No Print Statements**: Use logger, never print()
+4. **No Print Statements**: Use logger, never `print()`
+5. **Logging Never Blocks Trading**: TradeLogWriter swallows its own I/O errors
 
 ---
 
@@ -59,19 +63,19 @@ src/utils/
 | Method | Color | Prefix | Use For |
 |--------|-------|--------|---------|
 | `success()` | Green | `[+]` | Successful operations |
-| `profit()` | Green | `[^]` | Profitable trades |
-| `error()` | Red | `[X]` | Errors |
-| `loss()` | Red | `[v]` | Losing trades |
+| `profit()`  | Green | `[^]` | Profitable trades |
+| `error()`   | Red   | `[X]` | Errors |
+| `loss()`    | Red   | `[v]` | Losing trades |
 | `warning()` | Yellow | `[!]` | Warnings |
-| `info()` | Cyan | `[i]` | Information |
-| `header()` | Magenta | None | Section headers |
-| `metric()` | Blue | None | Statistics |
+| `info()`    | Cyan  | `[i]` | Information |
+| `header()`  | Magenta | None | Section headers |
+| `metric()`  | Blue  | None | Statistics |
 | `neutral()` | White | None | Neutral text |
-| `dim()` | Dim | None | Secondary info |
+| `dim()`     | Dim   | None | Secondary info |
 
 **Usage**:
 ```python
-from src.utils.logger import logger
+from src.utils.logger import logger, get_logger
 
 logger.success("Trade executed successfully")
 logger.error("Failed to load data")
@@ -79,12 +83,16 @@ logger.info("Loading symbols...")
 logger.header("=" * 60)
 logger.metric(f"Sharpe Ratio: {sharpe:.2f}")
 
-# With file logging
+# Module-scoped logger
+mod_logger = get_logger(__name__)
+
+# File logging via Logger class
+from pathlib import Path
 from src.utils.logger import Logger
 file_logger = Logger(log_file=Path("output/log.txt"))
 ```
 
-**Module-Level Functions**:
+**Module-Level Convenience Functions** (re-exported from `src.utils`):
 ```python
 from src.utils import success, error, warning, info
 
@@ -96,7 +104,7 @@ error("Failed!")
 
 **Purpose**: Consistent ET (Eastern Time) handling for trading applications.
 
-**Key Methods**:
+**Key Methods (via the `tz` singleton)**:
 - `tz.now()`: Current datetime in ET
 - `tz.today()`: Today's date in ET
 - `tz.timestamp()`: Formatted timestamp string
@@ -116,12 +124,12 @@ from src.utils.timezone import tz
 
 # Get current time in ET
 now = tz.now()
-print(now)  # 2025-12-08 15:50:23-05:00
+print(now)  # 2026-05-15 15:50:23-04:00
 
 # Format for logging
-timestamp = tz.timestamp()      # "2025-12-08 15:50:23"
-iso = tz.iso_timestamp()        # "2025-12-08T15:50:23.123456-05:00"
-date = tz.date_str()            # "20251208"
+timestamp = tz.timestamp()      # "2026-05-15 15:50:23"
+iso = tz.iso_timestamp()        # "2026-05-15T15:50:23.123456-04:00"
+date = tz.date_str()            # "20260515"
 
 # Convert UTC to ET
 from datetime import datetime
@@ -147,86 +155,152 @@ ts = timestamp()
 **Purpose**: Fetch VIX data with multiple fallback sources.
 
 **Fallback Chain**:
-1. Yahoo Finance (yfinance)
-2. CBOE direct download
-3. Local cache (stale data)
+1. yfinance `^VIX` (primary, real-time)
+2. FRED `VIXCLS` (fallback, end-of-day, official CBOE)
+3. Persisted cache (last resort, stale but better than nothing)
 
 **Features**:
 - Automatic retry on failure
-- Cache for resilience
-- Mock VIX from SPY volatility as last resort
+- Persistent JSON cache of last-known-good values
+- Configurable max-age before warning on stale cache
 
 **Usage**:
 ```python
 from src.utils.vix_provider import VIXProvider
 
 provider = VIXProvider()
-vix_df = provider.get_vix_data(
-    start="2023-01-01",
-    end="2024-01-01",
-    use_cache=True
-)
 
-# Get latest VIX value
+# Historical / lookback window
+vix_df = provider.get_vix_data(lookback_days=252)
+
+# Latest spot VIX
 current_vix = provider.get_current_vix()
 print(f"VIX: {current_vix:.2f}")
 ```
 
-### Cache Manager (`cache_manager.py`)
+### Backtest CacheManager (`cache_manager.py`)
 
-**Purpose**: Generic TTL-based caching for expensive operations.
+**Purpose**: Persistent on-disk cache for backtest results, keyed by a stable hash of the config dictionary.
 
-**Features**:
-- In-memory caching with TTL
-- Thread-safe operations
-- Automatic expiration
+**Cache layout** (defaults to an OS-specific cache directory under `Homeguard/backtests/`):
+```
+cache_dir/
+  configs/<config_hash>.json     # Config metadata
+  results/<config_hash>.pkl      # Pickled results DataFrame
+  portfolios/<config_hash>_<symbol>.pkl  # Optional pickled portfolios
+  metadata.json                  # Index of cached runs
+```
+
+**Key Methods**:
+- `cache_results(config, results_df, portfolios=None, description="")` -> `config_hash`
+- `get_cached_results(config)` -> dict with `config`, `results_df`, `portfolios`, or `None`
+- `get_cached_results_by_hash(config_hash)` -> same shape
+- `is_cached(config)` -> `bool`
+- `list_cached_runs(limit=50)` -> list of run metadata dicts
+- `clear_cache(older_than_days=None)` -> count cleared
+- `get_cache_size()` -> dict with `total_size_mb`, `file_count`, `num_cached_runs`, `cache_dir`
+- `get_last_run_settings()` -> dict reconstructing the most recent run's config
 
 **Usage**:
 ```python
 from src.utils.cache_manager import CacheManager
 
-cache = CacheManager(ttl_seconds=300)  # 5 minute TTL
+cache = CacheManager()
 
-# Store data
-cache.set("key", expensive_computation())
+config = {
+    "strategy_class": MovingAverageCrossover,
+    "strategy_params": {"fast_period": 10, "slow_period": 50},
+    "symbols": ["SPY"],
+    "start_date": "2020-01-01",
+    "end_date": "2024-01-01",
+    "initial_capital": 100_000,
+}
 
-# Retrieve
-data = cache.get("key")
-if data is None:
-    data = expensive_computation()
-    cache.set("key", data)
+if cache.is_cached(config):
+    cached = cache.get_cached_results(config)
+    results_df = cached["results_df"]
+else:
+    results_df = run_backtest(config)  # your runner
+    cache.cache_results(config, results_df, description="MA 10/50 on SPY")
 
-# Clear
-cache.clear()
-cache.delete("key")
+print(cache.get_cache_size())
+for run in cache.list_cached_runs(limit=5):
+    print(run["timestamp"], run["strategy"], run["date_range"])
 ```
+
+> Note: this cache is specifically for backtest results -- it is NOT a generic in-memory TTL cache.
+> Use functools / a dict if you need an in-process TTL cache; we don't currently ship one in `src/utils/`.
 
 ### Trading Logger (`trading_logger.py`)
 
-**Purpose**: Specialized logging for trade events and performance.
+Two distinct surfaces live in this module:
 
-**Features**:
-- Trade event logging with timestamps
-- Performance metric tracking
-- CSV export for trades
+#### 1. Live-trading log setup (file + console handlers)
 
-**Usage**:
 ```python
-from src.utils.trading_logger import TradingLogger
+from src.utils.trading_logger import setup_trading_logs, cleanup_old_logs
 
-trade_logger = TradingLogger(output_dir=Path("logs/"))
-
-trade_logger.log_trade(
-    symbol="AAPL",
-    side="BUY",
-    quantity=100,
-    price=150.00,
-    order_id="abc123"
+main_logger, exec_logger = setup_trading_logs(
+    log_dir="/home/ec2-user/logs",
+    log_level="INFO",
 )
 
-trade_logger.log_metric("daily_pnl", 1500.00)
-trade_logger.export_trades("trades.csv")
+main_logger.info("Bot started")
+exec_logger.info("BUY TQQQ 100 @ $45.32")
+
+# Periodically clean old logs
+cleanup_old_logs(keep_days=30)
 ```
+
+`get_trading_logger()` and `get_execution_logger()` are the individual factories. Both write to rotating files with EST timestamps (via `ESTFormatter`).
+
+#### 2. `TradeLogWriter` -- structured JSONL trade log
+
+Writes one JSON object per line to `trades_YYYYMMDD.jsonl` for downstream
+P&L analysis.
+
+```python
+from src.utils.trading_logger import (
+    TradeLogWriter,
+    get_trade_log_writer,
+    read_trade_log,
+    compute_lifetime_realized_pnl,
+)
+
+# Singleton
+trade_logger = get_trade_log_writer()  # uses /home/ec2-user/logs by default
+
+trade_logger.log_entry(
+    strategy="ramp",
+    symbol="AAPL",
+    qty=50,
+    price=188.42,
+    order_id="ibkr-12345",
+    order_type="market",
+    metadata={"regime": "WEAK_BULL", "rank": 3},
+)
+
+trade_logger.log_exit(
+    strategy="ramp",
+    symbol="AAPL",
+    qty=50,
+    exit_price=190.10,
+    order_id="ibkr-12346",
+    entry_price=188.42,
+    entry_time="2026-05-14T15:55:00-04:00",
+)
+
+# Read back today's log
+trades_today = read_trade_log()                 # list[dict]
+trades_specific = read_trade_log("20260514")
+
+# Lifetime realized P&L for a strategy (cached per-file by mtime)
+ramp_pnl = compute_lifetime_realized_pnl("ramp")
+```
+
+`TradeLogWriter` swallows its own I/O errors -- a write failure logs via the
+system logger but never raises, so a broken log disk cannot block live
+trading.
 
 ---
 
@@ -235,36 +309,38 @@ trade_logger.export_trades("trades.csv")
 ```
 Application Code
         v
-  Logger / TimezoneManager / CacheManager
+  Logger / tz / TradeLogWriter / CacheManager / VIXProvider
         v
-  ┌────────────────┬─────────────────┐
-  │ Console Output │ File Output     │
-  │ (Rich colored) │ (Plain text)    │
-  └────────────────┴─────────────────┘
+  +----------------+--------------------------+
+  | Console Output | File Output              |
+  | (Rich colored) | (rotating .log / .jsonl) |
+  +----------------+--------------------------+
+                                v
+                       CacheManager: pickle/json on disk
 ```
 
 ---
 
 ## Public API
 
-### Logger Exports
+### Logger Exports (re-exported from `src.utils`)
 
 ```python
 from src.utils import (
     Logger,      # Class for file logging
     get_logger,  # Get logger instance
-    success,     # Success message
-    profit,      # Profit message
-    error,       # Error message
-    loss,        # Loss message
-    warning,     # Warning message
-    info,        # Info message
-    header,      # Header message
-    metric,      # Metric message
-    neutral,     # Neutral message
-    dim,         # Dim message
-    separator,   # Separator line
-    blank,       # Blank line
+    success,
+    profit,
+    error,
+    loss,
+    warning,
+    info,
+    header,
+    metric,
+    neutral,
+    dim,
+    separator,
+    blank,
 )
 ```
 
@@ -287,6 +363,28 @@ from src.utils.timezone import (
 )
 ```
 
+### Trading Logger Exports
+
+```python
+from src.utils.trading_logger import (
+    ESTFormatter,
+    get_trading_logger,
+    get_execution_logger,
+    setup_trading_logs,
+    cleanup_old_logs,
+    TradeLogWriter,
+    get_trade_log_writer,
+    read_trade_log,
+    compute_lifetime_realized_pnl,
+)
+```
+
+### Cache Manager Exports
+
+```python
+from src.utils.cache_manager import CacheManager
+```
+
 ---
 
 ## Configuration
@@ -306,8 +404,24 @@ Default timezone is `US/Eastern`. Can be changed:
 
 ```python
 from src.utils.timezone import set_timezone
-set_timezone('US/Pacific')  # Change to Pacific
+set_timezone("US/Pacific")  # Change to Pacific
 ```
+
+### TradeLogWriter Configuration
+
+The default `log_dir` (`/home/ec2-user/logs`) targets the EC2 host. Override it
+when running locally:
+
+```python
+TradeLogWriter(log_dir="C:/tmp/homeguard-logs")
+```
+
+### CacheManager Configuration
+
+By default the cache lives under an OS-appropriate cache directory
+(`~/Library/Caches/Homeguard/backtests` on macOS, `%LOCALAPPDATA%/Temp/Homeguard/backtests`
+on Windows, `~/.cache/Homeguard/backtests` on Linux). Override with
+`CacheManager(cache_dir=Path(...))`.
 
 ---
 
@@ -315,11 +429,14 @@ set_timezone('US/Pacific')  # Change to Pacific
 
 ### Internal (src/ modules)
 - `src.settings` - Directory paths
+- `src.utils.timezone` - Used by `trading_logger.ESTFormatter` for EST timestamps
 
 ### External (pip packages)
 - `rich` - Colored console output
 - `pytz` - Timezone handling
-- `yfinance` - VIX data (in vix_provider)
+- `pandas` - DataFrames (cache_manager, vix_provider)
+- `yfinance` - Primary VIX source
+- `requests` - FRED fallback for VIX
 
 ---
 
@@ -363,6 +480,19 @@ except Exception as e:
     # Don't silently swallow errors!
 ```
 
+### Trade Logging
+
+```python
+# In live adapters, log every entry AND every exit so realized P&L is recoverable
+from src.utils.trading_logger import get_trade_log_writer
+
+trade_logger = get_trade_log_writer()
+trade_logger.log_entry(strategy="ramp", symbol=sym, qty=qty, price=fill_price, order_id=oid)
+# ... later ...
+trade_logger.log_exit(strategy="ramp", symbol=sym, qty=qty, exit_price=exit_fill, order_id=oid2,
+                      entry_price=entry_price, entry_time=entry_iso)
+```
+
 ---
 
 ## Testing
@@ -387,6 +517,7 @@ pytest tests/utils/ -v
 
 ## Changelog
 
+- **2026-05-17**: Corrected docs to match real APIs -- replaced fabricated `TradingLogger`/`CacheManager` (TTL) sections with the actual `TradeLogWriter` (JSONL) and backtest-result `CacheManager` APIs.
 - **2025-12-08**: Initial documentation created
 - **2025-11-XX**: TimezoneManager added
 - **2025-10-XX**: VIX provider with fallbacks

@@ -34,12 +34,9 @@ This documentation is organized by topic for easy navigation. Select the categor
 - [**Caching Guide**](guides/CACHING_GUIDE.md) - Performance optimization
 - [**Make Commands**](guides/MAKE_COMMANDS.md) - Makefile usage reference
 
-### Regime Analysis & Advanced Validation [+] NEW
-- [**Regime Analysis User Guide**](guides/REGIME_ANALYSIS_USER_GUIDE.md) - [*] **Master guide** for GUI, code, and CLI usage
+### Regime Analysis & Advanced Validation
+- [**Regime Analysis User Guide**](guides/REGIME_ANALYSIS_USER_GUIDE.md) - User-facing guide
 - [**Regime-Based Testing Architecture**](architecture/REGIME_BASED_TESTING.md) - Technical design and algorithms
-- [**CLI Scripts Guide**](../backtest_scripts/README_REGIME_TESTING.md) - Advanced validation tools
-- [**Implementation Summary**](progress/OPTIMIZATION_AND_REGIME_DETECTION_SUMMARY.md) - Complete feature overview
-- [**Documentation Index**](REGIME_ANALYSIS_DOCS_INDEX.md) - All regime analysis documentation (10+ docs)
 
 **What it does**: Prevent overfitting and assess strategy robustness across different market conditions (bull/bear, high/low volatility, drawdown phases)
 
@@ -53,7 +50,6 @@ This documentation is organized by topic for easy navigation. Select the categor
 
 - [**API Reference**](api/API_REFERENCE.md) - Main API documentation
 - [**API Reference (Sweep)**](api/API_REFERENCE_SWEEP.md) - Multi-symbol sweep functionality
-- [**Sweep Migration Guide**](api/SWEEP_MIGRATION_GUIDE.md) - Migrating to sweep functionality
 - [**Sweep Statistics Guide**](api/SWEEP_STATISTICS_GUIDE.md) - Understanding sweep metrics
 
 **When to read**: When integrating Homeguard into your code or automating backtests
@@ -86,7 +82,6 @@ This documentation is organized by topic for easy navigation. Select the categor
 **Professional performance reporting with 50+ metrics.**
 
 - [**QuantStats README**](quantstats/README.md) - Overview of QuantStats integration
-- [**QuantStats Migration Guide**](quantstats/MIGRATION_GUIDE_FOR_USERS.md) - Migrating to QuantStats reporting
 - [**QuantStats Metrics Explained**](quantstats/QUANTSTATS_METRICS_EXPLAINED.md) - Understanding the 50+ metrics
 
 **When to read**: When generating tearsheets or analyzing performance

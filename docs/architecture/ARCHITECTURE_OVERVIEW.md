@@ -1,14 +1,14 @@
 # Homeguard Backtesting Framework - Architecture Overview
 
-**Version**: 1.6
-**Last Updated**: 2025-12-22
+**Version**: 1.7
+**Last Updated**: 2026-05-17
 **Status**: Current
 
 ---
 
 ## Executive Summary
 
-Homeguard is a professional-grade backtesting framework for algorithmic trading strategies. Built with Python, it provides a modular, extensible architecture that separates concerns across five main layers: Data, Engine, Strategy, Visualization, and GUI.
+Homeguard is a professional-grade backtesting framework for algorithmic trading strategies. Built with Python, it provides a modular, extensible architecture that separates concerns across four main layers: Data, Strategy, Backtesting Engine, and Visualization/Reporting. The runtime production interface is CLI + systemd services -- no GUI or web frontend.
 
 **Key Characteristics**:
 - **Modular Design**: Clear separation between components
@@ -21,33 +21,21 @@ Homeguard is a professional-grade backtesting framework for algorithmic trading 
 
 ## System Architecture
 
-### 5-Layer Architecture
+### 4-Layer Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                    LAYER 5: PRESENTATION                    │
-│                                                             │
-│  ┌─────────────────────┐    ┌─────────────────────────┐    │
-│  │     GUI (Flet)      │    │   Web API (FastAPI)     │    │
-│  │  - Setup View       │    │  - REST endpoints       │    │
-│  │  - Run View         │    │  - Backtest execution   │    │
-│  │  - Results View     │    │  - React frontend       │    │
-│  │  - Thread-safe      │    │  - Real-time dashboard  │    │
-│  └─────────────────────┘    └─────────────────────────┘    │
+│              LAYER 4: VISUALIZATION & REPORTING             │
+│  Charts, reports, and performance analytics                 │
+│  - QuantStats tearsheets (50+ metrics)                      │
+│  - Candlestick charts with trade markers                    │
+│  - HTML reports and CSV export                              │
 │                                                             │
 │  ┌─────────────────────────────────────────────────────┐   │
 │  │              Discord Bot (Optional)                  │   │
 │  │  - Natural language queries via Claude               │   │
 │  │  - Read-only observer for EC2 log inspection         │   │
 │  └─────────────────────────────────────────────────────┘   │
-└────────────────────────┬────────────────────────────────────┘
-                         │
-┌────────────────────────▼────────────────────────────────────┐
-│              LAYER 4: VISUALIZATION & REPORTING             │
-│  Charts, reports, and performance analytics                 │
-│  - QuantStats tearsheets (50+ metrics)                      │
-│  - Candlestick charts with trade markers                    │
-│  - HTML reports and CSV export                              │
 └────────────────────────┬────────────────────────────────────┘
                          │
 ┌────────────────────────▼────────────────────────────────────┐
@@ -97,10 +85,11 @@ Homeguard is a professional-grade backtesting framework for algorithmic trading 
   - Hive-partitioned parquet storage
   - Schema validation and thread-safe client management
 
-- **DataLoader** ([src/backtesting/engine/data_loader.py](../../src/backtesting/engine/data_loader.py))
+- **DataLoader** ([src/backtesting/optimization/data_loader.py](../../src/backtesting/optimization/data_loader.py))
   - Loads data from Parquet via DuckDB
   - Market day filtering (weekends/holidays)
   - SQL-based queries for speed
+  - For Polars/LRU-cached streaming loads, see `StreamingDataLoader` in `src/backtesting/engine/streaming_data_loader.py`
 
 **Data Format**: Parquet files under `equities_1min/{symbol}/{date}.parquet`
 
@@ -328,12 +317,6 @@ portfolio = engine.run_with_data(strategy, data)
   - Aggregation metrics: median/mean Sharpe, returns, win rate
   - Parallel execution support
 
-- **OptimizationDialog** ([src/gui/views/optimization_dialog.py](../../src/gui/views/optimization_dialog.py))
-  - GUI parameter grid specification
-  - Supports int, float, bool, string parameters
-  - Combination estimation and preview
-  - CSV export of all results
-
 **Risk Management** ([src/backtesting/utils/](../../src/backtesting/utils/)):
 
 - **RiskManager** ([risk_manager.py](../../src/backtesting/utils/risk_manager.py))
@@ -412,89 +395,12 @@ portfolio = engine.run_with_data(strategy, data)
 
 ---
 
-### Layer 5: GUI Layer
-
-**Purpose**: Provide graphical interface for non-technical users
-
-**Key Components** ([src/gui/](../../src/gui/)):
-
-- **BacktestApp** ([app.py](../../src/gui/app.py))
-  - Main Flet application
-  - View navigation and state management
-  - Dark theme with bright text
-
-**Views** ([gui/views/](../../src/gui/views/)):
-- **SetupView** ([setup_view.py](../../src/gui/views/setup_view.py))
-  - Strategy selection
-  - Parameter configuration
-  - Date range picker
-  - Symbol selection
-
-- **RunView** ([run_view.py](../../src/gui/views/run_view.py))
-  - Real-time progress monitoring
-  - Symbol-by-symbol updates
-  - Worker thread status
-
-- **ResultsView** ([results_view.py](../../src/gui/views/results_view.py))
-  - Metrics table display
-  - Performance summary
-  - Link to reports and charts
-
-- **ExecutionView** ([execution_view.py](../../src/gui/views/execution_view.py))
-  - Advanced execution monitoring
-
-**Workers** ([gui/workers/](../../src/gui/workers/)):
-- **GUIBacktestController** ([gui_controller.py](../../src/gui/workers/gui_controller.py))
-  - **Thread-safe wrapper** around SweepRunner
-  - Queue-based communication between worker and UI
-  - Prevents GUI freezing during long backtests
-
-**Utilities** ([gui/utils/](../../src/gui/utils/)):
-- Config management, symbol downloader, data inspector, trade inspector, run history
-
-**Dependencies**: Flet, Threading, Queue
-
----
-
-### Layer 5b: Web API & Frontend
-
-**Purpose**: Browser-based interface for backtesting via REST API
-
-**Backend** ([src/web/backend/](../../src/web/backend/)):
-
-- **FastAPI Application** ([main.py](../../src/web/backend/main.py))
-  - REST API for backtest execution
-  - CORS-enabled for frontend access
-  - Async request handling
-
-- **API Router** ([api/router.py](../../src/web/backend/api/router.py))
-  - `/run` - Execute backtest
-  - `/strategies` - List available strategies
-  - `/symbols` - Symbol universe management
-
-- **Engine Wrapper** ([core/engine_wrapper.py](../../src/web/backend/core/engine_wrapper.py))
-  - Bridges FastAPI to BacktestEngine
-  - Result caching for performance
-
-**Frontend** ([src/web/frontend/](../../src/web/frontend/)):
-
-- **React 18** with Vite bundler
-- **Tailwind CSS** for styling
-- **Components**:
-  - `ConfigForm.jsx` - Strategy and parameter configuration
-  - `SymbolSelector.jsx` - Symbol universe selection
-  - `ResultsDashboard.jsx` - Performance metrics display
-
-**Dependencies**: FastAPI, uvicorn, React, Vite, Tailwind CSS
-
----
-
-### Layer 5c: Discord Bot (Optional Addon)
+### Discord Bot (Optional Addon)
 
 **Purpose**: Read-only observability for live trading via natural language queries
 
 **Design Principles**:
-- **Fully Isolated**: No imports from trading/backtesting/gui modules
+- **Fully Isolated**: No imports from trading/backtesting modules
 - **Read-Only**: Cannot modify files or control services
 - **Optional**: Trading system operates independently; bot failure has zero impact
 
@@ -599,37 +505,6 @@ ResultsAggregator.aggregate()
 Return: List[Portfolio] + Aggregate Reports
 ```
 
-### GUI Execution Flow
-
-```
-User clicks "Run Backtest" in GUI
-    v
-GUIBacktestController.start()
-    ├─ Create worker thread
-    ├─ Start SweepRunner in background
-    └─ Return immediately (UI responsive)
-
-Worker Thread:
-  SweepRunner.run_sweep()
-    ├─-> Put progress updates in queue
-    ├─-> on_symbol_complete -> Queue.put(result)
-    └─-> on_error -> Queue.put(error)
-
-Main Thread (UI):
-  while running:
-    ├─ Poll queue for updates
-    ├─ Update progress bars
-    ├─ Update status labels
-    └─ Render results view when complete
-
-    v
-
-ResultsView displays:
-  - Metrics table
-  - Link to tearsheet
-  - Link to charts
-```
-
 ---
 
 ## Technology Stack
@@ -664,12 +539,6 @@ ResultsView displays:
 | Technology | Purpose |
 |------------|---------|
 | **Alpaca API** | Market data provider |
-
-### GUI
-
-| Technology | Purpose |
-|------------|---------|
-| **Flet** | Cross-platform GUI framework |
 
 ### Utilities
 
@@ -733,20 +602,11 @@ python -m src.backtest_runner \
 
 ### 2. Data Ingestion
 
-**File**: `src/run_ingestion.py`
+**Module**: `src/data/acquisition/`
 
 **Usage**:
 ```bash
-python -m src.run_ingestion
-```
-
-### 3. GUI Application
-
-**File**: `src/gui/__main__.py`
-
-**Usage**:
-```bash
-python -m gui
+python -m src.data.acquisition --source equities --symbols AAPL,MSFT --start 2020-01-01
 ```
 
 ---
@@ -781,7 +641,7 @@ python -m gui
 - Caching for expensive operations
 
 ### 6. User Experience
-- Both CLI and GUI interfaces
+- CLI interface backed by config-driven YAML
 - Color-coded logging (Rich library)
 - Progress tracking for long operations
 - Professional reports (QuantStats tearsheets)
@@ -854,12 +714,10 @@ python -m gui
 - [+] **Live trading integration** - Paper trading deployed to AWS EC2 with automated scheduling (November 2025)
   - EC2 instance with Python 3.11 (t4g.medium ARM64, 4 GB RAM, 50 GB gp3 EBS)
   - Lambda-powered auto-start/stop (9 AM - 4:30 PM ET Mon-Fri; weekend up for CSCM Sun 00:00 UTC tick)
-  - **Multi-strategy architecture** (updated April 2026):
-    - `homeguard-omr.service`: Overnight Mean Reversion (Alpaca, metrics port 8081)
-    - `homeguard-ramp.service`: Regime-Aware Momentum Protection (Alpaca, metrics port 8082)
-    - `homeguard-cscm.service`: Cross-Sectional Crypto Momentum (DemoBroker + Binance WS streaming, metrics port 8084)
-    - `homeguard-trading.target`: Systemd target managing all three strategy services
-    - Each strategy runs in its own process with its own MetricsRegistry + HTTP exporter on a unique port
+  - **Multi-strategy architecture** (current, May 2026):
+    - `homeguard-multi.service`: runs `scripts/trading/run_live_paper_trading.py --strategy ramp`. Routes RAMP through **IBKR paper (port 4002)** per `config/trading/broker_routing.yaml`. OMR is disabled via `strategy_toggle.yaml`. Metrics exposed on a single port.
+    - `homeguard-cscm.service`: Cross-Sectional Crypto Momentum (DemoBroker + Binance WS streaming, metrics port 8084), scheduled weekly (Sunday 0:00 UTC)
+    - Legacy per-strategy units (`homeguard-omr.service`, `homeguard-ramp.service`) remain on disk as `disabled` and are superseded by `homeguard-multi`
   - SSH management scripts (Windows .bat and Unix .sh) with `.env`-based configuration
   - See [Infrastructure Overview](../INFRASTRUCTURE_OVERVIEW.md) for details
 
@@ -886,11 +744,6 @@ python -m gui
   - Feature flag: `USE_STREAMING=true`
   - See [20251209_STREAMING_DATA_PLATFORM.md](20251209_STREAMING_DATA_PLATFORM.md)
 
-- [+] **Web API & Frontend** - Browser-based backtesting interface (December 2025)
-  - FastAPI backend with REST endpoints
-  - React 18 + Vite + Tailwind CSS frontend
-  - Real-time backtest execution and results display
-
 - [+] **News & Sentiment pipeline** - Market sentiment analysis (December 2025)
   - Alpaca News API integration
   - FinBERT-based sentiment scoring
@@ -913,6 +766,6 @@ python -m gui
 
 ---
 
-**Last Updated**: 2026-04-20
+**Last Updated**: 2026-05-17
 **Maintainers**: Update this doc when adding/removing/moving major modules
 **Review Frequency**: After any architectural changes

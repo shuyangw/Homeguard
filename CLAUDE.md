@@ -275,7 +275,6 @@ After completing a significant implementation session (new features, infra chang
 - **Backtesting**: [`.claude/backtesting.md`](.claude/backtesting.md)
 - **Code standards**: [`.claude/code_standards.md`](.claude/code_standards.md)
 - **Live trading**: [`.claude/live_trading.md`](.claude/live_trading.md)
-- **GUI**: [`.claude/gui_design.md`](.claude/gui_design.md)
 - **Tests**: [`.claude/testing.md`](.claude/testing.md)
 - **Risk**: [`.claude/risk_management.md`](.claude/risk_management.md)
 - **Types**: [`.claude/type_issues.md`](.claude/type_issues.md)

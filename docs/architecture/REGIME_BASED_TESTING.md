@@ -1,8 +1,8 @@
 # Regime-Based Testing Architecture
 
-**Version:** 2.0
-**Status:** [+] **ALL LEVELS COMPLETE** (Levels 1-4)
-**Last Updated:** November 2025
+**Version:** 2.1
+**Status:** Active (CLI + programmatic API; GUI/Level-4 file-export was removed when `src/gui/` was deleted)
+**Last Updated:** 2026-05-17
 
 ## Overview
 
@@ -226,19 +226,11 @@ Strategy Parameters
 
 ## Usage Examples
 
-### Example 0: GUI Integration (Level 2)
+### Example 0: Programmatic Engine Integration
 
-**Quick Start:**
-1. Open the backtesting GUI
-2. Configure your backtest (strategy, symbols, dates)
-3. In "Output Settings", check "Enable regime analysis"
-4. Click "Run Backtest"
-5. View regime analysis in terminal output after backtest completes
-
-**Programmatic Usage (Level 1):**
 ```python
 from backtesting.engine.backtest_engine import BacktestEngine
-from strategies.base_strategies.moving_average import MovingAverageCrossover
+from strategies.research.moving_average import MovingAverageCrossover
 
 # Create engine with regime analysis enabled
 engine = BacktestEngine(
@@ -264,7 +256,7 @@ portfolio = engine.run(
 ```python
 from backtesting.engine.backtest_engine import BacktestEngine
 from backtesting.chunking import WalkForwardValidator
-from strategies.base_strategies.moving_average import MovingAverageCrossover
+from strategies.research.moving_average import MovingAverageCrossover
 
 # Create engine
 engine = BacktestEngine(initial_capital=10000, fees=0.001)
@@ -300,7 +292,7 @@ print(f"Degradation: {results.degradation_pct:.1f}%")
 ```python
 from backtesting.engine.backtest_engine import BacktestEngine
 from backtesting.regimes import RegimeAnalyzer
-from strategies.base_strategies.moving_average import MovingAverageCrossover
+from strategies.research.moving_average import MovingAverageCrossover
 
 # Run backtest
 engine = BacktestEngine(initial_capital=10000, fees=0.001)
@@ -317,9 +309,13 @@ portfolio = engine.run(
 # Get returns
 returns = portfolio.returns()
 
-# Load market data for regime detection
-market_data = engine.data_loader.load_symbols(['AAPL'], '2020-01-01', '2023-12-31')
-market_prices = market_data.xs('AAPL', level='symbol')['close']
+# Load market data for regime detection (use StreamingDataLoader directly --
+# BacktestEngine does NOT expose a `.data_loader` attribute)
+from backtesting.engine.streaming_data_loader import StreamingDataLoader
+
+loader = StreamingDataLoader()
+market_df = loader.load_symbol('AAPL', '2020-01-01', '2023-12-31').collect().to_pandas()
+market_prices = market_df.set_index('timestamp')['close']
 
 # Analyze by regime
 analyzer = RegimeAnalyzer()
@@ -356,56 +352,6 @@ elif is_consistent:
 else:
     print("[-] FAIL: Strategy not production-ready")
 ```
-
-### Example 4: GUI Integration with File Export (Level 4)
-
-```python
-# GUI Usage:
-# 1. Open backtesting GUI
-# 2. Configure backtest settings
-# 3. Check "Enable regime analysis" in Output Settings
-# 4. Check "Generate full output" for file export
-# 5. Click "Run Backtest"
-# 6. Results displayed in:
-#    - Terminal output (immediate feedback)
-#    - "Regime Analysis" tab in results view
-#    - Exported files in {log_dir}/regime_analysis/
-
-# Programmatic access to exported files:
-from pathlib import Path
-from config import get_log_output_dir
-import json
-
-log_dir = get_log_output_dir()
-regime_dir = log_dir / "20251106_123456_MovingAverageCrossover_AAPL" / "regime_analysis"
-
-# Load JSON results
-json_file = regime_dir / "AAPL_regime_analysis.json"
-with open(json_file, 'r') as f:
-    regime_data = json.load(f)
-
-print(f"Robustness Score: {regime_data['robustness_score']}")
-print(f"Best Regime: {regime_data['best_regime']}")
-print(f"Worst Regime: {regime_data['worst_regime']}")
-
-# View HTML report in browser
-html_file = regime_dir / "AAPL_regime_analysis.html"
-import webbrowser
-webbrowser.open(html_file.as_uri())
-
-# Load CSV for analysis in pandas
-import pandas as pd
-csv_file = regime_dir / "AAPL_trend_regimes.csv"
-trend_data = pd.read_csv(csv_file)
-print(trend_data)
-```
-
-**Level 4 Features:**
-- **Data Storage**: Regime results stored in `controller.regime_results` dict
-- **File Export**: Automatic CSV/HTML/JSON export when both flags enabled
-- **GUI Display**: Dedicated "Regime Analysis" tab with summary cards and tables
-- **Multi-Symbol**: Dropdown selector for sweeps with multiple symbols
-- **Dark Theme**: Consistent dark-themed HTML reports
 
 ## Proof-of-Concept Script
 
@@ -498,40 +444,15 @@ pytest tests/backtesting/chunking/ tests/backtesting/regimes/ -v
 
 ## Implementation Status
 
-### Level 1: Transparent Integration [+] COMPLETED (November 2025)
-- [+] Added `enable_regime_analysis` parameter to BacktestEngine
-- [+] Automatic regime analysis when enabled
-- [+] Daily resampling for regime detection
-- [+] Comprehensive output formatting
-- [+] Zero overhead when disabled (default: False)
-- [+] Backward compatible
+The CLI/programmatic regime testing surface is the supported entry point:
 
-### Level 2: GUI Integration [+] COMPLETED (November 2025)
-- [+] Checkbox toggle in SetupView (Output Settings section)
-- [+] Data flow: SetupView -> App -> Controller -> Engine
-- [+] Persistent configuration (saves with backtest config)
-- [+] Integration test suite
-- [+] Documentation and user guide
+- [+] `enable_regime_analysis` parameter on `BacktestEngine` (transparent integration)
+- [+] Walk-forward validation module (`backtesting/chunking/walk_forward.py`)
+- [+] Regime detection (trend, volatility, drawdown) and analyzer modules (`backtesting/regimes/`)
+- [+] Proof-of-concept scripts in `backtest_scripts/`
+- [+] Comprehensive test suite (43 tests across walk-forward + regime modules)
 
-### Level 3: Advanced CLI/Script Tools [+] COMPLETED (November 2025)
-- [+] Walk-forward validation module
-- [+] Regime detection module (trend, volatility, drawdown)
-- [+] Regime analysis module
-- [+] Proof-of-concept scripts (standard + fast versions)
-- [+] Comprehensive test suite (43 tests)
-- [+] Architecture documentation
-
-### Level 4: Enhanced GUI Display & File Export [+] COMPLETED (November 2025)
-- [+] **Phase 1**: Regime data storage in controller and portfolio objects
-- [+] **Phase 2**: File export to CSV/HTML/JSON formats
-- [+] **Phase 3**: Dedicated "Regime Analysis" tab in results view
-- [+] **Phase 4**: Summary cards, robustness gauge, and performance tables
-- [+] Multi-symbol support with dropdown selector
-- [+] Dark-themed HTML reports
-- [+] Integration test suite (test_level4_regime_integration.py)
-- [+] Complete documentation
-
-**All Four Levels Complete** - The regime-based testing system is now fully integrated and production-ready!
+**Removed:** The original Level 2 (GUI checkbox) and Level 4 (Regime Analysis tab, HTML/CSV/JSON export wired into the GUI controller) integrations were retired together with `src/gui/`. The underlying regime detector/analyzer remain available programmatically and via CLI scripts; teams that previously consumed the exported CSV/HTML/JSON should call `RegimeAnalyzer.analyze(...)` directly and serialize from the returned dataclasses.
 
 ## References
 
@@ -547,18 +468,14 @@ pytest tests/backtesting/chunking/ tests/backtesting/regimes/ -v
 
 ## Changelog
 
-### Version 2.0 (November 2025)
-- [+] **Level 4 Complete**: Enhanced GUI display and file export
-  - Regime data storage in controller and portfolio objects
-  - File export to CSV/HTML/JSON formats
-  - Dedicated "Regime Analysis" tab in results view
-  - Summary cards with robustness gauge
-  - Performance tables for all regime types
-  - Multi-symbol support with dropdown selector
-  - Dark-themed HTML reports
-  - Integration test suite (test_level4_regime_integration.py)
-- [+] **All Four Levels Complete**: System is production-ready
-- Updated documentation across all guides
+### Version 2.1 (May 2026)
+- Retired GUI-bound Level 2 / Level 4 integrations together with `src/gui/`
+- Updated examples to use `src/strategies/research/` paths and the `StreamingDataLoader` (`BacktestEngine` does not expose a `.data_loader` attribute)
+- Consolidated Implementation Status into a single CLI/programmatic surface
+
+### Version 2.0 (November 2025) [superseded]
+- Level 4 GUI display and file export -- removed in 2.1 when `src/gui/` was deleted
+- Multi-symbol support with dropdown selector -- removed in 2.1
 
 ### Version 1.0 (November 2025)
 - Initial implementation of Level 3 (Advanced CLI Tools)
@@ -566,4 +483,4 @@ pytest tests/backtesting/chunking/ tests/backtesting/regimes/ -v
 - Regime detection and analysis
 - Proof-of-concept examples
 - Comprehensive test suite (43 tests)
-- Level 1 & 2 implementations (toggleable parameter and GUI checkbox)
+- Level 1 (engine flag) and Level 2 (GUI checkbox -- since removed)
