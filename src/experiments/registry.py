@@ -18,7 +18,7 @@ import sys
 import uuid
 from datetime import date, datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, Mapping, Optional
+from typing import Any, Callable, Dict, Mapping, Optional
 
 import duckdb
 import pandas as pd
@@ -268,6 +268,88 @@ def n_trials_project_wide(db_path: Path = DEFAULT_DB_PATH) -> int:
         return int(row[0] or 0)
     finally:
         con.close()
+
+
+def make_trial_callback(
+    *,
+    parent_run_id: str,
+    strategy_name: str,
+    combinations_in_run: int,
+    start_date: Any = None,
+    end_date: Any = None,
+    wall_clock_start: Optional[datetime] = None,
+    cost_tier_used: Optional[str] = None,
+    cost_bps: Optional[float] = None,
+    phase: str = "optimization",
+    db_path: Path = DEFAULT_DB_PATH,
+    on_failure: str = "warn",
+) -> Callable[[Mapping[str, Any], Mapping[str, Any]], None]:
+    """Build a per-trial registry-append callback for optimizers.
+
+    Returns a `(params, stats) -> None` closure that appends one child
+    `runs` row per optimizer trial, sharing the supplied `parent_run_id`.
+    Optimizers stay registry-agnostic -- they accept this callback as
+    an opt-in hook. Callers that don't want registry writes (research
+    sandboxes, tests) pass nothing and the optimizer skips the call.
+
+    Section 9.3 says "no silent success" but the runner-level parent-row
+    append (in `src/backtest_runner.py`) is where that gate fires. A
+    single failed per-trial append should not abort a 5000-config sweep,
+    so the default behavior here is `on_failure='warn'`: log and continue.
+    Pass `on_failure='raise'` if you want the optimizer to crash on any
+    registry write failure.
+
+    Args:
+        parent_run_id: UUID shared by every trial in this sweep.
+        strategy_name: name of the strategy being optimized.
+        combinations_in_run: total trial count for the sweep (used by DSR).
+        start_date / end_date: window for the rows.
+        wall_clock_start: start of the sweep; defaults to now() if None.
+        cost_tier_used / cost_bps: provenance; read from engine by caller.
+        phase: free-form label (e.g. 'optimization_grid_search').
+        db_path: registry file path.
+        on_failure: 'warn' (default) -- log and continue -- or 'raise'.
+    """
+    import logging
+
+    log = logging.getLogger(__name__)
+    sweep_start = wall_clock_start or datetime.now(tz=timezone.utc)
+
+    def _callback(params: Mapping[str, Any], stats: Mapping[str, Any]) -> None:
+        if stats is None:
+            return
+        try:
+            metrics = {
+                "sharpe": float(stats.get("Sharpe Ratio", 0.0) or 0.0),
+                "total_return_pct": float(stats.get("Total Return [%]", 0.0) or 0.0),
+                "annual_return_pct": float(stats.get("Annual Return [%]", 0.0) or 0.0),
+                "max_drawdown_pct": float(stats.get("Max Drawdown [%]", 0.0) or 0.0),
+                "win_rate_pct": float(stats.get("Win Rate [%]", 0.0) or 0.0),
+                "trade_count": int(stats.get("Total Trades", 0) or 0),
+            }
+            append_run(
+                db_path=db_path,
+                strategy_name=strategy_name,
+                agent_name="backtest-optimizer",
+                phase=phase,
+                parent_run_id=parent_run_id,
+                params=dict(params),
+                window_start=start_date,
+                window_end=end_date,
+                metrics=metrics,
+                combinations_in_run=combinations_in_run,
+                cost_tier_used=cost_tier_used,
+                cost_bps=cost_bps,
+                wall_clock_start=sweep_start,
+                wall_clock_end=datetime.now(tz=timezone.utc),
+                verdict="PENDING",
+            )
+        except Exception as e:
+            if on_failure == "raise":
+                raise
+            log.warning(f"[registry] trial-callback append failed: {e}")
+
+    return _callback
 
 
 def incumbent_return_streams(

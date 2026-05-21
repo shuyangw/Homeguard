@@ -6,9 +6,8 @@ based on specified metrics (Sharpe ratio, total return, max drawdown).
 """
 
 import uuid
-from datetime import datetime, timezone
 from itertools import product
-from typing import Any, Dict, List, Optional, Tuple, Union, TYPE_CHECKING
+from typing import Any, Callable, Dict, List, Mapping, Optional, Tuple, Union, TYPE_CHECKING
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass
 
@@ -16,6 +15,12 @@ import pandas as pd
 
 from src.utils import logger
 from src.utils.timezone import tz
+
+# Optional registry-append callback supplied by callers (e.g. backtest_runner)
+# that want every trial recorded in output/experiments.duckdb. Optimizers
+# remain registry-agnostic -- they call this if set, skip if not. See
+# src.experiments.make_trial_callback for the canonical factory.
+TrialCallback = Callable[[Mapping[str, Any], Mapping[str, Any]], None]
 
 if TYPE_CHECKING:
     from backtesting.engine.backtest_engine import BacktestEngine
@@ -215,67 +220,6 @@ def _test_single_params(
         }
 
 
-def _append_per_config_row(
-    *,
-    parent_run_id: str,
-    strategy_name: str,
-    params: Dict[str, Any],
-    stats: Dict[str, Any],
-    combinations_in_run: int,
-    start_date: str,
-    end_date: str,
-    wall_clock_start: datetime,
-    cost_tier_used: Optional[str],
-    cost_bps: Optional[float],
-) -> None:
-    """Best-effort registry append for one optimizer parameter combination.
-
-    Per methodology Section 9: every optimizer trial counts toward the
-    project-wide N used by DSR. We append a child row per combo with
-    a shared `parent_run_id` so the orchestrator can aggregate by sweep
-    and so `n_trials_project_wide` returns the real cumulative count.
-
-    Unlike `_append_to_registry` in src/backtest_runner.py (which is
-    fatal per Section 9.3), this per-combo append is best-effort -- a
-    single combo's registry failure should not abort a 5000-config
-    sweep. The runner's parent row (also appended by the orchestrator
-    after `optimize` returns) is fatal and serves as the methodology
-    gate; this child row is for DSR / experiment-registry detail.
-    """
-    try:
-        from src.experiments import append_run
-    except Exception as e:  # noqa
-        logger.warning(f"[registry] optimizer import failed, skipping append: {e}")
-        return
-    try:
-        metrics = {
-            'sharpe': float(stats.get('Sharpe Ratio', 0.0) or 0.0),
-            'total_return_pct': float(stats.get('Total Return [%]', 0.0) or 0.0),
-            'annual_return_pct': float(stats.get('Annual Return [%]', 0.0) or 0.0),
-            'max_drawdown_pct': float(stats.get('Max Drawdown [%]', 0.0) or 0.0),
-            'win_rate_pct': float(stats.get('Win Rate [%]', 0.0) or 0.0),
-            'trade_count': int(stats.get('Total Trades', 0) or 0),
-        }
-        append_run(
-            strategy_name=strategy_name,
-            agent_name='backtest-optimizer',
-            phase='optimization_grid_search',
-            parent_run_id=parent_run_id,
-            params=params,
-            window_start=start_date,
-            window_end=end_date,
-            metrics=metrics,
-            combinations_in_run=combinations_in_run,
-            cost_tier_used=cost_tier_used,
-            cost_bps=cost_bps,
-            wall_clock_start=wall_clock_start,
-            wall_clock_end=datetime.now(tz=timezone.utc),
-            verdict='PENDING',
-        )
-    except Exception as e:  # noqa
-        logger.warning(f"[registry] optimizer per-combo append failed: {e}")
-
-
 class GridSearchOptimizer:
     """
     Grid search optimizer for strategy parameters.
@@ -334,7 +278,8 @@ class GridSearchOptimizer:
         symbols: Union[str, List[str]],
         start_date: str,
         end_date: str,
-        metric: str = 'sharpe_ratio'
+        metric: str = 'sharpe_ratio',
+        on_trial_complete: Optional[TrialCallback] = None,
     ) -> Dict[str, Any]:
         """
         Optimize strategy parameters over a grid.
@@ -384,14 +329,10 @@ class GridSearchOptimizer:
         all_combos = list(product(*param_values))
         combinations_in_run = len(all_combos)
 
-        # Registry: one parent_run_id shared across every per-combo child row.
-        # Methodology Section 9 -- the project-wide N used by DSR counts every
-        # optimizer trial appended here.
+        # Sweep-scoped parent_run_id (caller's trial callback may use this
+        # to link child rows; optimizer just generates it and surfaces it
+        # in the return dict).
         parent_run_id = str(uuid.uuid4())
-        wall_clock_start = datetime.now(tz=timezone.utc)
-        strategy_name = strategy_class.__name__
-        cost_tier_used = getattr(self.engine, 'cost_tier_used', None)
-        cost_bps = getattr(self.engine, 'cost_bps', None)
 
         # Initialize best tracking
         best_value = float('-inf') if metric != 'max_drawdown' else float('inf')
@@ -433,19 +374,9 @@ class GridSearchOptimizer:
                     best_params = params
                     best_portfolio = portfolio
 
-                # Append per-combo row to the experiment registry
-                _append_per_config_row(
-                    parent_run_id=parent_run_id,
-                    strategy_name=strategy_name,
-                    params=params,
-                    stats=stats,
-                    combinations_in_run=combinations_in_run,
-                    start_date=start_date,
-                    end_date=end_date,
-                    wall_clock_start=wall_clock_start,
-                    cost_tier_used=cost_tier_used,
-                    cost_bps=cost_bps,
-                )
+                # Optional per-trial hook (e.g. registry append).
+                if on_trial_complete is not None:
+                    on_trial_complete(params, stats)
 
                 # Log this combination's result
                 logger.metric(f"Params: {params} -> {metric}: {value:.4f}")
@@ -485,7 +416,8 @@ class GridSearchOptimizer:
         export_results: bool = True,
         output_dir: Optional[Any] = None,
         use_cache: bool = True,
-        cache_config: Optional[Any] = None
+        cache_config: Optional[Any] = None,
+        on_trial_complete: Optional[TrialCallback] = None,
     ) -> Dict[str, Any]:
         """
         Optimize strategy parameters over a grid using parallel processing.
@@ -590,12 +522,8 @@ class GridSearchOptimizer:
         all_results = []
         completed_count = 0
 
-        # Registry parent_run_id, shared across every per-combo child row.
+        # Sweep-scoped parent_run_id; caller's trial callback may use it.
         parent_run_id = str(uuid.uuid4())
-        wall_clock_start = datetime.now(tz=timezone.utc)
-        strategy_name = strategy_class.__name__
-        cost_tier_used = getattr(self.engine, 'cost_tier_used', None)
-        cost_bps = getattr(self.engine, 'cost_bps', None)
 
         # Phase 2: Enhanced progress tracking
         import time
@@ -721,23 +649,16 @@ class GridSearchOptimizer:
                     iteration_time = time.time() - iteration_start
                     test_times.append(iteration_time)
 
-                    # Append per-combo registry row (best-effort).
-                    # Worker processes can't share a DuckDB writer; the
-                    # orchestrator does the append in the collector loop
-                    # to keep all I/O on one connection.
-                    if result['error'] is None and result['stats'] is not None:
-                        _append_per_config_row(
-                            parent_run_id=parent_run_id,
-                            strategy_name=strategy_name,
-                            params=result['params'],
-                            stats=result['stats'],
-                            combinations_in_run=len(param_combos),
-                            start_date=start_date,
-                            end_date=end_date,
-                            wall_clock_start=wall_clock_start,
-                            cost_tier_used=cost_tier_used,
-                            cost_bps=cost_bps,
-                        )
+                    # Optional per-trial hook (caller-supplied).
+                    # Worker processes can't share a DuckDB writer, so the
+                    # orchestrator invokes the callback here -- keeps all
+                    # registry I/O on one connection.
+                    if (
+                        result['error'] is None
+                        and result['stats'] is not None
+                        and on_trial_complete is not None
+                    ):
+                        on_trial_complete(result['params'], result['stats'])
 
                     # Update best if this is better
                     if result['error'] is None and result['stats'] is not None:

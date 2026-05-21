@@ -601,6 +601,7 @@ def _append_to_registry(
     phase: str = 'initial',
     parent_run_id: Optional[str] = None,
     combinations_in_run: int = 1,
+    run_id: Optional[str] = None,
 ) -> Optional[str]:
     """Append a run row to the experiment registry per methodology Section 9.
 
@@ -659,6 +660,7 @@ def _append_to_registry(
             pass  # best-effort; missing provenance does not fail the append
 
         return append_run(
+            run_id=run_id,
             strategy_name=config.strategy.name,
             agent_name=agent_name,
             phase=phase,
@@ -964,13 +966,36 @@ def run_optimize_from_config(config: 'BacktestConfig') -> None:
         logger.error("No param_grid specified in optimization config")
         sys.exit(1)
 
+    # Build the per-trial registry callback once and pass to the optimizer.
+    # Counts every combo toward project-wide N for DSR (methodology 9.4).
+    n_combos = 1
+    for v in (config.optimization.param_grid or {}).values():
+        try:
+            n_combos *= max(1, len(v))
+        except TypeError:
+            pass
+    sweep_parent_id = str(uuid.uuid4())
+    from src.experiments import make_trial_callback
+    trial_cb = make_trial_callback(
+        parent_run_id=sweep_parent_id,
+        strategy_name=config.strategy.name,
+        combinations_in_run=n_combos,
+        start_date=start_date,
+        end_date=end_date,
+        wall_clock_start=wall_clock_start,
+        cost_tier_used=getattr(engine, 'cost_tier_used', None),
+        cost_bps=getattr(engine, 'cost_bps', None),
+        phase='optimization_grid_search',
+    )
+
     results = engine.optimize(
         strategy_class=strategy_cls,
         param_grid=config.optimization.param_grid,
         symbols=symbols,
         start_date=start_date,
         end_date=end_date,
-        metric=config.optimization.metric
+        metric=config.optimization.metric,
+        on_trial_complete=trial_cb,
     )
 
     logger.blank()
@@ -978,13 +1003,8 @@ def run_optimize_from_config(config: 'BacktestConfig') -> None:
     logger.metric(f"Best parameters: {results['best_params']}")
     logger.metric(f"Best {config.optimization.metric}: {results['best_value']:.4f}")
 
-    # Approximate combinations count from param_grid (product of value-list lengths).
-    n_combos = 1
-    for v in (config.optimization.param_grid or {}).values():
-        try:
-            n_combos *= max(1, len(v))
-        except TypeError:
-            pass
+    # Parent row uses sweep_parent_id so the per-trial children appended
+    # by trial_cb link to it via parent_run_id.
     run_id = _append_to_registry(
         config=config,
         portfolio=results.get('best_portfolio') if isinstance(results, dict) else None,
@@ -995,6 +1015,7 @@ def run_optimize_from_config(config: 'BacktestConfig') -> None:
         agent_name='backtest-optimizer',
         phase='optimization',
         combinations_in_run=n_combos,
+        run_id=sweep_parent_id,
     )
     if run_id:
         logger.info(f"[registry] appended optimization run_id={run_id} (combinations={n_combos})")

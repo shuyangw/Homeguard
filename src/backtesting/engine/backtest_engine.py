@@ -970,7 +970,8 @@ class BacktestEngine:
         symbols: Union[str, List[str]],
         start_date: str,
         end_date: str,
-        metric: str = 'sharpe_ratio'
+        metric: str = 'sharpe_ratio',
+        on_trial_complete: Optional[Any] = None,
     ) -> Dict[str, Any]:
         """
         Optimize strategy parameters over a grid.
@@ -984,6 +985,10 @@ class BacktestEngine:
             start_date: Start date
             end_date: End date
             metric: Metric to optimize ('sharpe_ratio', 'total_return', 'max_drawdown')
+            on_trial_complete: optional `(params, stats) -> None` callback
+                invoked after each combination. Used by the runner to append
+                per-trial registry rows. None (default) leaves the optimizer
+                registry-agnostic -- research scripts can skip the wiring.
 
         Returns:
             Dictionary with best parameters and results
@@ -997,7 +1002,8 @@ class BacktestEngine:
             symbols=symbols,
             start_date=start_date,
             end_date=end_date,
-            metric=metric
+            metric=metric,
+            on_trial_complete=on_trial_complete,
         )
 
     def _print_summary(self, portfolio: Portfolio) -> None:
