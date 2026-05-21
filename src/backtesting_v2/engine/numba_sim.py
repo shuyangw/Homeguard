@@ -113,6 +113,12 @@ def simulate_portfolio_numba_v2(
     trade_exit_reasons = np.empty(max_trades, dtype=np.int8)
     trade_costs = np.empty(max_trades, dtype=np.float64)
     trade_proceeds = np.empty(max_trades, dtype=np.float64)
+    # Section 11.6 MAE/MFE arrays (long-convention signing; entries get
+    # default 0.0 / -1 sentinels).
+    trade_mae_pcts = np.zeros(max_trades, dtype=np.float64)
+    trade_mfe_pcts = np.zeros(max_trades, dtype=np.float64)
+    trade_mae_bars = np.full(max_trades, -1, dtype=np.int64)
+    trade_mfe_bars = np.full(max_trades, -1, dtype=np.int64)
 
     # V2: State tracking arrays
     state_cash = np.empty(n, dtype=np.float64)
@@ -125,6 +131,12 @@ def simulate_portfolio_numba_v2(
     position_price = 0.0
     bars_in_position = 0
     trade_idx = 0
+
+    # Intra-trade excursion tracking (Section 11.6).
+    running_low = 0.0
+    running_high = 0.0
+    running_low_bar = -1
+    running_high_bar = -1
 
     for i in range(n):
         price = prices[i]
@@ -151,6 +163,13 @@ def simulate_portfolio_numba_v2(
         # Track time in position (only during market hours)
         if position != 0:
             bars_in_position += 1
+            # Section 11.6: update intra-trade price excursion.
+            if price < running_low:
+                running_low = price
+                running_low_bar = i
+            if price > running_high:
+                running_high = price
+                running_high_bar = i
 
         # === RISK MANAGEMENT CHECKS ===
         exit_triggered = False
@@ -202,6 +221,10 @@ def simulate_portfolio_numba_v2(
                 trade_exit_reasons[trade_idx] = exit_reason
                 trade_proceeds[trade_idx] = net_proceeds
                 trade_costs[trade_idx] = 0.0
+                trade_mae_pcts[trade_idx] = (running_low - position_price) / position_price
+                trade_mfe_pcts[trade_idx] = (running_high - position_price) / position_price
+                trade_mae_bars[trade_idx] = running_low_bar
+                trade_mfe_bars[trade_idx] = running_high_bar
                 trade_idx += 1
 
                 cash += net_proceeds
@@ -228,6 +251,10 @@ def simulate_portfolio_numba_v2(
                 trade_exit_reasons[trade_idx] = exit_reason
                 trade_costs[trade_idx] = total_cost
                 trade_proceeds[trade_idx] = 0.0
+                trade_mae_pcts[trade_idx] = (position_price - running_high) / position_price
+                trade_mfe_pcts[trade_idx] = (position_price - running_low) / position_price
+                trade_mae_bars[trade_idx] = running_high_bar
+                trade_mfe_bars[trade_idx] = running_low_bar
                 trade_idx += 1
 
                 cash -= total_cost
@@ -256,6 +283,10 @@ def simulate_portfolio_numba_v2(
                 trade_exit_reasons[trade_idx] = np.int8(0)
                 trade_costs[trade_idx] = total_cost
                 trade_proceeds[trade_idx] = 0.0
+                trade_mae_pcts[trade_idx] = (position_price - running_high) / position_price
+                trade_mfe_pcts[trade_idx] = (position_price - running_low) / position_price
+                trade_mae_bars[trade_idx] = running_high_bar
+                trade_mfe_bars[trade_idx] = running_low_bar
                 trade_idx += 1
 
                 cash -= total_cost
@@ -292,6 +323,10 @@ def simulate_portfolio_numba_v2(
                     position_price = price
                     cash -= total_cost
                     bars_in_position = 0
+                    running_low = price
+                    running_high = price
+                    running_low_bar = i
+                    running_high_bar = i
 
         # === EXIT SIGNAL: want to go SHORT or FLAT ===
         if exits[i] and not entries[i]:
@@ -313,6 +348,10 @@ def simulate_portfolio_numba_v2(
                 trade_exit_reasons[trade_idx] = np.int8(0)
                 trade_proceeds[trade_idx] = net_proceeds
                 trade_costs[trade_idx] = 0.0
+                trade_mae_pcts[trade_idx] = (running_low - position_price) / position_price
+                trade_mfe_pcts[trade_idx] = (running_high - position_price) / position_price
+                trade_mae_bars[trade_idx] = running_low_bar
+                trade_mfe_bars[trade_idx] = running_high_bar
                 trade_idx += 1
 
                 cash += net_proceeds
@@ -349,6 +388,10 @@ def simulate_portfolio_numba_v2(
                     position_price = price
                     cash += net_proceeds
                     bars_in_position = 0
+                    running_low = price
+                    running_high = price
+                    running_low_bar = i
+                    running_high_bar = i
 
         # === FINAL EQUITY CALCULATION ===
         if position > 0:
@@ -370,6 +413,10 @@ def simulate_portfolio_numba_v2(
         trade_exit_reasons[:trade_idx],
         trade_costs[:trade_idx],
         trade_proceeds[:trade_idx],
+        trade_mae_pcts[:trade_idx],
+        trade_mfe_pcts[:trade_idx],
+        trade_mae_bars[:trade_idx],
+        trade_mfe_bars[:trade_idx],
         trade_idx,
         state_cash,
         state_position,

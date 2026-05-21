@@ -233,7 +233,13 @@ class Portfolio(BasePortfolio):
         trade_pnl_pcts: np.ndarray,
         trade_exit_reasons: np.ndarray,
         trade_costs: np.ndarray,
-        trade_proceeds: np.ndarray
+        trade_proceeds: np.ndarray,
+        trade_mae_pcts: Optional[np.ndarray] = None,
+        trade_mfe_pcts: Optional[np.ndarray] = None,
+        trade_mae_bars: Optional[np.ndarray] = None,
+        trade_mfe_bars: Optional[np.ndarray] = None,
+        stop_loss_pct_for_hit: Optional[float] = None,
+        profit_target_pct_for_hit: Optional[float] = None,
     ) -> List[Dict[str, Any]]:
         """
         Convert Numba trade arrays to list of dicts (matching Python format).
@@ -248,12 +254,21 @@ class Portfolio(BasePortfolio):
             trade_exit_reasons: Exit reason codes
             trade_costs: Entry costs
             trade_proceeds: Exit proceeds
+            trade_mae_pcts: Per-trade signed MAE (long-convention). Exit rows only.
+            trade_mfe_pcts: Per-trade signed MFE (long-convention). Exit rows only.
+            trade_mae_bars: Bar index where MAE occurred (-1 for entries).
+            trade_mfe_bars: Bar index where MFE occurred (-1 for entries).
+            stop_loss_pct_for_hit: Configured stop threshold used to derive
+                `hit_stop` on each exit. None means hit_stop=False always.
+            profit_target_pct_for_hit: Configured target threshold used to derive
+                `hit_target` on each exit. None means hit_target=False always.
 
         Returns:
             List of trade dictionaries compatible with Python simulation format
         """
         trades = []
         timestamps = self.price.index
+        have_mae_mfe = trade_mae_pcts is not None and trade_mfe_pcts is not None
 
         for i in range(len(trade_bars)):
             bar_idx = trade_bars[i]
@@ -287,6 +302,28 @@ class Portfolio(BasePortfolio):
                 exit_reason = trade_exit_reasons[i]
                 if exit_reason >= 0:
                     trade['exit_reason'] = EXIT_REASON_NAMES.get(exit_reason, 'unknown')
+
+                # Section 11.6 MAE/MFE diagnostics.
+                if have_mae_mfe:
+                    mae_pct = float(trade_mae_pcts[i])
+                    mfe_pct = float(trade_mfe_pcts[i])
+                    trade['mae_pct'] = mae_pct
+                    trade['mfe_pct'] = mfe_pct
+                    mae_bar = int(trade_mae_bars[i]) if trade_mae_bars is not None else -1
+                    mfe_bar = int(trade_mfe_bars[i]) if trade_mfe_bars is not None else -1
+                    trade['mae_time'] = timestamps[mae_bar] if mae_bar >= 0 else None
+                    trade['mfe_time'] = timestamps[mfe_bar] if mfe_bar >= 0 else None
+                    # hit_stop / hit_target compare excursion against configured
+                    # thresholds. If thresholds are not configured the flags are
+                    # vacuously False (nothing to compare against).
+                    trade['hit_stop'] = (
+                        stop_loss_pct_for_hit is not None
+                        and mae_pct <= -float(stop_loss_pct_for_hit)
+                    )
+                    trade['hit_target'] = (
+                        profit_target_pct_for_hit is not None
+                        and mfe_pct >= float(profit_target_pct_for_hit)
+                    )
 
             trades.append(trade)
 
@@ -369,16 +406,26 @@ class Portfolio(BasePortfolio):
         # Unpack results
         (equity, trade_bars, trade_types, trade_prices, trade_shares,
          trade_pnls, trade_pnl_pcts, trade_exit_reasons,
-         trade_costs, trade_proceeds, trade_count) = result
+         trade_costs, trade_proceeds,
+         trade_mae_pcts, trade_mfe_pcts, trade_mae_bars, trade_mfe_bars,
+         trade_count) = result
 
         # Convert equity to pandas Series
         self.equity_curve = pd.Series(equity, index=self.price.index)
 
-        # Convert trades to list of dicts
+        # Convert trades to list of dicts (per methodology Section 11.6,
+        # exit rows are annotated with MAE/MFE and hit_stop/hit_target flags
+        # derived from the configured stop/target thresholds).
         self.trades = self._convert_numba_trades(
             trade_bars, trade_types, trade_prices, trade_shares,
             trade_pnls, trade_pnl_pcts, trade_exit_reasons,
-            trade_costs, trade_proceeds
+            trade_costs, trade_proceeds,
+            trade_mae_pcts=trade_mae_pcts,
+            trade_mfe_pcts=trade_mfe_pcts,
+            trade_mae_bars=trade_mae_bars,
+            trade_mfe_bars=trade_mfe_bars,
+            stop_loss_pct_for_hit=stop_loss_pct if use_stop_loss else None,
+            profit_target_pct_for_hit=profit_target_pct if use_profit_target else None,
         )
 
     def _on_bar_start(self, i: int, price: float, cash: float,
