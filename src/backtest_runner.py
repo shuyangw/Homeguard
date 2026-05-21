@@ -18,6 +18,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, Any, Optional, List
 
+import pandas as pd
+
 from src.backtesting.engine.backtest_engine import BacktestEngine
 from src.backtesting.engine.metrics import PerformanceMetrics
 from src.backtesting.engine.streaming_data_loader import StreamingDataLoader as DataLoader
@@ -801,47 +803,27 @@ def run_single_from_config(config: 'BacktestConfig') -> None:
             TradeLogger.export_trades_csv(portfolio, trades_csv)
             logger.success(f"Trade log exported: {trades_csv}")
 
-            # Also print trades summary to console
-            trades_df = portfolio.trades
-            if len(trades_df) > 0:
-                logger.blank()
-                logger.header("TRADE LOG")
-                logger.blank()
-
-                # Display all trades
-                for _, trade in trades_df.iterrows():
-                    symbol = trade.get('symbol', 'N/A')
-                    entry_time = trade.get('entry_timestamp', 'N/A')
-                    exit_time = trade.get('exit_timestamp', 'N/A')
-                    direction = trade.get('direction', 'N/A')
-                    entry_price = trade.get('entry_price', 0)
-                    exit_price = trade.get('exit_price', 0)
-                    shares = trade.get('shares', 0)
-                    pnl = trade.get('pnl', 0)
-                    pnl_pct = trade.get('pnl_pct', 0) * 100
-                    exit_reason = trade.get('exit_reason', '')
-
-                    # Format entry time for display
-                    if hasattr(entry_time, 'strftime'):
-                        entry_str = entry_time.strftime('%Y-%m-%d %H:%M')
-                    else:
-                        entry_str = str(entry_time)[:16]
-
-                    if hasattr(exit_time, 'strftime'):
-                        exit_str = exit_time.strftime('%Y-%m-%d %H:%M')
-                    else:
-                        exit_str = str(exit_time)[:16]
-
-                    pnl_indicator = "[+]" if pnl > 0 else "[-]"
-                    logger.info(
-                        f"{pnl_indicator} {symbol:5} | {direction:5} | "
-                        f"Entry: {entry_str} @ ${entry_price:.2f} | "
-                        f"Exit: {exit_str} @ ${exit_price:.2f} | "
-                        f"Shares: {shares:,.0f} | PnL: ${pnl:,.2f} ({pnl_pct:+.2f}%) | {exit_reason}"
+            # Also print a trade-count summary to console. The V1 Portfolio
+            # exposes `trades` as a list of dicts (entry + exit rows);
+            # MultiAssetPortfolio exposes a DataFrame of round-trips. Handle
+            # both without trying to .iterrows() over a list.
+            trades_obj = portfolio.trades
+            if isinstance(trades_obj, list):
+                total_rows = len(trades_obj)
+                exit_count = sum(
+                    1 for t in trades_obj
+                    if t.get('type') in ('exit', 'cover_short')
+                )
+                if total_rows > 0:
+                    logger.blank()
+                    logger.metric(
+                        f"Total Trades: {exit_count} round-trips "
+                        f"({total_rows} entry+exit rows)"
                     )
-
-                logger.blank()
-                logger.metric(f"Total Trades: {len(trades_df)}")
+            elif isinstance(trades_obj, pd.DataFrame):
+                if len(trades_obj) > 0:
+                    logger.blank()
+                    logger.metric(f"Total Trades: {len(trades_obj)}")
         except Exception as e:
             logger.warning(f"Could not export trades: {e}")
 
