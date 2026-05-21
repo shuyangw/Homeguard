@@ -10,7 +10,7 @@ import numpy as np
 import pandas as pd
 import time
 from itertools import product
-from typing import Dict, List, Any, Union, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 from concurrent.futures import ProcessPoolExecutor, as_completed
 
 from src.utils import logger
@@ -182,7 +182,8 @@ class RandomSearchOptimizer(BaseOptimizer):
         cache_config: Optional[Any] = None,
         export_results: bool = True,
         output_dir: Optional[Any] = None,
-        random_seed: Optional[int] = None
+        random_seed: Optional[int] = None,
+        on_trial_complete: Optional[Callable] = None,
     ) -> Dict[str, Any]:
         """
         Optimize strategy parameters using random search.
@@ -306,6 +307,14 @@ class RandomSearchOptimizer(BaseOptimizer):
                     all_results.append(cached_result)
                     completed_count += 1
 
+                    # Per-trial hook (caller-supplied; e.g. registry append)
+                    if (
+                        cached_result['error'] is None
+                        and cached_result['stats'] is not None
+                        and on_trial_complete is not None
+                    ):
+                        on_trial_complete(cached_result['params'], cached_result['stats'])
+
                     # Update best if this is better
                     if cached_result['error'] is None and cached_result['stats'] is not None:
                         if self._is_better(cached_result['value'], best_value, metric):
@@ -384,6 +393,14 @@ class RandomSearchOptimizer(BaseOptimizer):
                     # Track time for ETA calculation
                     iteration_time = time.time() - iteration_start
                     test_times.append(iteration_time)
+
+                    # Per-trial hook (caller-supplied; e.g. registry append)
+                    if (
+                        result['error'] is None
+                        and result['stats'] is not None
+                        and on_trial_complete is not None
+                    ):
+                        on_trial_complete(result['params'], result['stats'])
 
                     # Update best if this is better
                     if result['error'] is None and result['stats'] is not None:

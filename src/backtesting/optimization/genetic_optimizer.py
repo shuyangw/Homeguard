@@ -9,7 +9,7 @@ for multi-modal optimization landscapes.
 import numpy as np
 import pandas as pd
 import time
-from typing import Dict, List, Any, Union, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 from pathlib import Path
 from dataclasses import dataclass
 
@@ -98,7 +98,8 @@ class GeneticOptimizer(BaseOptimizer):
         output_dir: Optional[Any] = None,
         random_seed: Optional[int] = None,
         enable_plots: bool = True,
-        convergence_patience: int = 5
+        convergence_patience: int = 5,
+        on_trial_complete: Optional[Callable] = None,
     ) -> Dict[str, Any]:
         """
         Optimize strategy parameters using Genetic Algorithm.
@@ -202,7 +203,8 @@ class GeneticOptimizer(BaseOptimizer):
         # Evaluate initial population
         population, evals = self._evaluate_population(
             population, strategy_class, data, symbols, price_type,
-            metric, cache, start_date, end_date
+            metric, cache, start_date, end_date,
+            on_trial_complete=on_trial_complete,
         )
         total_evaluations += len(population)  # Count all evaluations (cache + new)
         gen_cache_hits = len(population) - evals
@@ -255,7 +257,8 @@ class GeneticOptimizer(BaseOptimizer):
             # Evaluate offspring
             offspring, evals = self._evaluate_population(
                 offspring, strategy_class, data, symbols, price_type,
-                metric, cache, start_date, end_date
+                metric, cache, start_date, end_date,
+                on_trial_complete=on_trial_complete,
             )
             total_evaluations += len(offspring)  # Count all evaluations (cache + new)
             gen_cache_hits = len(offspring) - evals
@@ -443,7 +446,8 @@ class GeneticOptimizer(BaseOptimizer):
         metric: str,
         cache: Optional[Any],
         start_date: str,
-        end_date: str
+        end_date: str,
+        on_trial_complete: Optional[Callable] = None,
     ) -> Tuple[List[Individual], int]:
         """Evaluate fitness of all individuals in population."""
         evaluations = 0
@@ -467,6 +471,13 @@ class GeneticOptimizer(BaseOptimizer):
                     individual.fitness = cached_result['value']
                     individual.stats = cached_result['stats']
                     individual.error = cached_result['error']
+                    # Per-trial hook -- cache hits still count as trials
+                    if (
+                        cached_result.get('error') is None
+                        and cached_result.get('stats') is not None
+                        and on_trial_complete is not None
+                    ):
+                        on_trial_complete(individual.params, cached_result['stats'])
                     continue
 
             # Evaluate
@@ -497,6 +508,10 @@ class GeneticOptimizer(BaseOptimizer):
                         stats=stats,
                         error=None
                     )
+
+                # Per-trial hook (caller-supplied; e.g. registry append)
+                if stats is not None and on_trial_complete is not None:
+                    on_trial_complete(individual.params, stats)
 
             except Exception as e:
                 individual.fitness = float('-inf') if metric != 'max_drawdown' else float('inf')
