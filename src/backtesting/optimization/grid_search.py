@@ -5,11 +5,14 @@ Exhaustively tests all parameter combinations to find optimal values
 based on specified metrics (Sharpe ratio, total return, max drawdown).
 """
 
-import pandas as pd
+import uuid
+from datetime import datetime, timezone
 from itertools import product
-from typing import Dict, List, Any, Union, Optional, Tuple, TYPE_CHECKING
+from typing import Any, Dict, List, Optional, Tuple, Union, TYPE_CHECKING
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass
+
+import pandas as pd
 
 from src.utils import logger
 from src.utils.timezone import tz
@@ -212,6 +215,67 @@ def _test_single_params(
         }
 
 
+def _append_per_config_row(
+    *,
+    parent_run_id: str,
+    strategy_name: str,
+    params: Dict[str, Any],
+    stats: Dict[str, Any],
+    combinations_in_run: int,
+    start_date: str,
+    end_date: str,
+    wall_clock_start: datetime,
+    cost_tier_used: Optional[str],
+    cost_bps: Optional[float],
+) -> None:
+    """Best-effort registry append for one optimizer parameter combination.
+
+    Per methodology Section 9: every optimizer trial counts toward the
+    project-wide N used by DSR. We append a child row per combo with
+    a shared `parent_run_id` so the orchestrator can aggregate by sweep
+    and so `n_trials_project_wide` returns the real cumulative count.
+
+    Unlike `_append_to_registry` in src/backtest_runner.py (which is
+    fatal per Section 9.3), this per-combo append is best-effort -- a
+    single combo's registry failure should not abort a 5000-config
+    sweep. The runner's parent row (also appended by the orchestrator
+    after `optimize` returns) is fatal and serves as the methodology
+    gate; this child row is for DSR / experiment-registry detail.
+    """
+    try:
+        from src.experiments import append_run
+    except Exception as e:  # noqa
+        logger.warning(f"[registry] optimizer import failed, skipping append: {e}")
+        return
+    try:
+        metrics = {
+            'sharpe': float(stats.get('Sharpe Ratio', 0.0) or 0.0),
+            'total_return_pct': float(stats.get('Total Return [%]', 0.0) or 0.0),
+            'annual_return_pct': float(stats.get('Annual Return [%]', 0.0) or 0.0),
+            'max_drawdown_pct': float(stats.get('Max Drawdown [%]', 0.0) or 0.0),
+            'win_rate_pct': float(stats.get('Win Rate [%]', 0.0) or 0.0),
+            'trade_count': int(stats.get('Total Trades', 0) or 0),
+        }
+        append_run(
+            strategy_name=strategy_name,
+            agent_name='backtest-optimizer',
+            phase='optimization_grid_search',
+            parent_run_id=parent_run_id,
+            params=params,
+            window_start=start_date,
+            window_end=end_date,
+            metrics=metrics,
+            combinations_in_run=combinations_in_run,
+            cost_tier_used=cost_tier_used,
+            cost_bps=cost_bps,
+            wall_clock_start=wall_clock_start,
+            wall_clock_end=datetime.now(tz=timezone.utc),
+            verdict='PENDING',
+        )
+    except Exception as e:  # noqa
+        logger.warning(f"[registry] optimizer per-combo append failed: {e}")
+
+
 class GridSearchOptimizer:
     """
     Grid search optimizer for strategy parameters.
@@ -317,6 +381,17 @@ class GridSearchOptimizer:
         # Generate all parameter combinations
         param_names = list(param_grid.keys())
         param_values = list(param_grid.values())
+        all_combos = list(product(*param_values))
+        combinations_in_run = len(all_combos)
+
+        # Registry: one parent_run_id shared across every per-combo child row.
+        # Methodology Section 9 -- the project-wide N used by DSR counts every
+        # optimizer trial appended here.
+        parent_run_id = str(uuid.uuid4())
+        wall_clock_start = datetime.now(tz=timezone.utc)
+        strategy_name = strategy_class.__name__
+        cost_tier_used = getattr(self.engine, 'cost_tier_used', None)
+        cost_bps = getattr(self.engine, 'cost_bps', None)
 
         # Initialize best tracking
         best_value = float('-inf') if metric != 'max_drawdown' else float('inf')
@@ -324,7 +399,7 @@ class GridSearchOptimizer:
         best_portfolio = None
 
         # Test each parameter combination
-        for param_combo in product(*param_values):
+        for param_combo in all_combos:
             params = dict(zip(param_names, param_combo))
 
             try:
@@ -358,6 +433,20 @@ class GridSearchOptimizer:
                     best_params = params
                     best_portfolio = portfolio
 
+                # Append per-combo row to the experiment registry
+                _append_per_config_row(
+                    parent_run_id=parent_run_id,
+                    strategy_name=strategy_name,
+                    params=params,
+                    stats=stats,
+                    combinations_in_run=combinations_in_run,
+                    start_date=start_date,
+                    end_date=end_date,
+                    wall_clock_start=wall_clock_start,
+                    cost_tier_used=cost_tier_used,
+                    cost_bps=cost_bps,
+                )
+
                 # Log this combination's result
                 logger.metric(f"Params: {params} -> {metric}: {value:.4f}")
 
@@ -378,7 +467,9 @@ class GridSearchOptimizer:
             'best_params': best_params,
             'best_value': best_value,
             'best_portfolio': best_portfolio,
-            'metric': metric
+            'metric': metric,
+            'parent_run_id': parent_run_id,
+            'combinations_in_run': combinations_in_run,
         }
 
     def optimize_parallel(
@@ -498,6 +589,13 @@ class GridSearchOptimizer:
         best_portfolio = None
         all_results = []
         completed_count = 0
+
+        # Registry parent_run_id, shared across every per-combo child row.
+        parent_run_id = str(uuid.uuid4())
+        wall_clock_start = datetime.now(tz=timezone.utc)
+        strategy_name = strategy_class.__name__
+        cost_tier_used = getattr(self.engine, 'cost_tier_used', None)
+        cost_bps = getattr(self.engine, 'cost_bps', None)
 
         # Phase 2: Enhanced progress tracking
         import time
@@ -623,6 +721,24 @@ class GridSearchOptimizer:
                     iteration_time = time.time() - iteration_start
                     test_times.append(iteration_time)
 
+                    # Append per-combo registry row (best-effort).
+                    # Worker processes can't share a DuckDB writer; the
+                    # orchestrator does the append in the collector loop
+                    # to keep all I/O on one connection.
+                    if result['error'] is None and result['stats'] is not None:
+                        _append_per_config_row(
+                            parent_run_id=parent_run_id,
+                            strategy_name=strategy_name,
+                            params=result['params'],
+                            stats=result['stats'],
+                            combinations_in_run=len(param_combos),
+                            start_date=start_date,
+                            end_date=end_date,
+                            wall_clock_start=wall_clock_start,
+                            cost_tier_used=cost_tier_used,
+                            cost_bps=cost_bps,
+                        )
+
                     # Update best if this is better
                     if result['error'] is None and result['stats'] is not None:
                         if self._is_better(result['value'], best_value, metric):
@@ -716,7 +832,9 @@ class GridSearchOptimizer:
             'total_time': total_time,  # Phase 2: timing info
             'avg_time_per_test': total_time / len(param_combos) if param_combos else 0,
             'cache_hits': cache_hits if cache else 0,  # Phase 3: cache statistics
-            'cache_misses': cache_misses if cache else 0
+            'cache_misses': cache_misses if cache else 0,
+            'parent_run_id': parent_run_id,  # Methodology Section 9 linkage
+            'combinations_in_run': len(param_combos),
         }
 
     def _extract_metric_value(self, stats: Dict[str, Any], metric: str) -> float:
