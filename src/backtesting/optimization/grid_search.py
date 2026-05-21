@@ -59,7 +59,7 @@ def _test_single_params(
         Dictionary with params, metric value, and stats
     """
     from backtesting.engine.portfolio_simulator import from_signals
-    from backtesting.utils.risk_config import RiskConfig
+    from src.backtesting.utils.risk_config import RiskConfig
     from backtesting.base.strategy import MultiSymbolStrategy
     from backtesting.base.pairs_strategy import PairsStrategy
     from backtesting.engine.pairs_portfolio import PairsPortfolio

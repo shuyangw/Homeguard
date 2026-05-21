@@ -11,7 +11,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / 'src'))
 
 from backtesting.engine.backtest_engine import BacktestEngine
-from backtesting.utils.risk_config import RiskConfig
+from src.backtesting.utils.risk_config import RiskConfig
 from src.strategies.research.moving_average import MovingAverageCrossover
 
 

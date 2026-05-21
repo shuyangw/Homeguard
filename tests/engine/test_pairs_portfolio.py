@@ -15,7 +15,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / 'src'))
 
 from backtesting.engine.pairs_portfolio import PairPosition, PairsPortfolio
-from backtesting.utils.risk_config import RiskConfig
+from src.backtesting.utils.risk_config import RiskConfig
 from backtesting.engine.backtest_engine import BacktestEngine
 from backtesting.base.pairs_strategy import PairsStrategy
 

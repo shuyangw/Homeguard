@@ -435,7 +435,7 @@ class RiskManager:
     - Stop loss management for all positions
 
     Example:
-        from backtesting.utils.risk_config import RiskConfig
+        from src.backtesting.utils.risk_config import RiskConfig
 
         config = RiskConfig.moderate()
         risk_mgr = RiskManager(config)

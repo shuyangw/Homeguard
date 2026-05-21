@@ -278,11 +278,11 @@ class BayesianOptimizer(BaseOptimizer):
 
                     # Run backtest
                     if len(symbols) == 1:
-                        portfolio = self.engine._run_single_symbol(
+                        portfolio = self.engine._run_single_symbol_with_data(
                             strategy, data, symbols[0], price_type
                         )
                     else:
-                        portfolio = self.engine._run_multiple_symbols(
+                        portfolio = self.engine._run_multiple_symbols_with_data(
                             strategy, data, symbols, price_type
                         )
 
@@ -335,11 +335,11 @@ class BayesianOptimizer(BaseOptimizer):
                     # Re-run best to get portfolio object
                     best_strategy = strategy_class(**best_params)
                     if len(symbols) == 1:
-                        best_portfolio = self.engine._run_single_symbol(
+                        best_portfolio = self.engine._run_single_symbol_with_data(
                             best_strategy, data, symbols[0], price_type
                         )
                     else:
-                        best_portfolio = self.engine._run_multiple_symbols(
+                        best_portfolio = self.engine._run_multiple_symbols_with_data(
                             best_strategy, data, symbols, price_type
                         )
 

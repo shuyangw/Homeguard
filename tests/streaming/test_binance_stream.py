@@ -79,7 +79,7 @@ class TestStreamManager:
         manager = BinanceStreamManager(["BTC/USD"])
         url = manager._build_stream_url()
         assert "btcusdt@kline_1m" in url
-        assert "stream.binance.com" in url
+        assert "stream.binance" in url  # accepts .com or .us (US compliance)
 
     def test_build_stream_url_multiple(self):
         """URL contains streams for multiple symbols."""
