@@ -26,11 +26,11 @@ Prioritized follow-up work. The retrospective sections below explain context.
 
 - [x] **Branch-switch guard** -- worked from a dedicated worktree at `C:\Users\qwqw1\Homeguard-main` on `main` for the entire 2026-05-20 session. The Dropbox-tracked checkout at `C:\Users\qwqw1\Dropbox\cs\github\Homeguard` is still being switched between branches by a parallel session; the dedicated worktree is now the convention for any main-bound work.
 
+- [x] **Trade-log MAE/MFE field extension** -- shipped 2026-05-21 as `aa7cc58`. Methodology Sections 11.6 / 11.11 / 12.1 fields are now materialized on every exit trade record produced by V1 and V2 Numba simulators: `mae_pct`, `mfe_pct` (signed, long-convention), `mae_time`, `mfe_time`, `hit_stop`, `hit_target`. The kernels track `running_low` / `running_high` + bar indices for each open position and reset on entry. `hit_stop` / `hit_target` are derived in the Python conversion layer from the configured `stop_loss_pct` / `profit_target_pct` -- the kernel stays lean. 8 new TDD tests in `tests/backtesting/engine/test_mae_mfe.py` (long/short MAE+MFE with bars, hit_stop on stop fire, hit_target on target fire, vacuous False when no stop/target configured, entry records carry no MAE/MFE, multi-trade isolation). All 41 V1+V2 simulator tests still green.
+
 ### Blocking (work is gated waiting on these)
 
-1. **Trade-log MAE/MFE field extension** -- methodology Sections **11.6** (MAE/MFE stop-sizing procedure), **11.11** (`exit_logic_summary` registry column), and **12.1** (trade-level metrics) all require per-trade fields the numba kernel doesn't yet record: `mae_pct`, `mfe_pct`, `mae_time`, `mfe_time`, `hit_stop`, `hit_target`, `bars_held` (already tracked as `bars_in_position`). Without these the `mae_mfe_validated` registry flag is permanently False and the MAE/MFE-derived stop-sizing rule can't be applied. Effort: ~half day -- extend numba kernel to track running min/max excursion per open position, materialize the extra fields in trade-log post-processing, plumb into stats() dict. Per the v3 plan's open questions, "Should PR 2 also include a `src/backtesting/engine/` update to start emitting them, or is that a follow-up PR?" -- this IS that follow-up.
-
-2. **PR 3 end-to-end validation** (v3 plan validation step 5) -- never executed. "Run a complete backtest of a strategy with stops; verify Section 12 diagnostics appear in report (capacity curve, regime transitions, trade-level metrics, IR if applicable, MAE/MFE if applicable). Verify strategy-lead's gates fire correctly with intentional failures injected." Effort: ~1 hour. **Partially blocked by item 1** -- the MAE/MFE-dependent gates can't fire honestly until the fields exist.
+1. **PR 3 end-to-end validation** (v3 plan validation step 5) -- never executed. "Run a complete backtest of a strategy with stops; verify Section 12 diagnostics appear in report (capacity curve, regime transitions, trade-level metrics, IR if applicable, MAE/MFE if applicable). Verify strategy-lead's gates fire correctly with intentional failures injected." Effort: ~1 hour. **Unblocked now** that MAE/MFE fields exist. This is the last item before the v3 rollout is fully landed.
 
 ### Unblocked but waiting on consumers
 
@@ -62,7 +62,15 @@ Key process win: switched to a dedicated `C:\Users\qwqw1\Homeguard-main` worktre
 
 Tests: 58 pass across registry / statistics / costs / walk-forward through every commit.
 
-The v3 plan is now ~95% complete. Only the MAE/MFE field extension (item 1 above) and the end-to-end validation (item 2) remain before the methodology is fully operational.
+## Session 2026-05-21
+
+- `aa7cc58` feat(engine): per-trade MAE/MFE tracking + hit_stop/hit_target flags
+
+TDD: 8 failing tests in `tests/backtesting/engine/test_mae_mfe.py` were written first, then the V1 Numba kernel (`src/backtesting/engine/numba_sim.py`) and V2 Numba kernel (`src/backtesting_v2/engine/numba_sim.py`) were extended with `running_low` / `running_high` + bar tracking; the Python conversion layer (`Portfolio._convert_numba_trades`, `PortfolioV2._convert_numba_trades_v2`) was wired to annotate exit records and compute `hit_stop` / `hit_target` from the configured stop / target thresholds. All 41 V1+V2 simulator tests pass with no regressions.
+
+Pre-existing failures in `tests/optimization/test_random_search.py` and `tests/optimization/test_parallel_optimization.py` (48 failed) are caused by an unrelated `StreamingDataLoader.load_symbols` missing-method on a mock loader -- verified by re-running them after stashing the MAE/MFE work. Same root cause as the 2026-05-20 walk-forward fix; needs its own follow-up to switch the random-search / parallel optimizers to the `_with_data` pattern.
+
+The v3 methodology rollout is now ~98% complete. Only the end-to-end validation (PR 3 verification step 5) remains.
 
 ---
 
