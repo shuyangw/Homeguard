@@ -73,7 +73,8 @@ Edge is concentrated in BULL regimes; SIDEWAYS/BEAR/UNPREDICTABLE are drags. Con
 - `20260519_phase4_v01.md` — production REGIME_PARAMS, no crash exposure, four cost tiers.
 - `20260519_phase4_v03.md` — production REGIME_PARAMS WITH crash exposure (V03 of the Phase 4 plan).
 - `20260519_phase4_v01_vs_v03_parity.md` — V01 vs V03 parity finding: V03's crash-exposure halving cuts gross more than it cuts turnover-cost, so V03 is **worse** net than V01. Wave 1 turnover-control must come before any V03-style crash-exposure refinement.
-- `20260522_phase4_re_baseline_vs_yfinance.md` — Phase B SIP harness vs the 2025-12-12 walk-forward and 2026-05-04 re-evaluation: documents the gross-vs-net divergence and confirms RAMP fails the methodology section 4 cost-sensitivity gate at 7.5 bps per side.
+- `20260522_phase4_re_baseline_vs_yfinance.md` — Phase B SIP harness vs the 2025-12-12 walk-forward and 2026-05-04 re-evaluation: documents the gross-vs-net divergence and confirms V01 RAMP fails the methodology section 4 cost-sensitivity gate at 7.5 bps per side.
+- `20260522_phase4_wave1_findings.md` — Phase C Wave 1 (V04 rank buffer + V05 min hold + V06 delta threshold + V11 combined) results vs V01 base. **V11 PASSES the cost-sensitivity gate** at 7.5 bps with Sharpe 0.452 and CAGR +9.38% (V01 collapses to Sharpe 0.116 / CAGR -2.02%); turnover drops 91% → 39%; EXT-OOS 2025-26 Sharpe goes -0.216 → +0.527. V11 is the Phase D paper-trade candidate.
 
 ---
 
