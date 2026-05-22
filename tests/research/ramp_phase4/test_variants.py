@@ -93,3 +93,48 @@ def test_variant_v06_in_registry():
     assert 'V06' in REGISTRY
     assert isinstance(REGISTRY['V06'], VariantSpec)
     assert 'delta' in REGISTRY['V06'].description.lower()
+
+
+def test_variant_v11_in_registry():
+    from src.research.ramp_phase4.variants import REGISTRY, VariantSpec
+    assert 'V11' in REGISTRY
+    assert isinstance(REGISTRY['V11'], VariantSpec)
+    assert 'combined' in REGISTRY['V11'].description.lower() or 'turnover' in REGISTRY['V11'].description.lower()
+
+
+def test_v11_calls_rank_buffer_then_min_hold(monkeypatch):
+    """V11's plan_fn must call rank_buffer THEN min_hold in that order."""
+    from datetime import datetime
+    import pandas as pd
+    import numpy as np
+    from src.research.ramp_phase4.variants import REGISTRY
+    from src.research.ramp_phase4.engine import HarnessState
+
+    n = 300
+    idx = pd.date_range('2023-01-02', periods=n, freq='B') + pd.Timedelta(hours=9, minutes=30)
+    panel = pd.DataFrame({
+        'AAA': 100 + np.arange(n) * 0.05,
+        'BBB': 110 + np.arange(n) * 0.04,
+        'CCC': 90 + np.arange(n) * 0.06,
+        'SPY': 400 + np.arange(n) * 0.1,
+        'VIX': np.full(n, 12.0),
+    }, index=idx)
+
+    call_order = []
+
+    def fake_rank_buffer(proposed_targets, state, buffer_size, universe_ranking, top_n):
+        call_order.append('rank_buffer')
+        return proposed_targets
+
+    def fake_min_hold(proposed_targets, state, current_date, min_hold_days, crash_exit=False):
+        call_order.append('min_hold')
+        return proposed_targets
+
+    monkeypatch.setattr('src.research.ramp_phase4.variants.rank_buffer', fake_rank_buffer, raising=False)
+    monkeypatch.setattr('src.research.ramp_phase4.variants.min_hold', fake_min_hold, raising=False)
+
+    state = HarnessState(cash_usd=100000.0)
+    cfg = type('C', (), {})()
+    plan = REGISTRY['V11'].plan_fn(panel.index[-1].to_pydatetime(), state, panel, cfg)
+
+    assert call_order == ['rank_buffer', 'min_hold']

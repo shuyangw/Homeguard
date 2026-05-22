@@ -13,6 +13,7 @@ from datetime import datetime
 from typing import Callable, Dict
 import pandas as pd
 
+from src.research.ramp_phase4.filters import rank_buffer, min_hold
 from src.strategies.advanced.market_regime_detector import MarketRegimeDetector
 from src.strategies.advanced.ramp_strategy import RAMPSignals, REGIME_PARAMS
 from src.strategies.advanced.ramp_target_planner import compute_plan
@@ -120,8 +121,6 @@ def _variant_v04(t: datetime, state, panel: pd.DataFrame, cfg) -> Dict[str, floa
 
     buffer_size = top_n // 2 per regime (5 when top_n=10, 10 when top_n=20).
     """
-    from src.research.ramp_phase4.filters import rank_buffer
-
     plan = _compute_plan_from_panel(t, panel)
     if plan is None:
         return {'__regime__': 'SAFE_MODE'}
@@ -150,8 +149,6 @@ def _variant_v05(t: datetime, state, panel: pd.DataFrame, cfg) -> Dict[str, floa
 
     crash_exit=False for the solo variant; V11 may override.
     """
-    from src.research.ramp_phase4.filters import min_hold
-
     plan = _compute_plan_from_panel(t, panel)
     if plan is None:
         return {'__regime__': 'SAFE_MODE'}
@@ -168,6 +165,45 @@ def _variant_v05(t: datetime, state, panel: pd.DataFrame, cfg) -> Dict[str, floa
         min_hold_days=5,
         crash_exit=False,
     )
+    targets['__regime__'] = plan.regime
+    return targets
+
+
+def _variant_v11(t: datetime, state, panel: pd.DataFrame, cfg) -> Dict[str, float]:
+    """V11: V01 base + rank-buffer + min-hold (delta-threshold lives in cfg).
+
+    Composition order: rank_buffer -> min_hold. The order matters because
+    rank_buffer may add a new "buffered" symbol, after which min_hold can
+    also see it. Reversing the order would let min_hold protect a name
+    that rank_buffer was about to drop. cfg.delta_rebalance_pct=0.02 must
+    be set at the CLI level (Task 11).
+    """
+    plan = _compute_plan_from_panel(t, panel)
+    if plan is None:
+        return {'__regime__': 'SAFE_MODE'}
+    if not plan.targets:
+        return {'__regime__': plan.regime}
+
+    target_symbols = list(plan.targets.keys())
+    proposed = {sym: 1.0 / plan.top_n for sym in target_symbols}
+    ranking = pd.Series({sym: i + 1 for i, sym in enumerate(target_symbols)})
+
+    targets = rank_buffer(
+        proposed_targets=proposed,
+        state=state,
+        buffer_size=plan.top_n // 2,
+        universe_ranking=ranking,
+        top_n=plan.top_n,
+    )
+
+    targets = min_hold(
+        proposed_targets=targets,
+        state=state,
+        current_date=t,
+        min_hold_days=5,
+        crash_exit=False,
+    )
+
     targets['__regime__'] = plan.regime
     return targets
 
@@ -197,5 +233,10 @@ REGISTRY: Dict[str, VariantSpec] = {
         id='V06',
         description='V01 + delta-rebalance threshold (cfg.delta_rebalance_pct must be set to 0.02 at CLI level)',
         plan_fn=_variant_v01,
+    ),
+    'V11': VariantSpec(
+        id='V11',
+        description='V01 + combined turnover-lite (V04 rank buffer + V05 min hold + V06 delta threshold via cfg)',
+        plan_fn=_variant_v11,
     ),
 }
