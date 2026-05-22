@@ -29,6 +29,9 @@ class HarnessState:
     realized_pnl_usd: float = 0.0
     turnover_to_date_usd: float = 0.0
     cost_to_date_usd: float = 0.0
+    # Phase C Wave 1 additions:
+    position_open_dates: Dict[str, datetime] = field(default_factory=dict)
+    last_target_symbols: List[str] = field(default_factory=list)
 
 
 @dataclass

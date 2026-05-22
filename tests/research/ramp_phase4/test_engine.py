@@ -265,3 +265,10 @@ def test_run_variant_safe_mode_skips_rebalance(tmp_path, monkeypatch):
     # After day 1 buy, days 2-4 stay safe-mode and produce zero turnover.
     assert records[1].regime == 'SAFE_MODE'
     assert records[1].turnover_usd == 0.0
+
+
+def test_harness_state_initializes_new_fields_empty():
+    from src.research.ramp_phase4.engine import HarnessState
+    s = HarnessState(cash_usd=100000.0)
+    assert s.position_open_dates == {}
+    assert s.last_target_symbols == []
