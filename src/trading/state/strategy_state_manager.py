@@ -318,7 +318,12 @@ class StrategyStateManager:
         logger.info(f"Migrated state file v1 -> v2: tagged {tagged} positions as 'alpaca'")
 
     def _save_state(self) -> None:
-        """Save state to JSON file atomically with file locking."""
+        """Save state to JSON file atomically with file locking.
+
+        On Windows + Dropbox-watched dirs, the atomic os.replace() can
+        spuriously fail with PermissionError when the file watcher has
+        the destination open. Retry briefly to absorb the race.
+        """
         try:
             self._state['last_updated'] = tz.iso_timestamp()
 
@@ -327,8 +332,20 @@ class StrategyStateManager:
             with open(temp_file, 'w') as f:
                 json.dump(self._state, f, indent=2)
 
-            # Atomic replace
-            os.replace(temp_file, self.state_file)
+            # Atomic replace with retry-on-PermissionError (Windows/Dropbox race)
+            import time
+            for attempt in range(3):
+                try:
+                    os.replace(temp_file, self.state_file)
+                    break
+                except PermissionError as e:
+                    if attempt == 2:
+                        raise
+                    logger.warning(
+                        f"State write race on {self.state_file}, "
+                        f"retrying ({attempt + 1}/3): {e}"
+                    )
+                    time.sleep(0.05 * (attempt + 1))
 
         except Exception as e:
             logger.error(f"Failed to save state: {e}")

@@ -1,4 +1,5 @@
 """Tests for the CLI subcommands. Uses fixture jsonl + golden text."""
+import dataclasses
 import io
 import json
 import shutil
@@ -11,16 +12,25 @@ import pytest
 from src.trading.decision_log import cli
 from src.trading.decision_log.writer import append
 from src.trading.decision_log.record import DecisionRecord
+from src.utils.timezone import tz
 
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
 
-def _seed_from_fixture(tmp_decisions_dir, fixture_name):
-    """Copy fixture jsonl into the temp decisions dir as today's record."""
+def _seed_from_fixture(tmp_decisions_dir, fixture_name, *, retime_to_now=False):
+    """Copy fixture jsonl into the temp decisions dir as today's record.
+
+    When `retime_to_now=True` the fixture's `timestamp` is rewritten to
+    `tz.now()` so the seeded record is always within any reasonable
+    lookback window (`list --days N`). Default is False to preserve the
+    static fixture timestamp for golden-text comparisons in show tests.
+    """
     src = FIXTURES / fixture_name
     text = src.read_text()
     rec = DecisionRecord.from_jsonl_line(text)
+    if retime_to_now:
+        rec = dataclasses.replace(rec, timestamp=tz.now().isoformat())
     append(rec)
 
 
@@ -49,7 +59,7 @@ class TestShow:
 
 class TestList:
     def test_list_summary_table(self, tmp_decisions_dir, capsys):
-        _seed_from_fixture(tmp_decisions_dir, "sample_ramp_clean.jsonl")
+        _seed_from_fixture(tmp_decisions_dir, "sample_ramp_clean.jsonl", retime_to_now=True)
         rc = cli.main(["list", "ramp", "--days", "7"])
         assert rc == 0
         out = capsys.readouterr().out

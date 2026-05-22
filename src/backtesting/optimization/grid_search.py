@@ -298,13 +298,25 @@ class GridSearchOptimizer:
         if isinstance(symbols, str):
             symbols = [symbols]
 
-        # Validate metric before starting optimization
+        # Validate inputs before any work
+        if not param_grid:
+            raise ValueError("param_grid must be a non-empty dict")
         valid_metrics = ['sharpe_ratio', 'total_return', 'max_drawdown']
         if metric not in valid_metrics:
             raise ValueError(f"Unknown metric: {metric}")
 
         # Load data for the optimization period
         data = self.engine.data_loader.load_symbols(symbols, start_date, end_date)
+        if data is None or len(data) == 0:
+            logger.warning("Empty dataset returned from data loader; returning empty result")
+            return {
+                'best_params': None,
+                'best_value': float('nan'),
+                'best_portfolio': None,
+                'metric': metric,
+                'all_results': [],
+                'method': 'grid_search',
+            }
 
         # Log optimization header
         logger.blank()
@@ -322,6 +334,7 @@ class GridSearchOptimizer:
         best_value = float('-inf') if metric != 'max_drawdown' else float('inf')
         best_params = None
         best_portfolio = None
+        all_results: List[Dict[str, Any]] = []
 
         # Test each parameter combination
         for param_combo in product(*param_values):
@@ -331,13 +344,39 @@ class GridSearchOptimizer:
                 # Create strategy instance with these parameters
                 strategy = strategy_class(**params)
 
-                # Run backtest
-                # Detect if this is a multi-symbol strategy
-                from backtesting.base.strategy import MultiSymbolStrategy
+                # Detect multi-symbol / pairs strategy and route appropriately
+                from src.backtesting.base.strategy import MultiSymbolStrategy
+                from src.backtesting.base.pairs_strategy import PairsStrategy
 
-                if isinstance(strategy, MultiSymbolStrategy):
-                    # Use proper multi-symbol execution
-                    portfolio = self.engine._run_multi_symbol_strategy(strategy, data, symbols, 'close')
+                if isinstance(strategy, PairsStrategy) and len(symbols) == 2:
+                    # Use PairsPortfolio fast path with pre-loaded data
+                    from src.backtesting.engine.pairs_portfolio import PairsPortfolio
+                    from src.backtesting.utils.risk_config import RiskConfig
+
+                    data_dict = {sym: data.xs(sym, level='symbol') for sym in symbols}
+                    signals_dict = strategy.generate_signals_multi(data_dict)
+
+                    symbol1, symbol2 = symbols
+                    long_entries1, long_exits1, short_entries1, short_exits1 = signals_dict[symbol1]
+
+                    portfolio = PairsPortfolio(
+                        symbols=(symbol1, symbol2),
+                        prices1=data_dict[symbol1]['close'],
+                        prices2=data_dict[symbol2]['close'],
+                        entries=short_entries1,
+                        exits=short_exits1,
+                        short_entries=long_entries1,
+                        short_exits=long_exits1,
+                        init_cash=self.engine.initial_capital,
+                        fees=self.engine.fees,
+                        slippage=self.engine.slippage,
+                        freq=getattr(self.engine, 'freq', '1D'),
+                        market_hours_only=getattr(self.engine, 'market_hours_only', False),
+                        risk_config=RiskConfig.moderate(),
+                    )
+                elif isinstance(strategy, MultiSymbolStrategy):
+                    # Non-pairs multi-symbol strategy: degrade to first-symbol path
+                    portfolio = self.engine._run_multiple_symbols_with_data(strategy, data, symbols, 'close')
                 elif len(symbols) == 1:
                     portfolio = self.engine._run_single_symbol_with_data(strategy, data, symbols[0], 'close')
                 else:
@@ -357,6 +396,8 @@ class GridSearchOptimizer:
                     best_value = value
                     best_params = params
                     best_portfolio = portfolio
+
+                all_results.append({'params': params, metric: value})
 
                 # Log this combination's result
                 logger.metric(f"Params: {params} -> {metric}: {value:.4f}")
@@ -378,7 +419,8 @@ class GridSearchOptimizer:
             'best_params': best_params,
             'best_value': best_value,
             'best_portfolio': best_portfolio,
-            'metric': metric
+            'metric': metric,
+            'all_results': all_results,
         }
 
     def optimize_parallel(
