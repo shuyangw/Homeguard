@@ -15,6 +15,12 @@ from src.research.ramp_phase4.variants import REGISTRY
 from src.research.ramp_phase4.reports import build_variant_report
 
 
+DELTA_REBALANCE_PCT_BY_VARIANT = {
+    'V06': 0.02,
+    'V11': 0.02,
+}
+
+
 def _git_sha() -> str:
     try:
         return subprocess.check_output(['git', 'rev-parse', '--short', 'HEAD']).decode().strip()
@@ -44,6 +50,7 @@ def main() -> int:
 
     records_by_tier = {}
     for bps in tiers:
+        delta_pct = DELTA_REBALANCE_PCT_BY_VARIANT.get(args.variant, 0.0)
         cfg = HarnessConfig(
             start_date=args.start,
             end_date=args.end,
@@ -51,6 +58,7 @@ def main() -> int:
             initial_capital=args.initial_capital,
             cost_bps_per_side=bps,
             timing_mode=args.timing,
+            delta_rebalance_pct=delta_pct,
         )
         from src.utils.logger import logger
         logger.info(f'[phase4] Running {args.variant} at {bps} bps...')
