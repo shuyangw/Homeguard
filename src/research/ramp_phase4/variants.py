@@ -145,6 +145,33 @@ def _variant_v04(t: datetime, state, panel: pd.DataFrame, cfg) -> Dict[str, floa
     return targets
 
 
+def _variant_v05(t: datetime, state, panel: pd.DataFrame, cfg) -> Dict[str, float]:
+    """V05: V01 base + min-hold filter (protect positions younger than 5 trading days).
+
+    crash_exit=False for the solo variant; V11 may override.
+    """
+    from src.research.ramp_phase4.filters import min_hold
+
+    plan = _compute_plan_from_panel(t, panel)
+    if plan is None:
+        return {'__regime__': 'SAFE_MODE'}
+    if not plan.targets:
+        return {'__regime__': plan.regime}
+
+    target_symbols = list(plan.targets.keys())
+    proposed = {sym: 1.0 / plan.top_n for sym in target_symbols}
+
+    targets = min_hold(
+        proposed_targets=proposed,
+        state=state,
+        current_date=t,
+        min_hold_days=5,
+        crash_exit=False,
+    )
+    targets['__regime__'] = plan.regime
+    return targets
+
+
 REGISTRY: Dict[str, VariantSpec] = {
     'V01': VariantSpec(
         id='V01',
@@ -160,5 +187,10 @@ REGISTRY: Dict[str, VariantSpec] = {
         id='V04',
         description='V01 + rank buffer (keep held names within top_n + buffer_size = top_n // 2)',
         plan_fn=_variant_v04,
+    ),
+    'V05': VariantSpec(
+        id='V05',
+        description='V01 + min hold (protect positions younger than 5 trading days)',
+        plan_fn=_variant_v05,
     ),
 }
