@@ -11,8 +11,9 @@ CLI:
     python scripts/trading/compare_paper_vs_plan.py <decision_log_path>
 
 Exit codes:
-    0 - PASS
+    0 - PASS (real comparison with matching plan vs log)
     1 - FAIL (one or more Severity 1-3 divergences)
+    3 - VACUOUS (no positions to compare; both log and inputs empty)
 """
 from __future__ import annotations
 
@@ -86,16 +87,28 @@ def compare_session(log_path: Path) -> Dict[str, Any]:
     """Compare a paper trading session's decision log to the recomputed plan.
 
     Returns dict with:
-        - status: "PASS" | "FAIL"
+        - status: "PASS" | "FAIL" | "VACUOUS"
         - divergences: list of {symbol, severity, log_weight, plan_weight, delta}
         - log_total_gross
         - plan_total_gross
+
+    VACUOUS is returned when both the log weights and the strategy_inputs are
+    empty, so there is literally nothing to compare. Callers should treat this
+    distinctly from PASS to avoid counting a "no-op day" as a clean session.
     """
     rec = json.loads(Path(log_path).read_text())
     # logic_decisions may be None for pre-F5 decision logs OR SAFE_MODE days;
     # treat absent as empty so the comparator doesn't crash on None.get().
     log_weights = (rec.get("logic_decisions") or {}).get("target_weights") or {}
     strategy_inputs = rec.get("strategy_inputs") or {}
+
+    if not log_weights and not strategy_inputs:
+        return {
+            "status": "VACUOUS",
+            "divergences": [],
+            "log_total_gross": 0.0,
+            "plan_total_gross": 0.0,
+        }
 
     plan = _recompute_plan(strategy_inputs)
     plan_weights = plan["target_weights"]
@@ -150,7 +163,12 @@ def main() -> int:
                   f"log={d['log_weight']:.4f} plan={d['plan_weight']:.4f} "
                   f"delta={d['delta']:+.4f}")
 
-    return 0 if result["status"] == "PASS" else 1
+    status = result["status"]
+    if status == "PASS":
+        return 0
+    if status == "VACUOUS":
+        return 3
+    return 1
 
 
 if __name__ == "__main__":

@@ -14,7 +14,10 @@
 # /var/lib/node_exporter/textfile_collector/homeguard_a7.prom).
 #
 # Exit codes:
-#   0 - session is CLEAN (PASS); counter incremented or unchanged (already today)
+#   0 - session is CLEAN (PASS) OR comparator returned VACUOUS (nothing to compare);
+#       on PASS the counter is incremented (or unchanged if already counted today);
+#       on VACUOUS the counter and marker are left untouched so a later real
+#       session today can still count.
 #   1 - session FAILED comparator; counter reset to 0
 #   2 - setup error (decision log missing); counter unchanged, error gauge set
 
@@ -131,6 +134,13 @@ elif [[ "$RC" -eq 1 ]]; then
     write_gauges 0 0
     echo "[FAIL] session diverged from plan; counter reset to 0"
     exit 1
+elif [[ "$RC" -eq 3 ]]; then
+    # Comparator had nothing to compare (empty logic_decisions AND empty
+    # strategy_inputs). Treat as a no-op: do NOT write the marker so a real
+    # later session today can still count, and leave the counter unchanged.
+    echo "[VACUOUS] no positions to compare; counter unchanged at ${current_counter}"
+    write_gauges "$current_counter" 0
+    exit 0
 else
     echo "[ERROR] comparator returned unexpected exit code: $RC"
     write_gauges "$current_counter" 1

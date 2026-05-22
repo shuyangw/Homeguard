@@ -52,6 +52,39 @@ class TestPaperComparator:
         assert result["status"] == "PASS"
         assert result["divergences"] == []
 
+    def test_comparator_returns_vacuous_when_no_decisions_and_no_inputs(self, tmp_path):
+        """When both logic_decisions and strategy_inputs are empty there is
+        literally nothing to compare. The comparator must distinguish this
+        from a real PASS:
+          - compare_session().status == 'VACUOUS'
+          - main() exit code == 3
+        """
+        import subprocess
+        import sys
+        from scripts.trading.compare_paper_vs_plan import compare_session
+
+        rec = {
+            "strategy": "ramp",
+            "as_of": "2026-05-20T15:55:00-04:00",
+            "schema_version": 2,
+            "strategy_inputs": None,
+            "logic_decisions": None,
+        }
+        log_path = tmp_path / "log.json"
+        log_path.write_text(json.dumps(rec))
+
+        result = compare_session(log_path)
+        assert result["status"] == "VACUOUS", result
+        assert result["divergences"] == []
+
+        # CLI exit code must be 3 so the A7 helper can distinguish a vacuous
+        # PASS from a real PASS.
+        proc = subprocess.run(
+            [sys.executable, "-m", "scripts.trading.compare_paper_vs_plan", str(log_path)],
+            capture_output=True, text=True,
+        )
+        assert proc.returncode == 3, (proc.returncode, proc.stdout, proc.stderr)
+
     def test_comparator_flags_target_weight_delta(self, tmp_path):
         from scripts.trading.compare_paper_vs_plan import compare_session
         log_weights = {f"SYM{i}": 0.05 for i in range(20)}
