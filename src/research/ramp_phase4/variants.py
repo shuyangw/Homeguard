@@ -193,4 +193,9 @@ REGISTRY: Dict[str, VariantSpec] = {
         description='V01 + min hold (protect positions younger than 5 trading days)',
         plan_fn=_variant_v05,
     ),
+    'V06': VariantSpec(
+        id='V06',
+        description='V01 + delta-rebalance threshold (cfg.delta_rebalance_pct must be set to 0.02 at CLI level)',
+        plan_fn=_variant_v01,
+    ),
 }

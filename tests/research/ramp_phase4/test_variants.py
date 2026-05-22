@@ -86,3 +86,10 @@ def test_variant_v05_in_registry():
     assert 'V05' in REGISTRY
     assert isinstance(REGISTRY['V05'], VariantSpec)
     assert 'min' in REGISTRY['V05'].description.lower() and 'hold' in REGISTRY['V05'].description.lower()
+
+
+def test_variant_v06_in_registry():
+    from src.research.ramp_phase4.variants import REGISTRY, VariantSpec
+    assert 'V06' in REGISTRY
+    assert isinstance(REGISTRY['V06'], VariantSpec)
+    assert 'delta' in REGISTRY['V06'].description.lower()
