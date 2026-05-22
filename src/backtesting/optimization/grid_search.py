@@ -5,14 +5,21 @@ Exhaustively tests all parameter combinations to find optimal values
 based on specified metrics (Sharpe ratio, total return, max drawdown).
 """
 
+import uuid
 import pandas as pd
 from itertools import product
-from typing import Dict, List, Any, Union, Optional, Tuple, TYPE_CHECKING
+from typing import Any, Callable, Dict, List, Mapping, Optional, Tuple, Union, TYPE_CHECKING
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass
 
 from src.utils import logger
 from src.utils.timezone import tz
+
+# Optional registry-append callback supplied by callers (e.g. backtest_runner)
+# that want every trial recorded in output/experiments.duckdb. Optimizers
+# remain registry-agnostic -- they call this if set, skip if not. See
+# src.experiments.make_trial_callback for the canonical factory.
+TrialCallback = Callable[[Mapping[str, Any], Mapping[str, Any]], None]
 
 if TYPE_CHECKING:
     from backtesting.engine.backtest_engine import BacktestEngine
@@ -270,7 +277,8 @@ class GridSearchOptimizer:
         symbols: Union[str, List[str]],
         start_date: str,
         end_date: str,
-        metric: str = 'sharpe_ratio'
+        metric: str = 'sharpe_ratio',
+        on_trial_complete: Optional[TrialCallback] = None,
     ) -> Dict[str, Any]:
         """
         Optimize strategy parameters over a grid.
@@ -329,6 +337,12 @@ class GridSearchOptimizer:
         # Generate all parameter combinations
         param_names = list(param_grid.keys())
         param_values = list(param_grid.values())
+        all_combos = list(product(*param_values))
+        combinations_in_run = len(all_combos)
+
+        # Sweep-scoped parent_run_id; caller's trial callback may use this
+        # to link child rows.
+        parent_run_id = str(uuid.uuid4())
 
         # Initialize best tracking
         best_value = float('-inf') if metric != 'max_drawdown' else float('inf')
@@ -337,7 +351,7 @@ class GridSearchOptimizer:
         all_results: List[Dict[str, Any]] = []
 
         # Test each parameter combination
-        for param_combo in product(*param_values):
+        for param_combo in all_combos:
             params = dict(zip(param_names, param_combo))
 
             try:
@@ -399,6 +413,11 @@ class GridSearchOptimizer:
 
                 all_results.append({'params': params, metric: value})
 
+                # Optional per-trial hook (e.g. registry append). Optimizer
+                # is registry-agnostic; caller wires this up if needed.
+                if on_trial_complete is not None:
+                    on_trial_complete(params, stats)
+
                 # Log this combination's result
                 logger.metric(f"Params: {params} -> {metric}: {value:.4f}")
 
@@ -421,6 +440,8 @@ class GridSearchOptimizer:
             'best_portfolio': best_portfolio,
             'metric': metric,
             'all_results': all_results,
+            'parent_run_id': parent_run_id,
+            'combinations_in_run': combinations_in_run,
         }
 
     def optimize_parallel(
@@ -436,7 +457,8 @@ class GridSearchOptimizer:
         export_results: bool = True,
         output_dir: Optional[Any] = None,
         use_cache: bool = True,
-        cache_config: Optional[Any] = None
+        cache_config: Optional[Any] = None,
+        on_trial_complete: Optional[TrialCallback] = None,
     ) -> Dict[str, Any]:
         """
         Optimize strategy parameters over a grid using parallel processing.
@@ -531,7 +553,8 @@ class GridSearchOptimizer:
                 symbols=symbols,
                 start_date=start_date,
                 end_date=end_date,
-                metric=metric
+                metric=metric,
+                on_trial_complete=on_trial_complete,
             )
 
         # Initialize tracking
@@ -540,6 +563,10 @@ class GridSearchOptimizer:
         best_portfolio = None
         all_results = []
         completed_count = 0
+
+        # Sweep-scoped parent_run_id; caller's trial callback may use it
+        parent_run_id = str(uuid.uuid4())
+        combinations_in_run = len(param_combos)
 
         # Phase 2: Enhanced progress tracking
         import time
@@ -665,6 +692,17 @@ class GridSearchOptimizer:
                     iteration_time = time.time() - iteration_start
                     test_times.append(iteration_time)
 
+                    # Optional per-trial hook (caller-supplied). Worker
+                    # processes can't share a DuckDB writer, so the
+                    # orchestrator invokes the callback here -- keeps
+                    # all registry I/O on one connection.
+                    if (
+                        result['error'] is None
+                        and result['stats'] is not None
+                        and on_trial_complete is not None
+                    ):
+                        on_trial_complete(result['params'], result['stats'])
+
                     # Update best if this is better
                     if result['error'] is None and result['stats'] is not None:
                         if self._is_better(result['value'], best_value, metric):
@@ -758,7 +796,9 @@ class GridSearchOptimizer:
             'total_time': total_time,  # Phase 2: timing info
             'avg_time_per_test': total_time / len(param_combos) if param_combos else 0,
             'cache_hits': cache_hits if cache else 0,  # Phase 3: cache statistics
-            'cache_misses': cache_misses if cache else 0
+            'cache_misses': cache_misses if cache else 0,
+            'parent_run_id': parent_run_id,
+            'combinations_in_run': combinations_in_run,
         }
 
     def _extract_metric_value(self, stats: Dict[str, Any], metric: str) -> float:
