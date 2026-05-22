@@ -115,6 +115,36 @@ def _variant_v03(t: datetime, state, panel: pd.DataFrame, cfg) -> Dict[str, floa
     return out
 
 
+def _variant_v04(t: datetime, state, panel: pd.DataFrame, cfg) -> Dict[str, float]:
+    """V04: V01 base + rank-buffer filter (keep held names within top_n + buffer).
+
+    buffer_size = top_n // 2 per regime (5 when top_n=10, 10 when top_n=20).
+    """
+    from src.research.ramp_phase4.filters import rank_buffer
+
+    plan = _compute_plan_from_panel(t, panel)
+    if plan is None:
+        return {'__regime__': 'SAFE_MODE'}
+    if not plan.targets:
+        return {'__regime__': plan.regime}
+
+    # Build the universe momentum ranking from the planner's target list.
+    # plan.targets is dict[symbol -> RampTarget] ordered by rank (highest momentum first).
+    target_symbols = list(plan.targets.keys())
+    proposed = {sym: 1.0 / plan.top_n for sym in target_symbols}
+    ranking = pd.Series({sym: i + 1 for i, sym in enumerate(target_symbols)})
+
+    targets = rank_buffer(
+        proposed_targets=proposed,
+        state=state,
+        buffer_size=plan.top_n // 2,
+        universe_ranking=ranking,
+        top_n=plan.top_n,
+    )
+    targets['__regime__'] = plan.regime
+    return targets
+
+
 REGISTRY: Dict[str, VariantSpec] = {
     'V01': VariantSpec(
         id='V01',
@@ -125,5 +155,10 @@ REGISTRY: Dict[str, VariantSpec] = {
         id='V03',
         description='Target-weight-correct production; honors planner exposure_pct',
         plan_fn=_variant_v03,
+    ),
+    'V04': VariantSpec(
+        id='V04',
+        description='V01 + rank buffer (keep held names within top_n + buffer_size = top_n // 2)',
+        plan_fn=_variant_v04,
     ),
 }

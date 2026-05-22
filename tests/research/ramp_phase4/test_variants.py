@@ -72,3 +72,10 @@ def test_v01_v03_identical_in_calm_regime():
     assert set(p01) - {'__regime__'} == set(p03) - {'__regime__'}
     for sym in set(p01) - {'__regime__'}:
         assert abs(p01[sym] - p03[sym]) < 1e-6
+
+
+def test_variant_v04_in_registry():
+    from src.research.ramp_phase4.variants import REGISTRY, VariantSpec
+    assert 'V04' in REGISTRY
+    assert isinstance(REGISTRY['V04'], VariantSpec)
+    assert 'rank buffer' in REGISTRY['V04'].description.lower()
