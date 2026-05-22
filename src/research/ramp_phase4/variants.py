@@ -33,17 +33,23 @@ class VariantSpec:
 _DETECTOR = MarketRegimeDetector()
 
 
-def _compute_plan_from_panel(t: datetime, panel: pd.DataFrame) -> "RampPlan":
-    """Wrap compute_plan with the parameters derivable from the panel and detector."""
+def _compute_plan_from_panel(t: datetime, panel: pd.DataFrame, return_momentum: bool = False):
+    """Wrap compute_plan with the parameters derivable from the panel and detector.
+
+    Returns a RampPlan, or (RampPlan, momentum_scores) if return_momentum=True.
+    The momentum_scores series carries ALL universe symbols ranked by score
+    (highest first); Wave 1 filters need this to compute rank for held names
+    that fell outside top_n.
+    """
     spy = panel['SPY'].dropna()
     vix = panel['VIX'].dropna()
     if t not in spy.index or t not in vix.index:
         # No data at t; safe-mode.
-        return None
+        return (None, None) if return_momentum else None
     spy_slice = spy.loc[:t]
     vix_slice = vix.loc[:t]
     if len(spy_slice) < 252 or len(vix_slice) < 252:
-        return None
+        return (None, None) if return_momentum else None
 
     # Run detector to populate last_regime_scores + classify.
     spy_df = pd.DataFrame({
@@ -54,7 +60,7 @@ def _compute_plan_from_panel(t: datetime, panel: pd.DataFrame) -> "RampPlan":
     try:
         regime, confidence = _DETECTOR.classify_regime(spy_df, vix_df, t)
     except Exception:
-        return None
+        return (None, None) if return_momentum else None
     regime_scores = dict(_DETECTOR.last_regime_scores or {})
 
     # Momentum from universe prices excluding SPY/VIX.
@@ -64,11 +70,11 @@ def _compute_plan_from_panel(t: datetime, panel: pd.DataFrame) -> "RampPlan":
     ramp._current_params = REGIME_PARAMS.get(regime, REGIME_PARAMS.get('SIDEWAYS', {}))
     momentum = ramp.calculate_momentum_scores(prices_slice)
     if momentum is None or len(momentum) == 0:
-        return None
+        return (None, None) if return_momentum else None
 
     top_n = REGIME_PARAMS.get(regime, {}).get('top_n', 10)
     spy_dd = float((spy_slice.iloc[-1] / spy_slice.cummax().iloc[-1]) - 1.0)
-    return compute_plan(
+    plan = compute_plan(
         as_of=t,
         regime=regime,
         regime_confidence=confidence,
@@ -79,6 +85,9 @@ def _compute_plan_from_panel(t: datetime, panel: pd.DataFrame) -> "RampPlan":
         vix=float(vix_slice.iloc[-1]),
         spy_drawdown=spy_dd,
     )
+    if return_momentum:
+        return plan, momentum
+    return plan
 
 
 def _variant_v01(t: datetime, state, panel: pd.DataFrame, cfg) -> Dict[str, float]:
@@ -120,18 +129,26 @@ def _variant_v04(t: datetime, state, panel: pd.DataFrame, cfg) -> Dict[str, floa
     """V04: V01 base + rank-buffer filter (keep held names within top_n + buffer).
 
     buffer_size = top_n // 2 per regime (5 when top_n=10, 10 when top_n=20).
+
+    The universe ranking is built from the FULL momentum-scored universe (not just
+    plan.targets), so previously-held names that fell out of top_n still have a
+    rank the buffer can evaluate.
     """
-    plan = _compute_plan_from_panel(t, panel)
+    plan, momentum = _compute_plan_from_panel(t, panel, return_momentum=True)
     if plan is None:
         return {'__regime__': 'SAFE_MODE'}
     if not plan.targets:
         return {'__regime__': plan.regime}
 
-    # Build the universe momentum ranking from the planner's target list.
-    # plan.targets is dict[symbol -> RampTarget] ordered by rank (highest momentum first).
     target_symbols = list(plan.targets.keys())
     proposed = {sym: 1.0 / plan.top_n for sym in target_symbols}
-    ranking = pd.Series({sym: i + 1 for i, sym in enumerate(target_symbols)})
+
+    # Full-universe ranking from sorted momentum scores (highest = rank 1).
+    sorted_momentum = momentum.dropna().sort_values(ascending=False)
+    ranking = pd.Series(
+        range(1, len(sorted_momentum) + 1),
+        index=sorted_momentum.index,
+    )
 
     targets = rank_buffer(
         proposed_targets=proposed,
@@ -178,7 +195,7 @@ def _variant_v11(t: datetime, state, panel: pd.DataFrame, cfg) -> Dict[str, floa
     that rank_buffer was about to drop. cfg.delta_rebalance_pct=0.02 must
     be set at the CLI level (Task 11).
     """
-    plan = _compute_plan_from_panel(t, panel)
+    plan, momentum = _compute_plan_from_panel(t, panel, return_momentum=True)
     if plan is None:
         return {'__regime__': 'SAFE_MODE'}
     if not plan.targets:
@@ -186,7 +203,13 @@ def _variant_v11(t: datetime, state, panel: pd.DataFrame, cfg) -> Dict[str, floa
 
     target_symbols = list(plan.targets.keys())
     proposed = {sym: 1.0 / plan.top_n for sym in target_symbols}
-    ranking = pd.Series({sym: i + 1 for i, sym in enumerate(target_symbols)})
+
+    # Full-universe ranking from sorted momentum scores.
+    sorted_momentum = momentum.dropna().sort_values(ascending=False)
+    ranking = pd.Series(
+        range(1, len(sorted_momentum) + 1),
+        index=sorted_momentum.index,
+    )
 
     targets = rank_buffer(
         proposed_targets=proposed,
