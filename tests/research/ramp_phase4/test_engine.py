@@ -350,3 +350,40 @@ def test_compute_trades_pct_threshold_does_not_block_full_exits():
     assert len(trades) == 1
     assert trades[0]['symbol'] == 'AAA'
     assert trades[0]['delta_shares'] == -100
+
+
+def test_last_target_symbols_records_pre_filter_targets(tmp_path, monkeypatch):
+    """After a rebalance day with non-empty plan_fn output, state.last_target_symbols holds the union of target symbols."""
+    from datetime import datetime
+    import pandas as pd
+    from src.research.ramp_phase4.config import HarnessConfig
+    from src.research.ramp_phase4.engine import run_variant
+
+    csv = tmp_path / 'u.csv'
+    csv.write_text('symbol\nAAA\nBBB\n')
+    cfg = HarnessConfig(
+        start_date=datetime(2024, 1, 2),
+        end_date=datetime(2024, 1, 3),
+        universe_csv=csv,
+        initial_capital=100000.0,
+        cost_bps_per_side=0.0,
+    )
+    idx = pd.date_range('2024-01-02', periods=2, freq='B')
+    panel = pd.DataFrame({
+        'AAA': [100.0, 101.0],
+        'BBB': [50.0, 51.0],
+        'SPY': [400.0, 401.0],
+        'VIX': [15.0, 15.1],
+    }, index=idx)
+    monkeypatch.setattr(
+        'src.research.ramp_phase4.engine.load_universe_panel',
+        lambda c, s, e: panel,
+    )
+
+    def variant_fn(t, st, pn, cf):
+        return {'AAA': 0.05, 'BBB': 0.05}
+
+    spec = type('Spec', (), {'id': 'TST', 'plan_fn': staticmethod(variant_fn)})()
+    records = run_variant(cfg, spec)
+    assert len(records) == 2
+    assert set(records[1].target_weights.keys()) == {'AAA', 'BBB'}

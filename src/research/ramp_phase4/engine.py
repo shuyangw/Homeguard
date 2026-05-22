@@ -133,6 +133,10 @@ def run_variant(cfg: HarnessConfig, variant_spec: VariantLike) -> List[DailyReco
             portfolio_value=post_value,
             daily_return=daily_ret,
         ))
+        # Track the symbol list that plan_fn proposed (BEFORE engine-side filtering)
+        # so the next iteration's variant filters can read what was "previously held"
+        # in the target sense. For SAFE_MODE days we leave last_target_symbols unchanged.
+        state.last_target_symbols = list(target_weights.keys())
         prev_value = post_value
 
     return records
