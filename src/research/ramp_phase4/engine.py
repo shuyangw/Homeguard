@@ -113,7 +113,7 @@ def run_variant(cfg: HarnessConfig, variant_spec: VariantLike) -> List[DailyReco
         trades = compute_trades(state, target_weights, prices, cur_value, cfg.min_trade_value_usd)
         cost = flat_bps_cost(trades, cfg.cost_bps_per_side)
         turnover = sum(abs(t['trade_value_usd']) for t in trades)
-        apply_trades(state, trades, cost_usd=cost)
+        apply_trades(state, trades, cost_usd=cost, current_date=ts)
 
         # 4. Post-trade MTM.
         post_value = _portfolio_value(state, prices)
@@ -208,7 +208,12 @@ def compute_trades(
     return trades
 
 
-def apply_trades(state: HarnessState, trades: List[Dict], cost_usd: float) -> None:
+def apply_trades(
+    state: HarnessState,
+    trades: List[Dict],
+    cost_usd: float,
+    current_date: datetime,
+) -> None:
     """Mutate state to apply the given trades + cost.
 
     Sells execute first to free cash. Buys execute in input order (caller
@@ -216,19 +221,26 @@ def apply_trades(state: HarnessState, trades: List[Dict], cost_usd: float) -> No
     is decreased by total buy notional + cost, increased by total sell notional.
 
     Symbols with zero shares are removed from state.positions.
+
+    position_open_dates bookkeeping:
+    - Set when a position transitions from 0 shares to >0 shares (new open).
+    - Preserved on top-ups (existing position grows; original open date stays).
+    - Cleared when a position transitions to 0 shares (full exit).
     """
-    # Process sells first so cash is available for buys.
     sells = [t for t in trades if t['delta_shares'] < 0]
     buys = [t for t in trades if t['delta_shares'] > 0]
     for t in sells + buys:
         sym = t['symbol']
         current = state.positions.get(sym, 0.0)
         new_shares = current + t['delta_shares']
-        state.cash_usd -= t['trade_value_usd']  # buy: trade_value_usd > 0 -> reduces cash
+        state.cash_usd -= t['trade_value_usd']
         if new_shares == 0:
             state.positions.pop(sym, None)
+            state.position_open_dates.pop(sym, None)
         else:
             state.positions[sym] = float(new_shares)
+            if current == 0:
+                state.position_open_dates[sym] = current_date
         state.turnover_to_date_usd += abs(t['trade_value_usd'])
     state.cash_usd -= cost_usd
     state.cost_to_date_usd += cost_usd

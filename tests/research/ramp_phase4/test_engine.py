@@ -175,7 +175,7 @@ def test_compute_trades_skips_undersize():
 def test_apply_trades_updates_cash_and_positions():
     state = HarnessState(cash_usd=100000.0)
     trades = [{'symbol': 'AAA', 'delta_shares': 100, 'trade_value_usd': 10000.0, 'side': 'buy'}]
-    apply_trades(state, trades, cost_usd=5.0)
+    apply_trades(state, trades, cost_usd=5.0, current_date=datetime(2024, 1, 2))
     assert state.cash_usd == 100000.0 - 10000.0 - 5.0
     assert state.positions == {'AAA': 100.0}
 
@@ -183,7 +183,7 @@ def test_apply_trades_updates_cash_and_positions():
 def test_apply_trades_sells_reduce_position_and_credit_cash():
     state = HarnessState(cash_usd=90000.0, positions={'AAA': 100.0})
     trades = [{'symbol': 'AAA', 'delta_shares': -50, 'trade_value_usd': -5000.0, 'side': 'sell'}]
-    apply_trades(state, trades, cost_usd=2.5)
+    apply_trades(state, trades, cost_usd=2.5, current_date=datetime(2024, 1, 2))
     # Sell 50 of 100 -> 50 left. Cash += 5000 - 2.5
     assert state.positions == {'AAA': 50.0}
     assert state.cash_usd == 90000.0 + 5000.0 - 2.5
@@ -192,7 +192,7 @@ def test_apply_trades_sells_reduce_position_and_credit_cash():
 def test_apply_trades_full_exit_removes_symbol_from_positions():
     state = HarnessState(cash_usd=90000.0, positions={'AAA': 100.0})
     trades = [{'symbol': 'AAA', 'delta_shares': -100, 'trade_value_usd': -10000.0, 'side': 'sell'}]
-    apply_trades(state, trades, cost_usd=5.0)
+    apply_trades(state, trades, cost_usd=5.0, current_date=datetime(2024, 1, 2))
     assert 'AAA' not in state.positions
 
 
@@ -272,3 +272,43 @@ def test_harness_state_initializes_new_fields_empty():
     s = HarnessState(cash_usd=100000.0)
     assert s.position_open_dates == {}
     assert s.last_target_symbols == []
+
+
+def test_apply_trades_tracks_open_date_on_new_position():
+    from datetime import datetime
+    from src.research.ramp_phase4.engine import HarnessState, apply_trades
+    state = HarnessState(cash_usd=100000.0)
+    today = datetime(2024, 8, 5)
+    trades = [{'symbol': 'AAA', 'delta_shares': 100, 'trade_value_usd': 10000.0, 'side': 'buy'}]
+    apply_trades(state, trades, cost_usd=5.0, current_date=today)
+    assert state.position_open_dates == {'AAA': today}
+
+
+def test_apply_trades_clears_open_date_on_full_exit():
+    from datetime import datetime
+    from src.research.ramp_phase4.engine import HarnessState, apply_trades
+    state = HarnessState(
+        cash_usd=90000.0,
+        positions={'AAA': 100.0},
+        position_open_dates={'AAA': datetime(2024, 8, 1)},
+    )
+    today = datetime(2024, 8, 10)
+    trades = [{'symbol': 'AAA', 'delta_shares': -100, 'trade_value_usd': -10000.0, 'side': 'sell'}]
+    apply_trades(state, trades, cost_usd=5.0, current_date=today)
+    assert 'AAA' not in state.positions
+    assert 'AAA' not in state.position_open_dates
+
+
+def test_apply_trades_preserves_open_date_on_topup():
+    from datetime import datetime
+    from src.research.ramp_phase4.engine import HarnessState, apply_trades
+    state = HarnessState(
+        cash_usd=90000.0,
+        positions={'AAA': 50.0},
+        position_open_dates={'AAA': datetime(2024, 8, 1)},
+    )
+    today = datetime(2024, 8, 10)
+    trades = [{'symbol': 'AAA', 'delta_shares': 50, 'trade_value_usd': 5000.0, 'side': 'buy'}]
+    apply_trades(state, trades, cost_usd=2.5, current_date=today)
+    assert state.positions['AAA'] == 100.0
+    assert state.position_open_dates['AAA'] == datetime(2024, 8, 1)
