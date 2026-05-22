@@ -56,3 +56,55 @@ def rank_buffer(
         return {}
     weight = 1.0 / len(final_symbols)
     return {sym: weight for sym in final_symbols}
+
+
+def min_hold(
+    proposed_targets: Dict[str, float],
+    state: HarnessState,
+    current_date: datetime,
+    min_hold_days: int,
+    crash_exit: bool = False,
+) -> Dict[str, float]:
+    """V05: protect positions younger than min_hold_days from exit.
+
+    Any held symbol whose position_open_date is fewer than
+    `ceil(min_hold_days * 7 / 5)` calendar days ago (a trading-day
+    equivalence approximation) is added to the target set if not
+    already present, then the dict is equal-weight renormalized to
+    sum to 1.0. crash_exit=True bypasses the protection.
+
+    Args:
+        proposed_targets: dict[symbol -> proposed weight] from upstream.
+        state: harness state (state.positions, state.position_open_dates).
+        current_date: today's date in the engine loop.
+        min_hold_days: minimum trading-day-equivalent holding period.
+        crash_exit: when True, do not protect held positions (e.g.,
+                    when the regime detector signals a hard exit).
+
+    Returns:
+        dict[symbol -> equal-weight] summing to 1.0.
+    """
+    if crash_exit:
+        if not proposed_targets:
+            return {}
+        weight = 1.0 / len(proposed_targets)
+        return {sym: weight for sym in proposed_targets}
+
+    calendar_floor_days = ceil(min_hold_days * 7 / 5)
+
+    proposed_symbols = set(proposed_targets.keys())
+    protected = set()
+    for sym, open_date in state.position_open_dates.items():
+        if sym in proposed_symbols:
+            continue
+        if sym not in state.positions:
+            continue
+        age_days = (current_date - open_date).days
+        if age_days < calendar_floor_days:
+            protected.add(sym)
+
+    final_symbols = proposed_symbols | protected
+    if not final_symbols:
+        return {}
+    weight = 1.0 / len(final_symbols)
+    return {sym: weight for sym in final_symbols}

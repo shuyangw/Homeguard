@@ -69,3 +69,70 @@ def test_rank_buffer_no_retained_when_no_held_position():
     )
     assert set(result.keys()) == set(proposed.keys())
     assert abs(sum(result.values()) - 1.0) < 1e-9
+
+
+from src.research.ramp_phase4.filters import min_hold
+
+
+def test_min_hold_protects_recent_position():
+    state = HarnessState(
+        cash_usd=0.0,
+        positions={'AAA': 100.0},
+        position_open_dates={'AAA': datetime(2024, 8, 1)},
+    )
+    proposed = {f'X{i}': 0.1 for i in range(10)}
+    result = min_hold(
+        proposed_targets=proposed,
+        state=state,
+        current_date=datetime(2024, 8, 4),
+        min_hold_days=5,
+    )
+    assert 'AAA' in result
+    assert abs(sum(result.values()) - 1.0) < 1e-9
+
+
+def test_min_hold_releases_aged_position():
+    state = HarnessState(
+        cash_usd=0.0,
+        positions={'AAA': 100.0},
+        position_open_dates={'AAA': datetime(2024, 8, 1)},
+    )
+    proposed = {f'X{i}': 0.1 for i in range(10)}
+    result = min_hold(
+        proposed_targets=proposed,
+        state=state,
+        current_date=datetime(2024, 8, 15),
+        min_hold_days=5,
+    )
+    assert 'AAA' not in result
+    assert set(result.keys()) == set(proposed.keys())
+    assert abs(sum(result.values()) - 1.0) < 1e-9
+
+
+def test_min_hold_crash_exit_bypasses_protection():
+    state = HarnessState(
+        cash_usd=0.0,
+        positions={'AAA': 100.0},
+        position_open_dates={'AAA': datetime(2024, 8, 1)},
+    )
+    proposed = {f'X{i}': 0.1 for i in range(10)}
+    result = min_hold(
+        proposed_targets=proposed,
+        state=state,
+        current_date=datetime(2024, 8, 2),
+        min_hold_days=5,
+        crash_exit=True,
+    )
+    assert 'AAA' not in result
+
+
+def test_min_hold_no_state_no_protection():
+    state = HarnessState(cash_usd=100000.0, positions={})
+    proposed = {f'X{i}': 0.1 for i in range(5)}
+    result = min_hold(
+        proposed_targets=proposed,
+        state=state,
+        current_date=datetime(2024, 8, 15),
+        min_hold_days=5,
+    )
+    assert set(result.keys()) == set(proposed.keys())
