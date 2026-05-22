@@ -3,12 +3,21 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Dict, List
+from typing import Dict, List, Tuple
 import pandas as pd
 
 from src.research.ramp_phase4.metrics import (
     sharpe_ratio, cagr, max_drawdown, avg_daily_turnover, cost_drag_pct, regime_attribution,
 )
+
+
+DEFAULT_PERIODS: List[Tuple[str, datetime, datetime]] = [
+    ('IS 2017-2021',     datetime(2017, 1, 1),  datetime(2021, 12, 31)),
+    ('OOS 2022',         datetime(2022, 1, 1),  datetime(2022, 12, 31)),
+    ('OOS 2023',         datetime(2023, 1, 1),  datetime(2023, 12, 31)),
+    ('OOS 2024',         datetime(2024, 1, 1),  datetime(2024, 12, 31)),
+    ('EXT-OOS 2025-26',  datetime(2025, 1, 1),  datetime(2026, 12, 31)),
+]
 
 
 def _equity_curve(records) -> pd.Series:
@@ -37,6 +46,71 @@ def _format_metric_table(records) -> str:
         f'| Avg daily turnover | {avg_daily_turnover(records):.2%} |',
         f'| Cost drag | {cost_drag_pct(records):.2%} |',
     ]
+    return '\n'.join(lines)
+
+
+def _filter_records_by_period(records, start: datetime, end: datetime):
+    """Return only records whose date falls in [start, end] inclusive."""
+    out = []
+    for r in records:
+        d = r.date
+        if isinstance(d, pd.Timestamp):
+            d = d.to_pydatetime()
+        if start <= d <= end:
+            out.append(r)
+    return out
+
+
+def _period_metric_value(metric: str, recs) -> str:
+    """Compute a single metric for a per-period sub-window.
+
+    Returns 'n/a' when there are not enough records to compute meaningfully.
+    Formats are consistent with the single-table view (percent or ratio).
+    """
+    if not recs:
+        return 'n/a'
+
+    if metric == 'CAGR':
+        eq = _equity_curve(recs)
+        if len(eq) < 2:
+            return 'n/a'
+        return f'{cagr(eq):.2%}'
+    if metric == 'Sharpe':
+        rets = _returns(recs)
+        if len(rets.dropna()) < 2:
+            return 'n/a'
+        return f'{sharpe_ratio(rets):.3f}'
+    if metric == 'Max DD':
+        eq = _equity_curve(recs)
+        if len(eq) < 2:
+            return 'n/a'
+        return f'{max_drawdown(eq):.2%}'
+    if metric == 'Avg turnover':
+        return f'{avg_daily_turnover(recs):.2%}'
+    if metric == 'Cost drag':
+        return f'{cost_drag_pct(recs):.2%}'
+    return 'n/a'
+
+
+def build_period_decomposition_table(records, periods: List[Tuple[str, datetime, datetime]]) -> str:
+    """Build a per-period decomposition table for a single cost-tier's records.
+
+    Columns: one per period label plus a trailing 'Full' column that reuses
+    the entire records list. Rows are the same five metrics shown in the
+    single-table view (CAGR, Sharpe, Max DD, Avg turnover, Cost drag).
+    Periods with zero records render as 'n/a' across that column.
+    """
+    labels = [p[0] for p in periods]
+    header = '| Metric | ' + ' | '.join(labels) + ' | Full |'
+    sep = '|---' + '|---:' * (len(labels) + 1) + '|'
+    metric_rows = ['CAGR', 'Sharpe', 'Max DD', 'Avg turnover', 'Cost drag']
+
+    lines = [header, sep]
+    period_records = [_filter_records_by_period(records, s, e) for _, s, e in periods]
+    for m in metric_rows:
+        cells = [_period_metric_value(m, recs) for recs in period_records]
+        cells.append(_period_metric_value(m, records))
+        lines.append(f'| {m} | ' + ' | '.join(cells) + ' |')
     return '\n'.join(lines)
 
 
@@ -80,6 +154,9 @@ def build_variant_report(
     for bps in sorted(records_by_cost_bps.keys()):
         out.append(f'### {bps} bps per side\n')
         out.append(_format_metric_table(records_by_cost_bps[bps]))
+        out.append('')
+        out.append(f'### {bps} bps per side -- per-period\n')
+        out.append(build_period_decomposition_table(records_by_cost_bps[bps], DEFAULT_PERIODS))
         out.append('')
 
     # Use the 5 bps tier (or the highest available) for regime attribution.

@@ -55,6 +55,47 @@ def test_build_variant_report_includes_regime_attribution_section():
     assert 'STRONG_BULL' in md
 
 
+def test_build_variant_report_includes_per_period_decomposition():
+    """The variant report must include a per-period sub-table under each cost
+    tier with the five default period columns plus a 'Full' column.
+    """
+    # Records spanning 2017-01 through 2026-06 so every default period sees data.
+    from src.research.ramp_phase4.reports import DEFAULT_PERIODS
+
+    records = []
+    pv = 100000.0
+    # ~5 records per year so each default period has at least a handful.
+    for year in range(2017, 2027):
+        for month in (3, 6, 9, 12):
+            pv *= 1.005
+            records.append(type('R', (), {
+                'date': datetime(year, month, 15),
+                'regime': 'STRONG_BULL',
+                'portfolio_value': pv,
+                'daily_return': 0.005,
+                'turnover_usd': 5000.0,
+                'cost_usd': 2.5,
+                'target_weights': {},
+                'realized_weights': {},
+            })())
+
+    md = build_variant_report(
+        variant_id='V01',
+        variant_description='Test',
+        records_by_cost_bps={5.0: records},
+        git_commit='abc123',
+        universe_csv='config/universes/sp500-2025.csv',
+        timing_mode='near_close',
+    )
+
+    # Per-period heading and all five default period columns + Full must appear.
+    assert 'per-period' in md
+    for label, _, _ in DEFAULT_PERIODS:
+        assert label in md, f'missing per-period column label: {label}'
+    # The 'Full' column header on the per-period sub-table.
+    assert '| Full |' in md
+
+
 def test_build_parity_report_produces_side_by_side_table():
     v01_records = _fake_records(daily_return=0.001)
     v03_records = _fake_records(daily_return=0.0008)  # slightly worse
