@@ -45,7 +45,7 @@ def _test_single_params(
         Dictionary with params, metric value, and stats
     """
     from backtesting.engine.portfolio_simulator import from_signals
-    from backtesting.utils.risk_config import RiskConfig
+    from src.backtesting.utils.risk_config import RiskConfig
 
     # Convert tuple to dict
     params = dict(zip(param_names, param_combo))
@@ -324,11 +324,11 @@ class RandomSearchOptimizer(BaseOptimizer):
                             # Re-run best to get portfolio object
                             best_strategy = strategy_class(**best_params)
                             if len(symbols) == 1:
-                                best_portfolio = self.engine._run_single_symbol(
+                                best_portfolio = self.engine._run_single_symbol_with_data(
                                     best_strategy, data, symbols[0], price_type
                                 )
                             else:
-                                best_portfolio = self.engine._run_multiple_symbols(
+                                best_portfolio = self.engine._run_multiple_symbols_with_data(
                                     best_strategy, data, symbols, price_type
                                 )
 
@@ -411,11 +411,11 @@ class RandomSearchOptimizer(BaseOptimizer):
                             # Re-run best to get portfolio object
                             best_strategy = strategy_class(**best_params)
                             if len(symbols) == 1:
-                                best_portfolio = self.engine._run_single_symbol(
+                                best_portfolio = self.engine._run_single_symbol_with_data(
                                     best_strategy, data, symbols[0], price_type
                                 )
                             else:
-                                best_portfolio = self.engine._run_multiple_symbols(
+                                best_portfolio = self.engine._run_multiple_symbols_with_data(
                                     best_strategy, data, symbols, price_type
                                 )
 

@@ -10,8 +10,8 @@ import pandas as pd
 import numpy as np
 from pathlib import Path
 
-from backtesting.engine.backtest_engine import BacktestEngine
-from backtesting.optimization import RandomSearchOptimizer
+from src.backtesting.engine.backtest_engine import BacktestEngine
+from src.backtesting.optimization import RandomSearchOptimizer
 from src.strategies.research.moving_average import MovingAverageCrossover
 
 
@@ -284,12 +284,14 @@ class TestRandomSearchOptimizer:
 
         opt_dir = opt_dirs[0]
 
-        # Check that CSV files were created
-        csv_file = opt_dir / 'optimization_results.csv'
-        summary_file = opt_dir / 'optimization_summary.txt'
+        # Files are written with a timestamp prefix (e.g. 20260521_104530_optimization_results.csv)
+        csv_files = list(opt_dir.glob('*_optimization_results.csv'))
+        summary_files = list(opt_dir.glob('*_optimization_summary.txt'))
 
-        assert csv_file.exists()
-        assert summary_file.exists()
+        assert len(csv_files) == 1, f"expected 1 optimization_results.csv, got {len(csv_files)}"
+        assert len(summary_files) == 1, f"expected 1 optimization_summary.txt, got {len(summary_files)}"
+
+        csv_file = csv_files[0]
 
         # Check CSV contents
         df = pd.read_csv(csv_file)

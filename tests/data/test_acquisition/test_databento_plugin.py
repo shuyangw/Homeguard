@@ -18,9 +18,10 @@ class TestSymbolNormalization:
         )
 
         plugin = DatabentoFuturesPlugin.__new__(DatabentoFuturesPlugin)
-        assert plugin._to_api_symbol("ES") == "ES.c.0"
-        assert plugin._to_api_symbol("NQ") == "NQ.c.0"
-        assert plugin._to_api_symbol("6E") == "6E.c.0"
+        plugin._roll_rule = "v"
+        assert plugin._to_api_symbol("ES") == "ES.v.0"
+        assert plugin._to_api_symbol("NQ") == "NQ.v.0"
+        assert plugin._to_api_symbol("6E") == "6E.v.0"
 
     def test_already_continuous_format_passthrough(self):
         from src.data.acquisition.plugins.databento_futures import (

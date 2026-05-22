@@ -8,7 +8,8 @@ General coding standards (encoding, git workflow, testing, defensive mindset, ou
 ```
 strategies/      OMR, RAMP, CSCM, ORB + base classes, strategy registry (lazy loading)
 trading/         ExecutionEngine, MultiStrategyRunner, BrokerInterface/DataProviderInterface (ISP)
-                 AlpacaBroker (primary), IBKR via ib_async (options/execution)
+                 IBKRBroker (primary for stocks/options via ib_async), AlpacaBroker (data + fallback),
+                 Coinbase (crypto). Routing in config/trading/broker_routing.yaml
 data/            CompositeDataProvider (Alpaca -> yfinance -> cache), acquisition manager, DuckDB loader
 streaming/       LiveDataProvider, Alpaca WebSocket, 500-bar LRU buffer per symbol
 backtesting/     BacktestEngine, PortfolioSimulator (Numba JIT), optimization (grid/Bayesian/genetic),
@@ -118,7 +119,7 @@ Detailed overfitting thresholds and backtest integrity rules: `.claude/rules/str
 |------|----------|---------|
 | **Stock Screener** | `src/screening/` | Stock screener using Alpaca APIs. Docs: `src/screening/README.md` |
 | **YFinance Fundamentals** | `src/data/yfinance/` | Market cap, P/E, sector, dividends. Docs: `src/data/yfinance/README.md` |
-| **Alpaca Downloader** | `src/data/downloader.py` | Download OHLCV data from Alpaca |
+| **Equity Downloader** | `scripts/data/download_symbols.py` | Download OHLCV data via `src/data/acquisition/` plugin registry |
 
 ## Risk Management
 
@@ -180,7 +181,7 @@ Note: `--strategy multi` mode exists in the runner but only launches one strateg
 - Universe: S&P 500 stocks, dynamic 1/N position sizing
 - 5 market regimes (STRONG_BULL, WEAK_BULL, SIDEWAYS, UNPREDICTABLE, BEAR)
 - Walk-forward validated: **0.846 Sharpe ratio out-of-sample** (2022-2024)
-- Docs: `docs/strategies/RAMP_STRATEGY.md`, `docs/strategies/20251212_RAMP_WALK_FORWARD_VALIDATION.md`
+- Docs: `docs/strategies/production/RAMP_STRATEGY.md` (walk-forward validation history in `docs/archive/strategies/20251212_RAMP_WALK_FORWARD_VALIDATION.md`)
 
 ## Agents, Commands & Skills
 
@@ -274,7 +275,6 @@ After completing a significant implementation session (new features, infra chang
 - **Backtesting**: [`.claude/backtesting.md`](.claude/backtesting.md)
 - **Code standards**: [`.claude/code_standards.md`](.claude/code_standards.md)
 - **Live trading**: [`.claude/live_trading.md`](.claude/live_trading.md)
-- **GUI**: [`.claude/gui_design.md`](.claude/gui_design.md)
 - **Tests**: [`.claude/testing.md`](.claude/testing.md)
 - **Risk**: [`.claude/risk_management.md`](.claude/risk_management.md)
 - **Types**: [`.claude/type_issues.md`](.claude/type_issues.md)

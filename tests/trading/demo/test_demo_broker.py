@@ -199,14 +199,17 @@ class TestOrderPlacement:
 
     def test_no_price_rejected(self):
         """Order rejected if no price available."""
-        broker = DemoBroker(initial_cash=100000.0)
-        # No bars in buffer
-        with pytest.raises(InvalidOrderError, match="No price available"):
-            broker.place_crypto_order(
-                symbol="BTC/USD",
-                quantity=Decimal("0.1"),
-                side=OrderSide.BUY,
-            )
+        broker = create_isolated_broker(initial_cash=100000.0)
+        # No bars in buffer; block the REST fallback so the no-price path
+        # is exercised (otherwise BinanceDataProvider returns a real price
+        # and the test reaches the cash check instead).
+        with patch.object(broker, "_rest_provider", None):
+            with pytest.raises(InvalidOrderError, match="No price available"):
+                broker.place_crypto_order(
+                    symbol="BTC/USD",
+                    quantity=Decimal("0.1"),
+                    side=OrderSide.BUY,
+                )
 
 
 class TestPositionManagement:

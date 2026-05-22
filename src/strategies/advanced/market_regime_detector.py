@@ -16,6 +16,24 @@ from datetime import datetime, timedelta
 from src.utils.logger import logger
 
 
+class DataInsufficientError(Exception):
+    """Raised when SPY/VIX data coverage is below the safe-mode threshold.
+
+    Attributes:
+        coverage_pct: actual fraction of required history present.
+        threshold_pct: the threshold that was violated.
+        hard_block: True if below the hard-block threshold (no fallback
+                    allowed); False if soft-block (planner may use
+                    safe_mode=True).
+    """
+    def __init__(self, message: str, coverage_pct: float,
+                 threshold_pct: float, hard_block: bool = False):
+        super().__init__(message)
+        self.coverage_pct = coverage_pct
+        self.threshold_pct = threshold_pct
+        self.hard_block = hard_block
+
+
 class MarketRegimeDetector:
     """
     Classifies market into one of 5 regimes based on momentum and volatility.
@@ -85,12 +103,19 @@ class MarketRegimeDetector:
         # Populated for downstream metrics emission (SPY SMAs feed Grafana
         # `hg_regime_sma_signal{period=...}`). None until first classification.
         self.last_indicators: Optional[Dict] = None
+        # Per-regime confidence scores from the most recent classify_regime
+        # call. Consumed by the Phase 4 harness so variants can build target
+        # weights from the full score vector rather than just the winner.
+        self.last_regime_scores: Optional[Dict[str, float]] = None
 
     def classify_regime(
         self,
         spy_data: pd.DataFrame,
         vix_data: pd.DataFrame,
-        timestamp: datetime
+        timestamp: datetime,
+        *,
+        min_coverage_pct: float = 0.95,
+        hard_block_pct: float = 0.80,
     ) -> Tuple[str, float]:
         """
         Classify current market regime.
@@ -99,11 +124,41 @@ class MarketRegimeDetector:
             spy_data: SPY price data with OHLCV columns
             vix_data: VIX data with close prices
             timestamp: Current timestamp for classification
+            min_coverage_pct: fraction of non-NaN SPY close rows required
+                before raising DataInsufficientError (soft block).
+            hard_block_pct: fraction below which DataInsufficientError is
+                raised with hard_block=True (no safe-mode fallback allowed).
 
         Returns:
             Tuple of (regime_name, confidence_score)
+
+        Raises:
+            DataInsufficientError: if SPY close coverage falls below either
+                threshold. Check .hard_block to distinguish severity.
         """
-        # Ensure we have enough data
+        # F4: Data coverage check. Raise DataInsufficientError instead of
+        # silently falling through to a SIDEWAYS default on incomplete data.
+        spy_close = spy_data['close']
+        spy_coverage = float(spy_close.notna().mean()) if len(spy_close) > 0 else 0.0
+        if spy_coverage < hard_block_pct:
+            raise DataInsufficientError(
+                f"SPY coverage {spy_coverage:.1%} below hard-block "
+                f"{hard_block_pct:.0%}",
+                coverage_pct=spy_coverage,
+                threshold_pct=hard_block_pct,
+                hard_block=True,
+            )
+        if spy_coverage < min_coverage_pct:
+            raise DataInsufficientError(
+                f"SPY coverage {spy_coverage:.1%} below safe-mode threshold "
+                f"{min_coverage_pct:.0%}",
+                coverage_pct=spy_coverage,
+                threshold_pct=min_coverage_pct,
+                hard_block=False,
+            )
+
+        # Ensure we have enough data (legacy length check -- kept as final-resort
+        # safeguard for callers that pass min_coverage_pct=0.0/hard_block_pct=0.0)
         if len(spy_data) < 200 or len(vix_data) < self.lookback_window:
             logger.warning("Insufficient data for regime classification")
             return 'SIDEWAYS', 0.5
@@ -118,6 +173,10 @@ class MarketRegimeDetector:
         for regime, criteria in self.REGIME_CRITERIA.items():
             score = self._score_regime(indicators, criteria)
             regime_scores[regime] = score
+
+        # Persist for harness consumption (variants need the full score vector,
+        # not just the winner) before we collapse to best_regime.
+        self.last_regime_scores = dict(regime_scores)
 
         # Select regime with highest score
         best_regime = max(regime_scores, key=regime_scores.get)

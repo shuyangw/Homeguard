@@ -1,0 +1,15 @@
+last_modified: '2026-05-15T17:41:14.149193-04:00'
+modified_by: claude-code
+strategies:
+  cscm:
+    enabled: false
+    shutdown_requested: false
+  mp:
+    enabled: true
+    shutdown_requested: false
+  omr:
+    enabled: false
+    shutdown_requested: false
+  ramp:
+    enabled: false
+    shutdown_requested: false

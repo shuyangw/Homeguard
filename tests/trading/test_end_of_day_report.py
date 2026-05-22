@@ -29,71 +29,61 @@ class TestEndOfDayReport:
     def session_tracker(self, temp_log_dir):
         """Create session tracker with temp directory."""
         return TradingSessionTracker(
-            strategy_name="TEST",
             log_dir=temp_log_dir,
-            flush_interval_hours=1.0
+            strategy_name="TEST",
+        )
+
+    def _make_runner(self, temp_log_dir, mock_adapter):
+        """Construct a LiveTradingRunner for EOD tests.
+
+        Strategy name is derived from the adapter class name via the
+        runner's _persist_strategy logic (e.g. TestLiveAdapter -> 'test').
+        We provide the adapter mock with a class whose __name__ ends in
+        'LiveAdapter' so the derivation produces 'test'.
+        """
+        from scripts.trading.run_live_paper_trading import LiveTradingRunner
+        return LiveTradingRunner(
+            adapter=mock_adapter,
+            check_interval=15,
+            log_dir=temp_log_dir,
         )
 
     def test_eod_report_generates_once_after_market_close(self, session_tracker, temp_log_dir):
-        """Test that EOD report is generated exactly once after 4 PM."""
-        # Mock time to be 4:05 PM EST (after market close)
-        with patch('scripts.trading.run_live_paper_trading.datetime') as mock_dt:
-            # First check at 4:05 PM - should return True (no report exists yet)
-            mock_now_est = MagicMock()
-            mock_now_est.time.return_value = dt_time(16, 5)  # 4:05 PM
-            mock_now_est.strftime.return_value = '20251119'
+        """Test that EOD report is generated exactly once after 4 PM.
 
-            mock_dt.now.return_value.astimezone.return_value = mock_now_est
+        Constructs the runner under real `tz.now()` so it can build its
+        session paths, then patches only `tz.now` for the EOD check.
+        """
+        mock_adapter = Mock()
+        mock_adapter.__class__.__name__ = 'TestLiveAdapter'
+        trader = self._make_runner(temp_log_dir, mock_adapter)
+        # Re-target the runner's session tracker at the test fixture so
+        # the summary_file path matches what we'll create below.
+        trader.session_tracker = session_tracker
 
-            # Create the parent class instance for testing
-            from scripts.trading.run_live_paper_trading import LivePaperTrading
-
-            mock_broker = Mock()
-            mock_adapter = Mock()
-
-            trader = LivePaperTrading(
-                adapter=mock_adapter,
-                log_dir=temp_log_dir,
-                strategy_name="TEST",
-                check_interval=15
-            )
+        with patch('scripts.trading.run_live_paper_trading.tz.now') as mock_now:
+            mock_now.return_value.time.return_value = dt_time(16, 5)  # 4:05 PM ET
 
             # First check - should generate report (file doesn't exist)
-            assert trader._check_for_end_of_day() == True
+            assert trader._check_for_end_of_day() is True
 
             # Simulate report generation by creating the file
             session_tracker.summary_file.parent.mkdir(parents=True, exist_ok=True)
             session_tracker.summary_file.write_text("Test report")
 
-            # Second check - should NOT generate report (file exists)
-            assert trader._check_for_end_of_day() == False
-
-            # Third check - should still NOT generate report
-            assert trader._check_for_end_of_day() == False
+            # Second/third checks - should NOT regenerate
+            assert trader._check_for_end_of_day() is False
+            assert trader._check_for_end_of_day() is False
 
     def test_eod_report_not_generated_during_market_hours(self, temp_log_dir):
         """Test that EOD report is not generated before 4 PM."""
-        with patch('scripts.trading.run_live_paper_trading.datetime') as mock_dt:
-            # Mock time to be 2:00 PM EST (during market hours)
-            mock_now_est = MagicMock()
-            mock_now_est.time.return_value = dt_time(14, 0)  # 2:00 PM
+        mock_adapter = Mock()
+        mock_adapter.__class__.__name__ = 'TestLiveAdapter'
+        trader = self._make_runner(temp_log_dir, mock_adapter)
 
-            mock_dt.now.return_value.astimezone.return_value = mock_now_est
-
-            from scripts.trading.run_live_paper_trading import LivePaperTrading
-
-            mock_broker = Mock()
-            mock_adapter = Mock()
-
-            trader = LivePaperTrading(
-                adapter=mock_adapter,
-                log_dir=temp_log_dir,
-                strategy_name="TEST",
-                check_interval=15
-            )
-
-            # Should not generate report during market hours
-            assert trader._check_for_end_of_day() == False
+        with patch('scripts.trading.run_live_paper_trading.tz.now') as mock_now:
+            mock_now.return_value.time.return_value = dt_time(14, 0)  # 2:00 PM ET
+            assert trader._check_for_end_of_day() is False
 
     def test_eod_check_uses_correct_filename(self, session_tracker):
         """Test that EOD check uses the session timestamp filename, not just date."""
@@ -114,19 +104,17 @@ class TestEndOfDayReport:
 
         # Create first session
         tracker1 = TradingSessionTracker(
-            strategy_name="TEST",
             log_dir=temp_log_dir,
-            flush_interval_hours=1.0
+            strategy_name="TEST",
         )
 
-        # Small delay to ensure different timestamp
-        time.sleep(0.1)
+        # Sleep > 1s — session_datetime is HHMMSS, second-resolution
+        time.sleep(1.1)
 
         # Create second session
         tracker2 = TradingSessionTracker(
-            strategy_name="TEST",
             log_dir=temp_log_dir,
-            flush_interval_hours=1.0
+            strategy_name="TEST",
         )
 
         # Should have different summary files

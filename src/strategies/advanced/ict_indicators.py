@@ -1073,15 +1073,18 @@ class ICTIndicators:
         if session_filter == 'none':
             return True
 
-        # Convert UTC timestamp to ET for proper comparison
-        # Data timestamps are in UTC but session windows are in Eastern Time
+        # Convert UTC timestamp to ET for proper comparison.
+        # Session windows are in Eastern Time. Inputs may be:
+        #  - naive datetime/Timestamp -> assume already in ET (no conversion)
+        #  - tz-aware in UTC -> convert to ET
         try:
             from src.utils.timezone import tz
-            if hasattr(timestamp, 'to_pydatetime'):
-                et_ts = tz.from_utc(timestamp.to_pydatetime())
+            py_ts = timestamp.to_pydatetime() if hasattr(timestamp, 'to_pydatetime') else timestamp
+            if getattr(py_ts, 'tzinfo', None) is None:
+                # Treat naive datetimes as already-ET
+                t = py_ts.time()
             else:
-                et_ts = tz.from_utc(timestamp)
-            t = et_ts.time()
+                t = tz.from_utc(py_ts).time()
         except Exception:
             # Fallback to raw time if conversion fails
             t = timestamp.time() if hasattr(timestamp, 'time') else timestamp

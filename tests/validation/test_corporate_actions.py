@@ -25,7 +25,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent / 'src'))
 
 from backtesting.engine.backtest_engine import BacktestEngine
 from backtesting.base.strategy import LongOnlyStrategy
-from backtesting.utils.risk_config import RiskConfig
+from src.backtesting.utils.risk_config import RiskConfig
 
 
 # ============================================================================

@@ -31,12 +31,11 @@ All services run as systemd units on the single `t4g.medium` instance.
 
 | Unit | Strategy | Metrics Port | Schedule | Broker |
 |------|----------|--------------|----------|--------|
-| `homeguard-omr.service` | Overnight Mean Reversion | `8081` | Entry 3:50 PM, exit 9:31 AM ET | Alpaca paper |
-| `homeguard-ramp.service` | Regime-Aware Momentum Protection | `8082` | Rebalance 3:55 PM ET | Alpaca paper |
-| `homeguard-cscm.service` | Cross-Sectional Crypto Momentum | `8084` | Rebalance weekly Sun 00:00 UTC | DemoBroker (Binance WS prices, simulated fills) |
-| `homeguard-trading.target` | Target aggregating the three above | - | - | - |
+| `homeguard-multi.service` | RAMP (active); OMR/MP unit files exist but are disabled and superseded | `8082` | RAMP rebalance 3:55 PM ET | IBKR paper (port 4002, clientId=10) |
+| `homeguard-cscm.service` | Cross-Sectional Crypto Momentum | `8084` | Rebalance weekly Sun 00:00 UTC | Coinbase (per `config/trading/broker_routing.yaml`) |
+| `homeguard-trading.target` | Target aggregating the above | - | - | - |
 
-Legacy `homeguard-mp.service` (port 8083) exists but is superseded by RAMP; kept only as a fallback for ad-hoc reruns and is not started by `homeguard-trading.target`.
+Per-strategy broker routing lives in `config/trading/broker_routing.yaml` — at the time of writing OMR, RAMP, and MP all route to IBKR; CSCM routes to Coinbase. The standalone `homeguard-omr.service` / `homeguard-ramp.service` / `homeguard-mp.service` unit files exist in `infra/ec2/services/` but are disabled in favor of `homeguard-multi.service` running `--strategy ramp` (see `CLAUDE.md` "Production Strategies" for the canonical statement).
 
 **Environment flags per service:**
 - `METRICS_PORT` — per-strategy Prometheus scrape port

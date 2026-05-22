@@ -128,3 +128,12 @@ class PairsStrategy(MultiSymbolStrategy):
             symbols[0],
             symbols[1]
         )
+
+    # Public alias used by the optimizer fast path
+    # (src/backtesting/optimization/grid_search.py:92). Some callers expect
+    # this name; keep both for back-compat.
+    def generate_signals_multi(
+        self,
+        data_dict: Dict[str, pd.DataFrame]
+    ) -> Dict[str, Tuple[pd.Series, pd.Series, pd.Series, pd.Series]]:
+        return self.generate_multi_signals(data_dict)

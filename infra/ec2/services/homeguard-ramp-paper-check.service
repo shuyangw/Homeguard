@@ -1,0 +1,13 @@
+[Unit]
+Description=RAMP Phase 4 A7 Paper Validation Check
+Documentation=https://github.com/shuyangw/Homeguard/blob/main/docs/progress/20260515_RAMP_PHASE4_DEPLOY_RUNBOOK.md
+After=network.target homeguard-multi.service
+
+[Service]
+Type=oneshot
+User=ec2-user
+WorkingDirectory=/home/ec2-user/Homeguard
+ExecStart=/home/ec2-user/Homeguard/scripts/ops/check_ramp_paper_session.sh
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=homeguard-ramp-paper-check

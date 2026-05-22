@@ -129,23 +129,28 @@ class TestLookaheadBugDetection:
         """
         Verify signal timing test catches .shift(-1) bug.
 
-        This test should FAIL with LookaheadBugStrategy1.
+        For a .shift(-1) lookahead, signals differ between full and
+        partial datasets only at the partial dataset's LAST bar (where
+        shift(-1) returns NaN in partial but a real value in full).
+        Whether that single boundary bar actually flips depends on
+        whether close[N] > close[N-1], so a single truncation point can
+        spuriously match. Sweep multiple truncations and require the
+        boundary signal to differ at least once.
         """
         strategy = LookaheadBugStrategy1()
-
-        # Generate signals on full dataset
         entries_full, _ = strategy.generate_signals(test_data)
 
-        # Generate signals on partial dataset (51 bars)
-        entries_partial, _ = strategy.generate_signals(test_data.iloc[:51])
+        boundaries_that_differ = 0
+        for cutoff in range(30, len(test_data) - 1):
+            entries_partial, _ = strategy.generate_signals(test_data.iloc[:cutoff])
+            # The bar where shift(-1) becomes NaN in partial is iloc[cutoff-1].
+            if bool(entries_full.iloc[cutoff - 1]) != bool(entries_partial.iloc[cutoff - 1]):
+                boundaries_that_differ += 1
 
-        # With lookahead bug, signal at bar 50 will DIFFER
-        # because .shift(-1) uses bar 51 which is missing in partial data
-
-        # This assertion should FAIL (proving our test detects the bug)
-        with pytest.raises(AssertionError, match="LOOKAHEAD BIAS"):
-            assert entries_full.iloc[50] == entries_partial.iloc[50], \
-                "Entry signal at bar 50 changed when given more data - LOOKAHEAD BIAS!"
+        assert boundaries_that_differ > 0, (
+            "LOOKAHEAD BIAS detector failed: at least one truncation "
+            "boundary should produce a different signal under .shift(-1)"
+        )
 
     def test_detect_future_max_bug(self, test_data):
         """
@@ -170,20 +175,21 @@ class TestLookaheadBugDetection:
         """
         Verify detection of centered rolling window (uses future data).
 
-        This test should FAIL with LookaheadBugStrategy3.
+        Range-scan the overlap window for any difference; centered
+        rolling uses future bars so signals should diverge between full
+        and partial datasets somewhere in the overlap.
         """
         strategy = LookaheadBugStrategy3()
 
-        # Centered rolling uses future bars
         entries_full, _ = strategy.generate_signals(test_data)
-
-        # Generate on partial data
         entries_partial, _ = strategy.generate_signals(test_data.iloc[:56])
 
-        # Signal at bar 50 will differ because centered window needs bars 51-55
-        with pytest.raises(AssertionError):
-            assert entries_full.iloc[50] == entries_partial.iloc[50], \
-                "Centered rolling window uses future data - LOOKAHEAD BIAS!"
+        overlap = len(entries_partial)
+        diffs = (entries_full.iloc[:overlap].values != entries_partial.iloc[:overlap].values)
+        assert diffs.any(), (
+            "LOOKAHEAD BIAS detector failed: centered rolling window "
+            "should leak future data and produce divergent signals"
+        )
 
 
 class TestValidationWithCleanStrategy:

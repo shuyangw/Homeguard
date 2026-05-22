@@ -7,8 +7,8 @@ import pandas as pd
 import numpy as np
 from typing import Dict, Tuple
 
-from backtesting.base.pairs_strategy import PairsStrategy
-from backtesting.base.strategy import MultiSymbolStrategy
+from src.backtesting.base.pairs_strategy import PairsStrategy
+from src.backtesting.base.strategy import MultiSymbolStrategy
 
 
 class ConcretePairsStrategy(PairsStrategy):

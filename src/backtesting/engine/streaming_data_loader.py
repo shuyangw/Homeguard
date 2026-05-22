@@ -801,6 +801,32 @@ class StreamingDataLoader:
         logger.info(f"Synchronized {len(dfs)} symbols to {len(common_ts_series)} common timestamps")
         return dfs
 
+    def load_symbols(
+        self,
+        symbols: List[str],
+        start_date: str,
+        end_date: str,
+    ):
+        """
+        Load multiple symbols as a single MultiIndex pandas DataFrame
+        with levels (symbol, timestamp). Provided for back-compat with
+        the optimization callers (grid_search, random_search) that pre-date
+        the polars migration; new code should prefer
+        load_symbols_synchronized() (per-symbol dict) or load_symbols_panel().
+        """
+        import pandas as pd
+
+        dfs = self.load_symbols_synchronized(symbols, start_date, end_date)
+        if not dfs:
+            return pd.DataFrame()
+        frames = []
+        for symbol, pl_df in dfs.items():
+            pdf = pl_df.to_pandas()
+            pdf["symbol"] = symbol
+            frames.append(pdf)
+        combined = pd.concat(frames, ignore_index=True)
+        return combined.set_index(["symbol", "timestamp"]).sort_index()
+
     def load_symbols_panel(
         self,
         symbols: List[str],

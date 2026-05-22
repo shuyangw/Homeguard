@@ -1,7 +1,7 @@
 # Homeguard Module Reference
 
-**Version**: 1.7
-**Last Updated**: 2025-12-21
+**Version**: 1.8
+**Last Updated**: 2026-05-17
 **Purpose**: Comprehensive module-by-module reference for the Homeguard codebase
 
 ---
@@ -16,13 +16,10 @@ Each major module in `src/` now has comprehensive architecture documentation at 
 | `src/trading/` | [LIVE_TRADING_SYSTEM.md](../../src/trading/LIVE_TRADING_SYSTEM.md) | Brokers, adapters, execution, state management |
 | `src/strategies/` | [STRATEGY_FRAMEWORK.md](../../src/strategies/STRATEGY_FRAMEWORK.md) | Strategy implementations, registry, signals |
 | `src/data/` | [DATA_PROVIDERS.md](../../src/data/DATA_PROVIDERS.md) | Data providers, fallback chains, caching |
-| `src/streaming/` | [STREAMING.md](../../src/streaming/STREAMING.md) | Real-time WebSocket streaming platform |
-| `src/web/` | [WEB.md](../../src/web/WEB.md) | Web API (FastAPI) + React frontend |
 | `src/settings/` | [CONFIGURATION_SYSTEM.md](../../src/settings/CONFIGURATION_SYSTEM.md) | Config schema, YAML loading, validation |
 | `src/utils/` | [UTILITY_MODULES.md](../../src/utils/UTILITY_MODULES.md) | Logger, timezone, VIX provider |
 | `src/discord_bot/` | [DISCORD_BOT_ARCHITECTURE.md](../../src/discord_bot/DISCORD_BOT_ARCHITECTURE.md) | Discord monitoring bot |
 | `src/data/acquisition/` | (inline) | Unified data acquisition with plugin architecture |
-| `src/gui/` | [GUI.md](../../src/gui/GUI.md) | Desktop GUI application |
 | `src/visualization/` | [VISUALIZATION.md](../../src/visualization/VISUALIZATION.md) | Charts and reporting |
 
 ---
@@ -31,16 +28,16 @@ Each major module in `src/` now has comprehensive architecture documentation at 
 
 1. [Root Level Modules](#root-level-modules)
 2. [Data Acquisition Layer](#data-acquisition-layer)
-3. [Stock Screening Layer](#stock-screening-layer) (NEW)
-4. [YFinance Fundamentals Layer](#yfinance-fundamentals-layer) (NEW)
+3. [Stock Screening Layer](#stock-screening-layer)
+4. [YFinance Fundamentals Layer](#yfinance-fundamentals-layer)
 5. [News and Sentiment Layer](#news-and-sentiment-layer)
 6. [Streaming Layer](#streaming-layer)
-7. [Web API Layer](#web-api-layer)
+7. [Web/Frontend (removed)](#webfrontend-removed)
 8. [Backtesting Engine Layer](#backtesting-engine-layer)
 9. [Strategy Layer](#strategy-layer)
 10. [Visualization Layer](#visualization-layer)
-11. [GUI Layer](#gui-layer)
-12. [Utility Layer](#utility-layer)
+11. [Utility Layer](#utility-layer)
+12. [Trading System Layer](#trading-system-layer)
 
 ---
 
@@ -159,20 +156,9 @@ python -m src.backtest_runner \
 
 ---
 
-### `src/run_ingestion.py`
-**Purpose**: Data ingestion entry point
+### Data Ingestion Entry Point
 
-**Key Functions**:
-- `main()`: Orchestrates data ingestion pipeline
-- `fetch_symbols()`: Loads symbol list
-- `run_pipeline()`: Executes multi-threaded ingestion
-
-**Dependencies**: `IngestionPipeline`, `AlpacaClient`, `ParquetStorage`
-
-**Usage Example**:
-```bash
-python -m src.run_ingestion
-```
+Ingestion entry point: `python -m src.data.acquisition` (see [Data Acquisition Layer](#data-acquisition-layer)).
 
 ---
 
@@ -190,10 +176,14 @@ python -m src.run_ingestion
 - `DownloadResult`: Result dataclass with statistics
 
 **Plugins** (in `src/data/acquisition/plugins/`):
-- `AlpacaEquitiesPlugin`: Equity OHLCV from Alpaca
-- `AlpacaCryptoPlugin`: Crypto OHLCV from Alpaca
-- `DatabentoFuturesPlugin`: Futures trades from Databento
-- `AlpacaNewsPlugin`: News articles from Alpaca
+- `AlpacaEquitiesPlugin` (`alpaca_equities.py`): Equity OHLCV from Alpaca
+- `AlpacaCryptoPlugin` (`alpaca_crypto.py`): Crypto OHLCV from Alpaca
+- `DatabentoFuturesPlugin` (`databento_futures.py`): Futures trades from Databento
+- `AlpacaNewsPlugin` (`alpaca_news.py`): News articles from Alpaca
+- `CftcCotPlugin` (`cftc_cot.py`): CFTC Commitments of Traders reports
+- `FredRatesPlugin` (`fred_rates.py`): FRED macro/rate series
+- `MassiveFXPlugin` (`massive_fx_flat.py`): Massive flat-file FX OHLCV
+- `MassiveFXQuotesPlugin` (`massive_fx_quotes_flat.py`): Massive flat-file FX bid/ask quotes
 
 **Usage Example**:
 ```python
@@ -569,7 +559,7 @@ python scripts/compute_sentiment.py --symbol AAPL --year 2024
 
 ## Streaming Layer
 
-Real-time market data streaming via WebSocket. See [src/streaming/README.md](../../src/streaming/README.md) for full documentation.
+Real-time market data streaming via WebSocket. See [src/streaming/STREAMING.md](../../src/streaming/STREAMING.md) for full documentation.
 
 ### `src/streaming/live_data_provider.py`
 **Purpose**: Public API for real-time market data
@@ -611,54 +601,9 @@ bars = provider.get_bars('TQQQ', 10)
 
 ---
 
-## Web API Layer
+## Web/Frontend (removed)
 
-Browser-based backtesting interface. See [src/web/README.md](../../src/web/README.md) for full documentation.
-
-### Backend (`src/web/backend/`)
-
-#### `src/web/backend/main.py`
-**Purpose**: FastAPI application setup
-
-**Features**:
-- CORS middleware for frontend access
-- API route registration
-- Error handling
-
-#### `src/web/backend/api/router.py`
-**Purpose**: REST API endpoints
-
-**Endpoints**:
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/run` | POST | Execute backtest |
-| `/strategies` | GET | List strategies |
-| `/symbols` | GET | Get symbol universes |
-
-#### `src/web/backend/schemas.py`
-**Purpose**: Pydantic request/response models
-
-**Key Classes**:
-- `BacktestRequest`: Input parameters
-- `BacktestResponse`: Results with metrics
-
-#### `src/web/backend/core/engine_wrapper.py`
-**Purpose**: Bridges FastAPI to BacktestEngine
-
-#### `src/web/backend/core/cache.py`
-**Purpose**: Response caching
-
-### Frontend (`src/web/frontend/`)
-
-Built with React 18 + Vite + Tailwind CSS.
-
-**Key Components**:
-- `App.jsx`: Main application
-- `components/ConfigForm.jsx`: Strategy configuration
-- `components/StrategySelector.jsx`: Strategy dropdown
-- `components/SymbolSelector.jsx`: Symbol selection
-- `components/ResultsDashboard.jsx`: Results display
-- `components/ErrorBoundary.jsx`: Error handling
+Web/Frontend: the FastAPI backend was removed; only a static `src/web/frontend/index.html` shell remains.
 
 ---
 
@@ -1789,7 +1734,9 @@ class MyPairsStrategy(PairsStrategy):
 
 ### Base Strategies
 
-#### `src/strategies/base_strategies/moving_average.py`
+**Note**: `src/strategies/base_strategies/` is an empty re-export shim for backward compatibility. The actual implementations live under `src/strategies/research/`. New code should import directly from `src.strategies.research.*`.
+
+#### `src/strategies/research/moving_average.py`
 **Purpose**: Moving average-based strategies
 
 **Strategies**:
@@ -1816,7 +1763,7 @@ entries, exits = strategy.generate_signals(data)
 
 ---
 
-#### `src/strategies/base_strategies/momentum.py`
+#### `src/strategies/research/momentum.py`
 **Purpose**: Momentum-based strategies
 
 **Strategies**:
@@ -1843,7 +1790,7 @@ entries, exits = strategy.generate_signals(data)
 
 ---
 
-#### `src/strategies/base_strategies/mean_reversion.py`
+#### `src/strategies/research/mean_reversion.py`
 **Purpose**: Mean reversion strategies
 
 **Strategies**:
@@ -1870,7 +1817,7 @@ entries, exits = strategy.generate_signals(data)
 
 ### Advanced Strategies
 
-#### `src/strategies/advanced/volatility_targeted_momentum.py`
+#### `src/strategies/research/volatility_targeted_momentum.py`
 **Purpose**: Volatility-scaled momentum strategy
 
 **Logic**:
@@ -1907,7 +1854,7 @@ entries, exits = strategy.generate_signals(data)
 
 ---
 
-#### `src/strategies/advanced/cross_sectional_momentum.py`
+#### `src/strategies/research/cross_sectional_momentum.py`
 **Purpose**: Momentum-based ranking across universe
 
 **Logic**:
@@ -1926,7 +1873,7 @@ entries, exits = strategy.generate_signals(data)
 
 ---
 
-#### `src/strategies/advanced/pairs_trading.py`
+#### `src/strategies/research/pairs_trading.py`
 **Purpose**: Statistical arbitrage between correlated pairs (market-neutral)
 
 **Key Classes**:
@@ -1993,7 +1940,7 @@ signals = {
 
 **Usage Example**:
 ```python
-from strategies.advanced.pairs_trading import PairsTrading
+from strategies.research.pairs_trading import PairsTrading
 from backtesting.engine.backtest_engine import BacktestEngine
 
 strategy = PairsTrading(
@@ -2307,48 +2254,6 @@ SetupView (checkbox)
 
 ---
 
-## GUI Layer
-
-### `src/gui/app.py`
-**Purpose**: Main Flet GUI application
-
-**Key Classes**:
-- `BacktestApp`: Main app class
-
-**Key Methods**:
-- `build()`: Build UI layout
-- `navigate_to(view)`: Navigate between views
-- `run()`: Run Flet app
-
-**Views Managed**:
-- SetupView: Configuration
-- RunView: Execution monitoring
-- ResultsView: Results display
-
-**Dependencies**: `flet`, `views`, `workers`
-
----
-
-### `src/gui/workers/gui_controller.py`
-**Purpose**: Thread-safe GUI controller
-
-**Key Classes**:
-- `GUIBacktestController`: Worker controller
-
-**Thread Safety**:
-- Worker thread runs backtest
-- Main thread renders UI
-- Communication via `queue.Queue`
-
-**Key Methods**:
-- `start(strategy, symbols, start, end)`: Start backtest in background
-- `poll_updates()`: Check queue for updates (call from main thread)
-- `is_running()`: Check if backtest in progress
-
-**Dependencies**: `threading`, `queue`, `SweepRunner`
-
----
-
 ## Utility Layer
 
 ### `src/utils/logger.py`
@@ -2570,10 +2475,6 @@ python -m src.discord_bot.main
 ## Module Dependency Graph
 
 ```
-GUI Layer
-  └─-> Workers (GUIBacktestController)
-       └─-> Backtesting Engine (SweepRunner, BacktestEngine)
-
 Visualization Layer
   └─-> Backtesting Engine (Portfolio results)
 
@@ -2681,7 +2582,32 @@ BrokerInterface               <- Composite: Account + MarketHours + MarketData +
 
 **Methods**: `create_from_env()`, `create_from_yaml()`, `create_broker()`
 
-**Dependencies**: `broker_interface`, `alpaca_broker`, `dotenv`, `yaml`
+**Dependencies**: `broker_interface`, `alpaca_broker`, `ibkr/ibkr_broker`, `dotenv`, `yaml`
+
+---
+
+### `src/trading/brokers/ibkr/` (Package)
+**Purpose**: Interactive Brokers integration via `ib_async`. RAMP (and any other IBKR-routed strategy) runs through this stack in production.
+
+**Modules**:
+- `config.py`: `IBKRConfig` dataclass (host, port 4002 paper / 4001 live, clientId, paper flag) loaded from `.env`
+- `connection.py`: Connection lifecycle, reconnect logic, clientId management
+- `contracts.py`: Stock/option/future contract construction and qualification
+- `pacing.py`: Pacing/throttling for IBKR's market data and historical-data rate limits
+- `errors.py`: Error code taxonomy and `IBKRError` translation to `BrokerError`
+- `data_download.py`: Historical bar download helpers
+- `streaming.py`: Real-time market data subscriptions
+- `symbols.py`: Symbol-to-contract resolution
+- `ibkr_broker.py`: `IBKRBroker` implementation of `BrokerInterface` (stock side: positions, orders, lifecycle)
+- `ibkr_futures_broker.py`: Futures-specific broker built on the same connection primitives
+
+**Routing**: `config/trading/broker_routing.yaml` selects which broker each strategy uses. `homeguard-multi.service` runs `--strategy ramp`, which resolves to IBKR paper.
+
+**Smoke test**: `scripts/trading/smoke_test_ibkr_paper.py` -- end-to-end validation of the live trading call chain against IBKR paper. Run after any change to broker/execution code. See CLAUDE.md for usage.
+
+**Contract test**: `tests/trading/brokers/test_broker_contract.py` parametrizes over `(AlpacaBroker, IBKRBroker)` and every method `ExecutionEngine` calls, catching "broker missing required method" regressions at commit time.
+
+**Dependencies**: `ib_async`, `broker_interface`, `logger`
 
 ---
 
@@ -2811,6 +2737,108 @@ BrokerInterface               <- Composite: Account + MarketHours + MarketData +
 **Features**: Color-coded console, CSV logging, file logging, trading-specific methods
 
 **Dependencies**: `logging`, `pathlib`, `csv`, `datetime`
+
+---
+
+## IBKR Broker Integration
+
+**Purpose**: Primary Homeguard broker for stocks and options (since the 2026-04
+IBKR migration). Replaces Alpaca as the order-execution backend for RAMP, OMR,
+and MP -- routed via `config/trading/broker_routing.yaml`. Alpaca remains the
+default fallback. Built on `ib_async` (not legacy `ibapi`).
+
+**Connection**: IB Gateway on the EC2 host, TCP port 4002 (paper) or 4001
+(live). The running `homeguard-multi.service` holds `client_id=10`; smoke tests
+and one-offs must use a different `client_id`.
+
+**Package**: `src/trading/brokers/ibkr/`
+
+### `src/trading/brokers/ibkr/__init__.py`
+**Purpose**: Public API for the IBKR package
+
+**Exports**: `IBKRBroker`, `IBKRFuturesBroker`, `IBKRConfig`, `IBKRConnectionManager`, `IBKRDataProvider`, `IBKRStreamingProvider`
+
+### `src/trading/brokers/ibkr/config.py`
+**Purpose**: Pydantic configuration model for the IBKR client
+
+**Class**: `IBKRConfig` -- host, port (4001 live / 4002 paper / 7496-97 TWS), client_id, readonly, account, reconnection policy
+
+**Load order**: class defaults -> `config/ibkr.yaml` -> environment variables (`IBKR_HOST`, `IBKR_PORT`, `IBKR_CLIENT_ID`, ...)
+
+### `src/trading/brokers/ibkr/connection.py`
+**Purpose**: Singleton ownership of the `ib_async.IB` instance + sync/async bridge
+
+**Class**: `IBKRConnectionManager` -- runs the asyncio event loop on a background daemon thread and bridges synchronous Homeguard strategy code via `asyncio.run_coroutine_threadsafe()`
+
+**Features**: Automatic reconnection with exponential backoff, connection-health monitoring, thread-safe sync->async call bridge, graceful shutdown
+
+### `src/trading/brokers/ibkr/contracts.py`
+**Purpose**: Resolve symbol strings to fully-qualified `ib_async.Contract` objects
+
+**Class**: `ContractResolver` -- caches `conId`s to avoid repeated `qualifyContracts()` round-trips
+
+**Also**: Translates OCC option symbology (used by Alpaca) into IBKR's `(symbol, lastTradeDate, strike, right)` form
+
+### `src/trading/brokers/ibkr/data_download.py`
+**Purpose**: Historical-data provider that slots into `CompositeDataProvider` next to Alpaca and yfinance
+
+**Class**: `IBKRDataProvider` -- implements `DataProviderInterface`
+
+**Contract**: returns `pd.DataFrame` with `America/New_York` `DatetimeIndex` and lowercase `open/high/low/close/volume`; returns `None` on failure so callers can fall back
+
+### `src/trading/brokers/ibkr/errors.py`
+**Purpose**: Map IBKR error codes to broker-agnostic exceptions
+
+**Translates to**: `BrokerConnectionError`, `InvalidOrderError`, `InsufficientFundsError`, `OrderNotFoundError`, `SymbolNotFoundError` (from `src/trading/brokers/interfaces/base.py`)
+
+**Internal-only**: `PacingViolationError` (used inside `pacing.py`, never leaks out of the package)
+
+### `src/trading/brokers/ibkr/ibkr_broker.py`
+**Purpose**: Main IBKR broker class -- the first Homeguard broker to support options
+
+**Class**: `IBKRBroker` -- implements `AccountInterface`, `MarketHoursInterface`, `MarketDataInterface`, `StockTradingInterface`, `OptionsTradingInterface` (~22 abstract methods total)
+
+### `src/trading/brokers/ibkr/ibkr_futures_broker.py`
+**Purpose**: Futures broker with safeguard chain
+
+**Class**: `IBKRFuturesBroker` -- implements `FuturesTradingInterface`. Translates `(symbol_root, contract_month)` to `ib_async.Future` with the correct exchange routing per product family. Submission path runs ExpirationGuard -> MarginGuard -> AuditLog before hitting IBKR.
+
+### `src/trading/brokers/ibkr/pacing.py`
+**Purpose**: Hide IBKR's historical-data pacing rules from callers
+
+**Class**: `PacingManager` -- token-bucket rate limiter tuned for IBKR's published limits (~58 requests per 10 minutes, 6 per 2 seconds, 15s gap for identical requests, ~3 concurrent). `acquire()` blocks until it is safe to proceed; violating these rules triggers IBKR error 162 and a ~10-minute ban.
+
+### `src/trading/brokers/ibkr/streaming.py`
+**Purpose**: Real-time data provider
+
+**Class**: `IBKRStreamingProvider` -- implements `src.streaming.interface.StreamingProviderInterface` using `reqMktData()` for quotes/trades and `reqRealTimeBars()` for 5-second bars (aggregated to 1-minute in buffer). Converts all data to Homeguard `Bar` / `Quote` / `Trade` dataclasses at the boundary.
+
+### `src/trading/brokers/ibkr/symbols.py`
+**Purpose**: Symbol-format normalization at the IBKR boundary
+
+**Functions**: `to_ibkr_symbol(sym)` / `from_ibkr_symbol(sym)` -- translate multi-class US tickers (`BRK.B` <-> `BRK B`, `BF.B` <-> `BF B`) between Homeguard's dot form and IBKR's space form. Single-class tickers and any unknown patterns pass through unchanged -- no case folding, no whitespace stripping, no guessing.
+
+### Routing
+
+Per `config/trading/broker_routing.yaml`:
+
+| Strategy | Broker |
+|----------|--------|
+| `omr`    | `ibkr` (paper, port 4002, clientId 10) |
+| `ramp`   | `ibkr` (paper, port 4002, clientId 10) |
+| `mp`     | `ibkr` (paper, port 4002, clientId 10) |
+| `cscm`   | `coinbase` |
+| _other_  | `default_broker: alpaca` (paper) |
+
+### Companion testing
+
+- `scripts/trading/smoke_test_ibkr_paper.py` -- end-to-end live-paper smoke test (~25s, idempotent). Defaults to `clientId=99` so it doesn't collide with `homeguard-multi`'s `clientId=10`.
+- `tests/trading/brokers/test_broker_contract.py` -- parametrized contract test across `AlpacaBroker` and `IBKRBroker` for every method `ExecutionEngine` calls. No IBKR connection required.
+
+### Design references
+
+- `docs/architecture/2026-04-07-ibkr-integration-design.md`
+- `docs/architecture/2026-04-07-ibkr-integration-plan.md`
 
 ---
 
@@ -2957,7 +2985,7 @@ BrokerInterface               <- Composite: Account + MarketHours + MarketData +
 - Logging to systemd journal
 - Runs as ec2-user (non-root)
 
-**Command**: `python scripts/trading/run_live_paper_trading.py --strategy omr`
+**Command**: `python scripts/trading/run_live_paper_trading.py --strategy ramp` (current `homeguard-multi.service`; routes through IBKR paper per `config/trading/broker_routing.yaml`)
 
 ---
 
@@ -3004,9 +3032,15 @@ BrokerInterface               <- Composite: Account + MarketHours + MarketData +
 
 ---
 
-**Last Updated**: 2025-12-08
+**Last Updated**: 2026-05-17
 **Total Modules**: 100+ modules across 10 major components (including infrastructure)
 **Lines of Code**: ~50,000 LOC
+
+**Recent Additions** (2026-05-17):
+- Removed `src/gui/` (Flet desktop app) and `src/web/backend/` (FastAPI server) source — only `index.html` and historical caches remain on disk
+- Consolidated live production into `homeguard-multi.service` (RAMP via IBKR paper, port 4002)
+- Added IBKR broker package documentation (`src/trading/brokers/ibkr/`)
+- Corrected base/research strategy paths (`base_strategies/` is a deprecated re-export shim)
 
 **Recent Additions** (2025-12-08):
 - Module Architecture Documentation (10 new architecture docs)

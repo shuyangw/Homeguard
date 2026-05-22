@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document covers the standardized data download framework for the Homeguard trading system. All market data downloads should use the unified `AlpacaDownloader` class or the `download_symbols.py` CLI.
+This document covers the standardized data download framework for the Homeguard trading system. Market data downloads route through `src/data/acquisition/` via the `DataAcquisitionManager` plugin registry; the most common entry point is the `scripts/data/download_symbols.py` CLI (equities) or one of the per-asset-class downloaders alongside it.
 
 ## Quick Reference
 
@@ -10,28 +10,27 @@ This document covers the standardized data download framework for the Homeguard 
 
 ```bash
 # Download from CSV file
-python scripts/download_symbols.py --csv backtest_lists/sp500-2025.csv --skip-existing
+python scripts/data/download_symbols.py --csv config/universes/sp500-2025.csv --skip-existing
 
 # Download specific symbols
-python scripts/download_symbols.py --symbols AAPL,MSFT,GOOGL
-
-# Download hourly or daily data
-python scripts/download_symbols.py --csv symbols.csv --timeframe hour
-python scripts/download_symbols.py --csv symbols.csv --timeframe day
+python scripts/data/download_symbols.py --symbols AAPL,MSFT,GOOGL
 ```
+
+The current CLI is 1-minute only. For hourly/daily, aggregate from the 1-min parquet store (see `scripts/data/aggregate_*` if applicable). Other asset classes have dedicated downloaders under `scripts/data/`.
 
 ### Programmatic Usage
 
 ```python
-from src.data import AlpacaDownloader, Timeframe
+from src.data.acquisition import DataAcquisitionManager
 
-downloader = AlpacaDownloader(start_date='2020-01-01')
-result = downloader.download_symbols(
-    symbols=['AAPL', 'MSFT'],
-    timeframe=Timeframe.MINUTE,
-    skip_existing=True
+manager = DataAcquisitionManager()
+result = manager.download(
+    source="equities",
+    symbols=["AAPL", "MSFT"],
+    start_date="2020-01-01",
+    skip_existing=True,
 )
-print(f"Downloaded {result.total_bars} bars, {result.failed} failures")
+print(f"Downloaded {result.total_rows} rows, {result.failed} failures")
 ```
 
 ## Storage Structure
@@ -110,7 +109,7 @@ The download framework provides:
 
 ## Symbol Lists
 
-Available symbol lists in `backtest_lists/`:
+Available symbol lists in `config/universes/`:
 
 | File | Description |
 |------|-------------|
@@ -122,10 +121,7 @@ Available symbol lists in `backtest_lists/`:
 
 ## Other Data Scripts
 
-| Script | Purpose |
-|--------|---------|
-| `scripts/download_russell_lists.py` | Download Russell constituent lists from web |
-| `backtest_scripts/download_leveraged_etfs.py` | Download daily leveraged ETF data via yfinance |
+See `scripts/data/` for the current set of asset-class downloaders (FX, futures, options, crypto, news, FRED rates, COT, etc.). Each routes through the corresponding plugin in `src/data/acquisition/plugins/`.
 
 ## Common Tasks
 
@@ -133,9 +129,9 @@ Available symbol lists in `backtest_lists/`:
 
 ```bash
 # Download all indices (skip existing to resume interrupted downloads)
-python scripts/download_symbols.py --csv backtest_lists/russell1000-2025.csv --skip-existing
-python scripts/download_symbols.py --csv backtest_lists/russell2000-2025.csv --skip-existing
-python scripts/download_symbols.py --csv backtest_lists/sp500-2025.csv --skip-existing
+python scripts/data/download_symbols.py --csv config/universes/russell1000-2025.csv --skip-existing
+python scripts/data/download_symbols.py --csv config/universes/russell2000-2025.csv --skip-existing
+python scripts/data/download_symbols.py --csv config/universes/sp500-2025.csv --skip-existing
 ```
 
 ### Update Russell Lists

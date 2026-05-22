@@ -5,22 +5,14 @@ Exhaustively tests all parameter combinations to find optimal values
 based on specified metrics (Sharpe ratio, total return, max drawdown).
 """
 
-import uuid
+import pandas as pd
 from itertools import product
-from typing import Any, Callable, Dict, List, Mapping, Optional, Tuple, Union, TYPE_CHECKING
+from typing import Dict, List, Any, Union, Optional, Tuple, TYPE_CHECKING
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass
 
-import pandas as pd
-
 from src.utils import logger
 from src.utils.timezone import tz
-
-# Optional registry-append callback supplied by callers (e.g. backtest_runner)
-# that want every trial recorded in output/experiments.duckdb. Optimizers
-# remain registry-agnostic -- they call this if set, skip if not. See
-# src.experiments.make_trial_callback for the canonical factory.
-TrialCallback = Callable[[Mapping[str, Any], Mapping[str, Any]], None]
 
 if TYPE_CHECKING:
     from backtesting.engine.backtest_engine import BacktestEngine
@@ -67,7 +59,7 @@ def _test_single_params(
         Dictionary with params, metric value, and stats
     """
     from backtesting.engine.portfolio_simulator import from_signals
-    from backtesting.utils.risk_config import RiskConfig
+    from src.backtesting.utils.risk_config import RiskConfig
     from backtesting.base.strategy import MultiSymbolStrategy
     from backtesting.base.pairs_strategy import PairsStrategy
     from backtesting.engine.pairs_portfolio import PairsPortfolio
@@ -278,8 +270,7 @@ class GridSearchOptimizer:
         symbols: Union[str, List[str]],
         start_date: str,
         end_date: str,
-        metric: str = 'sharpe_ratio',
-        on_trial_complete: Optional[TrialCallback] = None,
+        metric: str = 'sharpe_ratio'
     ) -> Dict[str, Any]:
         """
         Optimize strategy parameters over a grid.
@@ -307,13 +298,25 @@ class GridSearchOptimizer:
         if isinstance(symbols, str):
             symbols = [symbols]
 
-        # Validate metric before starting optimization
+        # Validate inputs before any work
+        if not param_grid:
+            raise ValueError("param_grid must be a non-empty dict")
         valid_metrics = ['sharpe_ratio', 'total_return', 'max_drawdown']
         if metric not in valid_metrics:
             raise ValueError(f"Unknown metric: {metric}")
 
         # Load data for the optimization period
         data = self.engine.data_loader.load_symbols(symbols, start_date, end_date)
+        if data is None or len(data) == 0:
+            logger.warning("Empty dataset returned from data loader; returning empty result")
+            return {
+                'best_params': None,
+                'best_value': float('nan'),
+                'best_portfolio': None,
+                'metric': metric,
+                'all_results': [],
+                'method': 'grid_search',
+            }
 
         # Log optimization header
         logger.blank()
@@ -326,34 +329,54 @@ class GridSearchOptimizer:
         # Generate all parameter combinations
         param_names = list(param_grid.keys())
         param_values = list(param_grid.values())
-        all_combos = list(product(*param_values))
-        combinations_in_run = len(all_combos)
-
-        # Sweep-scoped parent_run_id (caller's trial callback may use this
-        # to link child rows; optimizer just generates it and surfaces it
-        # in the return dict).
-        parent_run_id = str(uuid.uuid4())
 
         # Initialize best tracking
         best_value = float('-inf') if metric != 'max_drawdown' else float('inf')
         best_params = None
         best_portfolio = None
+        all_results: List[Dict[str, Any]] = []
 
         # Test each parameter combination
-        for param_combo in all_combos:
+        for param_combo in product(*param_values):
             params = dict(zip(param_names, param_combo))
 
             try:
                 # Create strategy instance with these parameters
                 strategy = strategy_class(**params)
 
-                # Run backtest
-                # Detect if this is a multi-symbol strategy
-                from backtesting.base.strategy import MultiSymbolStrategy
+                # Detect multi-symbol / pairs strategy and route appropriately
+                from src.backtesting.base.strategy import MultiSymbolStrategy
+                from src.backtesting.base.pairs_strategy import PairsStrategy
 
-                if isinstance(strategy, MultiSymbolStrategy):
-                    # Use proper multi-symbol execution
-                    portfolio = self.engine._run_multi_symbol_strategy(strategy, data, symbols, 'close')
+                if isinstance(strategy, PairsStrategy) and len(symbols) == 2:
+                    # Use PairsPortfolio fast path with pre-loaded data
+                    from src.backtesting.engine.pairs_portfolio import PairsPortfolio
+                    from src.backtesting.utils.risk_config import RiskConfig
+
+                    data_dict = {sym: data.xs(sym, level='symbol') for sym in symbols}
+                    signals_dict = strategy.generate_signals_multi(data_dict)
+
+                    symbol1, symbol2 = symbols
+                    long_entries1, long_exits1, short_entries1, short_exits1 = signals_dict[symbol1]
+
+                    portfolio = PairsPortfolio(
+                        symbols=(symbol1, symbol2),
+                        prices1=data_dict[symbol1]['close'],
+                        prices2=data_dict[symbol2]['close'],
+                        entries=short_entries1,
+                        exits=short_exits1,
+                        short_entries=long_entries1,
+                        short_exits=long_exits1,
+                        init_cash=self.engine.initial_capital,
+                        fees=self.engine.fees,
+                        slippage=self.engine.slippage,
+                        freq=getattr(self.engine, 'freq', '1D'),
+                        market_hours_only=getattr(self.engine, 'market_hours_only', False),
+                        risk_config=RiskConfig.moderate(),
+                    )
+                elif isinstance(strategy, MultiSymbolStrategy):
+                    # Non-pairs multi-symbol strategy: degrade to first-symbol path
+                    portfolio = self.engine._run_multiple_symbols_with_data(strategy, data, symbols, 'close')
                 elif len(symbols) == 1:
                     portfolio = self.engine._run_single_symbol_with_data(strategy, data, symbols[0], 'close')
                 else:
@@ -374,9 +397,7 @@ class GridSearchOptimizer:
                     best_params = params
                     best_portfolio = portfolio
 
-                # Optional per-trial hook (e.g. registry append).
-                if on_trial_complete is not None:
-                    on_trial_complete(params, stats)
+                all_results.append({'params': params, metric: value})
 
                 # Log this combination's result
                 logger.metric(f"Params: {params} -> {metric}: {value:.4f}")
@@ -399,8 +420,7 @@ class GridSearchOptimizer:
             'best_value': best_value,
             'best_portfolio': best_portfolio,
             'metric': metric,
-            'parent_run_id': parent_run_id,
-            'combinations_in_run': combinations_in_run,
+            'all_results': all_results,
         }
 
     def optimize_parallel(
@@ -416,8 +436,7 @@ class GridSearchOptimizer:
         export_results: bool = True,
         output_dir: Optional[Any] = None,
         use_cache: bool = True,
-        cache_config: Optional[Any] = None,
-        on_trial_complete: Optional[TrialCallback] = None,
+        cache_config: Optional[Any] = None
     ) -> Dict[str, Any]:
         """
         Optimize strategy parameters over a grid using parallel processing.
@@ -521,9 +540,6 @@ class GridSearchOptimizer:
         best_portfolio = None
         all_results = []
         completed_count = 0
-
-        # Sweep-scoped parent_run_id; caller's trial callback may use it.
-        parent_run_id = str(uuid.uuid4())
 
         # Phase 2: Enhanced progress tracking
         import time
@@ -649,17 +665,6 @@ class GridSearchOptimizer:
                     iteration_time = time.time() - iteration_start
                     test_times.append(iteration_time)
 
-                    # Optional per-trial hook (caller-supplied).
-                    # Worker processes can't share a DuckDB writer, so the
-                    # orchestrator invokes the callback here -- keeps all
-                    # registry I/O on one connection.
-                    if (
-                        result['error'] is None
-                        and result['stats'] is not None
-                        and on_trial_complete is not None
-                    ):
-                        on_trial_complete(result['params'], result['stats'])
-
                     # Update best if this is better
                     if result['error'] is None and result['stats'] is not None:
                         if self._is_better(result['value'], best_value, metric):
@@ -753,9 +758,7 @@ class GridSearchOptimizer:
             'total_time': total_time,  # Phase 2: timing info
             'avg_time_per_test': total_time / len(param_combos) if param_combos else 0,
             'cache_hits': cache_hits if cache else 0,  # Phase 3: cache statistics
-            'cache_misses': cache_misses if cache else 0,
-            'parent_run_id': parent_run_id,  # Methodology Section 9 linkage
-            'combinations_in_run': len(param_combos),
+            'cache_misses': cache_misses if cache else 0
         }
 
     def _extract_metric_value(self, stats: Dict[str, Any], metric: str) -> float:

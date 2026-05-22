@@ -199,7 +199,12 @@ class TestPeriodicFlush:
             assert not mock_console.print.called
 
     def test_flush_logs_only_on_error(self):
-        """Test that flush only logs to console when an error occurs."""
+        """Test that flush only logs to console when an error occurs.
+
+        Directly patches the `open` call in `flush_to_disk` to raise so
+        the test works on Windows (where dir-level chmod doesn't reliably
+        block writes) as well as POSIX systems.
+        """
         from src.utils.logger import TradingLogger
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -210,27 +215,20 @@ class TestPeriodicFlush:
                 log_dir=log_dir,
                 flush_interval_hours=5/60
             )
-
-            # Add some log entries
             trading_logger.info("Test message")
 
-            # Make the log directory read-only to cause flush error
-            log_dir.chmod(0o444)
-
-            # Capture console output
-            with patch('src.utils.logger.console') as mock_console:
+            with patch('src.utils.logger.console') as mock_console, \
+                 patch('builtins.open', side_effect=OSError("disk full")):
                 try:
                     trading_logger.flush_to_disk(reason="Test flush")
-                except:
-                    pass  # Ignore the error itself
+                except Exception:
+                    pass
 
-                # Verify console.print WAS called with error message
-                assert mock_console.print.called
+                assert mock_console.print.called, (
+                    "flush_to_disk should call console.print on error"
+                )
                 call_args = str(mock_console.print.call_args)
                 assert "Error flushing logs" in call_args
-
-            # Restore permissions
-            log_dir.chmod(0o755)
 
     def test_flush_writes_to_disk(self):
         """Test that TradingLogger.flush_to_disk() actually writes buffered logs."""
