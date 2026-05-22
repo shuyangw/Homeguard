@@ -79,6 +79,34 @@ if [[ ! -f "$LATEST_JSON" ]]; then
     exit 2
 fi
 
+# Snapshot-date guard: the snapshot's decision timestamp (in UTC) must equal today's UTC date.
+# Without this guard, on a day where RAMP doesn't fire (e.g. ramp.enabled=false,
+# market holiday, regime SAFE_MODE), the helper would re-process the prior day's
+# snapshot and increment the counter vacuously.
+SNAPSHOT_DATE="$("$PYTHON" - "$LATEST_JSON" <<'PY' 2>/dev/null
+import json, sys
+from datetime import datetime, timezone
+rec = json.load(open(sys.argv[1]))
+ts = rec.get("timestamp") or rec.get("trigger", {}).get("actual_fire_time")
+if not ts:
+    sys.exit("no timestamp in snapshot")
+dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+print(dt.astimezone(timezone.utc).strftime("%Y-%m-%d"))
+PY
+)"
+SNAPSHOT_DATE="$(echo "$SNAPSHOT_DATE" | tr -d '[:space:]')"
+if [[ -z "$SNAPSHOT_DATE" ]]; then
+    echo "[ERROR] could not parse snapshot timestamp from $LATEST_JSON"
+    write_gauges "$current_counter" 1
+    exit 2
+fi
+if [[ "$SNAPSHOT_DATE" != "$TODAY" ]]; then
+    echo "[STALE] snapshot date $SNAPSHOT_DATE != today $TODAY; no RAMP rebalance fired today; counter unchanged at ${current_counter}"
+    # Do NOT write the marker -- if RAMP fires later today the helper should be able to re-run.
+    write_gauges "$current_counter" 0
+    exit 0
+fi
+
 echo "[CHECK] $LATEST_JSON"
 # Module-style invocation so `from src.* import ...` inside the comparator resolves.
 # Direct `$PYTHON $COMPARATOR ...` would put the script dir on sys.path instead
