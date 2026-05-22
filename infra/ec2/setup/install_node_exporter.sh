@@ -35,6 +35,17 @@ if ! id node_exporter &>/dev/null; then
     echo "  Created node_exporter user"
 fi
 
+# Textfile collector directory: writable by ec2-user (where helpers like
+# scripts/ops/check_ramp_paper_session.sh emit homeguard_a7.prom),
+# readable by node_exporter (which scrapes *.prom files in this dir).
+TEXTFILE_DIR="/var/lib/node_exporter/textfile_collector"
+if [ ! -d "${TEXTFILE_DIR}" ]; then
+    sudo mkdir -p "${TEXTFILE_DIR}"
+    echo "  Created ${TEXTFILE_DIR}"
+fi
+sudo chown -R ec2-user:ec2-user "${TEXTFILE_DIR}"
+sudo chmod 755 "${TEXTFILE_DIR}"
+
 # Install service
 sudo cp ~/Homeguard/infra/ec2/services/node-exporter.service /etc/systemd/system/
 sudo systemctl daemon-reload
@@ -43,3 +54,4 @@ sudo systemctl restart node-exporter
 
 echo "[+] node_exporter installed and started"
 echo "  Metrics: http://127.0.0.1:9100/metrics"
+echo "  Textfile collector: ${TEXTFILE_DIR} (writable by ec2-user)"
