@@ -312,3 +312,41 @@ def test_apply_trades_preserves_open_date_on_topup():
     apply_trades(state, trades, cost_usd=2.5, current_date=today)
     assert state.positions['AAA'] == 100.0
     assert state.position_open_dates['AAA'] == datetime(2024, 8, 1)
+
+
+def test_compute_trades_respects_delta_rebalance_pct():
+    import pandas as pd
+    from src.research.ramp_phase4.engine import HarnessState, compute_trades
+    # Position currently 10% of $100k portfolio ($10k AAA at $100).
+    state = HarnessState(cash_usd=90000.0, positions={'AAA': 100.0})
+    prices = pd.Series({'AAA': 100.0})
+    # Target weight 10.5% -> target value $10,500 -> delta = $500.
+    # With delta_rebalance_pct=0.02, floor = max(100, 100000*0.02) = $2000.
+    # $500 < $2000, so trade should be skipped.
+    target_weights = {'AAA': 0.105}
+    trades = compute_trades(
+        state, target_weights, prices,
+        total_value=100000.0,
+        min_trade_value_usd=100.0,
+        delta_rebalance_pct=0.02,
+    )
+    assert trades == []
+
+
+def test_compute_trades_pct_threshold_does_not_block_full_exits():
+    import pandas as pd
+    from src.research.ramp_phase4.engine import HarnessState, compute_trades
+    state = HarnessState(cash_usd=90000.0, positions={'AAA': 100.0})
+    prices = pd.Series({'AAA': 100.0})
+    # Target weight 0 (full exit). With delta_rebalance_pct=0.99 the floor
+    # would be $99k, but full exits must always execute.
+    target_weights = {}
+    trades = compute_trades(
+        state, target_weights, prices,
+        total_value=100000.0,
+        min_trade_value_usd=100.0,
+        delta_rebalance_pct=0.99,
+    )
+    assert len(trades) == 1
+    assert trades[0]['symbol'] == 'AAA'
+    assert trades[0]['delta_shares'] == -100

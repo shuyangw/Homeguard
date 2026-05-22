@@ -110,7 +110,11 @@ def run_variant(cfg: HarnessConfig, variant_spec: VariantLike) -> List[DailyReco
             )
 
         # 3. Compute trades + cost, apply.
-        trades = compute_trades(state, target_weights, prices, cur_value, cfg.min_trade_value_usd)
+        trades = compute_trades(
+            state, target_weights, prices, cur_value,
+            cfg.min_trade_value_usd,
+            delta_rebalance_pct=cfg.delta_rebalance_pct,
+        )
         cost = flat_bps_cost(trades, cfg.cost_bps_per_side)
         turnover = sum(abs(t['trade_value_usd']) for t in trades)
         apply_trades(state, trades, cost_usd=cost, current_date=ts)
@@ -171,18 +175,24 @@ def compute_trades(
     prices: pd.Series,
     total_value: float,
     min_trade_value_usd: float,
+    delta_rebalance_pct: float = 0.0,
 ) -> List[Dict]:
     """Compute the delta trades from current positions to target weights.
 
-    Whole-share rounding. Drops trades below `min_trade_value_usd`.
+    Whole-share rounding. Drops trades below the effective floor.
     Sells appear with negative trade_value_usd; buys positive.
+
+    Floor per trade is max(min_trade_value_usd, total_value * delta_rebalance_pct).
+    Full exits (target_weight == 0) bypass the floor -- a sell-to-zero always
+    executes regardless of size, so the engine can always close a position.
 
     Each trade dict: {symbol, delta_shares, trade_value_usd, side}.
     """
     if total_value <= 0:
         return []
 
-    # Build union of current + target symbols.
+    floor = max(min_trade_value_usd, total_value * delta_rebalance_pct)
+
     all_syms = set(state.positions.keys()) | set(target_weights.keys())
     trades: List[Dict] = []
     for sym in all_syms:
@@ -197,7 +207,9 @@ def compute_trades(
         if delta == 0:
             continue
         trade_value = delta * px
-        if abs(trade_value) < min_trade_value_usd:
+        # Full exits (target weight == 0) bypass the floor.
+        target_w = target_weights.get(sym, 0.0)
+        if abs(trade_value) < floor and target_w > 0:
             continue
         trades.append({
             'symbol': sym,
