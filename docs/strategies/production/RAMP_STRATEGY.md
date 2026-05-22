@@ -2,8 +2,14 @@
 
 **Regime-Aware Momentum Protection (RAMP)** - A production trading strategy that adapts momentum parameters based on detected market regimes.
 
-**Status**: Production (Deployed 2025-12-08)
-**Last Updated**: 2025-12-08
+**Status**: Production paper (Phase 4 in progress — see Phase 4 note below)
+**Last Updated**: 2026-05-19
+
+---
+
+> **2026-05-19 Phase 4 update — the 0.846 OOS Sharpe is GROSS, not tradeable.**
+>
+> The "Walk-Forward Validation" Sharpe numbers below were computed at **0% transaction costs** with no stateful turnover accounting (each rebalance day instantiated a fresh equal-weight portfolio in the validation script). Phase B of the Phase 4 review (`docs/superpowers/specs/2026-05-19-ramp-phase4-phaseB-design.md`) re-ran the same strategy on split-adjusted Alpaca SIP data with proper turnover state and realistic costs and produced very different numbers. Use the "Net-of-cost performance" section below as the load-bearing reference for any production-readiness claim; the "Walk-Forward Validation" table immediately below is retained for traceability but is gross-of-cost only.
 
 ---
 
@@ -15,11 +21,11 @@ RAMP extends the basic momentum protection strategy with market regime detection
 
 - **Regime Detection**: Uses VIX, SPY momentum, and moving averages to classify 5 market regimes
 - **Adaptive Parameters**: Different momentum periods, weights, and position counts per regime
-- **Walk-Forward Validated**: Trained on 2017-2021, tested out-of-sample on 2022-2024
+- **Walk-Forward Validated** (gross-of-cost): Trained on 2017-2021, tested out-of-sample on 2022-2024
 - **Crash Protection**: Reduces exposure when VIX > 25 or SPY drawdown > 5%
 - **Dynamic Position Sizing**: 1/N equal-weight allocation across top_n positions
 
-### Performance (Walk-Forward Validation)
+### Performance (Walk-Forward Validation, gross-of-cost, yfinance)
 
 | Metric | In-Sample (2017-2021) | Out-of-Sample (2022-2024) |
 |--------|----------------------|---------------------------|
@@ -28,8 +34,47 @@ RAMP extends the basic momentum protection strategy with market regime detection
 | **Max Drawdown** | -46.9% | -15.0% |
 | **Win Rate** | 53.3% | 52.9% |
 
-**Validation**: 2025-12-12 using Yahoo Finance split-adjusted data.
+**Validation**: 2025-12-12 using Yahoo Finance split-adjusted data, 0% costs, no turnover state.
 See full validation report: [`20251212_RAMP_WALK_FORWARD_VALIDATION.md`](20251212_RAMP_WALK_FORWARD_VALIDATION.md)
+
+### Net-of-cost performance (Phase 4 Phase B, 2026-05-19, Alpaca SIP split-adjusted)
+
+Stateful target-weight backtest over 2017-01-01 → 2026-05-16 with realistic cost tiers:
+
+| Cost tier (per side) | CAGR | Sharpe | Max DD | Avg turnover | Cost drag |
+|---|---:|---:|---:|---:|---:|
+| **0 bps (gross)** | 16.36% | **0.614** | -75.46% | 91% | 0% |
+| 2.5 bps | 9.85% | 0.448 | -77.82% | 91% | 38% |
+| **5.0 bps (typical IBKR-like)** | 3.74% | **0.282** | -79.88% | 91% | **75%** |
+| 7.5 bps (stress) | -2.02% | 0.116 | -81.76% | 90% | 114% |
+
+**Interpretation:**
+
+- The strategy has a real but modest gross edge (Sharpe 0.614 on split-adjusted SIP, vs the gross 0.846 reported above on yfinance — yfinance's adjustments evidently flatter the numbers).
+- The dominant problem is **~91% daily turnover**: at realistic 5 bps per side, transaction costs consume 75% of gross return.
+- The cost-sensitivity gate from `docs/methodology/backtesting.md` §4 (variants must survive 1.5x base cost) is **not met** by the current production strategy.
+- Turnover control (Phase 4 Wave 1 — V04 rank buffer, V05 minimum hold, V06 delta threshold, V11 combined) is the gating research item before any net-positive RAMP variant can be produced.
+
+**Per-regime attribution (5 bps tier, 2017-2026):**
+
+| Regime | Days | Net return |
+|---|---:|---:|
+| STRONG_BULL | 593 | +145.85% |
+| WEAK_BULL | 698 | +469.53% |
+| SIDEWAYS | 398 | -26.56% |
+| BEAR | 375 | -29.66% |
+| UNPREDICTABLE | 40 | -80.52% |
+| SAFE_MODE | 251 | 0% |
+
+Edge is concentrated in BULL regimes; SIDEWAYS/BEAR/UNPREDICTABLE are drags. Consistent with Phase 3A's earlier "BEAR-to-cash improves gross" finding.
+
+**Source reports** (under `docs/reports/ramp/`, gitignored locally, pushed to `origin/ramp-phase4-turnover-regime-research`):
+
+- `20260519_phase4_v01.md` — production REGIME_PARAMS, no crash exposure, four cost tiers.
+- `20260519_phase4_v03.md` — production REGIME_PARAMS WITH crash exposure (V03 of the Phase 4 plan).
+- `20260519_phase4_v01_vs_v03_parity.md` — V01 vs V03 parity finding: V03's crash-exposure halving cuts gross more than it cuts turnover-cost, so V03 is **worse** net than V01. Wave 1 turnover-control must come before any V03-style crash-exposure refinement.
+
+---
 
 ---
 
@@ -266,7 +311,9 @@ StrategyStateManager.add_position()
 
 | Date | Decision | Rationale |
 |------|----------|-----------|
-| 2025-12-12 | Re-validated with clean data | OOS Sharpe 0.846 (YF split-adjusted data), confirms robustness |
+| 2026-05-19 | Phase 4 Phase B re-baseline | Stateful SIP-adjusted backtest: gross Sharpe 0.614 (vs yfinance 0.846), net 0.282 at 5 bps. Turnover-control (Wave 1) becomes gating before any further regime/exposure refinement. RAMP paused on production paper pending A7 validation. |
+| 2026-05-15 | Phase 4 Phase A code complete | F1 planner + F2 target-aware execution + F3 parity tests + F4 safe mode + F5 decision-log enrichment landed on branch `ramp-phase4-turnover-regime-research`. |
+| 2025-12-12 | Re-validated with clean data (gross) | OOS Sharpe 0.846 (YF split-adjusted data, 0% costs, no turnover state). **Gross-only**; see 2026-05-19 entry for net-of-cost re-baseline. |
 | 2025-12-08 | Deployed RAMP, disabled MP | Regime detection adds value over static momentum |
 | 2025-12-08 | Changed to 1/N position sizing | Simpler, matches backtest methodology |
 | 2025-12-07 | Walk-forward validation | Confirmed regime detection adds value OOS |
