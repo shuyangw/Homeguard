@@ -214,3 +214,124 @@ class TestRecomputeIntegration:
         symbols_flagged = {d["symbol"] for d in result["divergences"]}
         assert "SYM99" in symbols_flagged
         assert "SYM09" in symbols_flagged
+
+
+class TestV11Comparator:
+    """V11 comparator extension: thread position ledger + variant flag through
+    _recompute_plan so the paper validation comparator models the same
+    rank_buffer + min_hold composition the live adapter applies.
+
+    The critical correctness criterion is that _apply_v11_filters_to_plan
+    produces the same target set as RAMPLiveAdapter._apply_v11_filters for the
+    same inputs and state -- otherwise comparator divergence is spurious.
+    """
+
+    def _build_strategy_inputs(self, momentum_scores: dict, top_n: int) -> dict:
+        return {
+            "regime": "STRONG_BULL",
+            "regime_confidence": 0.9,
+            "regime_scores": {"STRONG_BULL": 0.9},
+            "vix": 18.0,
+            "spy_drawdown_pct": -0.02,
+            "momentum_scores": momentum_scores,
+            "regime_params": {"top_n": top_n},
+        }
+
+    def test_recompute_plan_v01_backward_compat_unchanged(self, tmp_path):
+        """variant='v01' (default) and a missing position ledger produce the
+        same plan as the pre-Phase-2E V01 path."""
+        from scripts.trading.compare_paper_vs_plan import _recompute_plan
+
+        momentum_scores = {f"SYM{i:02d}": round(0.10 - 0.003 * i, 4) for i in range(25)}
+        inputs = self._build_strategy_inputs(momentum_scores, top_n=20)
+
+        baseline = _recompute_plan(inputs)
+        bc_explicit = _recompute_plan(
+            inputs,
+            position_ledger_path=tmp_path / "nonexistent.json",
+            variant="v01",
+        )
+
+        assert bc_explicit["target_weights"] == baseline["target_weights"]
+        # Top 20 selected, equal-weight 1/20.
+        assert len(baseline["target_weights"]) == 20
+        for w in baseline["target_weights"].values():
+            assert abs(w - 0.05) < 1e-9
+
+    def test_recompute_plan_v11_with_empty_ledger_equals_v01(self, tmp_path):
+        """variant='v11' with no positions in the ledger (Day 1 of paper)
+        reproduces the V01 plan -- rank_buffer has nothing to retain and
+        min_hold has nothing to protect."""
+        from scripts.trading.compare_paper_vs_plan import _recompute_plan
+
+        momentum_scores = {f"SYM{i:02d}": round(0.10 - 0.003 * i, 4) for i in range(25)}
+        inputs = self._build_strategy_inputs(momentum_scores, top_n=20)
+
+        ledger_path = tmp_path / "ramp_position_state.json"
+        ledger_path.write_text(json.dumps({
+            "strategy": "ramp",
+            "timestamp": "2026-05-24T16:00:00-04:00",
+            "positions": {},
+            "position_open_dates": {},
+        }))
+
+        v01_plan = _recompute_plan(inputs)
+        v11_plan = _recompute_plan(
+            inputs, position_ledger_path=ledger_path, variant="v11"
+        )
+
+        assert set(v11_plan["target_weights"].keys()) == set(v01_plan["target_weights"].keys())
+        for sym, w in v11_plan["target_weights"].items():
+            assert abs(w - v01_plan["target_weights"][sym]) < 1e-9
+
+    def test_recompute_plan_v11_retains_held_names_via_rank_buffer(self, tmp_path):
+        """variant='v11' with held names that fell out of top_n but rank
+        within top_n + (top_n // 2) buffer are retained."""
+        from scripts.trading.compare_paper_vs_plan import _recompute_plan
+
+        # 25 symbols, top_n=10, buffer=5 -> retain ranks 1..15 if held.
+        momentum_scores = {f"SYM{i:02d}": round(0.10 - 0.003 * i, 4) for i in range(25)}
+        inputs = self._build_strategy_inputs(momentum_scores, top_n=10)
+
+        # SYM12 ranks 13 (sorted desc by score, index 12): out of top 10, in buffer.
+        ledger_path = tmp_path / "ramp_position_state.json"
+        ledger_path.write_text(json.dumps({
+            "strategy": "ramp",
+            "timestamp": "2026-05-24T16:00:00-04:00",
+            "positions": {"SYM12": 100.0},
+            "position_open_dates": {"SYM12": "2025-01-01T16:00:00"},
+        }))
+
+        v01_plan = _recompute_plan(inputs)
+        v11_plan = _recompute_plan(
+            inputs, position_ledger_path=ledger_path, variant="v11"
+        )
+
+        assert "SYM12" not in v01_plan["target_weights"]
+        assert "SYM12" in v11_plan["target_weights"], v11_plan["target_weights"]
+
+    def test_recompute_plan_v11_protects_recent_positions_via_min_hold(self, tmp_path):
+        """variant='v11' with position_open_dates < 5 trading days ago protects
+        names even when they rank far outside the buffer."""
+        from datetime import datetime, timedelta
+        from scripts.trading.compare_paper_vs_plan import _recompute_plan
+
+        # 25 symbols, top_n=10. SYM24 ranks 25 -- far outside top_n + buffer (15).
+        momentum_scores = {f"SYM{i:02d}": round(0.10 - 0.003 * i, 4) for i in range(25)}
+        inputs = self._build_strategy_inputs(momentum_scores, top_n=10)
+
+        # Opened "today - 1 day", well inside the 5-trading-day floor.
+        recent_open = (datetime.now() - timedelta(days=1)).isoformat()
+        ledger_path = tmp_path / "ramp_position_state.json"
+        ledger_path.write_text(json.dumps({
+            "strategy": "ramp",
+            "timestamp": "2026-05-24T16:00:00-04:00",
+            "positions": {"SYM24": 100.0},
+            "position_open_dates": {"SYM24": recent_open},
+        }))
+
+        v11_plan = _recompute_plan(
+            inputs, position_ledger_path=ledger_path, variant="v11"
+        )
+
+        assert "SYM24" in v11_plan["target_weights"], v11_plan["target_weights"]
