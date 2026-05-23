@@ -6,6 +6,7 @@ Adapts parameters based on whether market is in bull, bear, or sideways state.
 Rebalances daily at 3:55 PM EST based on regime-adjusted momentum rankings.
 """
 
+from dataclasses import dataclass, field
 from typing import List, Dict, Optional, Any, TYPE_CHECKING, Union
 from datetime import datetime, time, timedelta
 from pathlib import Path
@@ -187,6 +188,19 @@ def update_position_open_dates(
     return updated
 
 
+@dataclass
+class _LiveAdapterState:
+    """Duck-typed shim that lets V11 filter functions consume live adapter state.
+
+    The filters in src/research/ramp_phase4/filters.py read state.positions
+    and state.position_open_dates only. HarnessState has additional fields
+    (cash_usd, pending_targets, etc.) that the filters do not touch, so this
+    minimal shim is sufficient.
+    """
+    positions: Dict[str, float] = field(default_factory=dict)
+    position_open_dates: Dict[str, datetime] = field(default_factory=dict)
+
+
 class RAMPSignalWrapper(StrategySignals):
     """
     Wrapper to make RAMPSignals compatible with StrategyAdapter.
@@ -328,6 +342,17 @@ class RAMPLiveAdapter(StrategyAdapter):
     """
 
     STRATEGY_NAME = STRATEGY_NAME  # class attribute for StrategyAdapter base helpers
+
+    # V11 delta-rebalance threshold (Phase 4 Wave 1 backport). Mirrors
+    # src/research/ramp_phase4/engine.py::compute_trades's delta_rebalance_pct=0.02:
+    # trades smaller than max(min_trade_value, equity_base * 0.02) are skipped,
+    # except full exits which always execute. Gated on self.variant == 'v11'.
+    DELTA_REBALANCE_PCT_V11: float = 0.02
+
+    # V11 min_hold parameters (mirror _variant_v11 in
+    # src/research/ramp_phase4/variants.py:222-228).
+    V11_MIN_HOLD_DAYS: int = 5
+    V11_CRASH_EXIT: bool = False
 
     def __init__(
         self,
@@ -595,6 +620,169 @@ class RAMPLiveAdapter(StrategyAdapter):
             )
         except Exception as e:
             logger.error(f"[RAMP] Failed to write position_state snapshot: {e}")
+
+    def _apply_v11_filters(
+        self,
+        plan: 'RampPlan',
+        momentum_scores: 'pd.Series',
+        current_positions: Dict[str, float],
+        current_date: datetime,
+    ) -> 'RampPlan':
+        """Apply V11 rank_buffer + min_hold filters to a V01 plan.
+
+        Mirrors _variant_v11 in src/research/ramp_phase4/variants.py:189-231:
+            1. proposed_targets = equal-weight 1/top_n over plan.targets keys.
+            2. rank_buffer(proposed, state, buffer=top_n//2, ranking, top_n).
+            3. min_hold(targets, state, current_date, min_hold_days=5, crash_exit=False).
+
+        The returned plan has:
+            - targets renormalized so the per-position weight respects the
+              plan's exposure_pct and max_capital_allocation. The number of
+              positions may exceed top_n if rank_buffer retains held names or
+              min_hold protects recently opened names.
+            - exits updated: any symbol in current_positions but not in the
+              filtered target set is exited with reason 'v11_dropped'.
+            - all other plan fields preserved (regime, top_n, exposure_pct,
+              regime_scores, diagnostics).
+
+        Returns a new RampPlan; does not mutate the input plan.
+        """
+        from src.research.ramp_phase4.filters import rank_buffer, min_hold
+        from src.strategies.advanced.ramp_target_planner import RampPlan, RampTarget
+
+        # State shim for the pure filter functions.
+        state = _LiveAdapterState(
+            positions=dict(current_positions),
+            position_open_dates=dict(getattr(self, '_position_open_dates', {}) or {}),
+        )
+
+        # Step 1: V01 base proposed_targets = equal weight 1/top_n.
+        target_symbols = list(plan.targets.keys())
+        if not target_symbols:
+            # Nothing to filter; preserve original plan.
+            return plan
+        top_n = plan.top_n
+        proposed = {sym: 1.0 / top_n for sym in target_symbols}
+
+        # Build full-universe ranking from momentum scores (1 = best).
+        sorted_momentum = momentum_scores.dropna().sort_values(ascending=False)
+        universe_ranking = pd.Series(
+            range(1, len(sorted_momentum) + 1),
+            index=sorted_momentum.index,
+        )
+
+        # Step 2: rank_buffer.
+        filtered = rank_buffer(
+            proposed_targets=proposed,
+            state=state,
+            buffer_size=top_n // 2,
+            universe_ranking=universe_ranking,
+            top_n=top_n,
+        )
+
+        # Step 3: min_hold.
+        filtered = min_hold(
+            proposed_targets=filtered,
+            state=state,
+            current_date=current_date,
+            min_hold_days=self.V11_MIN_HOLD_DAYS,
+            crash_exit=self.V11_CRASH_EXIT,
+        )
+
+        # Reconstruct the plan with the filtered symbol set. The filter output
+        # is equal-weight summing to 1.0; convert to (max_cap * exposure_pct)
+        # weight per position so gross exposure matches the original plan.
+        if not filtered:
+            new_targets: Dict[str, RampTarget] = {}
+        else:
+            gross = self.max_capital_allocation * plan.exposure_pct
+            per_position_weight = gross / len(filtered)
+            # Preserve rank info where available (from the original plan), and
+            # treat held names retained by filters as 'hold'; new names as 'new_entry'.
+            new_targets = {}
+            for sym in filtered.keys():
+                original = plan.targets.get(sym)
+                if original is not None:
+                    reason = 'hold' if sym in current_positions else original.reason
+                    new_targets[sym] = RampTarget(
+                        symbol=sym,
+                        target_weight=per_position_weight,
+                        rank=original.rank,
+                        regime=original.regime,
+                        reason=reason,
+                    )
+                else:
+                    # Retained by filters but not in original plan -- it's a
+                    # held name protected by rank_buffer or min_hold.
+                    # Look up its rank in universe_ranking if possible.
+                    rank = None
+                    if sym in universe_ranking.index:
+                        rank = int(universe_ranking[sym])
+                    new_targets[sym] = RampTarget(
+                        symbol=sym,
+                        target_weight=per_position_weight,
+                        rank=rank,
+                        regime=plan.regime,
+                        reason='hold',
+                    )
+
+        # Exits: any held symbol not in new_targets must be exited.
+        new_exits = {
+            sym: 'v11_dropped'
+            for sym in current_positions if sym not in new_targets
+        }
+
+        return RampPlan(
+            as_of=plan.as_of,
+            regime=plan.regime,
+            regime_confidence=plan.regime_confidence,
+            regime_scores=plan.regime_scores,
+            exposure_pct=plan.exposure_pct,
+            top_n=plan.top_n,
+            targets=new_targets,
+            exits=new_exits,
+            diagnostics=plan.diagnostics,
+        )
+
+    def _v11_trade_passes_floor(
+        self,
+        abs_delta: float,
+        equity_base: float,
+        min_trade_value: float,
+        is_full_exit: bool,
+    ) -> tuple:
+        """Decide whether a trade clears the V11 delta-rebalance floor.
+
+        Mirrors src/research/ramp_phase4/engine.py::compute_trades:246-265:
+            floor = max(min_trade_value_usd, total_value * delta_rebalance_pct)
+            if abs(trade_value) < floor and target_w > 0:
+                continue  # skip
+            # Full exits (target_weight == 0) bypass the floor.
+
+        Returns (keep: bool, reason: str). reason is for logging only.
+        Behavior depends on self.variant:
+            'v01' -- floor is just min_trade_value (legacy behavior).
+            'v11' -- floor is max(min_trade_value, equity_base * 0.02).
+        """
+        if self.variant == 'v11':
+            floor = max(min_trade_value, equity_base * self.DELTA_REBALANCE_PCT_V11)
+        else:
+            floor = min_trade_value
+        if is_full_exit:
+            return True, 'full_exit_bypass'
+        # Use strict less-than-or-equal to match the prior V01 boundary
+        # behavior (original: `if delta < -min_trade_value` rejects
+        # abs_delta == min_trade_value). Research engine compute_trades uses
+        # strict `<` against the floor; for V11 that boundary is unlikely
+        # to bite in practice but match the research path: abs_delta < floor
+        # skipped. For V01 we preserve the legacy <= boundary.
+        if self.variant == 'v11':
+            if abs_delta < floor:
+                return False, f'below_floor_{floor:.0f}'
+        else:
+            if abs_delta <= floor:
+                return False, f'below_floor_{floor:.0f}'
+        return True, f'above_floor_{floor:.0f}'
 
     def _load_sp500_symbols(self) -> List[str]:
         """Load S&P 500 symbols from CSV, excluding leveraged ETFs."""
@@ -1353,6 +1541,36 @@ class RAMPLiveAdapter(StrategyAdapter):
                         if self._latest_plan is not None and rec.inputs is not None:
                             rec.inputs.regime_scores = dict(getattr(self._latest_plan, "regime_scores", {}) or {})
                             rec.inputs.exposure_multiplier = float(self._latest_plan.exposure_pct)
+                        # Phase 2D: apply V11 filters (rank_buffer + min_hold)
+                        # to the V01 plan when variant='v11'. V01 path is
+                        # untouched.
+                        if (
+                            self._latest_plan is not None
+                            and getattr(self, 'variant', 'v01') == 'v11'
+                        ):
+                            try:
+                                v11_momentum = self._ramp_signals.calculate_momentum_scores()
+                                v01_targets_before = list(self._latest_plan.targets.keys())
+                                self._latest_plan = self._apply_v11_filters(
+                                    plan=self._latest_plan,
+                                    momentum_scores=v11_momentum,
+                                    current_positions=current_positions,
+                                    current_date=tz.now().replace(tzinfo=None),
+                                )
+                                v11_targets_after = list(self._latest_plan.targets.keys())
+                                added = set(v11_targets_after) - set(v01_targets_before)
+                                removed = set(v01_targets_before) - set(v11_targets_after)
+                                logger.info(
+                                    f"[RAMP] V11 filters applied: "
+                                    f"V01 top_n={len(v01_targets_before)} -> "
+                                    f"V11 final={len(v11_targets_after)} "
+                                    f"(+{len(added)} retained, -{len(removed)} dropped)"
+                                )
+                            except Exception as e:
+                                logger.error(
+                                    f"[RAMP] V11 filter application failed: {e}; "
+                                    f"falling back to V01 plan"
+                                )
                 self._execute_rebalance(signals, current_positions, rec=rec)
                 # F5: enrich LogicDecisions with post-execution realized state
                 if rec.logic_decisions is not None:
@@ -1920,14 +2138,24 @@ class RAMPLiveAdapter(StrategyAdapter):
             except Exception as e:
                 logger.error(f"[RAMP] Error exiting {sym}: {e}")
 
-        # Trims: target_value < current_value by more than min_trade_value
+        # Trims: target_value < current_value by more than the floor.
+        # V01 floor = min_trade_value; V11 floor = max(min_trade_value, equity_base * 0.02).
+        # Trims are never full exits (full exits go through plan.exits above),
+        # so is_full_exit=False here.
         trims = []
         for sym, target in plan.targets.items():
             target_value = equity_base * target.target_weight
             current_value = current_positions.get(sym, 0.0)
             delta = target_value - current_value
-            if delta < -min_trade_value:
-                trims.append((sym, target_value, current_value, abs(delta)))
+            if delta < 0:
+                keep, _ = self._v11_trade_passes_floor(
+                    abs_delta=abs(delta),
+                    equity_base=equity_base,
+                    min_trade_value=min_trade_value,
+                    is_full_exit=False,
+                )
+                if keep:
+                    trims.append((sym, target_value, current_value, abs(delta)))
 
         for sym, target_value, current_value, abs_delta in trims:
             if sym not in pos_by_sym:
@@ -1954,14 +2182,23 @@ class RAMPLiveAdapter(StrategyAdapter):
                 logger.error(f"[RAMP] Error trimming {sym}: {e}")
 
         # --- Phase 2: BUYS (entries and top-ups) with sequential cash tracking ---
+        # V01 floor = min_trade_value; V11 floor = max(min_trade_value, equity_base * 0.02).
+        # Buys are never full exits, so is_full_exit=False.
         buys = []
         for sym, target in plan.targets.items():
             target_value = equity_base * target.target_weight
             current_value = current_positions.get(sym, 0.0)
             delta = target_value - current_value
-            if delta > min_trade_value:
-                rank = target.rank if target.rank is not None else 999
-                buys.append((sym, target_value, current_value, delta, rank))
+            if delta > 0:
+                keep, _ = self._v11_trade_passes_floor(
+                    abs_delta=delta,
+                    equity_base=equity_base,
+                    min_trade_value=min_trade_value,
+                    is_full_exit=False,
+                )
+                if keep:
+                    rank = target.rank if target.rank is not None else 999
+                    buys.append((sym, target_value, current_value, delta, rank))
 
         buys.sort(key=lambda x: x[4])  # best rank first
 
@@ -1974,7 +2211,14 @@ class RAMPLiveAdapter(StrategyAdapter):
                 logger.warning(f"[RAMP] Cash exhausted; skipping BUY for {sym}")
                 continue
             trade_value = min(delta, spendable_cash)
-            if trade_value < min_trade_value:
+            # Re-check floor after cash cap; might have shrunk below floor.
+            keep, _ = self._v11_trade_passes_floor(
+                abs_delta=trade_value,
+                equity_base=equity_base,
+                min_trade_value=min_trade_value,
+                is_full_exit=False,
+            )
+            if not keep:
                 continue
             quote = self.broker.get_latest_quote(sym)
             if not quote:
