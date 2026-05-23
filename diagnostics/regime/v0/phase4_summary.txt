@@ -1,0 +1,25 @@
+=== Summary for Phase 5 ===
+Total replay days: 2360
+BEAR % overall: 16.19%
+BEAR % by year: {2017: 2.8, 2018: 31.5, 2019: 11.5, 2020: 13.4, 2021: 1.6, 2022: 54.2, 2023: 4.4, 2024: 6.7, 2025: 18.0, 2026: 20.4}
+
+Median run lengths:
+  STRONG_BULL: 4.0
+  WEAK_BULL: 2.0
+  SIDEWAYS: 2.0
+  UNPREDICTABLE: 1.5
+  BEAR: 2.0
+
+Mean transition-matrix diagonal mass: 0.761
+
+G1_BEAR days missed by detector: 200 (53.9% of G1_BEAR days)
+Most common missed-BEAR failure mode: momentum_fail (77.5%)
+
+Drawdown events where BEAR fired: 5 of 5
+Median onset lag (days): 14.0
+
+Lookback sensitivity (days with VIX pct >= 70):
+  63d: 725 days (30.7%)
+  126d: 650 days (27.5%)
+  252d: 677 days (28.7%)
+  504d: 759 days (32.2%)
