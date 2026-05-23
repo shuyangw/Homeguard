@@ -114,7 +114,11 @@ echo "[CHECK] $LATEST_JSON"
 # Module-style invocation so `from src.* import ...` inside the comparator resolves.
 # Direct `$PYTHON $COMPARATOR ...` would put the script dir on sys.path instead
 # of REPO_ROOT, causing ModuleNotFoundError on `import src.strategies...`.
-(cd "$REPO_ROOT" && "$PYTHON" -m scripts.trading.compare_paper_vs_plan "$LATEST_JSON")
+LEDGER_JSON="${REPO_ROOT}/data/trading/decisions/_latest/ramp_position_state.json"
+(cd "$REPO_ROOT" && "$PYTHON" -m scripts.trading.compare_paper_vs_plan \
+    "$LATEST_JSON" \
+    --position-ledger "$LEDGER_JSON" \
+    --variant v11)
 RC=$?
 
 if [[ "$RC" -eq 0 ]]; then
