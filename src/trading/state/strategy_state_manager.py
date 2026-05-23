@@ -670,7 +670,8 @@ class StrategyStateManager:
         """Return persisted runner session state for `strategy`.
 
         Keys: peak_equity_usd (float), session_open_equity_usd (float),
-        session_open_date (str YYYY-MM-DD ET). Missing keys return None values.
+        session_open_date (str YYYY-MM-DD ET), position_open_dates
+        (Dict[symbol, ISO datetime str]). Missing keys return None values.
         """
         self._load_state()
         strat = self._state.get('strategies', {}).get(strategy, {}) or {}
@@ -678,6 +679,7 @@ class StrategyStateManager:
             'peak_equity_usd': strat.get('peak_equity_usd'),
             'session_open_equity_usd': strat.get('session_open_equity_usd'),
             'session_open_date': strat.get('session_open_date'),
+            'position_open_dates': strat.get('position_open_dates'),
         }
 
     def update_runner_session_state(
@@ -686,8 +688,13 @@ class StrategyStateManager:
         peak_equity_usd: Optional[float] = None,
         session_open_equity_usd: Optional[float] = None,
         session_open_date: Optional[str] = None,
+        position_open_dates: Optional[Dict[str, str]] = None,
     ) -> None:
-        """Persist runner session state for `strategy`. Only non-None values are written."""
+        """Persist runner session state for `strategy`. Only non-None values are written.
+
+        position_open_dates is a dict of symbol -> ISO datetime string. Passing
+        an empty dict explicitly writes an empty dict (clears the field).
+        """
         self._load_state()
         if strategy not in self._state.get('strategies', {}):
             self._state.setdefault('strategies', {})[strategy] = {'positions': {}, 'last_execution': None}
@@ -698,6 +705,8 @@ class StrategyStateManager:
             strat['session_open_equity_usd'] = float(session_open_equity_usd)
         if session_open_date is not None:
             strat['session_open_date'] = str(session_open_date)
+        if position_open_dates is not None:
+            strat['position_open_dates'] = {str(k): str(v) for k, v in position_open_dates.items()}
         self._save_state()
 
     # =========================================================================

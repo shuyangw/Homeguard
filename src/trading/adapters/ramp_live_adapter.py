@@ -159,6 +159,34 @@ def _cleanup_old_caches(keep_days: int = 3) -> None:
         logger.warning(f"[RAMP] Failed to cleanup old caches: {e}")
 
 
+def update_position_open_dates(
+    previous_positions: Dict[str, float],
+    new_positions: Dict[str, float],
+    previous_open_dates: Dict[str, datetime],
+    current_date: datetime,
+) -> Dict[str, datetime]:
+    """Compute the updated position_open_dates dict after a rebalance.
+
+    Mirrors src/research/ramp_phase4/engine.py::apply_trades:
+    - Set on 0 -> n>0 transition (new open) using current_date.
+    - Preserved on top-ups (existing position grows; original open_date stays).
+    - Cleared on n -> 0 transition (full exit) -- the symbol is removed.
+
+    Pure function: does not mutate inputs. Returns a new dict.
+    """
+    updated: Dict[str, datetime] = {}
+    for sym, qty in new_positions.items():
+        if qty == 0:
+            continue
+        prev_qty = previous_positions.get(sym, 0)
+        if prev_qty == 0:
+            updated[sym] = current_date
+        else:
+            existing = previous_open_dates.get(sym)
+            updated[sym] = existing if existing is not None else current_date
+    return updated
+
+
 class RAMPSignalWrapper(StrategySignals):
     """
     Wrapper to make RAMPSignals compatible with StrategyAdapter.
@@ -416,6 +444,11 @@ class RAMPLiveAdapter(StrategyAdapter):
             state_manager=self.state_manager
         )
 
+        # Track per-symbol open dates for V11 min_hold filters. Mirrors the
+        # research engine's HarnessState.position_open_dates. Loaded from
+        # state_manager so dates survive process restarts.
+        self._position_open_dates: Dict[str, datetime] = self._load_position_open_dates()
+
         # Track last risk signals
         self._last_risk_signals: Optional[RAMPRiskSignals] = None
 
@@ -436,6 +469,94 @@ class RAMPLiveAdapter(StrategyAdapter):
     @property
     def broker_name(self) -> str:
         return self._broker_name
+
+    def _load_position_open_dates(self) -> Dict[str, datetime]:
+        """Load _position_open_dates from state_manager, if present.
+
+        Returns an empty dict when no prior state exists or when the state
+        manager call fails. Persisted format is symbol -> ISO datetime string;
+        parsed back to datetime here. A bad ISO string is logged and dropped --
+        the bookkeeping will refill on the next rebalance.
+        """
+        try:
+            session = self.state_manager.get_runner_session_state(STRATEGY_NAME)
+        except Exception as e:
+            logger.error(f"[RAMP] Failed to load position_open_dates from state: {e}")
+            return {}
+        raw = session.get('position_open_dates') if isinstance(session, dict) else None
+        if not raw:
+            return {}
+        loaded: Dict[str, datetime] = {}
+        for sym, iso_str in raw.items():
+            try:
+                loaded[sym] = datetime.fromisoformat(iso_str)
+            except (TypeError, ValueError) as e:
+                logger.warning(f"[RAMP] Discarding bad position_open_date for {sym}: {iso_str!r} ({e})")
+        if loaded:
+            logger.info(f"[RAMP] Loaded {len(loaded)} position_open_dates from state")
+        return loaded
+
+    def _persist_position_open_dates(self) -> None:
+        """Write _position_open_dates back to state_manager as ISO strings.
+
+        Failures are logged but do not raise -- live trading must not be
+        blocked by a state persistence hiccup. The in-memory dict remains
+        authoritative until the next restart.
+        """
+        try:
+            serialized = {sym: dt.isoformat() for sym, dt in self._position_open_dates.items()}
+            self.state_manager.update_runner_session_state(
+                STRATEGY_NAME,
+                position_open_dates=serialized,
+            )
+        except Exception as e:
+            logger.error(f"[RAMP] Failed to persist position_open_dates: {e}")
+
+    def _snapshot_position_shares(self) -> Dict[str, int]:
+        """Read current broker positions as symbol -> integer share count.
+
+        Returns an empty dict on any error -- the caller treats absent symbols
+        as zero shares, which matches the apply_trades semantics.
+        """
+        try:
+            positions = self.broker.get_positions() or []
+        except Exception as e:
+            logger.error(f"[RAMP] Failed to read positions for share snapshot: {e}")
+            return {}
+        out: Dict[str, int] = {}
+        for p in positions:
+            sym = p.get('symbol')
+            if not sym:
+                continue
+            try:
+                qty = int(p.get('quantity', 0) or 0)
+            except (TypeError, ValueError):
+                qty = 0
+            if qty != 0:
+                out[sym] = qty
+        return out
+
+    def _refresh_position_open_dates(
+        self,
+        previous_positions: Dict[str, float],
+        new_positions: Dict[str, float],
+        current_date: datetime,
+    ) -> None:
+        """Update self._position_open_dates after a rebalance and persist.
+
+        Delegates the bookkeeping to update_position_open_dates() (pure helper)
+        and then writes the result to state_manager. Uses getattr so adapters
+        constructed without going through __init__ (test fixtures using
+        __new__) still work, defaulting to an empty starting dict.
+        """
+        current = getattr(self, '_position_open_dates', None) or {}
+        self._position_open_dates = update_position_open_dates(
+            previous_positions=previous_positions,
+            new_positions=new_positions,
+            previous_open_dates=current,
+            current_date=current_date,
+        )
+        self._persist_position_open_dates()
 
     def _load_sp500_symbols(self) -> List[str]:
         """Load S&P 500 symbols from CSV, excluding leveraged ETFs."""
@@ -1419,6 +1540,9 @@ class RAMPLiveAdapter(StrategyAdapter):
 
             logger.info(f"[RAMP] Portfolio value: ${portfolio_value:,.2f}")
 
+            # Snapshot pre-rebalance share counts for position_open_dates bookkeeping.
+            pre_positions_shares = self._snapshot_position_shares()
+
             # Separate buy, sell, and hold signals
             buy_signals = [s for s in signals if s.direction == 'BUY']
             sell_signals = [s for s in signals if s.direction == 'SELL']
@@ -1670,6 +1794,14 @@ class RAMPLiveAdapter(StrategyAdapter):
                         except Exception:
                             pass  # never let metric emission break trading
 
+            # Refresh position_open_dates from the resulting share counts.
+            post_positions_shares = self._snapshot_position_shares()
+            self._refresh_position_open_dates(
+                previous_positions=pre_positions_shares,
+                new_positions=post_positions_shares,
+                current_date=tz.now().replace(tzinfo=None),
+            )
+
             logger.info("[RAMP] Rebalance execution complete")
 
         except Exception as e:
@@ -1723,6 +1855,11 @@ class RAMPLiveAdapter(StrategyAdapter):
 
         broker_positions = self.broker.get_positions() or []
         pos_by_sym = {p['symbol']: p for p in broker_positions}
+
+        # Snapshot pre-rebalance share counts for position_open_dates bookkeeping.
+        pre_positions_shares = {
+            sym: int(p.get('quantity', 0) or 0) for sym, p in pos_by_sym.items()
+        }
 
         # --- Phase 1: SELLS (exits and trims) ---
         # Full exits: positions that fell out of the top-N or are force-exited
@@ -1823,6 +1960,14 @@ class RAMPLiveAdapter(StrategyAdapter):
                 )
             except Exception as e:
                 logger.error(f"[RAMP] Error buying {sym}: {e}")
+
+        # Refresh position_open_dates from the resulting share counts.
+        post_positions_shares = self._snapshot_position_shares()
+        self._refresh_position_open_dates(
+            previous_positions=pre_positions_shares,
+            new_positions=post_positions_shares,
+            current_date=tz.now().replace(tzinfo=None),
+        )
 
         logger.info("[RAMP] Target-aware rebalance execution complete")
 
