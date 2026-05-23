@@ -249,6 +249,19 @@ class StrategyStateManager:
         strategies = self._toggle.get('strategies', {})
         return [name for name, config in strategies.items() if config.get('enabled', False)]
 
+    def get_variant(self, strategy: str, default: str = 'v01') -> str:
+        """Get the configured variant for a strategy.
+
+        Returns the variant string from strategy_toggle.yaml under
+        strategies.<name>.variant. Falls back to ``default`` when the field is
+        absent or the strategy has no entry, so the legacy production path
+        keeps working on older toggle files.
+        """
+        self.reload_toggle()
+        strategies = self._toggle.get('strategies', {})
+        config = strategies.get(strategy, {})
+        return config.get('variant', default)
+
     # =========================================================================
     # State File Management
     # =========================================================================

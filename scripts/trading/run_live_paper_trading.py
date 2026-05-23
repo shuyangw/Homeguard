@@ -1115,6 +1115,13 @@ def create_ramp_adapter(broker, data_provider=None, initial_capital=None, metric
         logger.info(f"  Using data provider: {data_provider.name}")
     if initial_capital is not None:
         logger.info(f"  Capital cap: ${initial_capital:,.0f}")
+
+    # Phase 2C (2026-05-22): read RAMP variant from strategy_toggle.yaml.
+    # 'v01' is the legacy production path; 'v11' is the Phase 4 Wave 1 backport
+    # (gated by Phase 2D which reads adapter.variant in the rebalance code).
+    variant = StrategyStateManager().get_variant('ramp', default='v01')
+    logger.info(f"  RAMP variant: {variant}")
+
     # Phase 4 Phase A (2026-05-15): use_target_planner=True activates the
     # target-aware execution path (per docs/superpowers/specs/2026-05-15-ramp-phase4-phaseA-design.md).
     # Paper validation gate: >=5 consecutive clean sessions per A7.
@@ -1126,6 +1133,7 @@ def create_ramp_adapter(broker, data_provider=None, initial_capital=None, metric
         initial_capital=initial_capital,
         metrics_registry=metrics_registry,
         use_target_planner=True,
+        variant=variant,
     )
 
 

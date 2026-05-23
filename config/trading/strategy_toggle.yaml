@@ -1,15 +1,19 @@
-last_modified: '2026-05-15T17:41:14.149193-04:00'
-modified_by: claude-code
+last_modified: '2026-05-22T23:09:18.619390-04:00'
+modified_by: api
 strategies:
   cscm:
     enabled: false
     shutdown_requested: false
+    variant: v01
   mp:
     enabled: true
     shutdown_requested: false
+    variant: v01
   omr:
     enabled: false
     shutdown_requested: false
+    variant: v01
   ramp:
     enabled: false
     shutdown_requested: false
+    variant: v01

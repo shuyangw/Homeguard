@@ -343,7 +343,8 @@ class RAMPLiveAdapter(StrategyAdapter):
         metrics_registry: Optional[Any] = None,
         *,
         broker_name: str,
-        use_target_planner: bool = False
+        use_target_planner: bool = False,
+        variant: str = 'v01'
     ):
         """
         Initialize RAMP live adapter.
@@ -370,7 +371,19 @@ class RAMPLiveAdapter(StrategyAdapter):
             use_target_planner: When True, route _execute_rebalance to the
                                target-aware path (Phase 4 F2). Default False
                                preserves legacy production behavior.
+            variant: Strategy variant selector. 'v01' = current production
+                     behavior (default). 'v11' = Phase 4 Wave 1 backport
+                     (rank_buffer + min_hold + delta_threshold). Phase 2D
+                     reads self.variant to gate the V11 rebalance path; this
+                     constructor only validates and stores it.
+
+        Raises:
+            ValueError: If variant is not one of {'v01', 'v11'}.
         """
+        if variant not in ('v01', 'v11'):
+            raise ValueError(
+                f"[RAMP] Invalid variant {variant!r} -- expected 'v01' or 'v11'"
+            )
         # Use default S&P 500 symbols if not specified
         if symbols is None:
             symbols = self._load_sp500_symbols()
@@ -465,6 +478,9 @@ class RAMPLiveAdapter(StrategyAdapter):
 
         self.use_target_planner = use_target_planner
         logger.info(f"[RAMP]   Use target planner: {use_target_planner}")
+
+        self.variant = variant
+        logger.info(f"[RAMP]   Variant: {variant}")
 
     @property
     def broker_name(self) -> str:

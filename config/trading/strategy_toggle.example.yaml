@@ -13,6 +13,9 @@
 #   strategies.<name>.enabled: bool         # whether the strategy runs at all
 #   strategies.<name>.shutdown_requested: bool  # graceful-stop signal; bot
 #                                                 will exit on next idle tick
+#   strategies.<name>.variant: str          # strategy variant selector
+#                                             (RAMP: 'v01' = production, 'v11' = Phase 4 Wave 1).
+#                                             Defaults to 'v01' (current behavior).
 #   last_modified: ISO timestamp (auto-updated by save)
 #   modified_by: free-form identifier of the modifier (auto/api/discord/manual)
 last_modified: '2026-04-26T00:00:00+00:00'
@@ -21,12 +24,16 @@ strategies:
   omr:
     enabled: true
     shutdown_requested: false
+    variant: v01
   mp:
     enabled: false
     shutdown_requested: false
+    variant: v01
   ramp:
     enabled: true
     shutdown_requested: false
+    variant: v01
   cscm:
     enabled: true
     shutdown_requested: false
+    variant: v01
