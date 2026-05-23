@@ -86,25 +86,60 @@ def run_variant(cfg: HarnessConfig, variant_spec: VariantLike) -> List[DailyReco
         _handle_nan_exits(state, prices)
         cur_value = _portfolio_value(state, prices)
 
-        # 2. Variant produces target weights + optional regime sentinel.
+        if cfg.timing_mode == 'one_day_lag':
+            # Execute YESTERDAY's pending FIRST, then call plan_fn so the variant
+            # sees freshly-installed positions. This aligns filter state (rank_buffer,
+            # min_hold) with what's actually held when each plan executes.
+            targets_to_execute = dict(state.pending_targets)
+
+            if targets_to_execute:
+                weight_sum = sum(targets_to_execute.values())
+                if weight_sum > 1.0 + OVERLEVERAGE_EPSILON:
+                    raise ValueError(
+                        f'Variant {variant_spec.id} would overleverage at {ts.date()}: '
+                        f'sum(weights)={weight_sum:.4f} (mode=one_day_lag)'
+                    )
+                trades = compute_trades(
+                    state, targets_to_execute, prices, cur_value,
+                    cfg.min_trade_value_usd,
+                    delta_rebalance_pct=cfg.delta_rebalance_pct,
+                )
+                cost = flat_bps_cost(trades, cfg.cost_bps_per_side)
+                turnover = sum(abs(t['trade_value_usd']) for t in trades)
+                apply_trades(state, trades, cost_usd=cost, current_date=ts)
+            else:
+                cost = 0.0
+                turnover = 0.0
+
+            post_value = _portfolio_value(state, prices)
+
+            # Plan_fn now sees post-execution state.
+            plan_output = variant_spec.plan_fn(ts, state, panel, cfg) or {}
+            regime_label = str(plan_output.pop('__regime__', 'STUB'))
+            target_weights = plan_output
+
+            if regime_label == 'SAFE_MODE':
+                state.pending_targets = {}
+                # last_target_symbols preserved (don't update on SAFE_MODE).
+            else:
+                state.pending_targets = dict(target_weights)
+                state.last_target_symbols = list(target_weights.keys())
+
+            daily_ret = (post_value / prev_value) - 1.0 if prev_value > 0 else 0.0
+            records.append(DailyRecord(
+                date=ts, regime=regime_label,
+                target_weights=dict(target_weights),
+                realized_weights=_current_weights(state, prices, post_value),
+                turnover_usd=turnover, cost_usd=cost,
+                portfolio_value=post_value, daily_return=daily_ret,
+            ))
+            prev_value = post_value
+            continue
+
+        # near_close branch (unchanged semantics).
         plan_output = variant_spec.plan_fn(ts, state, panel, cfg) or {}
         regime_label = str(plan_output.pop('__regime__', 'STUB'))
         target_weights = plan_output
-
-        # 3. Decide what to actually execute today, per timing mode.
-        if cfg.timing_mode == 'near_close':
-            targets_to_execute = target_weights
-        elif cfg.timing_mode == 'one_day_lag':
-            targets_to_execute = dict(state.pending_targets)
-            # Today's plan becomes tomorrow's pending unless SAFE_MODE.
-            if regime_label != 'SAFE_MODE':
-                state.pending_targets = dict(target_weights)
-            else:
-                state.pending_targets = {}
-                # SAFE_MODE also blocks today's already-pending execution.
-                targets_to_execute = {}
-        else:
-            raise ValueError(f'Unknown timing_mode: {cfg.timing_mode!r}')
 
         if regime_label == 'SAFE_MODE':
             # Hold current positions; no trades. Preserve last_target_symbols.
@@ -120,31 +155,15 @@ def run_variant(cfg: HarnessConfig, variant_spec: VariantLike) -> List[DailyReco
             prev_value = post_value
             continue
 
-        # one_day_lag day 1 (or any day with empty pending): no trades, record a hold.
-        if cfg.timing_mode == 'one_day_lag' and not targets_to_execute:
-            post_value = cur_value
-            daily_ret = (post_value / prev_value) - 1.0 if prev_value > 0 else 0.0
-            records.append(DailyRecord(
-                date=ts, regime=regime_label,
-                target_weights=dict(target_weights),
-                realized_weights=_current_weights(state, prices, post_value),
-                turnover_usd=0.0, cost_usd=0.0,
-                portfolio_value=post_value, daily_return=daily_ret,
-            ))
-            state.last_target_symbols = list(target_weights.keys())
-            prev_value = post_value
-            continue
-
-        weight_sum = sum(targets_to_execute.values())
+        weight_sum = sum(target_weights.values())
         if weight_sum > 1.0 + OVERLEVERAGE_EPSILON:
             raise ValueError(
-                f'Variant {variant_spec.id} would overleverage at {ts.date()}: '
-                f'sum(weights)={weight_sum:.4f} (mode={cfg.timing_mode})'
+                f'Variant {variant_spec.id} returned overleverage at {ts.date()}: '
+                f'sum(weights)={weight_sum:.4f}'
             )
 
-        # 4. Compute trades + cost, apply.
         trades = compute_trades(
-            state, targets_to_execute, prices, cur_value,
+            state, target_weights, prices, cur_value,
             cfg.min_trade_value_usd,
             delta_rebalance_pct=cfg.delta_rebalance_pct,
         )
@@ -152,7 +171,6 @@ def run_variant(cfg: HarnessConfig, variant_spec: VariantLike) -> List[DailyReco
         turnover = sum(abs(t['trade_value_usd']) for t in trades)
         apply_trades(state, trades, cost_usd=cost, current_date=ts)
 
-        # 5. Post-trade MTM.
         post_value = _portfolio_value(state, prices)
         daily_ret = (post_value / prev_value) - 1.0 if prev_value > 0 else 0.0
         realized_weights = _current_weights(state, prices, post_value)
@@ -166,9 +184,6 @@ def run_variant(cfg: HarnessConfig, variant_spec: VariantLike) -> List[DailyReco
             portfolio_value=post_value,
             daily_return=daily_ret,
         ))
-        # Track the symbol list that plan_fn proposed (BEFORE engine-side filtering)
-        # so the next iteration's variant filters can read what was "previously held"
-        # in the target sense. For SAFE_MODE days we leave last_target_symbols unchanged.
         state.last_target_symbols = list(target_weights.keys())
         prev_value = post_value
 
