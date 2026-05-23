@@ -1,7 +1,7 @@
-# V12 -- Per-Regime Position Override on V11 Base (rev3)
+# V12 -- Per-Regime Position Override on V11 Base (rev4)
 
 **Date**: 2026-05-23
-**Status**: Approved (brainstorming -> spec -> rev2 -> rev3 from Claude re-review)
+**Status**: Approved (brainstorming -> spec -> rev2 -> rev3 -> rev4 from Claude re-review)
 **Owner**: Shuyang
 **Type**: Research strategy variant (no production deploy in this spec; readiness orchestrator decides Phase D candidacy)
 **Base**: V11 (`ramp-phase4-turnover-regime-research` at `fc7de60`)
@@ -13,15 +13,19 @@
 
 ## Revision history
 
-- **rev1 (initial)**: BEAR + UNPREDICTABLE both default to cash; pass criteria PSR/DSR/PBO/lag (4 gates); no hysteresis parameter (YAGNI); detector-lag interaction flagged as Open Question.
-- **rev2**: UNPREDICTABLE default flipped to `normal` with cash as A/B; added cost-sensitivity gate (5th gate); exposed `min_regime_days` parameter; promoted detector-onset alignment to first-class deliverable; reframed PSR/DSR as jointly binding; added Kalman parallel-filter constraint for V13.
-- **rev3 (this doc)**: incorporates three fixes from re-review:
-  1. **Hysteresis semantics committed to symmetric**. rev2 had three contradictory descriptions of how `min_regime_days` should behave (description text said symmetric, pseudo-code was entry-only asymmetric, re-entry section reverted to symmetric). rev3 commits to symmetric (the principled cost-thesis-protecting choice) and rewrites the pseudo-code using engine-managed `state.last_validated_regime` so the variant stays read-only on state. A pinning test makes the semantics non-ambiguous in code.
-  2. **Hysteresis and UNPREDICTABLE A/Bs downgraded to sensitivity-only**. The 5 pass gates apply to v12.0.0 (BEAR-cash, `min_regime_days=0`, UNPREDICTABLE=normal) alone. The `min_regime_days` in {2, 3, 5} runs and `V12-up-cash` variant are still run in the orchestrator but go in an appendix; their results don't enter the gate computation. Selection-from-N inside a single readiness gate inflates effective trial count without DSR seeing it; this is the honest split. If sensitivity shows clear lift, tuning becomes V12b/V12c with its own readiness gate.
-  3. **Pass gates 4 and 5 tightened with direction and lag mode**. Gate 4 is now directional: `Sharpe(one_day_lag) >= 0.8 * Sharpe(near_close)` (catches structural lookahead, allows the safe direction where one_day_lag is higher). Gate 5 explicitly evaluates at `one_day_lag` mode (realistic execution assumption), not `near_close` (research convenience).
-- rev3 also: fixes off-by-one in test count (was "11+", actually 13), adds first-tick engine initialization notes for `last_regime` / `regime_streak` / `last_validated_regime`, and acknowledges in the risk table that BEAR median run length ~3-4 days plus detector lag ~14 days creates a "no good hysteresis value" tension that may push the V12 verdict toward Tier 3 (WS-3 priority).
+- **rev1 (initial)**: BEAR + UNPREDICTABLE both default to cash; PSR/DSR/PBO/lag (4 gates); no hysteresis; detector-lag flagged as Open Question.
+- **rev2**: UNPREDICTABLE default flipped to `normal`; added cost-sensitivity gate (5th); exposed `min_regime_days`; promoted detector-onset alignment; reframed PSR/DSR jointly binding; added Kalman constraint for V13.
+- **rev3**: committed to symmetric hysteresis; downgraded A/Bs to sensitivity-only; tightened gates 4 and 5 with direction and lag mode; flagged the "no good hysteresis value" tension.
+- **rev4 (this doc)**: prose walk-throughs in rev2 and rev3 kept introducing contradictions in the same neighborhood (tick-ordering of engine state updates relative to variant execution). rev4's central change is structural: a canonical pinning test in real Python becomes the source of truth for hysteresis semantics, and all prose sections explicitly defer to it. Specific fixes:
+  1. **Canonical pinning test is now the spec for hysteresis semantics**. Section "Canonical pinning test" below contains 13 ticks of hardcoded expected values for `(regime_streak, last_validated_regime, active_mode)`. If prose and test disagree, the test wins.
+  2. **rev3 risk-row 8 contradicted the rev3 design pseudo-code on tick ordering**. Risk row said post-variant update; design said pre-variant. The walk-through table assumed pre-variant. rev4 commits to **pre-variant update** uniformly, removes the conflicting language and the "wait, this needs care" cruft, and points the implementer at the pinning test as the enforcement mechanism.
+  3. **Integration test description had self-correcting cruft** ("tick 5 = third BEAR in {0,1,3,4,5}? No -- ...") and stated wrong tick numbers under pre-variant ordering. rev4 cleans this up: BEAR-BEAR-WEAK_BULL-BEAR-BEAR-BEAR with `min_regime_days=3` produces cash on tick 5 (the third consecutive BEAR after the WEAK_BULL reset at tick 2), not "tick 6 onward".
+  4. **Test count corrected to 14** (rev3 said 13 in the header and 13 in Decision Gates; both undercounted by one). Decision Gates updated.
+  5. **Appendix D terminology corrected**. `min_regime_days` is technically *debouncing* (require N consecutive samples before accepting a state change), not *hysteresis* (different thresholds for entering vs. exiting a state). rev3 Appendix D claimed "control-systems hysteresis is symmetric by definition" -- this is the opposite of true (a thermostat with ON at 68 F and OFF at 72 F has asymmetric thresholds, and that's literally what makes it hysteresis). rev4 fixes the terminology and keeps "hysteresis" as the colloquial name with an explicit note.
+  6. **First-tick correctness note completed**. rev3 stopped at ticks 0-1 for `min_regime_days=3`; rev4 extends through tick 2 (validation moment) so the reader sees the full cold-start trajectory.
+  7. **Gate 4 floored at 0.1 absolute** to avoid vacuous tightness when `Sharpe(near_close)` is near zero. Not relevant for V12's expected Sharpe range but makes the gate definition robust.
 
-This spec is a working document. The defaults below have been reviewed twice; they remain explicitly subject to revision based on readiness orchestrator findings.
+This spec is a working document. The defaults below have been reviewed three times; they remain subject to revision based on readiness orchestrator findings.
 
 ---
 
@@ -37,8 +41,8 @@ V12 is the obvious synthesis: V11's filter base already reduces turnover (rank_b
 
 ## Goals
 
-1. Variant `V12` registered in `src/research/ramp_phase4/variants.py` such that `cfg.regime_positions` controls per-regime position behavior, with an optional `cfg.min_regime_days` hysteresis parameter (symmetric semantics; see Design).
-2. Default v12.0.0 config holds cash on BEAR only, defers to V11 logic on STRONG_BULL + WEAK_BULL + SIDEWAYS + UNPREDICTABLE, preserves prior positions on SAFE_MODE, and ships with `min_regime_days=0` (hysteresis dormant).
+1. Variant `V12` registered in `src/research/ramp_phase4/variants.py` such that `cfg.regime_positions` controls per-regime position behavior, with optional `cfg.min_regime_days` debouncing (colloquially "hysteresis"; see Design and Appendix D).
+2. Default v12.0.0 config holds cash on BEAR only, defers to V11 logic on STRONG_BULL + WEAK_BULL + SIDEWAYS + UNPREDICTABLE, preserves prior positions on SAFE_MODE, and ships with `min_regime_days=0` (debouncing dormant).
 3. Readiness orchestrator re-run with V12 added to the cross-variant PBO set; emit a PSR/DSR/PBO/lag/cost verdict report (5 gates) computed on v12.0.0 alone.
 4. Detector-onset alignment analysis emitted as part of the same readiness report -- input to the V12-vs-WS-3 decision.
 5. Sensitivity appendix in the readiness report: V12-up-cash and `min_regime_days` in {2, 3, 5}. Informational only; if anything shows clear lift, it becomes input for a V12b/V12c spec, not a v12.0.0 default swap.
@@ -50,11 +54,11 @@ V12 is the obvious synthesis: V11's filter base already reduces turnover (rank_b
 - Per-regime strategy routing (different strategy class per regime). Requires adapter layer; deferred to V13+.
 - Production paper deploy of V12. Gated on readiness verdict. If V12 clears, deploy mirrors V11's path (toggle.yaml `variant: v12`, A7 comparator extended) but only after the IBKR migration paper-comparator framework can run V11 and V12 in parallel.
 - Modifying the detector itself. WS-3 (v1 detector with hysteresis) is conditional and out of scope here.
-- **rev3**: changing v12.0.0 defaults post-readiness based on sensitivity-appendix results. If sensitivity says hysteresis helps, that's a V12b spec, not an in-place default swap. Otherwise the readiness gate's DSR count is structurally dishonest.
+- Changing v12.0.0 defaults post-readiness based on sensitivity-appendix results. If sensitivity says debouncing helps, that's a V12b spec, not an in-place default swap.
 
 ## Design
 
-### Variant implementation (rev3 -- symmetric hysteresis)
+### Variant implementation (rev4 -- pure read on state)
 
 `_variant_v12(t, state, panel, cfg)` in `src/research/ramp_phase4/variants.py`:
 
@@ -64,13 +68,11 @@ def _variant_v12(t, state, panel, cfg):
     plan = _variant_v11(t, state, panel, cfg)
     regime = plan['__regime__']
 
-    # 2. Determine the active position mode under symmetric hysteresis.
+    # 2. Determine the active position mode.
     if cfg.min_regime_days > 0:
-        # The engine sets state.last_validated_regime when a regime's streak
-        # has reached min_regime_days. Until then, default to 'normal' (V11
-        # behavior) -- symmetric semantics: we don't switch modes until the
-        # NEW regime has been observed for min_regime_days days, and we
-        # stay in the current mode through transient flips back.
+        # The engine has already updated state.last_validated_regime
+        # PRE-variant on this tick (see "Engine regime-streak tracking"
+        # and the canonical pinning test). The variant just reads it.
         if state.last_validated_regime is None:
             active_mode = 'normal'   # cold start; no regime yet validated
         else:
@@ -93,29 +95,100 @@ def _variant_v12(t, state, panel, cfg):
         )
 ```
 
-The variant reads `state.last_validated_regime` but does not mutate state. All state updates happen in the engine's per-tick post-processing (see "Engine regime-streak tracking" below).
+The variant reads `state.last_validated_regime` and does not mutate state. All state updates happen pre-variant in the engine (see next section). The canonical pinning test below is the source of truth for what state values the variant must see on each tick.
 
-### Symmetric semantics walk-through (rev3 -- pinning the contradiction)
+### Canonical pinning test (rev4 -- this is the spec for debouncing semantics)
 
-Setup: `cfg.min_regime_days = 3`, `cfg.regime_positions['BEAR'] = 'cash'`, all others = 'normal'.
+Add to `tests/research/ramp_phase4/test_variants.py`:
 
-| Day | Regime | regime_streak | last_validated_regime | active_mode | Behavior |
+```python
+def test_v12_hysteresis_symmetric_canonical():
+    """
+    CANONICAL PINNING TEST -- THE SOURCE OF TRUTH for V12's debouncing
+    semantics. If the prose walk-through and this test disagree, the test
+    is correct by definition. All other tests in test_variants.py and
+    test_engine.py are consistent with this one.
+
+    Semantics enforced:
+      (a) Engine updates regime_streak and last_validated_regime BEFORE the
+          variant reads them on each tick (pre-variant ordering).
+      (b) Debouncing is symmetric: mode changes only when the new regime
+          has been observed for min_regime_days consecutive ticks; the
+          prior mode persists through transient flips.
+
+    Sequence: 13 ticks (0..12) driving the state machine through cold
+    start, validation, transient flip-back (tick 7), and re-validation.
+    """
+    cfg = HarnessConfig(
+        min_regime_days=3,
+        regime_positions={'BEAR': 'cash',
+                          'WEAK_BULL': 'normal',
+                          'STRONG_BULL': 'normal',
+                          'SIDEWAYS': 'normal',
+                          'UNPREDICTABLE': 'normal',
+                          'SAFE_MODE': 'hold'},
+    )
+
+    # Each row is the state AFTER the engine's pre-variant update on that
+    # tick, plus the active_mode the variant computes from it.
+    EXPECTED = [
+        # tick, regime,        regime_streak,            last_validated_regime, active_mode
+        (0,    'WEAK_BULL',    {'WEAK_BULL': 1},         None,                  'normal'),
+        (1,    'WEAK_BULL',    {'WEAK_BULL': 2},         None,                  'normal'),
+        (2,    'WEAK_BULL',    {'WEAK_BULL': 3},         'WEAK_BULL',           'normal'),
+        (3,    'BEAR',         {'BEAR': 1},              'WEAK_BULL',           'normal'),
+        (4,    'BEAR',         {'BEAR': 2},              'WEAK_BULL',           'normal'),
+        (5,    'BEAR',         {'BEAR': 3},              'BEAR',                'cash'),     # cash starts HERE
+        (6,    'BEAR',         {'BEAR': 4},              'BEAR',                'cash'),
+        (7,    'WEAK_BULL',    {'WEAK_BULL': 1},         'BEAR',                'cash'),     # PIN: symmetric stall
+        (8,    'BEAR',         {'BEAR': 1},              'BEAR',                'cash'),
+        (9,    'BEAR',         {'BEAR': 2},              'BEAR',                'cash'),
+        (10,   'WEAK_BULL',    {'WEAK_BULL': 1},         'BEAR',                'cash'),
+        (11,   'WEAK_BULL',    {'WEAK_BULL': 2},         'BEAR',                'cash'),
+        (12,   'WEAK_BULL',    {'WEAK_BULL': 3},         'WEAK_BULL',           'normal'),   # re-enter
+    ]
+
+    state = make_fresh_state()  # last_regime=None, regime_streak={}, last_validated_regime=None
+    for tick, regime, exp_streak, exp_lvr, exp_mode in EXPECTED:
+        # 1. Engine pre-variant update.
+        engine_pre_variant_update(state, regime, cfg.min_regime_days)
+
+        # 2. Check engine state matches expectation BEFORE the variant runs.
+        assert state.regime_streak == exp_streak, \
+            f"tick {tick}: streak got {state.regime_streak}, expected {exp_streak}"
+        assert state.last_validated_regime == exp_lvr, \
+            f"tick {tick}: last_validated_regime got {state.last_validated_regime}, expected {exp_lvr}"
+
+        # 3. Variant computes active mode from post-update state.
+        plan = _variant_v12(tick, state, _stub_panel(regime), cfg)
+        active_mode = _interpret_plan_as_mode(plan)
+        assert active_mode == exp_mode, \
+            f"tick {tick}: active_mode got {active_mode}, expected {exp_mode}"
+```
+
+The helpers (`make_fresh_state`, `engine_pre_variant_update`, `_stub_panel`, `_interpret_plan_as_mode`) are implementation-defined. The expected values are the spec.
+
+Tick 7 is the key row: under asymmetric (entry-only) debouncing, tick 7 would re-enter via V11 because BEAR->WEAK_BULL lifts the gate. Under symmetric debouncing (V12's design), tick 7 stays in cash because WEAK_BULL hasn't been validated. This single row distinguishes the two designs.
+
+### Walk-through table (rev4 -- commentary; the test above is authoritative)
+
+The table below restates the canonical test in human-readable form. If you find a discrepancy, the test is correct.
+
+| Tick | Regime | regime_streak | last_validated_regime | active_mode | Notes |
 |---|---|---|---|---|---|
-| 0 | WEAK_BULL | {WB: 1} | None (cold) | normal | V11 plan executes |
-| 1 | WEAK_BULL | {WB: 2} | None | normal | V11 plan |
-| 2 | WEAK_BULL | {WB: 3} | WEAK_BULL | normal | V11 plan (WB just validated, but mode unchanged) |
-| 3 | BEAR | {B: 1} | WEAK_BULL | normal | V11 plan (BEAR not yet validated) |
-| 4 | BEAR | {B: 2} | WEAK_BULL | normal | V11 plan |
-| 5 | BEAR | {B: 3} | BEAR | cash | LIQUIDATE -- BEAR just validated |
-| 6 | BEAR | {B: 4} | BEAR | cash | Hold cash |
-| 7 | WEAK_BULL | {WB: 1} | BEAR | cash | **Still cash -- WEAK_BULL not yet validated. This is the symmetric stall.** |
-| 8 | BEAR | {B: 1} | BEAR | cash | Still cash -- regime streak reset but last_validated didn't change |
-| 9 | BEAR | {B: 2} | BEAR | cash | Cash |
-| 10 | WEAK_BULL | {WB: 1} | BEAR | cash | Still cash |
-| 11 | WEAK_BULL | {WB: 2} | BEAR | cash | Still cash |
-| 12 | WEAK_BULL | {WB: 3} | WEAK_BULL | normal | RE-ENTER -- WEAK_BULL just re-validated |
-
-Day 7 is the test that pins the choice. Under asymmetric (entry-only) hysteresis, Day 7 would re-enter via V11 because the BEAR->WB flip lifts the hysteresis. Under symmetric, Day 7 stays in cash because WB hasn't been validated. **Symmetric is the V12 design.** This protects the cost thesis: short non-BEAR runs that wouldn't justify a round-trip don't trigger one.
+| 0 | WEAK_BULL | {WB: 1} | None | normal | Cold start; no regime yet validated |
+| 1 | WEAK_BULL | {WB: 2} | None | normal | |
+| 2 | WEAK_BULL | {WB: 3} | WEAK_BULL | normal | WEAK_BULL validates; mode unchanged since WB maps to normal |
+| 3 | BEAR | {B: 1} | WEAK_BULL | normal | Streak resets on flip; LVR unchanged |
+| 4 | BEAR | {B: 2} | WEAK_BULL | normal | |
+| 5 | BEAR | {B: 3} | BEAR | cash | **BEAR validates; LIQUIDATE** |
+| 6 | BEAR | {B: 4} | BEAR | cash | |
+| 7 | WEAK_BULL | {WB: 1} | BEAR | cash | **PIN: symmetric stall, WB not validated** |
+| 8 | BEAR | {B: 1} | BEAR | cash | Streak resets to BEAR; LVR unchanged |
+| 9 | BEAR | {B: 2} | BEAR | cash | |
+| 10 | WEAK_BULL | {WB: 1} | BEAR | cash | |
+| 11 | WEAK_BULL | {WB: 2} | BEAR | cash | |
+| 12 | WEAK_BULL | {WB: 3} | WEAK_BULL | normal | **WB re-validates; RE-ENTER via V11** |
 
 ### Config schema
 
@@ -126,12 +199,12 @@ regime_positions: Dict[str, str] = field(default_factory=lambda: {
     'STRONG_BULL':   'normal',
     'WEAK_BULL':     'normal',
     'SIDEWAYS':      'normal',
-    'UNPREDICTABLE': 'normal',   # rev2: was 'cash'; cash version is sensitivity-only in readiness orchestrator
+    'UNPREDICTABLE': 'normal',
     'BEAR':          'cash',
     'SAFE_MODE':     'hold',
 })
-min_regime_days: int = 0  # rev2: hysteresis. 0 = no hysteresis (v12.0.0 default).
-                          # rev3: semantics are symmetric -- see Design.
+min_regime_days: int = 0  # debouncing on regime->mode change. 0 = no debouncing (v12.0.0 default).
+                          # Semantics: symmetric; see canonical pinning test.
 ```
 
 Validation in `HarnessConfig.__post_init__`:
@@ -139,36 +212,40 @@ Validation in `HarnessConfig.__post_init__`:
 - raise `ValueError` if `min_regime_days < 0`
 - Allow unknown KEYS in `regime_positions` (regime names) to fall through to `'normal'` -- future-proofing
 
-### Engine regime-streak tracking (rev3 -- adds last_validated_regime)
+### Engine regime-streak tracking (rev4 -- pre-variant ordering, no ambiguity)
 
 Engine state additions:
 ```python
 state.last_regime: Optional[str] = None              # most recent regime classification
 state.regime_streak: Dict[str, int] = {}             # consecutive day count for current regime
-state.last_validated_regime: Optional[str] = None    # rev3: most recent regime whose streak >= min_regime_days
+state.last_validated_regime: Optional[str] = None    # most recent regime whose streak >= min_regime_days
 ```
 
-Per-tick **PRE-variant** processing in `engine.py` (rev3: explicit ordering choice -- engine updates state BEFORE the variant reads it):
+Per-tick **pre-variant** processing in `engine.py` (rev4 commits explicitly: engine updates state BEFORE the variant reads it on the same tick):
 
 ```python
-# 1. Update regime streak.
-if state.last_regime == regime:
-    state.regime_streak[regime] = state.regime_streak.get(regime, 0) + 1
-else:
-    # Regime flip: reset streak. First-tick behavior: last_regime is None,
-    # which never equals any real regime name, so this branch fires correctly.
-    state.regime_streak = {regime: 1}
-state.last_regime = regime
+# Called at the START of each tick, before _variant_v12 runs.
+def engine_pre_variant_update(state, regime, min_regime_days):
+    # 1. Update regime streak.
+    if state.last_regime == regime:
+        state.regime_streak[regime] = state.regime_streak.get(regime, 0) + 1
+    else:
+        # Regime flip: reset streak. First-tick: last_regime is None,
+        # which never equals any real regime name, so this branch fires.
+        state.regime_streak = {regime: 1}
+    state.last_regime = regime
 
-# 2. Update last_validated_regime if current regime has cleared threshold.
-# rev3: with min_regime_days=0 (default), the >= check passes on every tick
-# (streak >= 1 >= 0 is always true), so last_validated_regime tracks the
-# instantaneous regime -- bit-equivalent to no-hysteresis behavior.
-if state.regime_streak[regime] >= cfg.min_regime_days:
-    state.last_validated_regime = regime
+    # 2. Update last_validated_regime if current regime has cleared threshold.
+    # With min_regime_days=0, streak >= 1 >= 0 always passes, so
+    # last_validated_regime tracks the instantaneous regime -- making this
+    # bit-equivalent to no-debouncing behavior.
+    if state.regime_streak[regime] >= min_regime_days:
+        state.last_validated_regime = regime
 ```
 
-**First-tick correctness** (rev3 explicit note): on `t=0`, `state.last_regime is None`. The equality check `None == "BEAR"` is False, so we hit the else branch: `regime_streak = {"BEAR": 1}`. Then `1 >= cfg.min_regime_days` is True iff `min_regime_days <= 1`. With default `min_regime_days=0`, this is True, and `last_validated_regime = "BEAR"` on tick 0 -- matching no-hysteresis behavior. With `min_regime_days=3`, `last_validated_regime` stays None until tick 2, and the variant falls through to `active_mode = 'normal'` for ticks 0-1.
+**First-tick correctness** (rev4 completed): on `t=0`, `state.last_regime is None`. The equality check `None == "BEAR"` is False, so we hit the else branch: `regime_streak = {"BEAR": 1}`. Then `1 >= cfg.min_regime_days` is True iff `min_regime_days <= 1`.
+- With default `min_regime_days=0`: `1 >= 0` passes, `last_validated_regime = "BEAR"` on tick 0; variant returns cash on tick 0. Matches no-debouncing behavior.
+- With `min_regime_days=3` on a cold BEAR start: tick 0 leaves `last_validated_regime = None` (streak=1 < 3), variant falls through to `active_mode = 'normal'`. Tick 1 same (streak=2 < 3). **Tick 2 has streak=3 = min_regime_days, so the engine sets `last_validated_regime = 'BEAR'` pre-variant; variant returns cash on tick 2.** This matches the canonical pinning test's rows 0-2 (with WEAK_BULL substituted for BEAR; the logic is identical).
 
 Default `min_regime_days=0` makes all of this a no-op for V01-V11; they remain bit-equivalent.
 
@@ -178,22 +255,22 @@ Confirm before implementation: when `target_weights == {}` and regime != `'SAFE_
 
 Tracing `src/research/ramp_phase4/engine.py:74-130`: target_weights empty -> `compute_trades` sees all current positions and zero targets -> generates sell trades for each held position. Yes, the engine already does the right thing for empty target_weights.
 
-If the engine actually treats empty as "no-op" instead of "liquidate", that's a contract bug we'd need to fix as a sub-task. The implementer verifies this in the first test (`test_v12_bear_day_liquidates_all_positions`).
+If the engine actually treats empty as "no-op" instead of "liquidate", that's a contract bug we'd need to fix as a sub-task. The implementer verifies this in `test_v12_bear_day_returns_empty_targets` plus an engine-level test.
 
-### Re-entry semantics (rev3 -- symmetric clarification)
+### Re-entry semantics
 
 When BEAR is validated and V12 holds cash, then regime flips to non-BEAR:
 
-- **With `min_regime_days = 0` (v12.0.0 default)**: `last_validated_regime` updates instantly to the new regime; on the *next* tick V12 calls V11, which sees `state.positions = {}` and `state.position_open_dates = {}`. V11's `rank_buffer` and `min_hold` both no-op on empty state. V11 returns standard top_n picks. Engine buys them at the next day's prices.
-- **With `min_regime_days > 0` (sensitivity-only in v12.0.0)**: per the walk-through above, `last_validated_regime` stays at BEAR until the new regime accumulates `min_regime_days` consecutive days. During the stall, V12 remains in cash. After the stall, V11 fires with empty state and the same no-op-then-rebuild path applies.
+- **With `min_regime_days = 0` (v12.0.0 default)**: `last_validated_regime` updates instantly to the new regime; the variant on this tick calls V11 (since post-update state has the new regime as validated), which sees `state.positions = {}` and `state.position_open_dates = {}`. V11's `rank_buffer` and `min_hold` both no-op on empty state. V11 returns standard top_n picks. Engine buys them.
+- **With `min_regime_days > 0` (sensitivity-only)**: per the canonical test, `last_validated_regime` stays at BEAR until the new regime accumulates `min_regime_days` consecutive ticks. During the stall, V12 remains in cash. After the stall, V11 fires with empty state and the same no-op-then-rebuild path applies.
 
 In both cases, V11's filters degrade gracefully because empty state defaults trigger no protections. No special re-entry code needed.
 
 ### Cost realism
 
-Engine already models `cost_bps_per_side` per trade. A BEAR regime onset costs ~5 bps x N positions ~= ~50 bps round-trip for full liquidation (V11's typical N=10, top_n varies by regime). Re-entry costs another ~50 bps. A single BEAR-then-recover cycle is ~100 bps of friction.
+Engine already models `cost_bps_per_side` per trade. A BEAR regime onset costs ~5 bps x N positions = ~50 bps round-trip for full liquidation (V11's typical N=10, top_n varies by regime). Re-entry costs another ~50 bps. A single BEAR-then-recover cycle is ~100 bps of friction.
 
-The cost-sensitivity gate at 7.5 bps tests whether this cost is acceptable. V12 must pass it as a **hard requirement** (Gate 5, explicit in rev2/rev3).
+The cost-sensitivity gate at 7.5 bps tests whether this cost is acceptable. V12 must pass it as a **hard requirement** (Gate 5).
 
 ## Variants glossary deliverable
 
@@ -214,9 +291,9 @@ Canonical glossary of every named RAMP variant. Each entry links to:
 ## V05 -- V01 + min_hold
 ## V06 -- V01 + delta_rebalance_pct threshold
 ## V11 -- combined turnover-lite (rank_buffer + min_hold + delta_rebalance)
-## V12 -- V11 + BEAR-to-cash (symmetric hysteresis available; default off)
+## V12 -- V11 + BEAR-to-cash (symmetric debouncing available; default off)
 
-## V12b / V12c -- reserved (rev3)
+## V12b / V12c -- reserved
 - V12b candidate: V12 with `min_regime_days > 0` if sensitivity appendix motivates
 - V12c candidate: V12 with UNPREDICTABLE='cash' if sensitivity appendix motivates
 
@@ -229,110 +306,78 @@ For V01-V11 the descriptions are pulled from existing reports + the inline docst
 
 ## Open questions / room to revise
 
-These are deferred until readiness orchestrator output is in hand:
+Deferred until readiness orchestrator output is in hand:
 
-1. **Default for SIDEWAYS**: shipped as `'normal'` (V11 logic). If readiness shows V11 SIDEWAYS days are net-negative, that's a finding -- but a v12.0.0 default change would be a new spec (V12d), not an in-place edit. The same DSR-hygiene argument from rev3 applies.
-2. **UNPREDICTABLE cash version**: runs as sensitivity-only in v12.0.0 readiness (informational appendix). If `V12-up-cash` shows clear lift on the readiness window, becomes V12c spec with own readiness gate.
-3. **`min_regime_days` value**: hysteresis logic ships, but v12.0.0 default is 0. The {2, 3, 5} runs are sensitivity-only. If sensitivity shows clear lift, becomes V12b spec with own readiness gate. See risk table for the BEAR-run-length tension that makes "no good value" a plausible outcome.
-4. **Defensive ticker support**: deferred to V13. Universe expansion (`SH`, `TLT`, `GLD`) is non-trivial and deserves its own spec. See Appendix C for the Kalman parallel-filter constraint.
-5. **Strategy routing**: deferred to V13+ once we have a per-regime adapter layer.
+1. **Default for SIDEWAYS**: shipped as `'normal'` (V11 logic). If readiness shows V11 SIDEWAYS days are net-negative, that's a finding -- a v12.0.0 default change would be a new spec (V12d), not in-place.
+2. **UNPREDICTABLE cash version**: runs as sensitivity-only. If `V12-up-cash` shows clear lift, becomes V12c with own readiness gate.
+3. **`min_regime_days` value**: debouncing logic ships, v12.0.0 default is 0. The {2, 3, 5} runs are sensitivity-only. See risk table for the BEAR-run-length tension that makes "no good value" plausible.
+4. **Defensive ticker support**: deferred to V13. See Appendix C for the Kalman parallel-filter constraint.
+5. **Strategy routing**: deferred to V13+.
 
-## Test plan (rev3 -- 13 unit tests, was 11 in rev2)
+## Test plan (rev4 -- 14 unit tests in `test_variants.py`, 5 in `test_engine.py`)
 
-Add to `tests/research/ramp_phase4/test_variants.py`:
+The canonical pinning test above is the centerpiece; the other tests verify specific properties and serve as targeted regression tests.
 
-```python
-def test_v12_normal_regime_matches_v11():
-    """V12 with default config on STRONG_BULL day == V11 output exactly."""
-
-def test_v12_bear_day_returns_empty_targets():
-    """V12 on BEAR day returns {'__regime__': 'BEAR'} with no weights (liquidate)."""
-
-def test_v12_unpredictable_day_defaults_to_v11():
-    """V12 on UNPREDICTABLE day with default config == V11 output (rev2: was cash, now normal)."""
-
-def test_v12_unpredictable_day_returns_cash_when_configured():
-    """V12 with cfg.regime_positions['UNPREDICTABLE'] = 'cash' returns empty targets."""
-
-def test_v12_sideways_default_matches_v11():
-    """V12 SIDEWAYS day with default config == V11 output."""
-
-def test_v12_safe_mode_preserves_positions():
-    """V12 on SAFE_MODE returns {'__regime__': 'SAFE_MODE'} -- engine preserves positions."""
-
-def test_v12_bear_then_safe_mode_stays_in_cash():
-    """rev2: regime BEAR -> SAFE_MODE while V12 holds nothing: positions stay empty, no re-entry."""
-
-def test_v12_config_override_sideways_to_cash():
-    """V12 with cfg.regime_positions['SIDEWAYS'] = 'cash' returns empty targets."""
-
-def test_v12_hysteresis_day_0_starts_normal():
-    """rev3: with min_regime_days=3, day 0 BEAR -> V11 plan (not cash).
-    last_validated_regime is None on cold start, so active_mode defaults to 'normal'."""
-
-def test_v12_hysteresis_validates_after_threshold():
-    """rev3: BEAR for 3 consecutive days with min_regime_days=3 -> day 3 returns cash.
-    Engine sets last_validated_regime='BEAR' on tick 2 (streak=3 >= 3); tick 3 sees it."""
-
-def test_v12_hysteresis_symmetric_holds_cash_through_short_non_bear():
-    """rev3 PINNING TEST: BEAR for 5 days -> cash validated. Then WEAK_BULL day 1
-    with min_regime_days=3 -> STILL cash (WB streak=1 < 3, last_validated_regime
-    still BEAR). This pins the symmetric semantics -- under asymmetric hysteresis
-    this test would re-enter on the first WEAK_BULL day."""
-
-def test_v12_hysteresis_revalidates_on_sustained_flip():
-    """rev3: BEAR for 5 days -> cash. Then WEAK_BULL for 3 days -> day 3 returns
-    to V11 (last_validated_regime flips to WEAK_BULL on tick 7)."""
-
-def test_harness_config_rejects_unknown_position_value():
-    """HarnessConfig validation raises ValueError on regime_positions value not in {normal, cash, hold}."""
-
-def test_harness_config_rejects_negative_min_regime_days():
-    """rev2: HarnessConfig validation raises ValueError on min_regime_days < 0."""
-```
-
-Plus engine-level tests in `tests/research/ramp_phase4/test_engine.py`:
+`tests/research/ramp_phase4/test_variants.py`:
 
 ```python
-def test_engine_regime_streak_increments():
-    """Two consecutive ticks of the same regime: streak goes 1 -> 2."""
+# 1. Basic mode behavior
+def test_v12_normal_regime_matches_v11(): ...
+def test_v12_bear_day_returns_empty_targets(): ...
+def test_v12_unpredictable_day_defaults_to_v11(): ...           # rev2: was cash, now normal
+def test_v12_unpredictable_day_returns_cash_when_configured(): ...
+def test_v12_sideways_default_matches_v11(): ...
+def test_v12_safe_mode_preserves_positions(): ...
+def test_v12_bear_then_safe_mode_stays_in_cash(): ...
+def test_v12_config_override_sideways_to_cash(): ...
 
-def test_engine_regime_streak_resets_on_flip():
-    """Regime BEAR -> WEAK_BULL: streak dict becomes {WEAK_BULL: 1}."""
+# 2. Debouncing (rev3 added; rev4 makes the canonical one authoritative)
+def test_v12_hysteresis_day_0_starts_normal(): ...
+def test_v12_hysteresis_validates_after_threshold(): ...
+def test_v12_hysteresis_revalidates_on_sustained_flip(): ...
+def test_v12_hysteresis_symmetric_canonical(): ...              # rev4: THE SPEC (subsumes the rev3 "holds_cash_through_short_non_bear" pinning test)
 
-def test_engine_last_validated_regime_with_min_zero():
-    """rev3: with min_regime_days=0, last_validated_regime tracks instantaneous regime."""
-
-def test_engine_last_validated_regime_with_min_three():
-    """rev3: with min_regime_days=3, last_validated_regime stays None for ticks 0-1,
-    becomes the regime on tick 2."""
-
-def test_engine_first_tick_initialization():
-    """rev3: t=0 with last_regime=None correctly enters the 'flip' branch and
-    initializes regime_streak={regime: 1}."""
+# 3. Config validation
+def test_harness_config_rejects_unknown_position_value(): ...
+def test_harness_config_rejects_negative_min_regime_days(): ...
 ```
 
-Plus an integration test verifying that running V12 through `run_variant()` on a synthetic 10-day panel where regime transitions BEAR -> WEAK_BULL (with `min_regime_days=0`) produces the expected liquidate-then-rebuild trade sequence. A second integration test verifies hysteresis: BEAR-BEAR-WEAK_BULL-BEAR-BEAR-BEAR with `min_regime_days=3` produces cash only after the third consecutive BEAR (tick 5 = third BEAR in {0,1,3,4,5}? No -- streak resets on WEAK_BULL on tick 2, so BEAR streak restarts at tick 3. Day 5 sees streak=3, validates BEAR, returns cash from tick 6 onward; this is the symmetric design).
+That's 14 tests. (rev4 drops the rev3 `test_v12_hysteresis_symmetric_holds_cash_through_short_non_bear` from the listing because the canonical pinning test asserts the same pin and more.)
 
-## Readiness orchestrator changes (rev3 -- gate vs sensitivity split)
+`tests/research/ramp_phase4/test_engine.py`:
+
+```python
+def test_engine_regime_streak_increments(): ...
+def test_engine_regime_streak_resets_on_flip(): ...
+def test_engine_last_validated_regime_with_min_zero(): ...      # tracks instantaneous regime
+def test_engine_last_validated_regime_with_min_three(): ...     # stays None until tick 2
+def test_engine_first_tick_initialization(): ...                # last_regime=None enters flip branch
+```
+
+Plus two integration tests:
+
+1. **Basic liquidate-rebuild**: 10-day synthetic panel with regime sequence `[STRONG_BULL]*3 + [BEAR]*3 + [WEAK_BULL]*4`, `min_regime_days=0`. Expected: V12 holds top_n names through ticks 0-2, liquidates at tick 3, holds cash through ticks 3-5, rebuilds at tick 6 from empty state.
+2. **Debouncing hysteresis-rebuild**: 12-day panel with regime sequence `[BEAR, BEAR, WEAK_BULL, BEAR, BEAR, BEAR, BEAR, WEAK_BULL, WEAK_BULL, WEAK_BULL, WEAK_BULL, WEAK_BULL]`, `min_regime_days=3`. Expected: V12 stays in V11 mode through ticks 0-4 (no regime validated for 3 consecutive ticks until tick 5, when BEAR streak hits 3 -- the WEAK_BULL at tick 2 reset the BEAR streak, so the relevant BEAR streak starts at tick 3 and validates at tick 5). Cash from tick 5 through tick 9. WEAK_BULL streak starts at tick 7 and validates at tick 9 (third consecutive); rebuild from tick 9. (Implementer: verify these tick numbers against the canonical test logic before locking the integration test in.)
+
+## Readiness orchestrator changes (rev3 -- gate vs sensitivity split, unchanged)
 
 New file `scripts/backtest_scripts/ramp_phase4_v12_readiness.py` mirroring V11's structure:
 - `CROSS_VARIANTS = ('V01', 'V04', 'V05', 'V06', 'V11', 'V12')` -- six variants for PBO.
 - Replace `'V11'` -> `'V12'` as the gate target throughout.
 
-**Gate-influencing runs** (13 total -- these feed the 5 pass gates):
+**Gate-influencing runs** (13 total -- feed the 5 pass gates):
   - **Cost grid**: V12 (v12.0.0 defaults) across 4 cost tiers (1, 5, 7.5, 10 bps) x 2 lag modes (near_close, one_day_lag) = 8 runs.
-  - **Cross-variants for PBO**: V01, V04, V05, V06, V11 at 5 bps near_close = 5 runs. V12 at 5 bps near_close is already in the cost grid (no double-counting; PBO uses all six).
+  - **Cross-variants for PBO**: V01, V04, V05, V06, V11 at 5 bps near_close = 5 runs.
 
 **Sensitivity appendix runs** (4 total -- informational, do NOT feed gates):
-  - **UNPREDICTABLE A/B**: `V12-up-cash` (UNPREDICTABLE='cash', all other defaults) at 5 bps near_close = 1 run.
-  - **Hysteresis sensitivity**: `V12-hyst-2`, `V12-hyst-3`, `V12-hyst-5` (min_regime_days=2/3/5) at 5 bps near_close = 3 runs.
+  - **UNPREDICTABLE A/B**: `V12-up-cash` at 5 bps near_close = 1 run.
+  - **Debouncing sensitivity**: `V12-deb-2`, `V12-deb-3`, `V12-deb-5` (min_regime_days=2/3/5) at 5 bps near_close = 3 runs.
 
 **Total: 17 runs**. Estimated wall-clock: ~16-18 min on t4g.medium.
 
-rev3 explicit: the sensitivity runs are appended to the experiment registry (so n_trials_project does reflect them, conservatively making DSR tighter), but they are NOT selected from to define v12.0.0's published metrics. If any sensitivity variant shows materially better behavior, that motivates a new V12b or V12c spec with its own readiness gate -- not an in-place default swap.
+The sensitivity runs are appended to the experiment registry (so n_trials_project does reflect them, conservatively tightening DSR), but are NOT selected from to define v12.0.0's published metrics. If any sensitivity variant shows materially better behavior, that motivates a new V12b or V12c spec with its own readiness gate -- not an in-place default swap.
 
-Output: `docs/reports/ramp/YYYYMMDD_phase4_v12_readiness.md`, with these sections:
+Output: `docs/reports/ramp/YYYYMMDD_phase4_v12_readiness.md`, with:
 
 - **Headline (5-gate verdict)**: PSR / DSR / PBO / lag-delta / cost. Computed on v12.0.0 alone.
 
@@ -344,28 +389,28 @@ Output: `docs/reports/ramp/YYYYMMDD_phase4_v12_readiness.md`, with these section
 
   This panel is the input to the V12-vs-WS-3 decision. If the lag tax is large but V12 still pays off, BEAR-to-cash is a real edge that gets bigger with better detection -> deploy V12, queue WS-3 as additive improvement. If V12's apparent benefit shrinks to zero when corrected for lag, V12 is a coincidence -> WS-3 is the right priority.
 
-- **Sensitivity appendix** (rev3 -- explicitly NOT gate-influencing):
+- **Sensitivity appendix** (explicitly NOT gate-influencing):
   - UNPREDICTABLE A/B: V12 default vs V12-up-cash at 5 bps near_close. Sharpe + Max DD.
-  - Hysteresis sensitivity table: Sharpe at 1/5/7.5/10 bps for `min_regime_days` in {0, 2, 3, 5}.
-  - Reading guide: if any sensitivity variant beats v12.0.0 by >= 0.1 Sharpe AND retains the cost gate at 7.5 bps one_day_lag, that's input for a follow-on V12b/V12c spec. If sensitivity is within noise (SE ~0.17 over the test window), v12.0.0 defaults stand.
+  - Debouncing sensitivity table: Sharpe at 1/5/7.5/10 bps for `min_regime_days` in {0, 2, 3, 5}.
+  - Reading guide: if any sensitivity variant beats v12.0.0 by >= 0.1 Sharpe AND retains the cost gate at 7.5 bps one_day_lag, that's input for a follow-on V12b/V12c spec. If sensitivity is within noise (SE ~0.17), v12.0.0 defaults stand.
 
-## Pass criteria (rev3 -- 5 gates, directional, lag-mode-explicit)
+## Pass criteria (rev4 -- Gate 4 floored, rest unchanged from rev3)
 
-V12 passes the readiness gate if ALL five hold:
+V12 passes if ALL five hold:
 
-1. **PSR (vs SR=0) > 0.95** -- absolute significance. Computed on V12 v12.0.0 at 5 bps near_close.
+1. **PSR (vs SR=0) > 0.95** -- absolute significance. V12 v12.0.0 at 5 bps near_close.
 2. **DSR > 0.95** -- multi-trial-corrected significance.
-   - `n_trials` = project-wide cumulative count from `output/experiments.duckdb` (per methodology Section 9.4) at the time the orchestrator queries the registry. The sensitivity-appendix runs DO increment this count (conservatism), making this gate tighter than a strict "v12.0.0 only" count would.
-   - The implementer reports DSR at both the current `n_trials` and the V11-era `n_trials` for context. If `n_trials` >= 30, also report which historical variants (V11, V8, etc.) would have passed at the V11-era count for calibration.
-3. **PBO across 6 variants < 0.5** -- low overfitting evidence. Computed via CSCV on (V01, V04, V05, V06, V11, V12) at 5 bps near_close.
-4. **rev3 directional: `Sharpe(V12 @ 5 bps, one_day_lag) >= 0.8 * Sharpe(V12 @ 5 bps, near_close)`** -- catches structural lookahead. The failure mode is `Sharpe_lag << Sharpe_near_close` (strategy relied on same-bar information); the opposite direction (`Sharpe_lag > Sharpe_near_close`) is safe and not penalized. Was `within 20%` in rev1/rev2 which was symmetric and ambiguous.
-5. **rev3 lag-mode-explicit: `Sharpe(V12 @ 7.5 bps, one_day_lag) > 0.3`** -- cost robustness under realistic execution. rev1/rev2 didn't specify which lag mode; rev3 gates on `one_day_lag` because that's the deployment-realistic measurement. The `near_close` 7.5-bps Sharpe is reported for context but doesn't gate.
+   - `n_trials` = project-wide cumulative count from `output/experiments.duckdb` (methodology Section 9.4) at orchestrator-run time. Sensitivity-appendix runs DO increment this count.
+   - Implementer reports DSR at both current and V11-era `n_trials` for context. If `n_trials >= 30`, report which historical variants would have passed at V11-era count for calibration.
+3. **PBO across 6 variants < 0.5** -- CSCV on (V01, V04, V05, V06, V11, V12) at 5 bps near_close.
+4. **Lag-degradation gate (rev4 floored): `Sharpe(near_close) - Sharpe(one_day_lag) <= max(0.2 * Sharpe(near_close), 0.1)`** at 5 bps cost. Catches the structural lookahead failure mode (lag underperforms near_close). The 0.1 floor avoids vacuous tightness when near_close Sharpe is small. The opposite direction (lag > near_close) is safe and not penalized.
+5. **Cost gate: `Sharpe(V12 @ 7.5 bps, one_day_lag) > 0.3`** -- cost robustness under realistic execution.
 
-If V12 clears all 5: it becomes the Phase D candidate (skip WS-3, redeploy mirroring V11's deploy path *after* the IBKR-migration paper-comparator framework can run V11 and V12 in parallel paper).
+If V12 clears all 5: Phase D candidate; deploy mirrors V11 path after IBKR-migration paper-comparator framework supports V11+V12 in parallel.
 
-If V12 clears structural (Gates 3, 4, 5) but misses PSR or DSR: compare absolute Sharpe to V11; pick better; consider WS-3 conditional on detector-lag-analysis output.
+If V12 clears structural (3, 4, 5) but misses PSR or DSR: compare absolute Sharpe to V11; pick better; consider WS-3 conditional on detector-lag-analysis output.
 
-If V12 fails structural: investigate. Possibly BEAR-to-cash relied on detector-lagged drawdown selection -- the detector-onset alignment panel disambiguates.
+If V12 fails structural: investigate via the detector-onset alignment panel.
 
 ## Expected magnitude of lift (rev2 sanity check, unchanged)
 
@@ -377,47 +422,47 @@ expected_full_window_lift ~ BEAR_fraction * Sharpe_drag_avoided
                           ~ 0.05 to 0.10
 ```
 
-The "Sharpe lift >= 0.15 over V11" success criterion is *tight* against the realistic ceiling. **The modal outcome is probably Tier 2 (Max DD reduction with marginal Sharpe lift), not Tier 1.** This isn't a bug in V12 -- it reflects that the strongest BEAR-day evidence was on a window where BEAR was 2x more frequent than the population average.
+The "Sharpe lift >= 0.15 over V11" criterion is *tight* against the realistic ceiling. **Modal outcome is probably Tier 2 (Max DD reduction with marginal Sharpe lift), not Tier 1.** This reflects EXT-OOS being 2x more BEAR-heavy than the population average.
 
 If the readiness report shows V12 at +0.05 to +0.12 Sharpe over V11 with a 10-15 percentage point Max DD reduction, that's the *expected* outcome, not a failure.
 
-## Risk table
+## Risk table (rev4 -- row 8 cleaned up, others unchanged)
 
 | Risk | Probability | Impact | Mitigation |
 |------|---|---|---|
-| Engine treats empty target_weights as no-op instead of liquidate | Low | High | First test (`test_v12_bear_day_liquidates_all_positions`) verifies the contract; if false, fix engine before V12 logic. |
-| V12 ties or loses to V11 because UNPREDICTABLE is too rare to matter | Low | Low | rev2: UNPREDICTABLE default is `normal` so the BEAR signal is isolated. `V12-up-cash` sensitivity run measures the alternative. |
-| BEAR-to-cash whipsaws around detector threshold | Medium-High | Medium | BEAR median run length ~3-4 days + detector lag ~14 days makes whipsaw the expected mode. Hysteresis logic ships (rev2); sensitivity at {2, 3, 5} runs in readiness (rev3). |
-| Sharpe lift doesn't materialize because V11's filters already neutralize some BEAR exposure | Medium | High | V8 finding was on V0 (no filters), not V11. V11's rank_buffer already retains held names through soft BEAR signals. If V12 only marginally improves V11, that's Tier 2 territory -- defensible deployment, not failure. |
-| Re-entry after BEAR uses fresh open_dates so min_hold can't protect | Low | Low | Intentional. Fresh-entry positions are not yet aged into protection. Normal V11 behavior. |
-| BEAR-to-cash benefit is mostly accidental (avoiding lagged-bottoming days, not the actual selloff) | Medium | High | Detector-onset alignment panel is the diagnostic. If gap between detector-perfect and realized V12 benefit is large, WS-3 takes priority over V12 deployment. |
-| DSR gate gets harder as project-wide trial count grows | Medium | Medium | `n_trials` documented in readiness report. Implementer reports DSR at both current and V11-era trial counts. Sensitivity runs increment `n_trials` (conservatism). |
-| **rev3: No good `min_regime_days` value exists** | Medium-High | High | With BEAR median run length ~3-4 days: `min_regime_days=3` triggers cash on day 3 just as BEAR ends (costly whipsaw, near-zero exposure-avoidance); `min_regime_days=5` essentially never goes to cash. The sensitivity range {2, 3, 5} likely shows {0, 2} as the only viable options, with marginal differences. If true, V12's verdict probably is Tier 3 (WS-3 priority) regardless of hysteresis choice -- because faster/better BEAR detection is the only way to make cash-avoidance pay off given current run lengths. The detector-onset alignment panel quantifies this. |
-| **rev3: Symmetric hysteresis implementation bug (variant doesn't see `last_validated_regime` update on the same tick as the engine sets it)** | Low | Medium | Engine sets `last_validated_regime` in per-tick *post*-processing, after the variant runs. So a regime achieving threshold on tick T is visible to the variant on tick T+1, not tick T. This is consistent with the walk-through table (BEAR streak hits 3 on tick 5, variant returns cash on tick 5 *because* the engine updated `last_validated_regime` at the end of tick 4 -- wait, this needs care). Implementer must confirm the engine updates `last_validated_regime` BEFORE the variant runs on each tick. If after, increment the walk-through table indices by 1 and re-run mental check. Pinning tests catch the off-by-one. |
+| Engine treats empty target_weights as no-op instead of liquidate | Low | High | First test (`test_v12_bear_day_returns_empty_targets`) verifies the contract; if false, fix engine before V12 logic. |
+| V12 ties or loses to V11 because UNPREDICTABLE is too rare to matter | Low | Low | UNPREDICTABLE default is `normal` so the BEAR signal is isolated. `V12-up-cash` sensitivity run measures the alternative. |
+| BEAR-to-cash whipsaws around detector threshold | Medium-High | Medium | BEAR median run length ~3-4 days + detector lag ~14 days makes whipsaw the expected mode. Debouncing logic ships; sensitivity at {2, 3, 5}. |
+| Sharpe lift doesn't materialize because V11's filters already neutralize some BEAR exposure | Medium | High | V8 finding was on V0 (no filters), not V11. V11's rank_buffer already retains held names through soft BEAR signals. Marginal improvement is Tier 2 territory -- defensible deployment, not failure. |
+| Re-entry after BEAR uses fresh open_dates so min_hold can't protect | Low | Low | Intentional. Fresh-entry positions are not yet aged. Normal V11 behavior. |
+| BEAR-to-cash benefit is mostly accidental (avoiding lagged-bottoming days, not the actual selloff) | Medium | High | Detector-onset alignment panel is the diagnostic. If lag tax is large, WS-3 takes priority over V12 deployment. |
+| DSR gate gets harder as project-wide trial count grows | Medium | Medium | `n_trials` documented in readiness report; DSR reported at both current and V11-era counts. Sensitivity runs increment `n_trials`. |
+| No good `min_regime_days` value exists | Medium-High | High | With BEAR median run length ~3-4 days: `min_regime_days=3` triggers cash on day 3 just as BEAR ends (costly whipsaw, near-zero exposure-avoidance); `min_regime_days=5` essentially never goes to cash. Sensitivity range {2, 3, 5} likely shows {0, 2} as the only viable options with marginal differences. If true, V12's verdict probably is Tier 3 (WS-3 priority) regardless of debouncing choice -- because faster/better BEAR detection is the only way to make cash-avoidance pay off given current run lengths. Detector-onset alignment panel quantifies this. |
+| Pre-variant vs post-variant tick-ordering implementation bug | Low | Medium | rev4 commits to **pre-variant update** uniformly. The canonical pinning test enforces the expected `(streak, last_validated_regime, active_mode)` triples per tick. An implementation with post-variant ordering would fail the canonical test on at least tick 5 (cash starts there, not tick 6). The test is the implementation guard. |
 
-The rev3 final row is worth treating as a near-miss waiting to happen. The implementer should explicitly choose the engine tick ordering (pre-variant update vs post-variant update) and document it. Recommended: **pre-variant update** -- engine updates streak and validated_regime first, then variant reads. This matches the walk-through table.
-
-## Success criteria (rev2 reframed, rev3 unchanged)
+## Success criteria (unchanged from rev2/rev3)
 
 V12 succeeds if ANY of:
 
-1. **Tier 1 (preferred)**: V12 clears all 5 readiness gates AND lifts net Sharpe at 5 bps by >= 0.15 over V11. -> Phase D candidate, deploy mirroring V11 path (after IBKR-migration paper-comparator gate).
-2. **Tier 2 (modal expected outcome)**: V12 clears all 5 readiness gates but lifts Sharpe by < 0.15. Max DD must be reduced by >= 10 percentage points absolute. -> Preferred candidate for risk-conscious deployment; same deployment path as Tier 1.
-3. **Tier 3 (diagnostic value)**: V12 clears structural gates (PBO, lag, cost) but misses PSR/DSR. Detector-onset alignment panel must show gap > +0.10 between detector-perfect and realized V12 lift. -> Activate WS-3 (detector improvement) as the higher-leverage path; V12 deployment deferred until WS-3 + V12 readiness re-run.
-4. **Tier 4 (failure)**: V12 fails structural gates or shows no diagnostic signal in the alignment panel. -> Strategy reset; reconsider regime overlay's role from scratch.
+1. **Tier 1 (preferred)**: V12 clears all 5 readiness gates AND lifts net Sharpe at 5 bps by >= 0.15 over V11. -> Phase D candidate, deploy mirroring V11 path.
+2. **Tier 2 (modal expected outcome)**: V12 clears all 5 readiness gates but lifts Sharpe by < 0.15. Max DD must be reduced by >= 10 percentage points absolute. -> Preferred candidate for risk-conscious deployment; same deployment path.
+3. **Tier 3 (diagnostic value)**: V12 clears structural gates (PBO, lag, cost) but misses PSR/DSR. Detector-onset alignment panel must show gap > +0.10 between detector-perfect and realized V12 lift. -> Activate WS-3 as the higher-leverage path; V12 deployment deferred until WS-3 + V12 readiness re-run.
+4. **Tier 4 (failure)**: V12 fails structural gates or shows no diagnostic signal. -> Strategy reset; reconsider regime overlay's role from scratch.
 
-In Tiers 1-3, the spec is "successful" because it produces a defensible decision. Tier 4 means the spec failed to advance the question -- itself useful information.
+In Tiers 1-3 the spec is "successful" because it produces a defensible decision. Tier 4 means the spec failed to advance the question -- itself useful information.
 
-## Decision gates
+Practical note: Tiers 1/2 and Tier 3 are not exclusive in the deployment sense. A V12 verdict in Tier 2 with a Tier-3-quality lag tax can defensibly become "deploy V12 AND queue WS-3 immediately" -- the readiness verdict informs the decision; it doesn't constrain it to a single track.
 
-1. **After variant + engine implementation + unit tests**: 13 variant tests + 5 engine tests pass + 2 integration tests on synthetic panels (basic liquidate-rebuild + hysteresis walk-through). If any fail, fix before readiness re-run.
+## Decision gates (rev4 -- test count corrected)
+
+1. **After variant + engine implementation + unit tests**: 14 variant tests + 5 engine tests pass + 2 integration tests on synthetic panels (liquidate-rebuild + debouncing-rebuild). Canonical pinning test passes. If any fail, fix before readiness re-run.
 2. **After readiness orchestrator**: review the five-gate verdict + Max DD change vs V11 + detector-onset alignment panel + sensitivity appendix. Apply the success-criteria branching above.
-3. **Post-decision**: either proceed to V12 production paper deploy (mirror V11 path, after IBKR-migration comparator gate), activate WS-3, or spawn V12b/V12c if the sensitivity appendix motivates one.
+3. **Post-decision**: either proceed to V12 production paper deploy, activate WS-3, spawn V12b/V12c if sensitivity motivates one, or some combination.
 
 ## Appendix A -- File touchpoints
 
 New files:
-- `docs/superpowers/specs/2026-05-23-v12-bear-to-cash-design.md` (this doc; rev3 in place of rev2)
+- `docs/superpowers/specs/2026-05-23-v12-bear-to-cash-design.md` (this doc; rev4 in place of rev3)
 - `docs/superpowers/plans/2026-05-23-v12-bear-to-cash.md` (implementation plan; from writing-plans)
 - `docs/strategies/RAMP_VARIANTS.md` (canonical glossary; one-time setup populated for V01-V12)
 - `scripts/backtest_scripts/ramp_phase4_v12_readiness.py` (V12 readiness orchestrator with gate/sensitivity split)
@@ -425,11 +470,11 @@ New files:
 - `docs/progress/YYYYMMDD_RAMP_V12_SESSION_LOG.md` (session log at end)
 
 Modified files:
-- `src/research/ramp_phase4/variants.py` (+ `_variant_v12`, +`'V12'` in REGISTRY; ~50 LOC core + ~15 LOC hysteresis read = ~65 LOC)
-- `src/research/ramp_phase4/config.py` (+ `regime_positions` field + `min_regime_days` field + validation; ~25 LOC)
-- `src/research/ramp_phase4/engine.py` (+ regime_streak tracking + last_validated_regime in per-tick PRE-variant update; ~10 LOC; behind `min_regime_days > 0` no-op when default)
-- `tests/research/ramp_phase4/test_variants.py` (+ 13 unit tests; ~250 LOC)
-- `tests/research/ramp_phase4/test_engine.py` (+ 5 tests for state tracking; ~150 LOC)
+- `src/research/ramp_phase4/variants.py` (+ `_variant_v12`, +`'V12'` in REGISTRY; ~65 LOC)
+- `src/research/ramp_phase4/config.py` (+ `regime_positions` + `min_regime_days` + validation; ~25 LOC)
+- `src/research/ramp_phase4/engine.py` (+ regime_streak + last_validated_regime in pre-variant update; ~10 LOC)
+- `tests/research/ramp_phase4/test_variants.py` (+ 14 unit tests including the canonical pinning test; ~280 LOC)
+- `tests/research/ramp_phase4/test_engine.py` (+ 5 tests; ~150 LOC)
 
 Branch: `v12-bear-to-cash` (new, based on `ramp-phase4-turnover-regime-research`).
 
@@ -438,11 +483,11 @@ Branch: `v12-bear-to-cash` (new, based on `ramp-phase4-turnover-regime-research`
 The roadmap (`docs/superpowers/plans/2026-05-23-ramp-research-roadmap.md`) WS-2.1 brainstorm topics included "defensive asset" and "strategy routing" as questions. Both are deferred to V13+. Reasons:
 
 1. **YAGNI on instruments, not on parameters**: V12 with cash-only tests the dominant hypothesis (BEAR exposure is the dominant lever). Sophisticated alternatives (SH/TLT/GLD) are incremental tuning. Parameters whose absence forces a re-run of expensive backtest infrastructure (e.g. `min_regime_days`) are NOT YAGNI candidates -- they ship exposed with sensible defaults so the readiness orchestrator can probe them in one wall-clock window.
-2. **rev3 honesty discipline**: parameters that ship exposed but are NOT chosen ex ante go in the sensitivity appendix, NOT the gate computation. Selection-from-N inside the gate inflates effective trial count without DSR seeing it. v12.0.0 ships with the principled defaults (BEAR-cash, no hysteresis, UNPREDICTABLE=normal); the appendix data informs whether a follow-on V12b/V12c is justified, not whether v12.0.0 itself ships.
+2. **Honesty discipline**: parameters that ship exposed but are NOT chosen ex ante go in the sensitivity appendix, NOT the gate computation. Selection-from-N inside the gate inflates effective trial count without DSR seeing it. v12.0.0 ships with the principled defaults (BEAR-cash, no debouncing, UNPREDICTABLE=normal); the appendix data informs whether a follow-on V12b/V12c is justified, not whether v12.0.0 itself ships.
 3. **Universe constraints**: SH/TLT/GLD aren't in `sp500-2025.csv`. Adding them touches the SIP daily fetcher, the variant data loader, and the production paper deploy's universe config. Real work; deserves a separate spec.
 4. **Strategy routing complexity**: requires running TWO live engines simultaneously and switching between them based on regime. The current Phase 4 harness has no such abstraction. V14 territory.
 
-V12 ships the minimum needed to test the regime-conditional-exposure idea, plus the hysteresis logic (off by default) whose absence would cost a re-run if the data demands it.
+V12 ships the minimum needed to test the regime-conditional-exposure idea, plus the debouncing logic (off by default) whose absence would cost a re-run if the data demands it.
 
 ## Appendix C -- Kalman parallel-filter constraint for V13+ defensive ticker work (rev2, unchanged)
 
@@ -457,16 +502,32 @@ What this means for V13:
 
 The constraint forces V13a to be the simpler of the two, which is why V13 is the right name for the defensive-ticker variant and V14 for routed strategies. The constraint does NOT block V13a; it just defines what V13a is.
 
-## Appendix D -- rev3 hysteresis design decision log (for future-spec reference)
+## Appendix D -- Debouncing design decision log (rev4 -- terminology corrected)
 
-Why symmetric over asymmetric:
+### Terminology note
 
-1. **Protects the cost thesis under whipsaw**. Asymmetric (entry-only) hysteresis lets the strategy re-enter on the first non-BEAR day, paying ~50 bps for one day of exposure if the regime flips back. Symmetric stalls re-entry until the new regime is itself validated, eliminating these short-cycle round-trips.
+`min_regime_days` is technically *debouncing* (require N consecutive samples before accepting a state change), not *hysteresis*. Control-systems hysteresis is asymmetric: a thermostat with set-point 70 F that turns heat ON at 68 F and OFF at 72 F has different thresholds for the two directions, and that's literally what makes it hysteresis (the asymmetric threshold creates a "dead zone" where state doesn't change). Debouncing is what oscilloscopes do to noisy buttons: require N stable readings before accepting a transition.
 
-2. **Matches the natural reading of "hysteresis"**. In control systems, hysteresis is symmetric by definition -- the threshold for switching ON is different from the threshold for switching OFF, and both sides have a "dead zone" where state doesn't change. Asymmetric hysteresis is a different mechanism (debouncing).
+Phase 4's classifier emits discrete regime labels, not a continuous score, so we can't apply asymmetric thresholds at the score level. Debouncing-on-labels is the closest equivalent of "ignore short-lived classifications". rev1-rev3 called this "hysteresis" colloquially because that's how the team referred to it; rev4 keeps "hysteresis" as the informal name in conversation but corrects the spec to use "debouncing" where precision matters (function and parameter names stay as-is to avoid a code rename).
+
+### Why symmetric debouncing over asymmetric (entry-only)
+
+1. **Protects the cost thesis under whipsaw**. Asymmetric (entry-only) debouncing lets the strategy re-enter on the first non-BEAR day, paying ~50 bps for one day of exposure if the regime flips back. Symmetric stalls re-entry until the new regime is itself validated, eliminating these short-cycle round-trips.
+
+2. **Matches the cost-protection intuition**. The point of `min_regime_days` is "ignore regime classifications that don't persist." This is a symmetric statement about classifications, not an asymmetric one about entries. Asymmetric would be "ignore exit signals but trust entry signals" -- which is debouncing-only-in-one-direction and has a different name.
 
 3. **Cheaper to implement correctly**. Symmetric needs one piece of state (`last_validated_regime`) computed by the engine. Asymmetric needs to track entry vs exit transitions separately, which is more bookkeeping and more places for off-by-one bugs.
 
-4. **Easier to reason about with the BEAR-run-length tension**. Symmetric hysteresis with `min_regime_days=3` and BEAR median run length 3-4 days means: BEAR runs of length < 3 never trigger cash (good -- they were noise), BEAR runs of length >= 3 trigger cash on the third day with at most ~1 day of utility (bad -- triggered too late). The tradeoff is legible. With asymmetric hysteresis, you'd also pay re-entry costs on every short non-BEAR run during a long BEAR period, making the calculus worse.
+4. **Easier to reason about given the BEAR-run-length tension**. With BEAR median run length 3-4 days, symmetric debouncing at `min_regime_days=3` means: BEAR runs of length < 3 never trigger cash (good -- they were noise), BEAR runs of length >= 3 trigger cash on the third day with at most ~1 day of utility (bad -- triggered too late). Tradeoff is legible. Asymmetric would also pay re-entry costs on every short non-BEAR run during a long BEAR period, making the calculus worse.
 
-If the readiness appendix shows hysteresis hurts at all tested values (likely, per the risk-table tension), the lesson is "BEAR detection is too lagged for any reactive hysteresis to help" -- which is the WS-3 case. Symmetric hysteresis is the right baseline against which to make that claim.
+If the readiness appendix shows debouncing hurts at all tested values (likely per the risk-table tension), the lesson is "BEAR detection is too lagged for any reactive filter to help" -- the WS-3 case. Symmetric debouncing is the right baseline against which to make that claim.
+
+### Why pre-variant ordering over post-variant
+
+Pre-variant: engine updates `(regime_streak, last_validated_regime)` BEFORE the variant runs on each tick. The variant sees the updated state.
+
+Post-variant: engine updates AFTER the variant runs. The variant sees state as of the previous tick's update.
+
+Pre-variant is one tick faster to react: a regime that just hit the threshold takes effect on the same tick it hit it. Post-variant adds one tick of delay. Given that the underlying detector already lags by ~14 days and BEAR runs are ~3-4 days long, every tick of avoidable delay matters. Pre-variant is the right choice.
+
+The canonical pinning test enforces this: under post-variant ordering, tick 5 in the canonical test would show `active_mode='normal'` (variant sees pre-update state where streak=2, last_validated_regime=WEAK_BULL), and cash would start on tick 6. The test expects cash on tick 5; this is the pre-variant commit.
