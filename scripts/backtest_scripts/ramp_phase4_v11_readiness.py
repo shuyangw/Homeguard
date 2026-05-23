@@ -130,17 +130,25 @@ def _build_pbo_matrix(records_by_variant: Dict[str, List[DailyRecord]]) -> np.nd
 
 
 def _compute_psr_v11(v11_records: List[DailyRecord]) -> Dict[str, float]:
+    """PSR(SR_hat | SR_benchmark=0) for V11 returns.
+
+    Methodology Section 2.2 / Bailey-Lopez de Prado (2012): sr_hat must be in
+    per-period (daily) units when n is the daily observation count. Mertens
+    (2002) asymptotic variance 1 - skew*SR + (kurt-1)/4*SR^2 applies to the
+    per-period Sharpe estimator. Passing annualized SR inflates z by sqrt(P).
+    """
     rets = np.array([r.daily_return for r in v11_records], dtype=np.float64)
     rets = rets[np.isfinite(rets)]
     if rets.size < 2 or rets.std() == 0:
         raise RuntimeError('V11 returns are degenerate; cannot compute PSR.')
-    sr_daily = rets.mean() / rets.std()
-    sr_annual = sr_daily * np.sqrt(252)
+    sr_daily = float(rets.mean() / rets.std())
+    sr_annual = sr_daily * float(np.sqrt(252))
     skew = float(np.mean(((rets - rets.mean()) / rets.std()) ** 3))
     pearson_kurt = float(np.mean(((rets - rets.mean()) / rets.std()) ** 4))
-    psr_val = psr(sr_hat=sr_annual, sr_benchmark=0.0, n=len(rets), skew=skew, kurt=pearson_kurt)
+    psr_val = psr(sr_hat=sr_daily, sr_benchmark=0.0, n=len(rets), skew=skew, kurt=pearson_kurt)
     return {
-        'sr_annual': float(sr_annual),
+        'sr_daily': sr_daily,
+        'sr_annual': sr_annual,
         'skew': skew,
         'pearson_kurt': pearson_kurt,
         'n_days': int(len(rets)),
@@ -177,8 +185,21 @@ def _build_doc(
         delta_pct = (lag_5 - nc_5) / abs(nc_5) * 100.0
     lag_pass = abs(delta_pct) <= LAG_DELTA_TOLERANCE_PCT
 
-    overall_pass = psr_pass and dsr_pass and pbo_pass and lag_pass
-    verdict = 'READY for Phase D paper deploy' if overall_pass else 'BLOCKED -- fall back to V05'
+    structural_pass = pbo_pass and lag_pass
+    significance_pass = psr_pass and dsr_pass
+    overall_pass = structural_pass and significance_pass
+    if overall_pass:
+        verdict = 'READY for Phase D paper deploy'
+    elif structural_pass and not significance_pass:
+        verdict = (
+            'PARTIAL -- passes structural gates (PBO, one-day-lag robustness); fails '
+            'absolute-significance gates (PSR, DSR). V11 is structurally sound (no '
+            'overfitting evidence, no lookahead) but its Sharpe magnitude is not large '
+            'enough to clear strict Bailey-Lopez de Prado significance hurdles after '
+            'multi-trial correction. Decision to advance is a judgment call, not a clean PASS.'
+        )
+    else:
+        verdict = 'BLOCKED -- structural gate failure; investigate before Phase D'
 
     def _pf(b: bool) -> str:
         return 'PASS' if b else 'FAIL'
@@ -209,20 +230,51 @@ def _build_doc(
 
     lines.append('## PSR / DSR detail')
     lines.append('')
+    lines.append(
+        '_Units note: PSR and DSR formulas (Bailey-Lopez de Prado / methodology Section 2.2-2.3) '
+        'require **per-period (daily)** Sharpe with daily `n`. We display annualized for the human '
+        'narrative and report the daily values used as formula inputs._'
+    )
+    lines.append('')
+    lines.append('| Metric | Daily (formula input) | Annualized (narrative) |')
+    lines.append('|---|---:|---:|')
+    lines.append(
+        f'| Observed Sharpe | {psr_info["sr_daily"]:.6f} | {psr_info["sr_annual"]:.4f} |'
+    )
+    lines.append(
+        f'| Expected max under null (n_trials={N_TRIALS}) | '
+        f'{dsr_info["expected_max_sharpe_daily"]:.6f} | '
+        f'{dsr_info["expected_max_sharpe_annual"]:.4f} |'
+    )
+    lines.append('')
     lines.append('| Metric | Value |')
     lines.append('|---|---:|')
-    lines.append(f'| Observed annualized Sharpe | {psr_info["sr_annual"]:.4f} |')
-    lines.append(
-        f'| Expected max Sharpe under null (n_trials={N_TRIALS}, scaled by V[trial_sharpes]) | '
-        f'{dsr_info["expected_max_sharpe"]:.4f} |'
-    )
-    lines.append(f'| DSR probability (true SR > expected max) | {dsr_value:.4f} |')
     lines.append(f'| PSR (vs SR=0) | {psr_value:.4f} |')
-    lines.append(f'| Trial Sharpes used for V[trial] term | {dsr_info["trial_sharpes_str"]} |')
-    lines.append(f'| sqrt(V[trial_sharpes]) | {dsr_info["v_sqrt"]:.4f} |')
-    lines.append(f'| Skewness | {psr_info["skew"]:.4f} |')
-    lines.append(f'| Pearson kurtosis | {psr_info["pearson_kurt"]:.4f} |')
+    lines.append(f'| DSR probability (true SR > expected max) | {dsr_value:.4f} |')
+    lines.append(f'| Trial Sharpes used (annualized) | {dsr_info["trial_sharpes_str"]} |')
+    lines.append(f'| sqrt(V[trial_sharpes]) (daily) | {dsr_info["v_sqrt_daily"]:.6f} |')
+    lines.append(f'| Sample skewness | {psr_info["skew"]:.4f} |')
+    lines.append(f'| Sample Pearson kurtosis | {psr_info["pearson_kurt"]:.4f} |')
     lines.append(f'| Sample size (days) | {psr_info["n_days"]} |')
+    lines.append('')
+
+    lines.append('### DSR sensitivity to n_trials')
+    lines.append('')
+    lines.append('| n_trials | Expected max Sharpe (annual) | DSR | Pass (> 0.95) |')
+    lines.append('|---:|---:|---:|:---:|')
+    for nt in (2, 3, 6, N_TRIALS):
+        entry = dsr_info['sensitivity'][nt]
+        passed = 'PASS' if entry['dsr'] > DSR_THRESHOLD else 'FAIL'
+        lines.append(
+            f'| {nt} | {entry["expected_max_sharpe_annual"]:.4f} | '
+            f'{entry["dsr"]:.4f} | {passed} |'
+        )
+    lines.append('')
+    lines.append(
+        '_Reading this table: lower n_trials shrinks the multi-trial selection-bias '
+        'adjustment, which would help V11 if the limit were the correction; if DSR fails '
+        'across all rows, the limit is V11\'s Sharpe magnitude, not n_trials choice._'
+    )
     lines.append('')
 
     lines.append('## PBO')
@@ -288,11 +340,33 @@ def _build_doc(
             'min_hold + delta_threshold filter state. Then enable V11 in production paper '
             'trading on EC2 per the A7 discipline (4-6 weeks paper validation).'
         )
+    elif structural_pass and not significance_pass:
+        lines.append(
+            'PARTIAL READINESS. V11 passes the structural gates (no overfitting per PBO, no '
+            'lookahead per one-day-lag) but fails the absolute-significance gates (PSR, DSR). '
+            'Three options:'
+        )
+        lines.append('')
+        lines.append(
+            '1. **Advance V11 to paper anyway.** Paper trading is itself an OOS validation '
+            'channel; the significance gates measure backtest noise, not live performance. '
+            'Requires extending the A7 comparator (`scripts/trading/compare_paper_vs_plan.py`) '
+            'for V11\'s filter state and accepting the significance caveat in the deployment record.'
+        )
+        lines.append(
+            '2. **Fall back to V05.** V05 has similar Sharpe (~0.50) and the same significance '
+            'situation (also fails strict PSR/DSR). Simpler filter chain. Comparator extension is '
+            'simpler since only min_hold is needed.'
+        )
+        lines.append(
+            '3. **Pause Phase D until Wave 2.** V12 (BEAR-to-cash on V11 base) is the natural '
+            'next variant that could raise Sharpe enough to clear DSR. Separate brainstorm.'
+        )
     else:
         lines.append(
-            'BLOCKED: re-run this orchestrator on V05 (single-line change: replace `V11` with '
-            '`V05` in the gate-target variable). V05 was documented in Wave 1 as the safe '
-            'fallback (95% of V11\'s edge, one fewer moving part).'
+            'BLOCKED: structural gate failure (PBO or one-day-lag). Investigate the underlying '
+            'cause before advancing. PBO failure suggests overfitting; lag-robustness failure '
+            'suggests a hidden lookahead.'
         )
     lines.append('')
 
@@ -338,26 +412,53 @@ def main() -> int:
     # DSR per methodology Section 2.3: use the 5 Phase 4 variants' Sharpes
     # to estimate V[trial_sharpes], with n_trials_project=20 as the
     # conservative cumulative-trials count.
-    trial_sharpes = [cross_runs[v].sharpe for v in CROSS_VARIANTS]
-    sr_zero = expected_max_sharpe(trial_sharpes, N_TRIALS)
+    #
+    # Units: trial_sharpes must be in the same per-period (daily) units as
+    # sr_hat. The runs report annualized Sharpes; divide by sqrt(252) before
+    # passing to dsr()/expected_max_sharpe(). Annualized values are kept for
+    # the human-readable narrative table.
+    trial_sharpes_annual = [cross_runs[v].sharpe for v in CROSS_VARIANTS]
+    trial_sharpes_daily = [s / float(np.sqrt(252)) for s in trial_sharpes_annual]
+    sr_zero_daily = expected_max_sharpe(trial_sharpes_daily, N_TRIALS)
+    sr_zero_annual = sr_zero_daily * float(np.sqrt(252))
     dsr_value = dsr(
-        sr_hat=psr_info['sr_annual'],
-        trial_sharpes=trial_sharpes,
+        sr_hat=psr_info['sr_daily'],
+        trial_sharpes=trial_sharpes_daily,
         n=psr_info['n_days'],
         skew=psr_info['skew'],
         kurt=psr_info['pearson_kurt'],
         n_trials_project=N_TRIALS,
     )
-    v_sqrt = float(np.sqrt(np.var(trial_sharpes, ddof=1)))
+
+    # Sensitivity table: DSR at n_trials in {2, 3, 6, 20}.
+    dsr_by_ntrials: Dict[int, Dict[str, float]] = {}
+    for nt in (2, 3, 6, N_TRIALS):
+        sr_zero_d_nt = expected_max_sharpe(trial_sharpes_daily, nt)
+        d_nt = dsr(
+            sr_hat=psr_info['sr_daily'],
+            trial_sharpes=trial_sharpes_daily,
+            n=psr_info['n_days'],
+            skew=psr_info['skew'],
+            kurt=psr_info['pearson_kurt'],
+            n_trials_project=nt,
+        )
+        dsr_by_ntrials[nt] = {
+            'dsr': float(d_nt),
+            'expected_max_sharpe_annual': sr_zero_d_nt * float(np.sqrt(252)),
+        }
+
+    v_sqrt = float(np.sqrt(np.var(trial_sharpes_daily, ddof=1)))
     dsr_info = {
         'dsr': float(dsr_value),
-        'expected_max_sharpe': float(sr_zero),
+        'expected_max_sharpe_daily': float(sr_zero_daily),
+        'expected_max_sharpe_annual': float(sr_zero_annual),
         'trial_sharpes_str': ', '.join(f'{v}={cross_runs[v].sharpe:.3f}' for v in CROSS_VARIANTS),
-        'v_sqrt': v_sqrt,
+        'v_sqrt_daily': v_sqrt,
+        'sensitivity': dsr_by_ntrials,
     }
     logger.info(
-        f'[+] DSR: prob={dsr_value:.4f} expected_max={sr_zero:.4f} '
-        f'v_sqrt={v_sqrt:.4f} (threshold > 0.95)'
+        f'[+] DSR: prob={dsr_value:.4f} expected_max_annual={sr_zero_annual:.4f} '
+        f'v_sqrt_daily={v_sqrt:.6f} (threshold > 0.95)'
     )
 
     sha = _git_sha()

@@ -182,8 +182,9 @@ PSR estimates the probability that the true Sharpe ratio exceeds a benchmark $SR
 $$PSR(SR^*) = \Phi\left(\frac{(\hat{SR} - SR^*)\sqrt{n - 1}}{\sqrt{1 - \hat{\gamma}_3 \hat{SR} + \frac{\hat{\gamma}_4 - 1}{4}\hat{SR}^2}}\right)$$
 
 where:
-- $\hat{SR}$ is the observed Sharpe (same units as $SR^*$ -- both per-period or both annualized)
-- $n$ is the number of return observations
+- $\hat{SR}$ is the observed Sharpe in **per-period** units (e.g., daily $\hat{SR}$ when $n$ is the number of daily observations). The Mertens (2002) asymptotic-variance formula $1 - \gamma_3 SR + \frac{\gamma_4 - 1}{4} SR^2$ in the denominator is derived for the per-period Sharpe estimator. If you computed annualized $\hat{SR}_{ann} = \sqrt{P} \cdot \hat{SR}_{period}$, divide by $\sqrt{P}$ before plugging in; passing annualized $\hat{SR}$ with daily $n$ inflates the z-statistic by approximately $\sqrt{P}$ (modulo the kurtosis term) and makes PSR saturate at 1.0 for any positive-Sharpe strategy on multi-year data.
+- $SR^*$ is in the same per-period units as $\hat{SR}$.
+- $n$ is the number of per-period return observations
 - $\hat{\gamma}_3$ is the sample skewness of returns
 - $\hat{\gamma}_4$ is the sample kurtosis (Pearson's, normal = 3, not excess)
 - $\Phi$ is the standard normal CDF

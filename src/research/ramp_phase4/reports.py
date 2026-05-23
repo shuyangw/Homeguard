@@ -11,7 +11,6 @@ from src.research.ramp_phase4.metrics import (
     sharpe_ratio, cagr, max_drawdown, avg_daily_turnover, cost_drag_pct, regime_attribution,
 )
 from src.backtesting.statistics.psr import psr
-from src.backtesting.validation.deflated_sharpe import compute_deflated_sharpe
 
 
 DEFAULT_PERIODS: List[Tuple[str, datetime, datetime]] = [
@@ -117,40 +116,44 @@ def build_period_decomposition_table(records, periods: List[Tuple[str, datetime,
     return '\n'.join(lines)
 
 
-def _format_statistical_gates(records, n_trials: int) -> str:
-    """Render a PSR + DSR markdown gate table for a single cost tier.
+def _format_psr_gate(records) -> str:
+    """Render a PSR markdown gate row for a single cost tier.
 
-    PSR is computed against SR=0 using Pearson kurtosis (normal=3). DSR uses
-    the project's compute_deflated_sharpe wrapper which handles excess
-    kurtosis internally and applies the n_trials multi-trial correction.
+    PSR is computed against SR=0 using daily (per-period) Sharpe and Pearson
+    kurtosis (normal = 3), per methodology Section 2.2 and the Bailey-Lopez
+    de Prado (2012) formula. Annualized SR with daily n inflates z by
+    sqrt(252) and saturates PSR at 1.0 -- do not change to annualized.
+
+    DSR is intentionally NOT computed here because it requires a cross-variant
+    trial Sharpe distribution. The orchestrator that runs the full variant
+    grid is the methodologically-honest place to compute DSR.
     """
     rets = np.asarray([r.daily_return for r in records], dtype=np.float64)
     rets = rets[np.isfinite(rets)]
     if len(rets) < 30:
-        return '_Insufficient data for statistical gates._'
+        return '_Insufficient data for statistical gate._'
 
     std = float(rets.std())
     if std <= 0.0:
-        return '_Insufficient data for statistical gates._'
+        return '_Insufficient data for statistical gate._'
 
     sr_daily = float(rets.mean()) / std
     sr_annual = sr_daily * float(np.sqrt(252))
     skew = float(np.mean(((rets - rets.mean()) / std) ** 3))
     pearson_kurt = float(np.mean(((rets - rets.mean()) / std) ** 4))
 
-    psr_value = psr(sr_annual, 0.0, len(rets), skew, pearson_kurt)
-    dsr = compute_deflated_sharpe(rets, n_trials=n_trials)
-
+    psr_value = psr(sr_daily, 0.0, len(rets), skew, pearson_kurt)
     psr_pass = 'PASS' if psr_value > 0.95 else 'FAIL'
-    dsr_pass = 'PASS' if dsr.passed else 'FAIL'
 
     lines = [
-        '| Gate | Value | Pass threshold | Result |',
-        '|---|---:|---:|:---:|',
-        f'| PSR (vs SR=0) | {psr_value:.4f} | > 0.95 | {psr_pass} |',
-        f'| DSR (n_trials={n_trials}) | p={dsr.p_value:.4f} | p < 0.05 | {dsr_pass} |',
-        f'| Expected max Sharpe (null) | {dsr.expected_max_sharpe:.3f} | informational | - |',
-        f'| Observed annualized Sharpe | {dsr.observed_sharpe:.3f} | informational | - |',
+        '| Metric | Value |',
+        '|---|---:|',
+        f'| PSR (vs SR=0) | {psr_value:.4f} (threshold > 0.95: {psr_pass}) |',
+        f'| Observed annualized Sharpe | {sr_annual:.4f} |',
+        f'| Observed daily Sharpe (formula input) | {sr_daily:.6f} |',
+        f'| Sample skewness | {skew:.4f} |',
+        f'| Sample Pearson kurtosis | {pearson_kurt:.4f} |',
+        f'| Sample size (days) | {len(rets)} |',
     ]
     return '\n'.join(lines)
 
@@ -179,7 +182,12 @@ def build_variant_report(
     """Build a full per-variant Markdown report.
 
     records_by_cost_bps maps cost-tier (in bps) to the list of DailyRecords from that run.
+
+    DSR is NOT shown in per-variant reports (it requires the cross-variant trial
+    Sharpe distribution and only makes sense at the orchestrator level). The
+    n_trials kwarg is kept for backward signature compatibility but is now unused.
     """
+    del n_trials  # signature compat; DSR moved to orchestrator level
     out: List[str] = []
     out.append(f'# Phase 4 {variant_id} - {variant_description}\n')
     out.append('## Header\n')
@@ -207,8 +215,13 @@ def build_variant_report(
     out.append(_format_regime_attribution(records_by_cost_bps[pivot_bps]))
     out.append('')
 
-    out.append(f'## Statistical gates (5 bps tier, n_trials={n_trials})\n')
-    out.append(_format_statistical_gates(records_by_cost_bps[pivot_bps], n_trials=n_trials))
+    out.append(f'## PSR gate ({pivot_bps} bps tier)\n')
+    out.append(_format_psr_gate(records_by_cost_bps[pivot_bps]))
+    out.append('')
+    out.append(
+        '_DSR is cross-variant and is reported in the orchestrator-level readiness '
+        'doc (`docs/reports/ramp/*_readiness.md`), not per variant._'
+    )
     out.append('')
 
     return '\n'.join(out)

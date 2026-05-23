@@ -6,7 +6,7 @@ import pytest
 
 from src.research.ramp_phase4.reports import build_variant_report
 from src.research.ramp_phase4.reports import build_parity_report
-from src.research.ramp_phase4.reports import _format_statistical_gates
+from src.research.ramp_phase4.reports import _format_psr_gate
 
 
 def _fake_records(n=10, regime='STRONG_BULL', daily_return=0.001):
@@ -120,41 +120,28 @@ def _synthetic_records(n=250, mean=0.001, std=0.01, seed=42):
     return out
 
 
-def test_statistical_gates_table_renders_with_known_returns():
-    """Given a small synthetic record list, the gates table renders with valid values."""
+def test_psr_gate_renders_with_known_returns():
+    """The PSR gate renders with daily-units sample stats and a PASS/FAIL verdict."""
     records = _synthetic_records(n=250, mean=0.001, std=0.01)
-    table = _format_statistical_gates(records, n_trials=20)
+    table = _format_psr_gate(records)
     assert isinstance(table, str)
     assert 'PSR' in table
-    assert 'DSR' in table
-    assert '|' in table
+    assert 'daily Sharpe (formula input)' in table
+    assert 'annualized Sharpe' in table
     # PSR row should contain PASS or FAIL
     psr_lines = [ln for ln in table.splitlines() if 'PSR' in ln]
     assert any(('PASS' in ln) or ('FAIL' in ln) for ln in psr_lines)
-    # DSR row should contain PASS or FAIL
-    dsr_lines = [ln for ln in table.splitlines() if 'DSR' in ln]
-    assert any(('PASS' in ln) or ('FAIL' in ln) for ln in dsr_lines)
-    # The PSR numeric value should be a probability in [0, 1]. Parse second column.
-    for ln in psr_lines:
-        cells = [c.strip() for c in ln.split('|') if c.strip()]
-        # cells = [label, value, threshold, result]
-        if len(cells) >= 2:
-            try:
-                val = float(cells[1])
-            except ValueError:
-                continue
-            assert 0.0 <= val <= 1.0
 
 
-def test_statistical_gates_insufficient_data():
+def test_psr_gate_insufficient_data():
     """Fewer than 30 observations -> friendly message, not crash."""
     records = _synthetic_records(n=10)
-    msg = _format_statistical_gates(records, n_trials=20)
-    assert msg == '_Insufficient data for statistical gates._'
+    msg = _format_psr_gate(records)
+    assert msg == '_Insufficient data for statistical gate._'
 
 
-def test_build_variant_report_includes_statistical_gates_section():
-    """build_variant_report appends the new section."""
+def test_build_variant_report_includes_psr_section_not_dsr():
+    """build_variant_report shows PSR per-variant; DSR is cross-variant only."""
     records = _synthetic_records(n=250)
     md = build_variant_report(
         variant_id='V01',
@@ -165,10 +152,10 @@ def test_build_variant_report_includes_statistical_gates_section():
         timing_mode='near_close',
         n_trials=20,
     )
-    assert '## Statistical gates' in md
+    assert '## PSR gate' in md
     assert 'PSR' in md
-    assert 'DSR' in md
-    assert 'n_trials=20' in md
+    # DSR must be flagged as cross-variant only, not computed inline.
+    assert 'cross-variant' in md.lower()
 
 
 def test_build_parity_report_produces_side_by_side_table():

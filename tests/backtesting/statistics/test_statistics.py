@@ -136,13 +136,52 @@ def test_combined_gate_acceptance_example() -> None:
     n = 252 * 20
     # Daily expected mean 0.0015, daily vol 0.01 -> expected Sharpe ~ 2.38
     returns = rng.normal(0.0015, 0.01, size=n)
-    sr = sharpe(returns)
+    sr_annual = sharpe(returns)
+    # psr() requires per-period (daily) SR with daily n -- methodology Section 2.2.
+    sr_daily = sr_annual / np.sqrt(252)
     p = psr(
-        sr_hat=sr,
+        sr_hat=sr_daily,
         sr_benchmark=0.0,
         n=n,
         skew=stats.skew(returns),
-        kurt=stats.kurtosis(returns, fisher=False),
+        kurt=stats.kurtosis(returns, fisher=False) + 3.0,  # Pearson, not excess
     )
-    assert sr > 1.0, f"sr={sr}"
+    assert sr_annual > 1.0, f"sr_annual={sr_annual}"
     assert p > 0.95, f"psr={p}"
+
+
+def test_psr_does_not_saturate_for_moderate_sharpe() -> None:
+    """Regression test for the units bug. A strategy with annualized Sharpe ~0.5
+    over 9 years of daily data must yield PSR ~0.94, NOT 1.0. Under the buggy
+    convention (annualized SR with daily n via the per-period variance formula)
+    this returns 1.0 and the bug is hidden.
+
+    V11-realistic parameters: annualized Sharpe 0.528 over 2355 daily observations,
+    moderately fat-tailed returns (Pearson kurtosis 33, skewness -0.6).
+    """
+    sr_annual = 0.528
+    sr_daily = sr_annual / np.sqrt(252)
+    p = psr(sr_hat=sr_daily, sr_benchmark=0.0, n=2355, skew=-0.6, kurt=33.0)
+    # Hand calc: z = 0.0333 * sqrt(2354) / sqrt(1.029) ~ 1.594 -> Phi(1.594) ~ 0.944
+    assert 0.93 < p < 0.96, f"psr={p}, expected ~0.944 (per-period units)"
+
+
+def test_dsr_calibrated_on_moderate_signal() -> None:
+    """Regression test for the units bug in DSR. With V11-realistic parameters
+    and the BLdP-canonical per-period formula, DSR ~0.81. Under the prior buggy
+    callsite convention this saturated at 1.0.
+    """
+    sr_annual = 0.528
+    sr_daily = sr_annual / np.sqrt(252)
+    trial_sharpes_annual = [0.282, 0.313, 0.503, 0.278, 0.528]
+    trial_sharpes_daily = [s / np.sqrt(252) for s in trial_sharpes_annual]
+    d = dsr(
+        sr_hat=sr_daily,
+        trial_sharpes=trial_sharpes_daily,
+        n=2355,
+        skew=-0.6,
+        kurt=33.0,
+        n_trials_project=20,
+    )
+    # Hand calc: expected_max_sharpe (daily) ~0.0149, z ~0.88 -> Phi(0.88) ~ 0.811
+    assert 0.75 < d < 0.85, f"dsr={d}, expected ~0.81 (per-period units)"

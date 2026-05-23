@@ -105,3 +105,46 @@ The `compute_deflated_sharpe` wrapper at `src/backtesting/validation/deflated_sh
 - Orchestrator full-window run: 12 backtests in 11.5 min. Per-variant Sharpes match Wave 1 reports to 4 decimals.
 - Lag at 0 bps very close to near_close at 0 bps (and a hair better, consistent with a clean signal under a 1-day delay), confirming the engine fix.
 - Manual hand calc of expected_max_sharpe agrees with the script output (0.236), confirming the DSR formula application is methodology-correct.
+
+## Addendum: PSR/DSR units correction (same day)
+
+The "all four gates PASS" verdict reported above was wrong. Both PSR = 1.000 and DSR = 1.000 were spurious -- the orchestrator and reports.py passed **annualized** Sharpe into `psr()` / `dsr()` with daily `n`. The Bailey-Lopez de Prado formula's Mertens (2002) variance term applies to the **per-period** Sharpe estimator; passing annualized SR with daily n inflates the z-statistic by approximately sqrt(252), saturating PSR at 1.0 for any positive-Sharpe strategy on multi-year daily data.
+
+The user caught it ("1.0000 seems too perfect"). Mathematical derivation in the conversation transcript confirms an ~8.5x z-inflation for V11.
+
+### What changed in this session (units correction)
+
+- `src/research/ramp_phase4/reports.py`: `_format_statistical_gates` renamed to `_format_psr_gate`. PSR uses `sr_daily` not `sr_annual`. DSR row removed from per-variant reports because DSR is inherently cross-variant (needs trial Sharpe distribution).
+- `scripts/backtest_scripts/ramp_phase4_v11_readiness.py`: PSR + DSR call sites pass `sr_daily`. `trial_sharpes` converted to daily via `/sqrt(252)` before `expected_max_sharpe()`. Verdict logic distinguishes structural PASS vs significance PASS, producing a PARTIAL outcome instead of READY/BLOCKED binary. Sensitivity table for `n_trials ∈ {2, 3, 6, 20}` added.
+- `src/backtesting/validation/deflated_sharpe.py`: replaced the previous body (which had two bugs: unscaled Euler-Mascheroni AND annualized-SR-with-daily-n) with a thin delegate to `src.backtesting.statistics.dsr.dsr` using per-period units. Falls back to a scale-aware trial-Sharpe spread when caller doesn't provide one.
+- `docs/methodology/backtesting.md:185`: clarified the per-period requirement with the Mertens derivation citation and explicit warning about the saturation pitfall.
+- `tests/backtesting/statistics/test_statistics.py`: added `test_psr_does_not_saturate_for_moderate_sharpe` and `test_dsr_calibrated_on_moderate_signal` as regression tests. Both use V11-realistic parameters (daily SR 0.0333, n=2355, skew -0.6, kurt 33) and assert the corrected ~0.94 / ~0.81 values. Prior tests used Sharpe ~2.4 which saturates under both conventions and could not catch this class of bug. Also fixed `test_combined_gate_acceptance_example` to pass `sr_daily` and Pearson kurtosis (not annualized + excess), modeling the corrected convention.
+- `tests/research/ramp_phase4/test_reports.py`: tests renamed and assertions updated to reflect the per-variant PSR-only section.
+
+### Corrected verdict
+
+| Gate | Prior (inflated) | Corrected (per-period BLdP) |
+|---|---:|---:|
+| PSR vs SR=0 | 1.0000 PASS | **0.9442 FAIL** (delta -0.006) |
+| DSR (n_trials=20) | 1.0000 PASS | **0.8108 FAIL** |
+| PBO across 5 variants | 0.1256 PASS | 0.1256 PASS (unaffected) |
+| One-day-lag delta at 5 bps | +9.79% PASS | +9.79% PASS (unaffected) |
+
+DSR sensitivity table demonstrates V11 cannot pass at any plausible `n_trials`:
+
+| n_trials | DSR |
+|---:|---:|
+| 2 | 0.9188 |
+| 3 | 0.8984 |
+| 6 | 0.8655 |
+| 20 | 0.8108 |
+
+The limit is V11's Sharpe magnitude (0.528 annualized over 9 years), not the multi-trial correction. The corrected readiness doc at `docs/reports/ramp/20260523_phase4_v11_readiness.md` reflects this.
+
+### Revised verdict
+
+V11 is **PARTIAL READINESS**: structurally sound (no overfitting per PBO, no lookahead per one-day-lag) but with weak absolute significance after multi-trial correction. Three paths forward documented in the readiness doc: advance V11 to paper with the caveat documented, fall back to V05 (similar significance situation), or pause Phase D for Wave 2 (V12 BEAR-to-cash on V11 base).
+
+### What we learned about the codebase convention
+
+The Homeguard PSR/DSR helpers (`src/backtesting/statistics/psr.py`, `dsr.py`) were always correct as written -- the bug was only at callsites. The existing test `test_combined_gate_acceptance_example` used a Sharpe ~2.4 strategy whose PSR saturates at 1.0 under either convention, so the test couldn't catch the units issue. The new regression tests use V11-realistic moderate-Sharpe parameters where the conventions produce meaningfully different results. The methodology spec line 185 had ambiguous language ("per-period OR annualized") that did not match the formula's actual derivation; that's now corrected.
