@@ -558,6 +558,28 @@ class RAMPLiveAdapter(StrategyAdapter):
         )
         self._persist_position_open_dates()
 
+    def _write_position_state_snapshot(
+        self,
+        positions: Dict[str, float],
+    ) -> None:
+        """Write _latest/ramp_position_state.json for cross-process consumers.
+
+        Companion to _persist_position_open_dates: state_manager holds the
+        runner's session state; this file is a process-agnostic snapshot
+        the V11 comparator (separate systemd timer) can read. Failures are
+        logged, never raised -- this must never block trading.
+        """
+        try:
+            from src.trading.decision_log.writer import write_position_state
+            open_dates = getattr(self, '_position_open_dates', None) or {}
+            write_position_state(
+                STRATEGY_NAME,
+                positions=positions,
+                position_open_dates=open_dates,
+            )
+        except Exception as e:
+            logger.error(f"[RAMP] Failed to write position_state snapshot: {e}")
+
     def _load_sp500_symbols(self) -> List[str]:
         """Load S&P 500 symbols from CSV, excluding leveraged ETFs."""
         from pathlib import Path
@@ -1801,6 +1823,7 @@ class RAMPLiveAdapter(StrategyAdapter):
                 new_positions=post_positions_shares,
                 current_date=tz.now().replace(tzinfo=None),
             )
+            self._write_position_state_snapshot(post_positions_shares)
 
             logger.info("[RAMP] Rebalance execution complete")
 
@@ -1968,6 +1991,7 @@ class RAMPLiveAdapter(StrategyAdapter):
             new_positions=post_positions_shares,
             current_date=tz.now().replace(tzinfo=None),
         )
+        self._write_position_state_snapshot(post_positions_shares)
 
         logger.info("[RAMP] Target-aware rebalance execution complete")
 

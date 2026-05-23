@@ -6,15 +6,17 @@ on each append.
 """
 from __future__ import annotations
 
+import json
 import os
 import random
 import tempfile
 from datetime import date, datetime, timedelta
 from pathlib import Path
-from typing import Optional
+from typing import Dict, Optional
 
 from src.trading.decision_log import paths
 from src.trading.decision_log.record import DecisionRecord
+from src.utils.timezone import tz
 
 
 # Posix PIPE_BUF guarantees atomic appends below this size.
@@ -80,6 +82,34 @@ def _update_latest(rec: DecisionRecord) -> None:
     target.parent.mkdir(parents=True, exist_ok=True)
     line = rec.to_jsonl_line()
     # Write to tmp then rename (POSIX atomic same-fs rename)
+    tmp = target.with_suffix(target.suffix + ".tmp")
+    tmp.write_text(line, encoding="utf-8")
+    os.replace(tmp, target)
+
+
+def write_position_state(
+    strategy: str,
+    positions: Dict[str, float],
+    position_open_dates: Dict[str, datetime],
+) -> None:
+    """Atomically rewrite _latest/<strategy>_position_state.json.
+
+    Companion snapshot to _update_latest so a separate process (e.g. the
+    V11 comparator) can read the live adapter's current positions and
+    per-symbol open dates. Same tmp + os.replace semantics as
+    _update_latest. Empty dicts are valid (Day-1 state).
+    """
+    target = paths.position_state_path(strategy)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "strategy": strategy,
+        "timestamp": tz.now().isoformat(),
+        "positions": {sym: float(qty) for sym, qty in positions.items()},
+        "position_open_dates": {
+            sym: dt.isoformat() for sym, dt in position_open_dates.items()
+        },
+    }
+    line = json.dumps(payload)
     tmp = target.with_suffix(target.suffix + ".tmp")
     tmp.write_text(line, encoding="utf-8")
     os.replace(tmp, target)

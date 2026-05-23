@@ -29,3 +29,12 @@ def jsonl_path(strategy: str, day: date) -> Path:
 def latest_path(strategy: str) -> Path:
     """Path to the latest-record snapshot for a strategy."""
     return latest_dir() / f"{strategy}.json"
+
+
+def position_state_path(strategy: str) -> Path:
+    """Path to the position-state snapshot for a strategy.
+
+    Holds the most recent positions + position_open_dates so a separate
+    process (e.g. the V11 comparator) can read live adapter state.
+    """
+    return latest_dir() / f"{strategy}_position_state.json"
