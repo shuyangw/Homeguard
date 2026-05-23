@@ -32,6 +32,9 @@ class HarnessState:
     # Phase C Wave 1 additions:
     position_open_dates: Dict[str, datetime] = field(default_factory=dict)
     last_target_symbols: List[str] = field(default_factory=list)
+    # Phase 4 Wave 2 (one_day_lag timing): plan at close T, execute at close T+1.
+    # In near_close mode this dict stays empty and is unused.
+    pending_targets: Dict[str, float] = field(default_factory=dict)
 
 
 @dataclass
@@ -88,8 +91,23 @@ def run_variant(cfg: HarnessConfig, variant_spec: VariantLike) -> List[DailyReco
         regime_label = str(plan_output.pop('__regime__', 'STUB'))
         target_weights = plan_output
 
+        # 3. Decide what to actually execute today, per timing mode.
+        if cfg.timing_mode == 'near_close':
+            targets_to_execute = target_weights
+        elif cfg.timing_mode == 'one_day_lag':
+            targets_to_execute = dict(state.pending_targets)
+            # Today's plan becomes tomorrow's pending unless SAFE_MODE.
+            if regime_label != 'SAFE_MODE':
+                state.pending_targets = dict(target_weights)
+            else:
+                state.pending_targets = {}
+                # SAFE_MODE also blocks today's already-pending execution.
+                targets_to_execute = {}
+        else:
+            raise ValueError(f'Unknown timing_mode: {cfg.timing_mode!r}')
+
         if regime_label == 'SAFE_MODE':
-            # Hold current positions; no trades.
+            # Hold current positions; no trades. Preserve last_target_symbols.
             post_value = cur_value
             daily_ret = (post_value / prev_value) - 1.0 if prev_value > 0 else 0.0
             records.append(DailyRecord(
@@ -102,16 +120,31 @@ def run_variant(cfg: HarnessConfig, variant_spec: VariantLike) -> List[DailyReco
             prev_value = post_value
             continue
 
-        weight_sum = sum(target_weights.values())
+        # one_day_lag day 1 (or any day with empty pending): no trades, record a hold.
+        if cfg.timing_mode == 'one_day_lag' and not targets_to_execute:
+            post_value = cur_value
+            daily_ret = (post_value / prev_value) - 1.0 if prev_value > 0 else 0.0
+            records.append(DailyRecord(
+                date=ts, regime=regime_label,
+                target_weights=dict(target_weights),
+                realized_weights=_current_weights(state, prices, post_value),
+                turnover_usd=0.0, cost_usd=0.0,
+                portfolio_value=post_value, daily_return=daily_ret,
+            ))
+            state.last_target_symbols = list(target_weights.keys())
+            prev_value = post_value
+            continue
+
+        weight_sum = sum(targets_to_execute.values())
         if weight_sum > 1.0 + OVERLEVERAGE_EPSILON:
             raise ValueError(
-                f'Variant {variant_spec.id} returned overleverage at {ts.date()}: '
-                f'sum(weights)={weight_sum:.4f}'
+                f'Variant {variant_spec.id} would overleverage at {ts.date()}: '
+                f'sum(weights)={weight_sum:.4f} (mode={cfg.timing_mode})'
             )
 
-        # 3. Compute trades + cost, apply.
+        # 4. Compute trades + cost, apply.
         trades = compute_trades(
-            state, target_weights, prices, cur_value,
+            state, targets_to_execute, prices, cur_value,
             cfg.min_trade_value_usd,
             delta_rebalance_pct=cfg.delta_rebalance_pct,
         )
@@ -119,7 +152,7 @@ def run_variant(cfg: HarnessConfig, variant_spec: VariantLike) -> List[DailyReco
         turnover = sum(abs(t['trade_value_usd']) for t in trades)
         apply_trades(state, trades, cost_usd=cost, current_date=ts)
 
-        # 4. Post-trade MTM.
+        # 5. Post-trade MTM.
         post_value = _portfolio_value(state, prices)
         daily_ret = (post_value / prev_value) - 1.0 if prev_value > 0 else 0.0
         realized_weights = _current_weights(state, prices, post_value)

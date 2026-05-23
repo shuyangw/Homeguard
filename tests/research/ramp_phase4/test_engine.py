@@ -387,3 +387,136 @@ def test_last_target_symbols_records_pre_filter_targets(tmp_path, monkeypatch):
     records = run_variant(cfg, spec)
     assert len(records) == 2
     assert set(records[1].target_weights.keys()) == {'AAA', 'BBB'}
+
+
+def _one_symbol_panel(prices):
+    idx = pd.date_range('2024-01-02', periods=len(prices), freq='B')
+    return pd.DataFrame({
+        'X': list(prices),
+        'SPY': [400.0 + i for i in range(len(prices))],
+        'VIX': [15.0 + 0.1 * i for i in range(len(prices))],
+    }, index=idx)
+
+
+def _one_symbol_cfg(tmp_path, n_days, timing_mode='near_close'):
+    csv = tmp_path / 'u.csv'
+    csv.write_text('symbol\nX\n')
+    idx = pd.date_range('2024-01-02', periods=n_days, freq='B')
+    return HarnessConfig(
+        start_date=idx[0].to_pydatetime(),
+        end_date=idx[-1].to_pydatetime(),
+        universe_csv=csv,
+        initial_capital=100000.0,
+        cost_bps_per_side=0.0,
+        timing_mode=timing_mode,
+    )
+
+
+def test_one_day_lag_shifts_execution_by_one_bar(tmp_path, monkeypatch):
+    """Plan on day T executes at day T+1 close."""
+    prices = [100.0, 110.0, 120.0, 130.0, 140.0]
+    panel = _one_symbol_panel(prices)
+    cfg = _one_symbol_cfg(tmp_path, n_days=len(prices), timing_mode='one_day_lag')
+    monkeypatch.setattr(
+        'src.research.ramp_phase4.engine.load_universe_panel',
+        lambda c, s, e: panel,
+    )
+
+    def variant_fn(t, st, pn, cf):
+        return {'X': 1.0}
+
+    spec = type('Spec', (), {'id': 'LAG', 'plan_fn': staticmethod(variant_fn)})()
+    records = run_variant(cfg, spec)
+
+    assert len(records) == 5
+    # Day 1: no execution because pending_targets started empty.
+    assert records[0].turnover_usd == 0.0
+    # Day 2: yesterday's plan executes at today's close (price 110).
+    assert records[1].turnover_usd > 0.0
+    # Final portfolio approx = initial * (140 / 110); whole-share rounding
+    # rounds down to 909 shares at $110 -> $99990 invested, $10 leftover cash.
+    initial_capital = 100000.0
+    expected_shares = int(initial_capital // 110.0)
+    expected_final = initial_capital - (expected_shares * 110.0) + (expected_shares * 140.0)
+    assert records[-1].portfolio_value == pytest.approx(expected_final, rel=1e-6)
+
+
+def test_one_day_lag_vs_near_close_produces_different_pnl(tmp_path, monkeypatch):
+    """Same variant + panel, different timing -> different final portfolio value."""
+    prices = [100.0, 110.0, 120.0, 130.0, 140.0]
+    panel = _one_symbol_panel(prices)
+    monkeypatch.setattr(
+        'src.research.ramp_phase4.engine.load_universe_panel',
+        lambda c, s, e: panel,
+    )
+
+    def variant_fn(t, st, pn, cf):
+        return {'X': 1.0}
+
+    spec = type('Spec', (), {'id': 'CMP', 'plan_fn': staticmethod(variant_fn)})()
+    cfg_nc = _one_symbol_cfg(tmp_path, n_days=len(prices), timing_mode='near_close')
+    cfg_lag = _one_symbol_cfg(tmp_path, n_days=len(prices), timing_mode='one_day_lag')
+
+    rec_nc = run_variant(cfg_nc, spec)
+    rec_lag = run_variant(cfg_lag, spec)
+
+    final_nc = rec_nc[-1].portfolio_value
+    final_lag = rec_lag[-1].portfolio_value
+    initial_capital = 100000.0
+    assert abs(final_nc - final_lag) / initial_capital > 1e-4
+
+
+def test_one_day_lag_safe_mode_clears_pending(tmp_path, monkeypatch):
+    """SAFE_MODE today clears pending AND blocks today's already-pending execution."""
+    # Use two symbols so a "fresh" pending after SAFE_MODE actually causes a trade.
+    csv = tmp_path / 'u.csv'
+    csv.write_text('symbol\nX\nY\n')
+    idx = pd.date_range('2024-01-02', periods=7, freq='B')
+    panel = pd.DataFrame({
+        'X': [100.0, 101.0, 102.0, 103.0, 104.0, 105.0, 106.0],
+        'Y': [50.0, 50.5, 51.0, 51.5, 52.0, 52.5, 53.0],
+        'SPY': [400.0 + i for i in range(7)],
+        'VIX': [15.0 + 0.1 * i for i in range(7)],
+    }, index=idx)
+    cfg = HarnessConfig(
+        start_date=idx[0].to_pydatetime(),
+        end_date=idx[-1].to_pydatetime(),
+        universe_csv=csv,
+        initial_capital=100000.0,
+        cost_bps_per_side=0.0,
+        timing_mode='one_day_lag',
+    )
+    monkeypatch.setattr(
+        'src.research.ramp_phase4.engine.load_universe_panel',
+        lambda c, s, e: panel,
+    )
+
+    call = {'n': 0}
+    state_snapshots = {}
+
+    # Plan: days 1,2 buy X. Day 3 SAFE_MODE. Days 4,5,6,7 plan switches to Y
+    # -> day 5 must actually trade (rotate from X to Y) once chain resumes.
+    def variant_fn(t, st, pn, cf):
+        call['n'] += 1
+        state_snapshots[call['n']] = dict(st.pending_targets)
+        if call['n'] == 3:
+            return {'__regime__': 'SAFE_MODE'}
+        if call['n'] <= 2:
+            return {'X': 1.0}
+        return {'Y': 1.0}
+
+    spec = type('Spec', (), {'id': 'SAFE', 'plan_fn': staticmethod(variant_fn)})()
+    records = run_variant(cfg, spec)
+
+    assert len(records) == 7
+    # On entry to day 3, pending_targets should hold day 2's plan (X: 1.0).
+    assert state_snapshots[3] == {'X': 1.0}
+    # Day 3 SAFE_MODE: regime label + zero turnover.
+    assert records[2].regime == 'SAFE_MODE'
+    assert records[2].turnover_usd == 0.0
+    # On entry to day 4, pending should be empty (SAFE_MODE cleared it).
+    assert state_snapshots[4] == {}
+    # Day 4: pending was empty -> no trade; day 4's plan becomes new pending.
+    assert records[3].turnover_usd == 0.0
+    # Day 5: day 4's plan (Y: 1.0) executes -> rotate from X to Y -> non-zero turnover.
+    assert records[4].turnover_usd > 0.0
