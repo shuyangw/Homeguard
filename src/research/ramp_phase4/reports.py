@@ -4,11 +4,14 @@ from __future__ import annotations
 
 from datetime import datetime
 from typing import Dict, List, Tuple
+import numpy as np
 import pandas as pd
 
 from src.research.ramp_phase4.metrics import (
     sharpe_ratio, cagr, max_drawdown, avg_daily_turnover, cost_drag_pct, regime_attribution,
 )
+from src.backtesting.statistics.psr import psr
+from src.backtesting.validation.deflated_sharpe import compute_deflated_sharpe
 
 
 DEFAULT_PERIODS: List[Tuple[str, datetime, datetime]] = [
@@ -114,6 +117,44 @@ def build_period_decomposition_table(records, periods: List[Tuple[str, datetime,
     return '\n'.join(lines)
 
 
+def _format_statistical_gates(records, n_trials: int) -> str:
+    """Render a PSR + DSR markdown gate table for a single cost tier.
+
+    PSR is computed against SR=0 using Pearson kurtosis (normal=3). DSR uses
+    the project's compute_deflated_sharpe wrapper which handles excess
+    kurtosis internally and applies the n_trials multi-trial correction.
+    """
+    rets = np.asarray([r.daily_return for r in records], dtype=np.float64)
+    rets = rets[np.isfinite(rets)]
+    if len(rets) < 30:
+        return '_Insufficient data for statistical gates._'
+
+    std = float(rets.std())
+    if std <= 0.0:
+        return '_Insufficient data for statistical gates._'
+
+    sr_daily = float(rets.mean()) / std
+    sr_annual = sr_daily * float(np.sqrt(252))
+    skew = float(np.mean(((rets - rets.mean()) / std) ** 3))
+    pearson_kurt = float(np.mean(((rets - rets.mean()) / std) ** 4))
+
+    psr_value = psr(sr_annual, 0.0, len(rets), skew, pearson_kurt)
+    dsr = compute_deflated_sharpe(rets, n_trials=n_trials)
+
+    psr_pass = 'PASS' if psr_value > 0.95 else 'FAIL'
+    dsr_pass = 'PASS' if dsr.passed else 'FAIL'
+
+    lines = [
+        '| Gate | Value | Pass threshold | Result |',
+        '|---|---:|---:|:---:|',
+        f'| PSR (vs SR=0) | {psr_value:.4f} | > 0.95 | {psr_pass} |',
+        f'| DSR (n_trials={n_trials}) | p={dsr.p_value:.4f} | p < 0.05 | {dsr_pass} |',
+        f'| Expected max Sharpe (null) | {dsr.expected_max_sharpe:.3f} | informational | - |',
+        f'| Observed annualized Sharpe | {dsr.observed_sharpe:.3f} | informational | - |',
+    ]
+    return '\n'.join(lines)
+
+
 def _format_regime_attribution(records) -> str:
     attr = regime_attribution(records)
     lines = [
@@ -133,6 +174,7 @@ def build_variant_report(
     git_commit: str,
     universe_csv: str,
     timing_mode: str,
+    n_trials: int = 20,
 ) -> str:
     """Build a full per-variant Markdown report.
 
@@ -163,6 +205,10 @@ def build_variant_report(
     pivot_bps = 5.0 if 5.0 in records_by_cost_bps else max(records_by_cost_bps.keys())
     out.append(f'## Regime attribution ({pivot_bps} bps tier)\n')
     out.append(_format_regime_attribution(records_by_cost_bps[pivot_bps]))
+    out.append('')
+
+    out.append(f'## Statistical gates (5 bps tier, n_trials={n_trials})\n')
+    out.append(_format_statistical_gates(records_by_cost_bps[pivot_bps], n_trials=n_trials))
     out.append('')
 
     return '\n'.join(out)
