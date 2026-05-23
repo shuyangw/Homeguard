@@ -384,3 +384,4 @@ journalctl -u homeguard-ramp --since "3:50 PM" --until "4:05 PM"
 
 - **2025-12-08**: Initial production deployment, replaced MP strategy
 - **2025-12-08**: Documentation created
+- **2026-05-23**: V11 (Phase 4 Wave 1 combined turnover-lite) deployed to production paper. Variant flipped via `config/trading/strategy_toggle.yaml`. PARTIAL readiness verdict: passes PBO (0.126) and one-day-lag robustness (+9.79%); fails strict PSR (0.944) and DSR (0.811) under per-period BLdP application. Paper validation gate: A7 counter must reach 5 clean sessions. Production live remains gated. Deploy details: `docs/progress/20260523_RAMP_PHASE4_V11_PRODUCTION_PAPER.md`.
