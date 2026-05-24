@@ -1,0 +1,30 @@
+=== Experiment 2 Verdict ===
+
+VERDICT: AMBIGUOUS
+
+N events: 14
+Top-3 attribution share: 53.6%
+Top-3 implied Sharpe contribution: +0.0311 (out of +0.0580 V12-up-cash vs V11 delta)
+Total absolute attribution: +0.7567
+
+Top-3 events (by |avoided_loss|):
+  event_id=7 start_date=2020-03-05 end_date=2020-03-19 n_days=11 spy_return_during=-23.13% avoided_loss=+23.13%
+  event_id=6 start_date=2020-02-24 end_date=2020-03-03 n_days=7 spy_return_during=-9.97% avoided_loss=+9.97%
+  event_id=13 start_date=2025-04-04 end_date=2025-04-08 n_days=3 spy_return_during=-7.49% avoided_loss=+7.49%
+
+Decision criterion:
+  FRAGILE   if top-3 share > 75%  -> do NOT run E6
+  ROBUST    if top-3 share < 50%  -> proceed to E6
+  AMBIGUOUS if 50%-75%                  -> analyst decides
+
+Interpretation:
+Top-3 events drive between 50% and 75% of the absolute avoided-loss attribution under V12-up-cash. Concentration is moderate. Decision is ambiguous -- defer to analyst review. Consider per-day P&L re-run before committing to Experiment 6.
+
+Note: Sharpe contribution is a first-order linear-scaling proxy. It assumes
+constant volatility across events. A more rigorous version would require
+re-running V12-up-cash with per-day P&L logging and computing the actual
+Sharpe difference contribution.
+
+Sign convention: avoided_loss = -spy_return_during.
+  Positive avoided_loss -> SPY went DOWN during the event; cash avoided the loss.
+  Negative avoided_loss -> SPY went UP during the event;   cash missed the gain.
