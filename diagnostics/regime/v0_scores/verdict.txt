@@ -1,0 +1,24 @@
+=== Experiment 3 Verdict ===
+
+VERDICT: WS-3c
+
+Rationale: median argmax_lag at tau=0.3 is 24.00 days, exceeding the 3-day threshold. BEAR_score leads argmax by a meaningful margin -- argmax is suppressing a signal that is already present.
+
+=== Supporting numbers ===
+
+BEAR onsets (n): 63
+Mean gap_days (onset - trough): -1.86
+
+Threshold sweep -- median argmax_lag per tau:
+  tau=0.20  median_argmax_lag=26.00  mean_argmax_lag=22.19  median_trough_lag=29.00  n_events_crossed=63
+  tau=0.30  median_argmax_lag=24.00  mean_argmax_lag=20.02  median_trough_lag=21.00  n_events_crossed=61
+  tau=0.40  median_argmax_lag=18.00  mean_argmax_lag=18.07  median_trough_lag=19.00  n_events_crossed=58
+  tau=0.50  median_argmax_lag=17.00  mean_argmax_lag=17.20  median_trough_lag=15.00  n_events_crossed=51
+
+Cross-correlation -- Pearson r(BEAR_score, forward drawdown):
+  h= 1d  pearson_r=+0.0199  n_obs=2359  p_value=3.33e-01
+  h= 5d  pearson_r=-0.1982  n_obs=2355  p_value=2.75e-22
+  h=10d  pearson_r=-0.2132  n_obs=2350  p_value=1.45e-25
+  h=20d  pearson_r=-0.1806  n_obs=2340  p_value=1.33e-18
+
+Mean |Pearson r| across 4 horizons: 0.1530
