@@ -63,6 +63,15 @@ Canonical glossary of every named RAMP variant. Each entry links to code, spec, 
 
 - **V12b** candidate: V12 with `min_regime_days > 0`. V12 readiness sensitivity (2026-05-24) at 5 bps near_close: deb-2=0.130 (worse than V12 default's 0.268), deb-3=0.315 (+0.05), deb-5=0.437 (+0.17). V12-deb-5 modestly beats V12 default but still under-performs V11 (0.528). Combined with the detector-lag finding (mean -3.42 gap_days), the lesson is "no debouncing value can recover what the detector misses." NOT motivated as a separate spec; deferred until WS-3 (detector improvement) lands.
 
-## V13+ -- reserved
-- **V13** candidate: defensive ticker support (`SH` / `TLT` / `GLD` as BEAR-day position) instead of cash. Universe expansion required. See spec Appendix C re: three-SMA structure constraint that defines V13a vs V14.
+## V13-bear-invert -- V11 + BEAR onset goes to SPY 100%
+
+- **Code**: `src/research/ramp_phase4/variants.py::_variant_v13_bear_invert`
+- **Description**: V11 base. On detector-BEAR days, returns 100% SPY (single-name). Tests the BEAR-as-buy hypothesis discovered from V12's onset-alignment panel (mean gap_days = -3.42).
+- **Discovery context**: V12 readiness panel showed detector fires ~3.4 trading days AFTER the SPY drawdown trough across 59 events 2017-2026. V13 inverts the sign of V12's BEAR consumption.
+- **Readiness report**: `docs/reports/ramp/20260525_phase4_v13_readiness.md`
+- **Readiness verdict (2026-05-24)**: **TIER 4 -- BEAR-as-buy is spurious on this sample.** V13 @ 5bps near_close Sharpe = 0.400 vs V11's 0.528 (-0.128); V13 @ 5bps one_day_lag = 0.381 vs V11's 0.580 (-0.199). Gate 3 (PBO=0.629 across 7 variants) FAIL, Gate 5b (no-regress vs V11 @ 7.5bps lag: V13=0.308 vs 0.9*V11=0.478) FAIL, Gate 1 PSR (0.883) FAIL, Gate 2 DSR (0.707, n=23) FAIL. Gate 4 (lag-degradation, nc-lag=+0.019) and Gate 5a (cost-floor, 0.308>0.30) PASS. Detector-onset alignment: 59 BEAR onsets, mean gap_days -3.42 (matches V12 panel), mean SPY return during BEAR window = +0.18% -- positive but tiny, too small to overcome turnover cost relative to V11 holding momentum names that recover into the trough.
+- **Honesty discipline**: V13 was discovered from EXT-OOS inspection of V12's panel. DSR n_trials_project incremented (22 -> 23) to reflect V13's introduction. **NOT OOS in the strict sense**; forward OOS validation required before any deploy regardless of verdict.
+- **Status**: research; **NOT deployed**. Continue WS-3c roadmap (E3 produced WS-3c verdict; V13 spurious confirms BEAR-as-buy at single-asset SPY is not the lever).
+
+## V14+ -- reserved
 - **V14** candidate: per-regime strategy routing (RAMP for bull, OMR for sideways, etc.). Requires per-regime adapter layer; Phase 4 harness has no such abstraction.
