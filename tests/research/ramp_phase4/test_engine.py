@@ -580,3 +580,67 @@ def test_engine_first_tick_initialization():
     assert state.regime_streak == {'BEAR': 1}
     assert state.last_regime == 'BEAR'
     assert state.last_validated_regime == 'BEAR'  # 1 >= 0
+
+
+# ---------------------------------------------------------------------------
+# V12 Task 2: HarnessConfig regime_positions + min_regime_days fields.
+# ---------------------------------------------------------------------------
+
+
+def test_harness_config_defaults_match_spec():
+    """v12.0.0 defaults: BEAR -> cash, others -> normal, SAFE_MODE -> hold, min=0."""
+    cfg = HarnessConfig(
+        start_date=datetime(2017, 1, 1),
+        end_date=datetime(2026, 5, 16),
+        universe_csv=Path('config/universes/sp500-2025.csv'),
+        initial_capital=100000.0,
+        cost_bps_per_side=5.0,
+    )
+    assert cfg.regime_positions == {
+        'STRONG_BULL': 'normal',
+        'WEAK_BULL': 'normal',
+        'SIDEWAYS': 'normal',
+        'UNPREDICTABLE': 'normal',
+        'BEAR': 'cash',
+        'SAFE_MODE': 'hold',
+    }
+    assert cfg.min_regime_days == 0
+
+
+def test_harness_config_rejects_unknown_position_value():
+    """ValueError on regime_positions value not in {normal, cash, hold}."""
+    with pytest.raises(ValueError, match='regime_positions'):
+        HarnessConfig(
+            start_date=datetime(2017, 1, 1),
+            end_date=datetime(2026, 5, 16),
+            universe_csv=Path('config/universes/sp500-2025.csv'),
+            initial_capital=100000.0,
+            cost_bps_per_side=5.0,
+            regime_positions={'BEAR': 'TLT'},
+        )
+
+
+def test_harness_config_rejects_negative_min_regime_days():
+    """ValueError on min_regime_days < 0."""
+    with pytest.raises(ValueError, match='min_regime_days'):
+        HarnessConfig(
+            start_date=datetime(2017, 1, 1),
+            end_date=datetime(2026, 5, 16),
+            universe_csv=Path('config/universes/sp500-2025.csv'),
+            initial_capital=100000.0,
+            cost_bps_per_side=5.0,
+            min_regime_days=-1,
+        )
+
+
+def test_harness_config_allows_unknown_regime_keys():
+    """Unknown regime KEYS fall through to 'normal' at variant runtime; constructor accepts."""
+    cfg = HarnessConfig(
+        start_date=datetime(2017, 1, 1),
+        end_date=datetime(2026, 5, 16),
+        universe_csv=Path('config/universes/sp500-2025.csv'),
+        initial_capital=100000.0,
+        cost_bps_per_side=5.0,
+        regime_positions={'BEAR': 'cash', 'FUTURE_REGIME': 'normal'},
+    )
+    assert 'FUTURE_REGIME' in cfg.regime_positions
