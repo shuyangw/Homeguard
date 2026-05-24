@@ -1,0 +1,16 @@
+{
+  "tau_in": 0.555556,
+  "tau_out": 0.455556,
+  "tau_band": 0.1,
+  "g1_bear_score_p25": 0.333333,
+  "g1_bear_score_p75": 1.0,
+  "n_g1_bear_days": 371,
+  "g1_labeler_commit": "9c48245ca41ceb21085ffb1e67bd3d1b58465ad3",
+  "computed_at": "2026-05-24T22:08:27.213325+00:00",
+  "computation_script": "scripts/diagnostics/compute_tau_in_from_g1.py",
+  "computation_method": "median BEAR_score on G1_BEAR days (drawdown > 10% from 252-day trailing high)",
+  "source_data": {
+    "labels": "diagnostics\\data\\spy_vix_2016_2026.parquet",
+    "scores": "diagnostics\\regime\\v0_scores\\labels.parquet"
+  }
+}
