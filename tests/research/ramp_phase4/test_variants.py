@@ -703,3 +703,62 @@ def test_v14b_registry_entry_exists():
     from src.research.ramp_phase4.variants import _variant_v14b_soft_bear_spy
     assert 'V14b-soft-bear-spy' in REGISTRY
     assert REGISTRY['V14b-soft-bear-spy'].plan_fn is _variant_v14b_soft_bear_spy
+
+
+def test_v14c_hysteresis_canonical_schmitt(monkeypatch):
+    """V14c: same state machine as V14a/b; action is V11 weights * dampen_factor."""
+    from src.research.ramp_phase4.engine import HarnessState
+    from src.research.ramp_phase4.variants import _variant_v14c_soft_bear_dampen
+
+    cfg = _v14_test_cfg()
+    assert cfg.soft_bear_dampen_factor == 0.5
+    state = HarnessState(cash_usd=100_000.0)
+    from src.research.ramp_phase4 import variants as v_mod
+    monkeypatch.setattr(v_mod, '_variant_v11', lambda t, s, p, c: {
+        '__regime__': 'STRONG_BULL', 'AAPL': 0.5, 'MSFT': 0.5,
+    })
+
+    sequence = [(0.10, False), (0.30, True), (0.1999, False), (0.50, True)]
+    base_date = datetime(2020, 1, 1)
+    for i, (score, expected_mode) in enumerate(sequence):
+        _patch_detector_score(monkeypatch, score)
+        t = base_date + timedelta(days=i)
+        plan = _variant_v14c_soft_bear_dampen(t, state, None, cfg)
+        assert state.in_bear_soft_mode is expected_mode
+        if expected_mode:
+            assert isinstance(plan, dict)
+            assert plan.get('AAPL') == 0.25  # 0.5 * 0.5
+            assert plan.get('MSFT') == 0.25
+            assert plan['__regime__'] == 'BEAR_SOFT_DAMPEN'
+        else:
+            assert plan == {'__regime__': 'STRONG_BULL', 'AAPL': 0.5, 'MSFT': 0.5}
+
+
+def test_v14c_registry_entry_exists():
+    from src.research.ramp_phase4.variants import _variant_v14c_soft_bear_dampen
+    assert 'V14c-soft-bear-dampen' in REGISTRY
+    assert REGISTRY['V14c-soft-bear-dampen'].plan_fn is _variant_v14c_soft_bear_dampen
+
+
+def test_v14c_respects_custom_dampen_factor(monkeypatch):
+    from src.research.ramp_phase4.engine import HarnessState
+    from src.research.ramp_phase4.variants import _variant_v14c_soft_bear_dampen
+    from src.research.ramp_phase4.config import HarnessConfig
+    cfg = HarnessConfig(
+        start_date=datetime(2017, 1, 3),
+        end_date=datetime(2026, 5, 22),
+        universe_csv=Path('config/universes/sp500-2025.csv'),
+        initial_capital=100_000.0,
+        cost_bps_per_side=5.0,
+        soft_bear_tau_in=0.3,
+        soft_bear_tau_out=0.2,
+        soft_bear_dampen_factor=0.25,
+    )
+    state = HarnessState(cash_usd=100_000.0)
+    from src.research.ramp_phase4 import variants as v_mod
+    monkeypatch.setattr(v_mod, '_variant_v11', lambda t, s, p, c: {
+        '__regime__': 'STRONG_BULL', 'AAPL': 1.0,
+    })
+    _patch_detector_score(monkeypatch, 0.5)
+    plan = _variant_v14c_soft_bear_dampen(datetime(2020, 1, 1), state, None, cfg)
+    assert plan['AAPL'] == 0.25  # 1.0 * 0.25

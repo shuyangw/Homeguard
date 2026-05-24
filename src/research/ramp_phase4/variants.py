@@ -400,6 +400,55 @@ def _variant_v14b_soft_bear_spy(
     return plan_v11
 
 
+def _variant_v14c_soft_bear_dampen(
+    t: datetime, state, panel: pd.DataFrame, cfg,
+) -> Dict[str, float]:
+    """V14c: BEAR_score Schmitt-trigger -> V11 plan * dampen_factor on enter.
+
+    Tests whether the right response to BEAR is risk reduction (not switch).
+    cfg.soft_bear_dampen_factor (default 0.5) is the multiplier applied to
+    all V11 symbol weights; __regime__ marker is preserved.
+    """
+    plan_v11 = _variant_v11(t, state, panel, cfg)
+
+    spy_slice = panel['SPY'].dropna().loc[:t] if panel is not None else None
+    vix_slice = panel['VIX'].dropna().loc[:t] if panel is not None else None
+
+    spy_df = None
+    vix_df = None
+    if spy_slice is not None and vix_slice is not None \
+            and len(spy_slice) >= 252 and len(vix_slice) >= 252:
+        spy_df = pd.DataFrame({
+            'close': spy_slice, 'open': spy_slice, 'high': spy_slice, 'low': spy_slice,
+            'volume': 1e6,
+        })
+        vix_df = pd.DataFrame({'close': vix_slice})
+
+    try:
+        _DETECTOR.classify_regime(spy_df, vix_df, t)
+    except (DataInsufficientError, TypeError, ValueError, KeyError):
+        pass
+
+    bear_score = None
+    if _DETECTOR.last_classification_timestamp == t and _DETECTOR.last_regime_scores is not None:
+        bear_score = _DETECTOR.last_regime_scores.get('BEAR')
+
+    if bear_score is not None:
+        _engine_pre_variant_update_soft_bear(
+            state, bear_score, cfg.soft_bear_tau_in, cfg.soft_bear_tau_out,
+        )
+
+    if state.in_bear_soft_mode:
+        dampened: Dict[str, float] = {}
+        for sym, w in plan_v11.items():
+            if sym == '__regime__':
+                continue
+            dampened[sym] = float(w) * cfg.soft_bear_dampen_factor
+        dampened['__regime__'] = 'BEAR_SOFT_DAMPEN'
+        return dampened
+    return plan_v11
+
+
 REGISTRY: Dict[str, VariantSpec] = {
     'V01': VariantSpec(
         id='V01',
@@ -450,5 +499,10 @@ REGISTRY: Dict[str, VariantSpec] = {
         id='V14b-soft-bear-spy',
         description='V11 + Schmitt-trigger BEAR_score consumer; in_bear_soft_mode -> SPY 100%',
         plan_fn=_variant_v14b_soft_bear_spy,
+    ),
+    'V14c-soft-bear-dampen': VariantSpec(
+        id='V14c-soft-bear-dampen',
+        description='V11 + Schmitt-trigger BEAR_score consumer; in_bear_soft_mode -> V11 plan * dampen_factor (default 0.5)',
+        plan_fn=_variant_v14c_soft_bear_dampen,
     ),
 }
