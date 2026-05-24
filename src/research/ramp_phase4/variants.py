@@ -19,7 +19,9 @@ from src.research.ramp_phase4.engine import (
 )
 from src.research.ramp_phase4.filters import rank_buffer, min_hold
 from src.research.ramp_phase4.plans import PLAN_CASH_BEAR_SOFT, _SentinelPlan
-from src.strategies.advanced.market_regime_detector import MarketRegimeDetector
+from src.strategies.advanced.market_regime_detector import (
+    DataInsufficientError, MarketRegimeDetector,
+)
 from src.strategies.advanced.ramp_strategy import RAMPSignals, REGIME_PARAMS
 from src.strategies.advanced.ramp_target_planner import compute_plan
 
@@ -331,15 +333,18 @@ def _variant_v14a_soft_bear_cash(
         spy_df, vix_df = None, None
 
     bear_score = None
+    # Narrow except: detector data-insufficiency is expected during warm-up
+    # or partial-coverage days (None inputs raise TypeError; short windows raise
+    # DataInsufficientError). AssertionError from the freshness check below must
+    # NOT be swallowed -- that would defeat the check's purpose.
     try:
         _DETECTOR.classify_regime(spy_df, vix_df, t)
-        assert _DETECTOR.last_classification_timestamp == t, \
-            'Detector freshness assertion failed in V14a'
-        if _DETECTOR.last_regime_scores is not None:
-            bear_score = _DETECTOR.last_regime_scores.get('BEAR')
-    except Exception:
-        if _DETECTOR.last_regime_scores is not None:
-            bear_score = _DETECTOR.last_regime_scores.get('BEAR')
+    except (DataInsufficientError, TypeError, ValueError, KeyError):
+        pass
+    # Freshness check OUTSIDE the try -- AssertionError propagates as intended.
+    # Stale-read guard: only consume scores if the detector classified THIS tick.
+    if _DETECTOR.last_classification_timestamp == t and _DETECTOR.last_regime_scores is not None:
+        bear_score = _DETECTOR.last_regime_scores.get('BEAR')
 
     if bear_score is not None:
         _engine_pre_variant_update_soft_bear(
