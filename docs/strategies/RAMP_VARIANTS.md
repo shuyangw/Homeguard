@@ -49,7 +49,7 @@ Canonical glossary of every named RAMP variant. Each entry links to code, spec, 
 - **Status**: research; deployment deferred pending WS-3 + V12 re-run.
 
 ## V12b / V12c -- reserved
-- **V12b** candidate: V12 with `min_regime_days > 0`. V12 readiness sensitivity (2026-05-24) showed debouncing values {2, 3, 5} all under-perform v12.0.0 except min=5 (Sharpe 0.437, still below min=0's 0.268-... wait, this needs care: min=5 beats min=0 in absolute terms. Re-read the sensitivity appendix before spec'ing V12b.) Tentative: NOT motivated as a separate spec at this time.
+- **V12b** candidate: V12 with `min_regime_days > 0`. V12 readiness sensitivity (2026-05-24) at 5 bps near_close: deb-2=0.130 (worse than V12 default's 0.268), deb-3=0.315 (+0.05), deb-5=0.437 (+0.17). V12-deb-5 modestly beats V12 default but still under-performs V11 (0.528). Combined with the detector-lag finding (mean -3.42 gap_days), the lesson is "no debouncing value can recover what the detector misses." NOT motivated as a separate spec; deferred until WS-3 (detector improvement) lands.
 - **V12c** candidate (sensitivity-motivated): UNPREDICTABLE='cash' as the new default. Readiness sensitivity (2026-05-24) showed Sharpe 0.586 vs V12 default 0.268 (+0.32 lift) AND beats V11 (0.528). Spec honesty discipline says this requires its own readiness gate; not an in-place V12 default swap. **Strong candidate for the next research cycle after WS-3 or in parallel.**
 
 ## V13+ -- reserved
