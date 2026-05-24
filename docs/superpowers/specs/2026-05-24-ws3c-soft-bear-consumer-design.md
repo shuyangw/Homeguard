@@ -1,7 +1,15 @@
+# WS-3c: Soft-Score BEAR Consumer (V14-soft-bear) -- Design (REV1 -- SUPERSEDED)
+
+> **SUPERSEDED 2026-05-24** by `docs/superpowers/specs/2026-05-24-v14-soft-bear-factorial-design.md` (rev2).
+>
+> Rev2 expands this single-variant cash-only design into a 3-variant factorial (V14a cash / V14b SPY / V14c dampen) under a single Schmitt-trigger surface, addresses three blocking methodological issues (PBO mitigation language, tau_in selection bias from in-sample optimization, DSR n_trials undercount), and adds infrastructure refinements (`_SentinelPlan` class, explicit detector freshness assertions, warm-up parity, full tau predicate, multi-variant selection rule). See rev2 "Appendix: Differences from rev1" for the full diff.
+>
+> This rev1 file is preserved for commit-history continuity and as a record of the design choices that were rejected. Implementation work follows rev2.
+
 # WS-3c: Soft-Score BEAR Consumer (V14-soft-bear) -- Design
 
 **Date**: 2026-05-24
-**Status**: Proposed (awaiting user review of written spec)
+**Status**: Superseded by rev2 (factorial spec)
 **Branch**: v12-bear-to-cash (continuation of the 2026-05-24 research campaign)
 **Builds on**:
 - E3 verdict (`docs/reports/ramp/20260525_experiment3_soft_scores.md`): WS-3c, median argmax_lag at tau=0.3 = 24 trading days; Pearson r(BEAR_score, forward 5d drawdown) = -0.198, p ~ 1e-22.
