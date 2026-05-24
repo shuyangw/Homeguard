@@ -1,0 +1,26 @@
+=== Experiment 5 Verdict ===
+
+VERDICT: AMBIGUOUS
+
+OMR per-regime Sharpe (per-trade):
+  STRONG_BULL     0.258 (n=643)
+  WEAK_BULL       0.215 (n=1381)
+  SIDEWAYS        0.239 (n=311)
+  UNPREDICTABLE  (n=0)  -- absent from OMR trade log
+  BEAR           (n=0)  -- absent from OMR trade log
+
+Sharpe range / max(|Sharpe|): 16.6%
+  (range=0.043, max|Sharpe|=0.258)
+
+Transition-day Sharpe:  0.301 (n=501)
+Persistent-day Sharpe:  0.208 (n=1834)
+Transition-day gap (transition - persistent): +0.092
+
+BEAR-onset window OMR mean return: 0.002478 (n=255)
+Overall OMR mean return:           0.004788
+BEAR onsets out of OMR window: 14 / 63 (missing fraction 0.222)
+
+Interpretation:
+OMR adapter filters BEAR/UNPREDICTABLE entries via its Bayesian-bucket screen, so the regime column carries only STRONG_BULL/WEAK_BULL/SIDEWAYS. A direct Sharpe-by-regime range comparison vs RAMP cannot resolve DETECTOR-WIDE vs RAMP-SPECIFIC at trade granularity: OMR's defence against BEAR is structural (no trade), not a Sharpe degradation we can compare to RAMP's BEAR-day equity exposure.
+
+Analyst guidance: treat WS-3 (detector improvement) as RAMP-attributable unless and until a separate study instruments OMR's Bayesian-bucket fill to expose per-day regime sensitivity. At trade granularity, OMR shows no BEAR/UNPREDICTABLE exposure to compare with.
