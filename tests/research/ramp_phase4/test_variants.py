@@ -560,3 +560,105 @@ def test_v13_safe_mode_when_insufficient_data(_v12_test_panel_safe_mode):
         datetime(2024, 6, 15), _fresh_state(), _v12_test_panel_safe_mode, cfg
     )
     assert v13_out == {'__regime__': 'SAFE_MODE'}
+
+
+import json
+from pathlib import Path
+from datetime import datetime, timedelta
+from src.research.ramp_phase4.variants import (
+    _variant_v14a_soft_bear_cash, REGISTRY,
+)
+from src.research.ramp_phase4.plans import _SentinelPlan, PLAN_CASH_BEAR_SOFT
+
+
+def _v14_test_cfg():
+    """Standard config for V14 tests with explicit tau values."""
+    from src.research.ramp_phase4.config import HarnessConfig
+    return HarnessConfig(
+        start_date=datetime(2017, 1, 3),
+        end_date=datetime(2026, 5, 22),
+        universe_csv=Path('config/universes/sp500-2025.csv'),
+        initial_capital=100_000.0,
+        cost_bps_per_side=5.0,
+        soft_bear_tau_in=0.3,
+        soft_bear_tau_out=0.2,
+    )
+
+
+def _patch_detector_score(monkeypatch, score: float):
+    """Patch the module-level _DETECTOR to return a known BEAR_score."""
+    from src.research.ramp_phase4 import variants
+    class _MockDetector:
+        last_regime_scores = {'BEAR': score, 'STRONG_BULL': 1.0 - score}
+        last_classification_timestamp = None
+        def classify_regime(self, spy, vix, t):
+            self.last_classification_timestamp = t
+            return ('BEAR', score) if score >= 0.5 else ('STRONG_BULL', 1.0 - score)
+    monkeypatch.setattr(variants, '_DETECTOR', _MockDetector())
+
+
+def test_v14a_hysteresis_canonical_schmitt(monkeypatch):
+    """Canonical pinning: source of truth for V14a state-machine semantics.
+
+    With tau_in=0.3, tau_out=0.2:
+      Day  Score   Expected in_bear_soft_mode after update    Plan returned
+       1   0.10    False                                      V11 plan
+       2   0.25    False (never crossed tau_in)               V11 plan
+       3   0.30    True (>= tau_in enters)                    PLAN_CASH_BEAR_SOFT
+       4   0.25    True (stays in band)                       PLAN_CASH_BEAR_SOFT
+       5   0.20    True (NOT strict <, stays)                 PLAN_CASH_BEAR_SOFT
+       6   0.1999  False (strict <, exits)                    V11 plan
+       7   0.25    False (no entry from in-band)              V11 plan
+       8   0.50    True (re-enters)                           PLAN_CASH_BEAR_SOFT
+    """
+    from src.research.ramp_phase4.engine import HarnessState
+
+    cfg = _v14_test_cfg()
+    state = HarnessState(cash_usd=100_000.0)
+    # Stub V11 to return a known dict (we're not testing V11 here)
+    from src.research.ramp_phase4 import variants as v_mod
+    def _stub_v11(t, state, panel, cfg):
+        return {'__regime__': 'STRONG_BULL', 'STUB': 1.0}
+    monkeypatch.setattr(v_mod, '_variant_v11', _stub_v11)
+
+    sequence = [
+        (0.10, False, dict),
+        (0.25, False, dict),
+        (0.30, True, _SentinelPlan),
+        (0.25, True, _SentinelPlan),
+        (0.20, True, _SentinelPlan),
+        (0.1999, False, dict),
+        (0.25, False, dict),
+        (0.50, True, _SentinelPlan),
+    ]
+    base_date = datetime(2020, 1, 1)
+    for i, (score, expected_mode, expected_type) in enumerate(sequence):
+        _patch_detector_score(monkeypatch, score)
+        t = base_date + timedelta(days=i)
+        plan = _variant_v14a_soft_bear_cash(t, state, None, cfg)
+        assert state.in_bear_soft_mode is expected_mode, \
+            f'Day {i+1} score={score}: expected mode={expected_mode}, got {state.in_bear_soft_mode}'
+        if expected_type is _SentinelPlan:
+            assert isinstance(plan, _SentinelPlan), f'Day {i+1}: expected sentinel, got {plan}'
+            assert plan.reason == 'BEAR_SOFT_CASH'
+        else:
+            assert isinstance(plan, dict), f'Day {i+1}: expected dict, got {plan}'
+
+
+def test_v14a_freshness_assertion_passes_with_explicit_call(monkeypatch):
+    """V14a calls classify_regime explicitly; freshness assertion passes."""
+    from src.research.ramp_phase4.engine import HarnessState
+    cfg = _v14_test_cfg()
+    state = HarnessState(cash_usd=100_000.0)
+    from src.research.ramp_phase4 import variants as v_mod
+    monkeypatch.setattr(v_mod, '_variant_v11', lambda t, s, p, c: {'__regime__': 'STRONG_BULL'})
+
+    _patch_detector_score(monkeypatch, 0.5)
+    t = datetime(2020, 1, 1)
+    plan = _variant_v14a_soft_bear_cash(t, state, None, cfg)
+    assert v_mod._DETECTOR.last_classification_timestamp == t
+
+
+def test_v14a_registry_entry_exists():
+    assert 'V14a-soft-bear-cash' in REGISTRY
+    assert REGISTRY['V14a-soft-bear-cash'].plan_fn is _variant_v14a_soft_bear_cash

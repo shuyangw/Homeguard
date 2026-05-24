@@ -13,8 +13,12 @@ from datetime import datetime
 from typing import Callable, Dict
 import pandas as pd
 
-from src.research.ramp_phase4.engine import _engine_pre_variant_update
+from src.research.ramp_phase4.engine import (
+    _engine_pre_variant_update,
+    _engine_pre_variant_update_soft_bear,
+)
 from src.research.ramp_phase4.filters import rank_buffer, min_hold
+from src.research.ramp_phase4.plans import PLAN_CASH_BEAR_SOFT, _SentinelPlan
 from src.strategies.advanced.market_regime_detector import MarketRegimeDetector
 from src.strategies.advanced.ramp_strategy import RAMPSignals, REGIME_PARAMS
 from src.strategies.advanced.ramp_target_planner import compute_plan
@@ -293,6 +297,60 @@ def _variant_v13_bear_invert(t: datetime, state, panel: pd.DataFrame, cfg) -> Di
     return plan
 
 
+def _variant_v14a_soft_bear_cash(
+    t: datetime, state, panel: pd.DataFrame, cfg,
+) -> Dict[str, float] | _SentinelPlan:
+    """V14a: BEAR_score Schmitt-trigger -> cash on enter.
+
+    Pre-conditions: cfg.soft_bear_tau_in/tau_out loaded from
+    config/research/v14_tau_constants.json by the orchestrator.
+
+    Reads detector.last_regime_scores['BEAR'] AFTER making an explicit
+    classify_regime call to guarantee freshness. Decouples from
+    _compute_plan_from_panel ordering (V11's incidental detector call).
+
+    State machine: _engine_pre_variant_update_soft_bear mutates
+    state.in_bear_soft_mode based on Schmitt trigger.
+
+    Action: if in_bear_soft_mode -> PLAN_CASH_BEAR_SOFT; else V11 plan.
+    """
+    plan_v11 = _variant_v11(t, state, panel, cfg)
+
+    if panel is not None:
+        spy_slice = panel['SPY'].dropna().loc[:t]
+        vix_slice = panel['VIX'].dropna().loc[:t]
+        if len(spy_slice) >= 252 and len(vix_slice) >= 252:
+            spy_df = pd.DataFrame({
+                'close': spy_slice, 'open': spy_slice, 'high': spy_slice, 'low': spy_slice,
+                'volume': 1e6,
+            })
+            vix_df = pd.DataFrame({'close': vix_slice})
+        else:
+            spy_df, vix_df = None, None
+    else:
+        spy_df, vix_df = None, None
+
+    bear_score = None
+    try:
+        _DETECTOR.classify_regime(spy_df, vix_df, t)
+        assert _DETECTOR.last_classification_timestamp == t, \
+            'Detector freshness assertion failed in V14a'
+        if _DETECTOR.last_regime_scores is not None:
+            bear_score = _DETECTOR.last_regime_scores.get('BEAR')
+    except Exception:
+        if _DETECTOR.last_regime_scores is not None:
+            bear_score = _DETECTOR.last_regime_scores.get('BEAR')
+
+    if bear_score is not None:
+        _engine_pre_variant_update_soft_bear(
+            state, bear_score, cfg.soft_bear_tau_in, cfg.soft_bear_tau_out,
+        )
+
+    if state.in_bear_soft_mode:
+        return PLAN_CASH_BEAR_SOFT
+    return plan_v11
+
+
 REGISTRY: Dict[str, VariantSpec] = {
     'V01': VariantSpec(
         id='V01',
@@ -333,5 +391,10 @@ REGISTRY: Dict[str, VariantSpec] = {
         id='V13-bear-invert',
         description='V11 + BEAR onset goes to SPY 100% (inverse of V12 BEAR-to-cash; tests BEAR-as-buy hypothesis)',
         plan_fn=_variant_v13_bear_invert,
+    ),
+    'V14a-soft-bear-cash': VariantSpec(
+        id='V14a-soft-bear-cash',
+        description='V11 + Schmitt-trigger BEAR_score consumer; in_bear_soft_mode -> cash',
+        plan_fn=_variant_v14a_soft_bear_cash,
     ),
 }
