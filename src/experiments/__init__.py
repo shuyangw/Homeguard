@@ -8,6 +8,7 @@ from src.experiments.registry import (
     append_run,
     incumbent_return_streams,
     init_db,
+    make_trial_callback,
     n_trials_project_wide,
 )
 
@@ -16,5 +17,6 @@ __all__ = [
     "append_run",
     "incumbent_return_streams",
     "init_db",
+    "make_trial_callback",
     "n_trials_project_wide",
 ]

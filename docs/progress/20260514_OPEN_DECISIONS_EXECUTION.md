@@ -16,29 +16,61 @@ Six commits shipped to `main`. All quality gates that ran are green (58 tests pa
 
 Prioritized follow-up work. The retrospective sections below explain context.
 
-### Blocking (work is already gated waiting on these)
+### Done since this doc first landed
 
-1. **Section 11.5 stop-slippage multiplier wiring PR** -- the actual code change. `portfolio_simulator.py` and its numba kernel currently apply uniform slippage to every fill regardless of exit reason. `CostsSettings.stop_slippage_multiplier` is defined but inert at the fill site. Until this PR lands, five queued strategies cannot graduate to live: **Darwinex FX MR, ORB variants, hurst_mr_baseline, ml_crypto_mr_baseline, RAMP-CSP**. The hard gate in `strategy-lead.md` Phase 9 (commit `8cd4963`) rejects them. Effort: ~half day including numba kernel + a synthetic test verifying 1.5x slippage on stop exits vs entries. Design note (per Shuyang): **two specialized numba kernels** (with-multiplier vs without) dispatched at sweep entry, NOT a per-fill branch. No-stops path stays full speed.
+- [x] **Section 11.5 stop-slippage multiplier wiring** -- shipped 2026-05-20. Kernel: `9dbe65a`. Plumbing through Portfolio / PortfolioV2 / from_signals / BacktestEngine / `_resolve_costs`: `b856abe`. Phase 9 gate lifted: `6e74c92`. All 13 backtest YAMLs already declared `stop_slippage_multiplier: 1.5` in their costs blocks; the wiring activates the value they were already setting. Design call diverged from the dual-kernel suggestion: single kernel with the per-rare-event conditional inside the already-rare `if exit_triggered` block. Refactor to dual-kernel if profiling shows it matters.
+
+- [x] **`hurst_mr_baseline.yaml` ValidationError fix** -- shipped 2026-05-20 as `dcdc7b0`. Aligned `risk.position_sizing_method: fixed_percentage` to the schema's `fixed_percent`.
+
+- [x] **Per-config row wiring** (Cleanup #4) -- shipped 2026-05-20 across `263b56e` (grid_search reference) -> `ba96854` (callback refactor) -> `00cc661` (random/bayesian/genetic). Optimizers are now registry-AGNOSTIC: they accept an optional `on_trial_complete: Callable[[params, stats], None]` hook. The production runner builds the callback via `src.experiments.make_trial_callback(...)` and passes it to `engine.optimize`; research scripts that construct optimizers directly pass nothing and get no registry writes. `sweep_runner.py` deliberately NOT updated -- it sweeps symbols, not parameters; already has `on_symbol_complete` callbacks for that semantics.
+
+- [x] **Branch-switch guard** -- worked from a dedicated worktree at `C:\Users\qwqw1\Homeguard-main` on `main` for the entire 2026-05-20 session. The Dropbox-tracked checkout at `C:\Users\qwqw1\Dropbox\cs\github\Homeguard` is still being switched between branches by a parallel session; the dedicated worktree is now the convention for any main-bound work.
+
+- [x] **Trade-log MAE/MFE field extension** -- shipped 2026-05-21 as `aa7cc58`. Methodology Sections 11.6 / 11.11 / 12.1 fields are now materialized on every exit trade record produced by V1 and V2 Numba simulators: `mae_pct`, `mfe_pct` (signed, long-convention), `mae_time`, `mfe_time`, `hit_stop`, `hit_target`. The kernels track `running_low` / `running_high` + bar indices for each open position and reset on entry. `hit_stop` / `hit_target` are derived in the Python conversion layer from the configured `stop_loss_pct` / `profit_target_pct` -- the kernel stays lean. 8 new TDD tests in `tests/backtesting/engine/test_mae_mfe.py` (long/short MAE+MFE with bars, hit_stop on stop fire, hit_target on target fire, vacuous False when no stop/target configured, entry records carry no MAE/MFE, multi-trade isolation). All 41 V1+V2 simulator tests still green.
+
+### Blocking (work is gated waiting on these)
+
+1. **PR 3 end-to-end validation** (v3 plan validation step 5) -- never executed. "Run a complete backtest of a strategy with stops; verify Section 12 diagnostics appear in report (capacity curve, regime transitions, trade-level metrics, IR if applicable, MAE/MFE if applicable). Verify strategy-lead's gates fire correctly with intentional failures injected." Effort: ~1 hour. **Unblocked now** that MAE/MFE fields exist. This is the last item before the v3 rollout is fully landed.
 
 ### Unblocked but waiting on consumers
 
-2. **`src/backtesting/utils/futures_roll.py`** -- the real fix for the 277 ZC/futures roll discontinuities that Decision 9-lite surfaced. Per-contract return splicing OR back-adjustment. Defer until a futures backtest is queued; without a concrete consumer the API would be guessed. The canary script (`scripts/data/check_roll_discontinuities.py`) documents the problem in the meantime so no one is blindsided.
+3. **`src/backtesting/utils/futures_roll.py`** -- the real fix for the 277 ZC/futures roll discontinuities that Decision 9-lite surfaced. Per-contract return splicing OR back-adjustment. Defer until a futures backtest is queued; without a concrete consumer the API would be guessed. The canary script (`scripts/data/check_roll_discontinuities.py`) documents the problem in the meantime.
 
-3. **`opex_pinning.yaml` options cost model wiring** -- currently uses `bps_override: 32.0` (approximating SPY/QQQ/IWM ATM round-trip) as a placeholder. When `src/backtesting/costs/options.py`'s alpha-of-half-spread model gets wired through `_resolve_costs`, replace the override with a proper tier declaration. Effort: ~2 hours including the `_resolve_costs` branch + opex_pinning re-test.
-
-### Cleanup
-
-4. **Per-config row wiring inside the 5 optimizer modules** under `src/backtesting/optimization/` (grid_search, sweep_runner, random_search, bayesian_optimizer, genetic_optimizer). Today's PR 1b wired only the three remaining `run_*_from_config` paths in `backtest_runner.py` -- each appends one parent registry row. The per-config children (sharing a `parent_run_id`, each combo's metrics) would let DSR pull a richer N from the registry. Effort: ~1 hour per optimizer = 5 hours total.
-
-5. **`hurst_mr_baseline.yaml` pre-existing ValidationError** on `risk.position_sizing_method`. Predates the cost-tier migration; not caused by today's work. Quick fix: align the YAML's enum value with `PositionSizingMethod` in `src/settings/schema.py`. ~10 min.
-
-### Process improvements
-
-6. **Branch-switch guard**: a parallel Claude session uses this same worktree for `feature/fx-comprehensive-expansion` and silently switches the branch under us. This session lost two commits to the wrong branch (Decision 9-lite, then a stray revert) and lost the working-tree copy of this doc multiple times. **Mitigation for next session**: work from a dedicated worktree (`git worktree add ../homeguard-main main`) so the main-branch checkout can't be moved by other agents. Alternatively a pre-commit hook that aborts on `feature/*` when the change is destined for main.
+4. **`opex_pinning.yaml` options cost model wiring** -- currently uses `bps_override: 32.0` (approximating SPY/QQQ/IWM ATM round-trip) as a placeholder. When `src/backtesting/costs/options.py`'s alpha-of-half-spread model gets wired through `_resolve_costs`, replace the override with a proper tier declaration. Effort: ~2 hours including the `_resolve_costs` branch + opex_pinning re-test.
 
 ### Out of scope but documented
 
-7. New agents (`portfolio-integrator`, `strategy-architect`, `strategy-implementer`) per decision B -- defer until concrete trigger. Triggers documented in methodology Appendix.
+5. New agents (`portfolio-integrator`, `strategy-architect`, `strategy-implementer`) per decision B -- defer until concrete trigger. Triggers documented in methodology Appendix.
+
+6. v3 plan open questions 2-4 (capacity scale points, K for parameter stability, IR gates) -- methodology defaults stand; recalibrate after 1-2 real strategies hit those Section 12 paths.
+
+---
+
+## Session 2026-05-20 (continuation)
+
+Resumed work on the v3 plan's NEXT ACTIONS. Commits in order:
+
+- `dcdc7b0` fix(backtesting): align hurst_mr_baseline sizing enum to schema (Cleanup #3)
+- `9dbe65a` feat(engine): apply stop_slippage_multiplier to stop-loss exits (Section 11.5 kernel)
+- `b856abe` feat(costs): wire stop_slippage_multiplier through engine to backtest runner
+- `6e74c92` docs: lift Section 11.5 wiring gate now that multiplier is applied
+- `263b56e` feat(optimizer): per-combo registry rows in GridSearchOptimizer (Cleanup #4 reference)
+- `ba96854` refactor(optimizer): per-trial registry hook is now caller-supplied callback
+- `00cc661` refactor(optimizer): per-trial callback hook in random/bayesian/genetic
+
+Key process win: switched to a dedicated `C:\Users\qwqw1\Homeguard-main` worktree on `main` after the Dropbox-tracked checkout kept getting moved to feature branches by a parallel session. All 2026-05-20 commits landed on `main` cleanly.
+
+Tests: 58 pass across registry / statistics / costs / walk-forward through every commit.
+
+## Session 2026-05-21
+
+- `aa7cc58` feat(engine): per-trade MAE/MFE tracking + hit_stop/hit_target flags
+
+TDD: 8 failing tests in `tests/backtesting/engine/test_mae_mfe.py` were written first, then the V1 Numba kernel (`src/backtesting/engine/numba_sim.py`) and V2 Numba kernel (`src/backtesting_v2/engine/numba_sim.py`) were extended with `running_low` / `running_high` + bar tracking; the Python conversion layer (`Portfolio._convert_numba_trades`, `PortfolioV2._convert_numba_trades_v2`) was wired to annotate exit records and compute `hit_stop` / `hit_target` from the configured stop / target thresholds. All 41 V1+V2 simulator tests pass with no regressions.
+
+Pre-existing failures in `tests/optimization/test_random_search.py` and `tests/optimization/test_parallel_optimization.py` (48 failed) are caused by an unrelated `StreamingDataLoader.load_symbols` missing-method on a mock loader -- verified by re-running them after stashing the MAE/MFE work. Same root cause as the 2026-05-20 walk-forward fix; needs its own follow-up to switch the random-search / parallel optimizers to the `_with_data` pattern.
+
+The v3 methodology rollout is now ~98% complete. Only the end-to-end validation (PR 3 verification step 5) remains.
 
 ---
 

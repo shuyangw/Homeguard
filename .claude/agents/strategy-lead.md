@@ -24,11 +24,10 @@ When the backtest-driver or backtest-optimizer returns, before marking the phase
 | Information ratio (per asset class) | 12.5 | Below per-class threshold | Reject for live; allow research |
 | Exit logic summary (if applicable) | 11.11 | Required for strategies with stops/targets | Re-dispatch with explicit requirement |
 | MAE/MFE validation (if applicable) | 11.6 | Required for stops sized by optimizer | Reject optimizer-derived stops |
-| **Section 11.5 stop-slippage wiring gate** | 11.5 | Strategy exit type is `fixed_pct_stop`, `vol_scaled_stop`, `trailing_stop`, `time_stop_with_pct_stop`, or `scale_out` -- ANY of these | **Reject for live graduation.** Reason: "Section 11.5 stop-slippage multiplier wiring pending -- strategy cannot graduate until PR for portfolio_simulator.py + numba kernel lands." Allow paper / research; block Phase 9 live promotion. Lift this gate when the multiplier PR lands. |
 
 The Section 12 Tier-1 diagnostics plus the exit-logic diagnostics from Section 11 are the operational gating logic. The combined statistical gate (Section 2.5) determines whether the strategy passes statistically; these additional gates determine whether it passes operationally.
 
-**Status of Section 11.5 wiring** (as of 2026-05-13): `portfolio_simulator.py` and its numba kernel apply a single uniform `slippage` value to every fill regardless of exit reason. `CostsSettings.stop_slippage_multiplier` exists but is unused at the fill site. Until the wiring PR lands, the gate above keeps any stop-bearing strategy out of live trading -- it would graduate on optimistic metrics that don't reflect Section 11.5's 1.5x-3.0x stop-slippage reality.
+**Section 11.5 wiring status** (as of 2026-05-14): the stop-slippage multiplier is now applied end-to-end. Path: `config.costs.stop_slippage_multiplier` -> `_resolve_costs` -> `BacktestEngine` -> `Portfolio` -> `simulate_portfolio_numba`. At stop-loss exits (exit_reason == EXIT_STOP_LOSS), `effective_slippage = slippage * stop_slippage_multiplier`. Other exit reasons (signal / profit_target / time_stop) and entries use base `slippage` unchanged. The earlier graduation gate that rejected stop-bearing strategies has been lifted; live promotion now uses the methodology-correct cost basis.
 
 # SECTION 1: SESSION RECOVERY (READ THIS FIRST ON EVERY START)
 

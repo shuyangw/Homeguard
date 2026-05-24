@@ -1,0 +1,9 @@
+event_name,start_date,end_date,event_type
+Q4_2018_selloff,2018-10-03,2018-12-26,drawdown
+Volmageddon_Feb_2018,2018-02-02,2018-02-09,vol_spike
+COVID_crash,2020-02-19,2020-03-23,drawdown
+COVID_vol_spike,2020-03-12,2020-03-16,vol_spike
+2022_bear_market,2022-01-04,2022-10-13,drawdown
+2025_tariff_drawdown,2025-02-19,2025-04-08,drawdown
+2025_april_vol_spike,2025-04-04,2025-04-09,vol_spike
+2025_dec_drawdown,2025-12-15,2026-02-03,drawdown

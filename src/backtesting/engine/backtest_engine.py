@@ -40,7 +40,8 @@ class BacktestEngine:
         risk_config: Optional[RiskConfig] = None,
         enable_regime_analysis: bool = False,
         allow_shorts: bool = True,
-        timeframe: str = '1min'
+        timeframe: str = '1min',
+        stop_slippage_multiplier: float = 1.0,
     ):
         """
         Initialize backtesting engine.
@@ -71,6 +72,7 @@ class BacktestEngine:
         self.initial_capital = initial_capital
         self.fees = fees
         self.slippage = slippage
+        self.stop_slippage_multiplier = stop_slippage_multiplier
         # Use timeframe as freq for Sharpe annualization (overrides legacy freq param)
         self.freq = timeframe if timeframe else freq
         self.market_hours_only = market_hours_only
@@ -429,7 +431,8 @@ class BacktestEngine:
                 risk_config=self.risk_config,
                 price_data=symbol_data,
                 allow_shorts=self.allow_shorts,
-                fractional_shares=self.fractional_shares
+                fractional_shares=self.fractional_shares,
+                stop_slippage_multiplier=self.stop_slippage_multiplier
             )
         else:
             # Standard strategy (long-only, returns 2 signals)
@@ -450,7 +453,8 @@ class BacktestEngine:
                 risk_config=self.risk_config,
                 price_data=symbol_data,
                 allow_shorts=self.allow_shorts,
-                fractional_shares=self.fractional_shares
+                fractional_shares=self.fractional_shares,
+                stop_slippage_multiplier=self.stop_slippage_multiplier
             )
 
         return portfolio
@@ -513,6 +517,7 @@ class BacktestEngine:
                 price_data=symbol_data,
                 allow_shorts=self.allow_shorts,
                 fractional_shares=self.fractional_shares,
+                stop_slippage_multiplier=self.stop_slippage_multiplier,
             )
         else:
             entries, exits = strategy.generate_signals(symbol_data)
@@ -531,6 +536,7 @@ class BacktestEngine:
                 price_data=symbol_data,
                 allow_shorts=self.allow_shorts,
                 fractional_shares=self.fractional_shares,
+                stop_slippage_multiplier=self.stop_slippage_multiplier,
             )
 
         return portfolio
@@ -887,7 +893,8 @@ class BacktestEngine:
                 risk_config=self.risk_config,
                 price_data=data_dict[first_symbol],
                 allow_shorts=self.allow_shorts,
-                fractional_shares=self.fractional_shares
+                fractional_shares=self.fractional_shares,
+                stop_slippage_multiplier=self.stop_slippage_multiplier
             )
 
             return portfolio
@@ -948,7 +955,8 @@ class BacktestEngine:
             market_hours_only=self.market_hours_only,
             risk_config=self.risk_config,
             price_data=data,  # Pass OHLC data for ATR-based position sizing
-            fractional_shares=self.fractional_shares
+            fractional_shares=self.fractional_shares,
+                stop_slippage_multiplier=self.stop_slippage_multiplier
         )
 
         self._print_summary(portfolio)
@@ -962,7 +970,8 @@ class BacktestEngine:
         symbols: Union[str, List[str]],
         start_date: str,
         end_date: str,
-        metric: str = 'sharpe_ratio'
+        metric: str = 'sharpe_ratio',
+        on_trial_complete: Optional[Any] = None,
     ) -> Dict[str, Any]:
         """
         Optimize strategy parameters over a grid.
@@ -976,6 +985,10 @@ class BacktestEngine:
             start_date: Start date
             end_date: End date
             metric: Metric to optimize ('sharpe_ratio', 'total_return', 'max_drawdown')
+            on_trial_complete: optional `(params, stats) -> None` callback
+                invoked after each combination. Used by the runner to append
+                per-trial registry rows. None (default) leaves the optimizer
+                registry-agnostic -- research scripts can skip the wiring.
 
         Returns:
             Dictionary with best parameters and results
@@ -989,7 +1002,8 @@ class BacktestEngine:
             symbols=symbols,
             start_date=start_date,
             end_date=end_date,
-            metric=metric
+            metric=metric,
+            on_trial_complete=on_trial_complete,
         )
 
     def _print_summary(self, portfolio: Portfolio) -> None:

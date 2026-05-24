@@ -18,6 +18,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, Any, Optional, List
 
+import pandas as pd
+
 from src.backtesting.engine.backtest_engine import BacktestEngine
 from src.backtesting.engine.metrics import PerformanceMetrics
 from src.backtesting.engine.streaming_data_loader import StreamingDataLoader as DataLoader
@@ -525,13 +527,18 @@ def _create_output_dir(config: 'BacktestConfig', mode_suffix: str = "") -> Optio
 
 
 def _resolve_costs(config: 'BacktestConfig') -> tuple:
-    """Return (fees, slippage) honoring `costs.tier` per methodology Section 4.
+    """Return (fees, slippage, stop_slippage_multiplier) honoring `costs.tier`
+    per methodology Section 4.
 
     Hard-fail when both `costs.tier` AND `costs.bps_override` are None
     (Section 4 governance). Strategies that don't fit the bps-tier model
     -- e.g., options strategies that need the alpha-of-half-spread fill
     model from Section 4.5 -- declare an explicit `costs.bps_override`
     as the opt-out, with a comment pointing at the deferred wiring.
+
+    stop_slippage_multiplier is sourced from `costs.stop_slippage_multiplier`
+    (default 1.5 per methodology Section 11.5) and applied to slippage on
+    stop-loss exits only.
     """
     tier = getattr(getattr(config, 'costs', None), 'tier', None)
     override_bps = getattr(getattr(config, 'costs', None), 'bps_override', None)
@@ -573,11 +580,15 @@ def _resolve_costs(config: 'BacktestConfig') -> tuple:
     # on each fill. Put the entire round-trip in per-side fees; leave slippage at 0
     # since the tier round-trip already encompasses spread.
     per_side_fees = round_trip_bps / 10_000.0 / 2.0
+    stop_slippage_multiplier = getattr(
+        getattr(config, 'costs', None), 'stop_slippage_multiplier', 1.0
+    ) or 1.0
     logger.info(
         f"[costs] {config.strategy.name}: tier={tier} -> "
-        f"round_trip={round_trip_bps:.1f} bps, per_side_fees={per_side_fees:.5f}"
+        f"round_trip={round_trip_bps:.1f} bps, per_side_fees={per_side_fees:.5f}, "
+        f"stop_slippage_multiplier={stop_slippage_multiplier:.2f}"
     )
-    return per_side_fees, 0.0
+    return per_side_fees, 0.0, stop_slippage_multiplier
 
 
 def _append_to_registry(
@@ -592,6 +603,7 @@ def _append_to_registry(
     phase: str = 'initial',
     parent_run_id: Optional[str] = None,
     combinations_in_run: int = 1,
+    run_id: Optional[str] = None,
 ) -> Optional[str]:
     """Append a run row to the experiment registry per methodology Section 9.
 
@@ -650,6 +662,7 @@ def _append_to_registry(
             pass  # best-effort; missing provenance does not fail the append
 
         return append_run(
+            run_id=run_id,
             strategy_name=config.strategy.name,
             agent_name=agent_name,
             phase=phase,
@@ -715,7 +728,7 @@ def run_single_from_config(config: 'BacktestConfig') -> None:
             max_positions=config.risk.max_positions,
         )
 
-    fees, slippage = _resolve_costs(config)
+    fees, slippage, stop_slip_mult = _resolve_costs(config)
 
     engine = BacktestEngine(
         initial_capital=config.backtest.initial_capital,
@@ -725,6 +738,7 @@ def run_single_from_config(config: 'BacktestConfig') -> None:
         risk_config=risk_config,
         timeframe=config.backtest.timeframe,
         market_hours_only=config.backtest.market_hours_only,
+        stop_slippage_multiplier=stop_slip_mult,
     )
 
     output_dir = _create_output_dir(config)
@@ -789,47 +803,27 @@ def run_single_from_config(config: 'BacktestConfig') -> None:
             TradeLogger.export_trades_csv(portfolio, trades_csv)
             logger.success(f"Trade log exported: {trades_csv}")
 
-            # Also print trades summary to console
-            trades_df = portfolio.trades
-            if len(trades_df) > 0:
-                logger.blank()
-                logger.header("TRADE LOG")
-                logger.blank()
-
-                # Display all trades
-                for _, trade in trades_df.iterrows():
-                    symbol = trade.get('symbol', 'N/A')
-                    entry_time = trade.get('entry_timestamp', 'N/A')
-                    exit_time = trade.get('exit_timestamp', 'N/A')
-                    direction = trade.get('direction', 'N/A')
-                    entry_price = trade.get('entry_price', 0)
-                    exit_price = trade.get('exit_price', 0)
-                    shares = trade.get('shares', 0)
-                    pnl = trade.get('pnl', 0)
-                    pnl_pct = trade.get('pnl_pct', 0) * 100
-                    exit_reason = trade.get('exit_reason', '')
-
-                    # Format entry time for display
-                    if hasattr(entry_time, 'strftime'):
-                        entry_str = entry_time.strftime('%Y-%m-%d %H:%M')
-                    else:
-                        entry_str = str(entry_time)[:16]
-
-                    if hasattr(exit_time, 'strftime'):
-                        exit_str = exit_time.strftime('%Y-%m-%d %H:%M')
-                    else:
-                        exit_str = str(exit_time)[:16]
-
-                    pnl_indicator = "[+]" if pnl > 0 else "[-]"
-                    logger.info(
-                        f"{pnl_indicator} {symbol:5} | {direction:5} | "
-                        f"Entry: {entry_str} @ ${entry_price:.2f} | "
-                        f"Exit: {exit_str} @ ${exit_price:.2f} | "
-                        f"Shares: {shares:,.0f} | PnL: ${pnl:,.2f} ({pnl_pct:+.2f}%) | {exit_reason}"
+            # Also print a trade-count summary to console. The V1 Portfolio
+            # exposes `trades` as a list of dicts (entry + exit rows);
+            # MultiAssetPortfolio exposes a DataFrame of round-trips. Handle
+            # both without trying to .iterrows() over a list.
+            trades_obj = portfolio.trades
+            if isinstance(trades_obj, list):
+                total_rows = len(trades_obj)
+                exit_count = sum(
+                    1 for t in trades_obj
+                    if t.get('type') in ('exit', 'cover_short')
+                )
+                if total_rows > 0:
+                    logger.blank()
+                    logger.metric(
+                        f"Total Trades: {exit_count} round-trips "
+                        f"({total_rows} entry+exit rows)"
                     )
-
-                logger.blank()
-                logger.metric(f"Total Trades: {len(trades_df)}")
+            elif isinstance(trades_obj, pd.DataFrame):
+                if len(trades_obj) > 0:
+                    logger.blank()
+                    logger.metric(f"Total Trades: {len(trades_obj)}")
         except Exception as e:
             logger.warning(f"Could not export trades: {e}")
 
@@ -867,7 +861,7 @@ def run_sweep_from_config(config: 'BacktestConfig') -> None:
     start_date, end_date = _resolve_dates(config)
     strategy = _get_strategy_instance(config)
 
-    fees, slippage = _resolve_costs(config)
+    fees, slippage, stop_slip_mult = _resolve_costs(config)
 
     engine = BacktestEngine(
         initial_capital=config.backtest.initial_capital,
@@ -876,6 +870,7 @@ def run_sweep_from_config(config: 'BacktestConfig') -> None:
         allow_shorts=config.backtest.allow_shorts,
         timeframe=config.backtest.timeframe,
         market_hours_only=config.backtest.market_hours_only,
+        stop_slippage_multiplier=stop_slip_mult,
     )
 
     sweep_runner = SweepRunner(
@@ -937,7 +932,7 @@ def run_optimize_from_config(config: 'BacktestConfig') -> None:
     start_date, end_date = _resolve_dates(config)
     strategy_cls = get_strategy_class(config.strategy.name)
 
-    fees, slippage = _resolve_costs(config)
+    fees, slippage, stop_slip_mult = _resolve_costs(config)
 
     engine = BacktestEngine(
         initial_capital=config.backtest.initial_capital,
@@ -946,11 +941,34 @@ def run_optimize_from_config(config: 'BacktestConfig') -> None:
         allow_shorts=config.backtest.allow_shorts,
         timeframe=config.backtest.timeframe,
         market_hours_only=config.backtest.market_hours_only,
+        stop_slippage_multiplier=stop_slip_mult,
     )
 
     if not config.optimization.param_grid:
         logger.error("No param_grid specified in optimization config")
         sys.exit(1)
+
+    # Build the per-trial registry callback once and pass to the optimizer.
+    # Counts every combo toward project-wide N for DSR (methodology 9.4).
+    n_combos = 1
+    for v in (config.optimization.param_grid or {}).values():
+        try:
+            n_combos *= max(1, len(v))
+        except TypeError:
+            pass
+    sweep_parent_id = str(uuid.uuid4())
+    from src.experiments import make_trial_callback
+    trial_cb = make_trial_callback(
+        parent_run_id=sweep_parent_id,
+        strategy_name=config.strategy.name,
+        combinations_in_run=n_combos,
+        start_date=start_date,
+        end_date=end_date,
+        wall_clock_start=wall_clock_start,
+        cost_tier_used=getattr(engine, 'cost_tier_used', None),
+        cost_bps=getattr(engine, 'cost_bps', None),
+        phase='optimization_grid_search',
+    )
 
     results = engine.optimize(
         strategy_class=strategy_cls,
@@ -958,7 +976,8 @@ def run_optimize_from_config(config: 'BacktestConfig') -> None:
         symbols=symbols,
         start_date=start_date,
         end_date=end_date,
-        metric=config.optimization.metric
+        metric=config.optimization.metric,
+        on_trial_complete=trial_cb,
     )
 
     logger.blank()
@@ -966,13 +985,8 @@ def run_optimize_from_config(config: 'BacktestConfig') -> None:
     logger.metric(f"Best parameters: {results['best_params']}")
     logger.metric(f"Best {config.optimization.metric}: {results['best_value']:.4f}")
 
-    # Approximate combinations count from param_grid (product of value-list lengths).
-    n_combos = 1
-    for v in (config.optimization.param_grid or {}).values():
-        try:
-            n_combos *= max(1, len(v))
-        except TypeError:
-            pass
+    # Parent row uses sweep_parent_id so the per-trial children appended
+    # by trial_cb link to it via parent_run_id.
     run_id = _append_to_registry(
         config=config,
         portfolio=results.get('best_portfolio') if isinstance(results, dict) else None,
@@ -983,6 +997,7 @@ def run_optimize_from_config(config: 'BacktestConfig') -> None:
         agent_name='backtest-optimizer',
         phase='optimization',
         combinations_in_run=n_combos,
+        run_id=sweep_parent_id,
     )
     if run_id:
         logger.info(f"[registry] appended optimization run_id={run_id} (combinations={n_combos})")
@@ -1012,7 +1027,7 @@ def run_walk_forward_from_config(config: 'BacktestConfig') -> None:
 
     output_dir = _create_output_dir(config, "_walk_forward")
 
-    fees, slippage = _resolve_costs(config)
+    fees, slippage, stop_slip_mult = _resolve_costs(config)
 
     engine = BacktestEngine(
         initial_capital=config.backtest.initial_capital,
@@ -1021,6 +1036,7 @@ def run_walk_forward_from_config(config: 'BacktestConfig') -> None:
         allow_shorts=config.backtest.allow_shorts,
         timeframe=config.backtest.timeframe,
         market_hours_only=config.backtest.market_hours_only,
+        stop_slippage_multiplier=stop_slip_mult,
     )
 
     base_optimizer = GridSearchOptimizer(engine)

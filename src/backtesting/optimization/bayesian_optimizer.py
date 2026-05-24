@@ -9,7 +9,7 @@ objective functions.
 import numpy as np
 import pandas as pd
 import time
-from typing import Dict, List, Any, Union, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 from pathlib import Path
 
 from src.utils import logger
@@ -107,7 +107,8 @@ class BayesianOptimizer(BaseOptimizer):
         random_seed: Optional[int] = None,
         enable_plots: bool = True,
         convergence_tolerance: Optional[float] = None,
-        convergence_patience: int = 10
+        convergence_patience: int = 10,
+        on_trial_complete: Optional[Callable] = None,
     ) -> Dict[str, Any]:
         """
         Optimize strategy parameters using Bayesian optimization.
@@ -324,6 +325,10 @@ class BayesianOptimizer(BaseOptimizer):
                 'error': error
             }
             all_results.append(result)
+
+            # Per-trial hook (caller-supplied; e.g. registry append)
+            if error is None and stats is not None and on_trial_complete is not None:
+                on_trial_complete(params, stats)
 
             # Update best if better
             previous_best = best_value

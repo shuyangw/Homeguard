@@ -46,29 +46,45 @@ class TradeLogger:
                 for _, trade in trades_df.iterrows():
                     trade_type = trade.get('type', '')
 
-                    if trade_type == 'entry':
-                        # Buy row
+                    if trade_type in ('entry', 'short_entry'):
+                        # Buy / short-entry row
                         buy_rows.append({
                             'Symbol': symbol,
                             'Date': trade.get('timestamp'),
                             'Price': trade.get('price'),
                             'Size': trade.get('shares'),
-                            'Direction': 'Buy',
+                            'Direction': 'Short' if trade_type == 'short_entry' else 'Buy',
                             'PnL': np.nan,
                             'Return': np.nan,
-                            'Status': ''
+                            'Status': '',
+                            # Section 11.6 fields are blank on entry rows.
+                            'MAE %': np.nan,
+                            'MFE %': np.nan,
+                            'MAE Time': pd.NaT,
+                            'MFE Time': pd.NaT,
+                            'Hit Stop': np.nan,
+                            'Hit Target': np.nan,
                         })
-                    elif trade_type == 'exit':
-                        # Sell row
+                    elif trade_type in ('exit', 'cover_short'):
+                        # Sell / cover row. MAE/MFE/hit_* are set by the
+                        # simulator for exit rows when stops/targets are
+                        # configured (or with running excursion tracking
+                        # otherwise).
                         sell_rows.append({
                             'Symbol': symbol,
                             'Date': trade.get('timestamp'),
                             'Price': trade.get('price'),
                             'Size': trade.get('shares'),
-                            'Direction': 'Sell',
+                            'Direction': 'Cover' if trade_type == 'cover_short' else 'Sell',
                             'PnL': trade.get('pnl'),
                             'Return': trade.get('pnl_pct'),
-                            'Status': trade.get('exit_reason', '')
+                            'Status': trade.get('exit_reason', ''),
+                            'MAE %': trade.get('mae_pct'),
+                            'MFE %': trade.get('mfe_pct'),
+                            'MAE Time': trade.get('mae_time'),
+                            'MFE Time': trade.get('mfe_time'),
+                            'Hit Stop': trade.get('hit_stop'),
+                            'Hit Target': trade.get('hit_target'),
                         })
 
                 # Combine and sort by date
@@ -132,8 +148,15 @@ class TradeLogger:
             # Old format (round-trip): 'Symbol', 'Entry Date', 'Entry Price', 'Exit Date', 'Exit Price', 'Size', 'PnL', 'Return', 'Direction', 'Status'
 
             if 'Date' in trades.columns:
-                # New format with buy/sell rows
-                trade_cols = ['Symbol', 'Date', 'Price', 'Size', 'Direction', 'PnL', 'Return', 'Status']
+                # New format with buy/sell rows. Methodology Section 11.6
+                # MAE/MFE/hit_* columns are present on exit rows when the
+                # simulator emitted them; entry rows carry NaN.
+                trade_cols = [
+                    'Symbol', 'Date', 'Price', 'Size', 'Direction',
+                    'PnL', 'Return', 'Status',
+                    'MAE %', 'MFE %', 'MAE Time', 'MFE Time',
+                    'Hit Stop', 'Hit Target',
+                ]
                 available_cols = [col for col in trade_cols if col in trades.columns]
                 trades_export = trades[available_cols].copy()
 
@@ -149,6 +172,10 @@ class TradeLogger:
                 if 'Return' in trades_export.columns:
                     trades_export['Return'] = (trades_export['Return'] * 100).round(2)
                     trades_export.rename(columns={'Return': 'Return %'}, inplace=True)
+                if 'MAE %' in trades_export.columns:
+                    trades_export['MAE %'] = (trades_export['MAE %'] * 100).round(2)
+                if 'MFE %' in trades_export.columns:
+                    trades_export['MFE %'] = (trades_export['MFE %'] * 100).round(2)
             else:
                 # Old format with round-trip trades
                 trade_cols = [

@@ -74,6 +74,7 @@ class PortfolioV2(Portfolio):
         use_numba: bool = True,
         fractional_shares: bool = False,
         track_state: bool = False,
+        stop_slippage_multiplier: float = 1.0,
     ):
         """
         Initialize portfolio with optional state tracking.
@@ -126,6 +127,7 @@ class PortfolioV2(Portfolio):
             allow_shorts=allow_shorts,
             use_numba=use_numba,
             fractional_shares=fractional_shares,
+            stop_slippage_multiplier=stop_slippage_multiplier,
         )
 
     # === Hook overrides for state tracking ===
@@ -239,6 +241,10 @@ class PortfolioV2(Portfolio):
             trade_exit_reasons,
             trade_costs,
             trade_proceeds,
+            trade_mae_pcts,
+            trade_mfe_pcts,
+            trade_mae_bars,
+            trade_mfe_bars,
             trade_count,
             state_cash,
             state_position,
@@ -252,11 +258,19 @@ class PortfolioV2(Portfolio):
 
         self.equity_curve = pd.Series(equity, index=self.price.index)
 
-        # Convert trades using V2 trade schema (enums)
+        # Convert trades using V2 trade schema (enums).
+        # MAE/MFE + hit_stop/hit_target annotations (Section 11.6) applied
+        # on exit rows.
         self.trades = self._convert_numba_trades_v2(
             trade_bars, trade_types, trade_prices, trade_shares,
             trade_pnls, trade_pnl_pcts, trade_exit_reasons,
             trade_costs, trade_proceeds,
+            trade_mae_pcts=trade_mae_pcts,
+            trade_mfe_pcts=trade_mfe_pcts,
+            trade_mae_bars=trade_mae_bars,
+            trade_mfe_bars=trade_mfe_bars,
+            stop_loss_pct_for_hit=stop_loss_pct if use_stop_loss else None,
+            profit_target_pct_for_hit=profit_target_pct if use_profit_target else None,
         )
 
     def _convert_numba_trades_v2(
@@ -270,10 +284,17 @@ class PortfolioV2(Portfolio):
         trade_exit_reasons: np.ndarray,
         trade_costs: np.ndarray,
         trade_proceeds: np.ndarray,
+        trade_mae_pcts: Optional[np.ndarray] = None,
+        trade_mfe_pcts: Optional[np.ndarray] = None,
+        trade_mae_bars: Optional[np.ndarray] = None,
+        trade_mfe_bars: Optional[np.ndarray] = None,
+        stop_loss_pct_for_hit: Optional[float] = None,
+        profit_target_pct_for_hit: Optional[float] = None,
     ) -> List[Dict[str, Any]]:
         """Convert Numba trade arrays to list of dicts using V2 trade schema."""
         trades = []
         timestamps = self.price.index
+        have_mae_mfe = trade_mae_pcts is not None and trade_mfe_pcts is not None
 
         for i in range(len(trade_bars)):
             bar_idx = trade_bars[i]
@@ -304,6 +325,25 @@ class PortfolioV2(Portfolio):
                 if exit_reason >= 0:
                     trade["exit_reason"] = EXIT_REASON_NAMES.get(
                         ExitReason(exit_reason), "unknown"
+                    )
+
+                # Section 11.6 MAE/MFE annotations on exit rows.
+                if have_mae_mfe:
+                    mae_pct = float(trade_mae_pcts[i])
+                    mfe_pct = float(trade_mfe_pcts[i])
+                    trade["mae_pct"] = mae_pct
+                    trade["mfe_pct"] = mfe_pct
+                    mae_bar = int(trade_mae_bars[i]) if trade_mae_bars is not None else -1
+                    mfe_bar = int(trade_mfe_bars[i]) if trade_mfe_bars is not None else -1
+                    trade["mae_time"] = timestamps[mae_bar] if mae_bar >= 0 else None
+                    trade["mfe_time"] = timestamps[mfe_bar] if mfe_bar >= 0 else None
+                    trade["hit_stop"] = (
+                        stop_loss_pct_for_hit is not None
+                        and mae_pct <= -float(stop_loss_pct_for_hit)
+                    )
+                    trade["hit_target"] = (
+                        profit_target_pct_for_hit is not None
+                        and mfe_pct >= float(profit_target_pct_for_hit)
                     )
 
             trades.append(trade)
@@ -412,6 +452,7 @@ def from_signals_v2(
     use_numba: bool = True,
     fractional_shares: bool = False,
     track_state: bool = False,
+    stop_slippage_multiplier: float = 1.0,
     **kwargs,
 ) -> PortfolioV2:
     """
@@ -452,4 +493,5 @@ def from_signals_v2(
         use_numba=use_numba,
         fractional_shares=fractional_shares,
         track_state=track_state,
+        stop_slippage_multiplier=stop_slippage_multiplier,
     )

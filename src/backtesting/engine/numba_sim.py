@@ -69,7 +69,8 @@ def simulate_portfolio_numba(
     max_bars_in_position: int,
     allow_shorts: bool,
     fractional_shares: bool = False,
-    max_trades: int = 10000
+    max_trades: int = 10000,
+    stop_slippage_multiplier: float = 1.0,
 ) -> tuple:
     """
     JIT-compiled portfolio simulation with complete feature parity.
@@ -96,6 +97,12 @@ def simulate_portfolio_numba(
         allow_shorts: Whether short selling is enabled
         fractional_shares: If True, allow fractional share quantities (for crypto)
         max_trades: Maximum number of trades to track (pre-allocation)
+        stop_slippage_multiplier: Slippage multiplier applied ONLY at stop-loss
+            exits (exit_reason == EXIT_STOP_LOSS). Default 1.0 = no multiplier.
+            Methodology Section 11.5 prescribes 1.5x-3.0x depending on conditions;
+            the caller configures this via `costs.stop_slippage_multiplier`.
+            Profit-target, time-stop, and signal exits use the base `slippage`
+            unchanged. Entries use the base `slippage` unchanged.
 
     Returns:
         Tuple containing:
@@ -107,7 +114,21 @@ def simulate_portfolio_numba(
         - trade_pnls: np.ndarray - P&L for exits (0 for entries)
         - trade_pnl_pcts: np.ndarray - P&L % for exits (0 for entries)
         - trade_exit_reasons: np.ndarray - exit reason codes (-1 for entries)
+        - trade_mae_pcts: np.ndarray - signed max-adverse-excursion pct for exits
+          (negative when adverse); 0.0 for entries. Long-convention sign:
+          longs go negative when price drops; shorts go negative when price rises.
+        - trade_mfe_pcts: np.ndarray - signed max-favorable-excursion pct for exits;
+          0.0 for entries. Long-convention sign: longs go positive when price rises;
+          shorts go positive when price drops.
+        - trade_mae_bars: np.ndarray - bar index of MAE (-1 for entries)
+        - trade_mfe_bars: np.ndarray - bar index of MFE (-1 for entries)
         - trade_count: int - total number of trades executed
+
+    MAE/MFE methodology (Section 11.6): tracked on close-to-close basis from
+    the open of the position through the bar of exit (inclusive on both ends).
+    `hit_stop` / `hit_target` are NOT computed here -- the caller derives them
+    by comparing mae_pct/mfe_pct against the configured stop_loss_pct /
+    profit_target_pct thresholds.
 
     Position encoding:
         - position > 0: Long shares held
@@ -127,6 +148,10 @@ def simulate_portfolio_numba(
     trade_exit_reasons = np.empty(max_trades, dtype=np.int8)
     trade_costs = np.empty(max_trades, dtype=np.float64)  # For entry cost tracking
     trade_proceeds = np.empty(max_trades, dtype=np.float64)  # For exit proceeds tracking
+    trade_mae_pcts = np.zeros(max_trades, dtype=np.float64)
+    trade_mfe_pcts = np.zeros(max_trades, dtype=np.float64)
+    trade_mae_bars = np.full(max_trades, -1, dtype=np.int64)
+    trade_mfe_bars = np.full(max_trades, -1, dtype=np.int64)
 
     # Position state
     cash = init_cash
@@ -134,6 +159,12 @@ def simulate_portfolio_numba(
     position_price = 0.0
     bars_in_position = 0
     trade_idx = 0
+
+    # Intra-trade excursion tracking (only meaningful when position != 0)
+    running_low = 0.0
+    running_high = 0.0
+    running_low_bar = -1
+    running_high_bar = -1
 
     for i in range(n):
         price = prices[i]
@@ -158,6 +189,14 @@ def simulate_portfolio_numba(
         # Track time in position (only during market hours)
         if position != 0:
             bars_in_position += 1
+            # Update intra-trade price excursion. We track the worst/best
+            # close prices seen between entry and the current bar (inclusive).
+            if price < running_low:
+                running_low = price
+                running_low_bar = i
+            if price > running_high:
+                running_high = price
+                running_high_bar = i
 
         # === RISK MANAGEMENT CHECKS ===
         exit_triggered = False
@@ -198,9 +237,19 @@ def simulate_portfolio_numba(
 
         # === EXECUTE RISK EXIT ===
         if exit_triggered and trade_idx < max_trades:
+            # Section 11.5: stop-loss exits get worse fills than signal /
+            # profit-target / time-stop exits because they're triggered by
+            # adverse price moves into thin liquidity. Multiplier defaults
+            # to 1.0 (no change) unless the caller overrides it via
+            # costs.stop_slippage_multiplier.
+            if exit_reason == np.int8(1):  # EXIT_STOP_LOSS
+                effective_slippage = slippage * stop_slippage_multiplier
+            else:
+                effective_slippage = slippage
+
             if position > 0:
                 # Close long position (sell)
-                slippage_adj = price * (1 - slippage)
+                slippage_adj = price * (1 - effective_slippage)
                 proceeds = position * slippage_adj
                 fee = proceeds * fees
                 net_proceeds = proceeds - fee
@@ -217,6 +266,11 @@ def simulate_portfolio_numba(
                 trade_exit_reasons[trade_idx] = exit_reason
                 trade_proceeds[trade_idx] = net_proceeds
                 trade_costs[trade_idx] = 0.0
+                # Long: MAE = worst close vs entry (negative when price dropped)
+                trade_mae_pcts[trade_idx] = (running_low - position_price) / position_price
+                trade_mfe_pcts[trade_idx] = (running_high - position_price) / position_price
+                trade_mae_bars[trade_idx] = running_low_bar
+                trade_mfe_bars[trade_idx] = running_high_bar
                 trade_idx += 1
 
                 cash += net_proceeds
@@ -226,7 +280,8 @@ def simulate_portfolio_numba(
 
             else:  # position < 0, close short
                 # Buy to cover (buy at higher price due to slippage)
-                slippage_adj = price * (1 + slippage)
+                # effective_slippage is set above based on exit_reason
+                slippage_adj = price * (1 + effective_slippage)
                 cost_to_cover = abs(position) * slippage_adj
                 fee = cost_to_cover * fees
                 total_cost = cost_to_cover + fee
@@ -244,6 +299,11 @@ def simulate_portfolio_numba(
                 trade_exit_reasons[trade_idx] = exit_reason
                 trade_costs[trade_idx] = total_cost
                 trade_proceeds[trade_idx] = 0.0
+                # Short: MAE = adverse = price rose (running_high > entry); negative pct
+                trade_mae_pcts[trade_idx] = (position_price - running_high) / position_price
+                trade_mfe_pcts[trade_idx] = (position_price - running_low) / position_price
+                trade_mae_bars[trade_idx] = running_high_bar
+                trade_mfe_bars[trade_idx] = running_low_bar
                 trade_idx += 1
 
                 cash -= total_cost
@@ -278,6 +338,11 @@ def simulate_portfolio_numba(
                 trade_exit_reasons[trade_idx] = np.int8(0)  # EXIT_SIGNAL
                 trade_costs[trade_idx] = total_cost
                 trade_proceeds[trade_idx] = 0.0
+                # Short MAE/MFE: adverse = price up; favorable = price down
+                trade_mae_pcts[trade_idx] = (position_price - running_high) / position_price
+                trade_mfe_pcts[trade_idx] = (position_price - running_low) / position_price
+                trade_mae_bars[trade_idx] = running_high_bar
+                trade_mfe_bars[trade_idx] = running_low_bar
                 trade_idx += 1
 
                 cash -= total_cost
@@ -317,12 +382,18 @@ def simulate_portfolio_numba(
                     trade_exit_reasons[trade_idx] = np.int8(-1)
                     trade_costs[trade_idx] = total_cost
                     trade_proceeds[trade_idx] = 0.0
+                    # Entry records carry no MAE/MFE (defaults 0.0 / -1).
                     trade_idx += 1
 
                     position = shares
                     position_price = price
                     cash -= total_cost
                     bars_in_position = 0
+                    # Initialize intra-trade excursion tracking at entry.
+                    running_low = price
+                    running_high = price
+                    running_low_bar = i
+                    running_high_bar = i
 
         # === EXIT SIGNAL: want to go SHORT or FLAT ===
         # Note: Unlike entry signals, exit signals should still be processed after
@@ -347,6 +418,11 @@ def simulate_portfolio_numba(
                 trade_exit_reasons[trade_idx] = np.int8(0)  # EXIT_SIGNAL
                 trade_proceeds[trade_idx] = net_proceeds
                 trade_costs[trade_idx] = 0.0
+                # Long MAE/MFE: adverse = price down; favorable = price up
+                trade_mae_pcts[trade_idx] = (running_low - position_price) / position_price
+                trade_mfe_pcts[trade_idx] = (running_high - position_price) / position_price
+                trade_mae_bars[trade_idx] = running_low_bar
+                trade_mfe_bars[trade_idx] = running_high_bar
                 trade_idx += 1
 
                 cash += net_proceeds
@@ -387,12 +463,18 @@ def simulate_portfolio_numba(
                     trade_exit_reasons[trade_idx] = np.int8(-1)
                     trade_proceeds[trade_idx] = net_proceeds
                     trade_costs[trade_idx] = 0.0
+                    # Entry records carry no MAE/MFE (defaults 0.0 / -1).
                     trade_idx += 1
 
                     position = -shares  # Negative = short
                     position_price = price
                     cash += net_proceeds
                     bars_in_position = 0
+                    # Initialize intra-trade excursion tracking at entry.
+                    running_low = price
+                    running_high = price
+                    running_low_bar = i
+                    running_high_bar = i
 
         # === FINAL EQUITY CALCULATION ===
         if position > 0:
@@ -414,5 +496,9 @@ def simulate_portfolio_numba(
         trade_exit_reasons[:trade_idx],
         trade_costs[:trade_idx],
         trade_proceeds[:trade_idx],
+        trade_mae_pcts[:trade_idx],
+        trade_mfe_pcts[:trade_idx],
+        trade_mae_bars[:trade_idx],
+        trade_mfe_bars[:trade_idx],
         trade_idx
     )
