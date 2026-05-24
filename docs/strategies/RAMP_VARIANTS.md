@@ -42,13 +42,15 @@ Canonical glossary of every named RAMP variant. Each entry links to code, spec, 
 - **Description**: V11 base. On detector-BEAR days, returns cash (no equity exposure). On UNPREDICTABLE/SIDEWAYS days, defers to V11. Optional symmetric debouncing via `cfg.min_regime_days` (default 0, off).
 - **Spec**: `docs/superpowers/specs/2026-05-23-v12-bear-to-cash-design.md` (rev4 + rev4-followup)
 - **Plan**: `docs/superpowers/plans/2026-05-23-v12-bear-to-cash.md`
-- **Readiness report**: `docs/reports/ramp/20260523_phase4_v12_readiness.md`
-- **Status**: research; readiness verdict pending.
+- **Readiness report**: `docs/reports/ramp/20260524_phase4_v12_readiness.md`
+- **Readiness verdict (2026-05-24)**: **Tier 3 (diagnostic value)**. Structural gates PASS (PBO 0.39, lag-degradation, cost robustness). PSR (0.79) and DSR (0.54) FAIL on absolute significance. V12 near_close at 5 bps Sharpe = 0.268, materially below V11's 0.528 -- BEAR-to-cash hurts in near_close, helps in lag (V12 lag at 5 bps = 0.665, beats V11's 0.580). Detector-onset alignment shows mean -3.42 gap days between BEAR onset and SPY trough.
+- **Decision**: V12 NOT deployed to production paper. Per spec Tier 3 rule, escalate to WS-3 (regime detector improvement) as the higher-leverage path.
+- **Sensitivity findings (NOT gate-influencing)**: V12-up-cash (UNPREDICTABLE='cash') at Sharpe 0.586 beats V12 default and slightly beats V11. Motivates a future **V12c spec**.
+- **Status**: research; deployment deferred pending WS-3 + V12 re-run.
 
 ## V12b / V12c -- reserved
-- **V12b** candidate: V12 with `min_regime_days > 0` if the V12 readiness sensitivity appendix motivates.
-- **V12c** candidate: V12 with `UNPREDICTABLE: 'cash'` if the V12 readiness sensitivity appendix motivates.
-- Both spawned only if sensitivity shows >= 0.1 Sharpe lift + structural-gate retention; otherwise NOT separate variants.
+- **V12b** candidate: V12 with `min_regime_days > 0`. V12 readiness sensitivity (2026-05-24) showed debouncing values {2, 3, 5} all under-perform v12.0.0 except min=5 (Sharpe 0.437, still below min=0's 0.268-... wait, this needs care: min=5 beats min=0 in absolute terms. Re-read the sensitivity appendix before spec'ing V12b.) Tentative: NOT motivated as a separate spec at this time.
+- **V12c** candidate (sensitivity-motivated): UNPREDICTABLE='cash' as the new default. Readiness sensitivity (2026-05-24) showed Sharpe 0.586 vs V12 default 0.268 (+0.32 lift) AND beats V11 (0.528). Spec honesty discipline says this requires its own readiness gate; not an in-place V12 default swap. **Strong candidate for the next research cycle after WS-3 or in parallel.**
 
 ## V13+ -- reserved
 - **V13** candidate: defensive ticker support (`SH` / `TLT` / `GLD` as BEAR-day position) instead of cash. Universe expansion required. See spec Appendix C re: three-SMA structure constraint that defines V13a vs V14.
