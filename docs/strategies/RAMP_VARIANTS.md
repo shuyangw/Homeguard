@@ -45,12 +45,23 @@ Canonical glossary of every named RAMP variant. Each entry links to code, spec, 
 - **Readiness report**: `docs/reports/ramp/20260524_phase4_v12_readiness.md`
 - **Readiness verdict (2026-05-24)**: **Tier 3 (diagnostic value)**. Structural gates PASS (PBO 0.39, lag-degradation, cost robustness). PSR (0.79) and DSR (0.54) FAIL on absolute significance. V12 near_close at 5 bps Sharpe = 0.268, materially below V11's 0.528 -- BEAR-to-cash hurts in near_close, helps in lag (V12 lag at 5 bps = 0.665, beats V11's 0.580). Detector-onset alignment shows mean -3.42 gap days between BEAR onset and SPY trough.
 - **Decision**: V12 NOT deployed to production paper. Per spec Tier 3 rule, escalate to WS-3 (regime detector improvement) as the higher-leverage path.
-- **Sensitivity findings (NOT gate-influencing)**: V12-up-cash (UNPREDICTABLE='cash') at Sharpe 0.586 beats V12 default and slightly beats V11. Motivates a future **V12c spec**.
+- **Sensitivity findings (NOT gate-influencing)**: V12-up-cash (UNPREDICTABLE='cash') at Sharpe 0.586 beats V12 default and slightly beats V11. Motivated the **V12c readiness gate (Experiment 6, 2026-05-24)**; see V12c section below for the formal verdict.
 - **Status**: research; deployment deferred pending WS-3 + V12 re-run.
 
-## V12b / V12c -- reserved
+## V12c -- V12 + UNPREDICTABLE also to cash
+
+- **Code**: `src/research/ramp_phase4/variants.py::_variant_v12` (same code as V12; differs only in `cfg.regime_positions[UNPREDICTABLE]='cash'`)
+- **Description**: V11 base. On detector-BEAR AND detector-UNPREDICTABLE days, returns cash. SIDEWAYS/STRONG_BULL/WEAK_BULL: V11 logic.
+- **Discovery context**: V12 readiness sensitivity (2026-05-24) showed V12-up-cash Sharpe 0.586 vs V12 default 0.268 (+0.32). Pre-readiness analysis: AMBIGUOUS (53.6% of attribution in top-3 events; COVID-dominant per E2 hand-inspection).
+- **Readiness report**: `docs/reports/ramp/20260526_phase4_v12c_readiness.md`
+- **Readiness verdict (2026-05-24)**: **TIER 4 -- BLOCKED**. PBO across the 7-variant set {V01,V04,V05,V06,V11,V12,V12c} = 0.7085 (>= 0.50 threshold, elevated overfitting risk) is the binding structural failure. PSR (0.9645) just clears the 0.95 floor, but DSR (0.8337, n_trials=23) fails. Gate 4 (lag-degradation) and Gate 5 (cost floor + V11 no-regress) both PASS. V12c Sharpe @ 5 bps near_close = 0.586; @ 5 bps one_day_lag = 0.850; @ 7.5 bps one_day_lag = 0.776 (>= 0.9 * V11 = 0.478).
+- **COVID-excluded subgroup**: Sharpe(V12c @ 5 bps near_close) = 0.5863 (full) vs 0.5714 (ex-COVID 2020-02-24 .. 2020-04-30) -- delta -0.0149 (2.5% magnitude). V12c's measured edge is NOT concentrated in COVID; the COVID-event story from E2 was about UNPREDICTABLE attribution specifically, but V12c's gross alpha is broadly distributed across the 2017-2026 window.
+- **Honesty discipline**: V12c was discovered from V12's sensitivity grid; DSR n_trials_project=23 (V12 used 22, V12c is trial #23). E2 hand-inspection returned AMBIGUOUS, COVID-event-dominant for UNPREDICTABLE attribution; this report's COVID-excluded panel shows the OVERALL V12c edge is not COVID-fragile, but the PBO failure remains the binding gate. Detector-onset alignment: 59 BEAR/UNPREDICTABLE onsets, mean gap_days -4.05 -- the detector fires ~4 trading days AFTER the SPY drawdown trough on average; V12c is still cashing around the recovery, not the crash.
+- **Status**: research; **deployment BLOCKED** (PBO structural fail). Recommend WS-3 (regime detector improvement) before any further V12-family iteration -- the detector-lag tax is the binding constraint underneath both V12 and V12c.
+
+## V12b -- reserved
+
 - **V12b** candidate: V12 with `min_regime_days > 0`. V12 readiness sensitivity (2026-05-24) at 5 bps near_close: deb-2=0.130 (worse than V12 default's 0.268), deb-3=0.315 (+0.05), deb-5=0.437 (+0.17). V12-deb-5 modestly beats V12 default but still under-performs V11 (0.528). Combined with the detector-lag finding (mean -3.42 gap_days), the lesson is "no debouncing value can recover what the detector misses." NOT motivated as a separate spec; deferred until WS-3 (detector improvement) lands.
-- **V12c** candidate (sensitivity-motivated): UNPREDICTABLE='cash' as the new default. Readiness sensitivity (2026-05-24) showed Sharpe 0.586 vs V12 default 0.268 (+0.32 lift) AND beats V11 (0.528). Spec honesty discipline says this requires its own readiness gate; not an in-place V12 default swap. **Strong candidate for the next research cycle after WS-3 or in parallel.**
 
 ## V13+ -- reserved
 - **V13** candidate: defensive ticker support (`SH` / `TLT` / `GLD` as BEAR-day position) instead of cash. Universe expansion required. See spec Appendix C re: three-SMA structure constraint that defines V13a vs V14.
