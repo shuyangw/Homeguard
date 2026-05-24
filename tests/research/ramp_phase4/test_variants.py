@@ -480,3 +480,83 @@ def test_v12_unknown_position_mode_raises():
                 'SAFE_MODE': 'hold',
             },
         )
+
+
+# ============================================================
+# V13-bear-invert tests (experiment 1: BEAR-as-buy hypothesis)
+# ============================================================
+
+def test_v13_in_registry():
+    """V13-bear-invert is registered with expected description hallmarks."""
+    assert 'V13-bear-invert' in REGISTRY
+    assert isinstance(REGISTRY['V13-bear-invert'], VariantSpec)
+    desc = REGISTRY['V13-bear-invert'].description.lower()
+    assert 'bear' in desc
+    assert 'spy' in desc
+
+
+def test_v13_bear_returns_full_spy(_v12_test_panel_bear):
+    """V13 on a BEAR day returns {'SPY': 1.0, '__regime__': 'BEAR'}."""
+    state = _fresh_state()
+    cfg = _stub_cfg()
+    v13_out = REGISTRY['V13-bear-invert'].plan_fn(
+        datetime(2024, 6, 15), state, _v12_test_panel_bear, cfg
+    )
+    assert v13_out == {'SPY': 1.0, '__regime__': 'BEAR'}
+
+
+def test_v13_non_bear_strong_bull_defers_to_v11(_v12_test_panel_strong_bull):
+    """V13 on STRONG_BULL day == V11 output exactly."""
+    cfg = _stub_cfg()
+    v11_out = REGISTRY['V11'].plan_fn(
+        datetime(2024, 6, 15), _fresh_state(), _v12_test_panel_strong_bull, cfg
+    )
+    v13_out = REGISTRY['V13-bear-invert'].plan_fn(
+        datetime(2024, 6, 15), _fresh_state(), _v12_test_panel_strong_bull, cfg
+    )
+    assert v13_out == v11_out
+
+
+def test_v13_non_bear_weak_bull_defers_to_v11(_v12_test_panel_weak_bull):
+    """V13 on WEAK_BULL day == V11 output exactly."""
+    cfg = _stub_cfg()
+    v11_out = REGISTRY['V11'].plan_fn(
+        datetime(2024, 6, 15), _fresh_state(), _v12_test_panel_weak_bull, cfg
+    )
+    v13_out = REGISTRY['V13-bear-invert'].plan_fn(
+        datetime(2024, 6, 15), _fresh_state(), _v12_test_panel_weak_bull, cfg
+    )
+    assert v13_out == v11_out
+
+
+def test_v13_non_bear_sideways_defers_to_v11(_v12_test_panel_sideways):
+    """V13 on SIDEWAYS day == V11 output exactly."""
+    cfg = _stub_cfg()
+    v11_out = REGISTRY['V11'].plan_fn(
+        datetime(2024, 6, 15), _fresh_state(), _v12_test_panel_sideways, cfg
+    )
+    v13_out = REGISTRY['V13-bear-invert'].plan_fn(
+        datetime(2024, 6, 15), _fresh_state(), _v12_test_panel_sideways, cfg
+    )
+    assert v13_out == v11_out
+
+
+def test_v13_non_bear_unpredictable_defers_to_v11(_v12_test_panel_unpredictable):
+    """V13 on UNPREDICTABLE day == V11 output exactly."""
+    cfg = _stub_cfg()
+    v11_out = REGISTRY['V11'].plan_fn(
+        datetime(2024, 6, 15), _fresh_state(), _v12_test_panel_unpredictable, cfg
+    )
+    v13_out = REGISTRY['V13-bear-invert'].plan_fn(
+        datetime(2024, 6, 15), _fresh_state(), _v12_test_panel_unpredictable, cfg
+    )
+    assert v13_out == v11_out
+
+
+def test_v13_safe_mode_when_insufficient_data(_v12_test_panel_safe_mode):
+    """V13 returns SAFE_MODE when V11 returns SAFE_MODE."""
+    cfg = _stub_cfg()
+    v13_out = REGISTRY['V13-bear-invert'].plan_fn(
+        datetime(2024, 6, 15), _fresh_state(), _v12_test_panel_safe_mode, cfg
+    )
+    assert v13_out == {'__regime__': 'SAFE_MODE'}

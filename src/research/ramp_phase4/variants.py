@@ -278,6 +278,21 @@ def _variant_v12(t: datetime, state, panel: pd.DataFrame, cfg) -> Dict[str, floa
         )
 
 
+def _variant_v13_bear_invert(t: datetime, state, panel: pd.DataFrame, cfg) -> Dict[str, float]:
+    """V13-bear-invert: on detector BEAR, go to SPY 100%; otherwise V11.
+
+    Tests the BEAR-as-buy hypothesis from V12's onset-alignment panel
+    (gap_days mean -3.42 -- detector fires after SPY trough).
+
+    NOT OOS in strict sense -- discovered from EXT-OOS inspection.
+    """
+    plan = _variant_v11(t, state, panel, cfg)
+    regime = plan['__regime__']
+    if regime == 'BEAR':
+        return {'SPY': 1.0, '__regime__': 'BEAR'}
+    return plan
+
+
 REGISTRY: Dict[str, VariantSpec] = {
     'V01': VariantSpec(
         id='V01',
@@ -313,5 +328,10 @@ REGISTRY: Dict[str, VariantSpec] = {
         id='V12',
         description='V11 + per-regime position override (BEAR -> cash default; min_regime_days=0 default; symmetric debouncing available)',
         plan_fn=_variant_v12,
+    ),
+    'V13-bear-invert': VariantSpec(
+        id='V13-bear-invert',
+        description='V11 + BEAR onset goes to SPY 100% (inverse of V12 BEAR-to-cash; tests BEAR-as-buy hypothesis)',
+        plan_fn=_variant_v13_bear_invert,
     ),
 }
