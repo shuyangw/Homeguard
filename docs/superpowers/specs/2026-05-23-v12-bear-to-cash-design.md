@@ -174,6 +174,8 @@ Tick 7 is the key row: under asymmetric (entry-only) debouncing, tick 7 would re
 
 The table below restates the canonical test in human-readable form. If you find a discrepancy, the test is correct.
 
+Column legend: `regime_streak` is the engine's per-regime consecutive-tick counter (resets on regime flip). `last_validated_regime` (abbreviated LVR in inline notes elsewhere) is the most recent regime whose streak reached `min_regime_days`. `active_mode` is what the variant returns: `normal` calls V11, `cash` liquidates, `hold` preserves positions.
+
 | Tick | Regime | regime_streak | last_validated_regime | active_mode | Notes |
 |---|---|---|---|---|---|
 | 0 | WEAK_BULL | {WB: 1} | None | normal | Cold start; no regime yet validated |
@@ -357,7 +359,7 @@ def test_engine_first_tick_initialization(): ...                # last_regime=No
 Plus two integration tests:
 
 1. **Basic liquidate-rebuild**: 10-day synthetic panel with regime sequence `[STRONG_BULL]*3 + [BEAR]*3 + [WEAK_BULL]*4`, `min_regime_days=0`. Expected: V12 holds top_n names through ticks 0-2, liquidates at tick 3, holds cash through ticks 3-5, rebuilds at tick 6 from empty state.
-2. **Debouncing hysteresis-rebuild**: 12-day panel with regime sequence `[BEAR, BEAR, WEAK_BULL, BEAR, BEAR, BEAR, BEAR, WEAK_BULL, WEAK_BULL, WEAK_BULL, WEAK_BULL, WEAK_BULL]`, `min_regime_days=3`. Expected: V12 stays in V11 mode through ticks 0-4 (no regime validated for 3 consecutive ticks until tick 5, when BEAR streak hits 3 -- the WEAK_BULL at tick 2 reset the BEAR streak, so the relevant BEAR streak starts at tick 3 and validates at tick 5). Cash from tick 5 through tick 9. WEAK_BULL streak starts at tick 7 and validates at tick 9 (third consecutive); rebuild from tick 9. (Implementer: verify these tick numbers against the canonical test logic before locking the integration test in.)
+2. **Debouncing hysteresis-rebuild**: 12-day panel with regime sequence `[BEAR, BEAR, WEAK_BULL, BEAR, BEAR, BEAR, BEAR, WEAK_BULL, WEAK_BULL, WEAK_BULL, WEAK_BULL, WEAK_BULL]`, `min_regime_days=3`. Expected: V12 stays in V11 mode through ticks 0-4 (no regime validated for 3 consecutive ticks until tick 5, when BEAR streak hits 3 -- the WEAK_BULL at tick 2 reset the BEAR streak, so the relevant BEAR streak starts at tick 3 and validates at tick 5). Cash active on ticks 5-8 inclusive. On tick 9, WEAK_BULL streak hits 3 (validates), variant returns normal, V11 rebuilds -- tick 9 is the rebuild tick, not a cash tick.
 
 ## Readiness orchestrator changes (rev3 -- gate vs sensitivity split, unchanged)
 
@@ -404,7 +406,10 @@ V12 passes if ALL five hold:
    - Implementer reports DSR at both current and V11-era `n_trials` for context. If `n_trials >= 30`, report which historical variants would have passed at V11-era count for calibration.
 3. **PBO across 6 variants < 0.5** -- CSCV on (V01, V04, V05, V06, V11, V12) at 5 bps near_close.
 4. **Lag-degradation gate (rev4 floored): `Sharpe(near_close) - Sharpe(one_day_lag) <= max(0.2 * Sharpe(near_close), 0.1)`** at 5 bps cost. Catches the structural lookahead failure mode (lag underperforms near_close). The 0.1 floor avoids vacuous tightness when near_close Sharpe is small. The opposite direction (lag > near_close) is safe and not penalized.
-5. **Cost gate: `Sharpe(V12 @ 7.5 bps, one_day_lag) > 0.3`** -- cost robustness under realistic execution.
+5. **Cost gate (rev4-followup, Issue 4 fix): both clauses must hold**:
+   - `Sharpe(V12 @ 7.5 bps, one_day_lag) > 0.3` -- absolute floor, catches V8-like collapse under realistic costs.
+   - `Sharpe(V12 @ 7.5 bps, one_day_lag) >= 0.9 * Sharpe(V11 @ 7.5 bps, one_day_lag)` -- no-regress vs V11, prevents an awkward "passed gate, failed success criteria" state where V12 clears 0.3 but underperforms V11.
+   - V11 reference (from `docs/reports/ramp/20260523_phase4_v11_readiness.md`): Sharpe(V11 @ 7.5 bps, one_day_lag) = 0.531. So V12 must be >= ~0.478 to clear the no-regress clause. The 0.3 absolute floor is binding only if V11 itself collapsed below ~0.33 at this measurement (it didn't).
 
 If V12 clears all 5: Phase D candidate; deploy mirrors V11 path after IBKR-migration paper-comparator framework supports V11+V12 in parallel.
 
@@ -445,7 +450,7 @@ If the readiness report shows V12 at +0.05 to +0.12 Sharpe over V11 with a 10-15
 V12 succeeds if ANY of:
 
 1. **Tier 1 (preferred)**: V12 clears all 5 readiness gates AND lifts net Sharpe at 5 bps by >= 0.15 over V11. -> Phase D candidate, deploy mirroring V11 path.
-2. **Tier 2 (modal expected outcome)**: V12 clears all 5 readiness gates but lifts Sharpe by < 0.15. Max DD must be reduced by >= 10 percentage points absolute. -> Preferred candidate for risk-conscious deployment; same deployment path.
+2. **Tier 2 (modal expected outcome)**: V12 clears all 5 readiness gates but lifts Sharpe by < 0.15. Max DD must be reduced by >= 10 percentage points absolute relative to V11. **V11 baseline (from `docs/reports/ramp/20260523_phase4_v11_readiness.md`): Max DD at 5 bps near_close = -66.20%.** So Tier 2 requires V12 Max DD better than (less negative than) -56.20% at the same measurement. -> Preferred candidate for risk-conscious deployment; same deployment path.
 3. **Tier 3 (diagnostic value)**: V12 clears structural gates (PBO, lag, cost) but misses PSR/DSR. Detector-onset alignment panel must show gap > +0.10 between detector-perfect and realized V12 lift. -> Activate WS-3 as the higher-leverage path; V12 deployment deferred until WS-3 + V12 readiness re-run.
 4. **Tier 4 (failure)**: V12 fails structural gates or shows no diagnostic signal. -> Strategy reset; reconsider regime overlay's role from scratch.
 
