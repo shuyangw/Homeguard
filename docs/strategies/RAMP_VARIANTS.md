@@ -73,5 +73,49 @@ Canonical glossary of every named RAMP variant. Each entry links to code, spec, 
 - **Honesty discipline**: V13 was discovered from EXT-OOS inspection of V12's panel. DSR n_trials_project incremented (22 -> 23) to reflect V13's introduction. **NOT OOS in the strict sense**; forward OOS validation required before any deploy regardless of verdict.
 - **Status**: research; **NOT deployed**. Continue WS-3c roadmap (E3 produced WS-3c verdict; V13 spurious confirms BEAR-as-buy at single-asset SPY is not the lever).
 
-## V14+ -- reserved
-- **V14** candidate: per-regime strategy routing (RAMP for bull, OMR for sideways, etc.). Requires per-regime adapter layer; Phase 4 harness has no such abstraction.
+## V14 factorial (a/b/c) -- soft-score BEAR consumer
+
+The V14 factorial tests three actions for the same Schmitt-trigger BEAR_score consumer.
+- **Spec**: `docs/superpowers/specs/2026-05-24-v14-soft-bear-factorial-design.md`
+- **Open-questions resolution**: `docs/superpowers/specs/2026-05-24-v14-soft-bear-factorial-design-open-questions.md`
+- **Plan**: `docs/superpowers/plans/2026-05-24-v14-soft-bear-factorial.md`
+- **Pre-registered tau constants**: `config/research/v14_tau_constants.json` (G1_BEAR median; tau_in=0.5556, tau_out=0.4556)
+- **Readiness report**: `docs/reports/ramp/20260526_phase4_v14_factorial_readiness.md`
+
+### V14a-soft-bear-cash
+- **Code**: `src/research/ramp_phase4/variants.py::_variant_v14a_soft_bear_cash`
+- **Action when in_bear_soft_mode**: returns `PLAN_CASH_BEAR_SOFT` (sentinel; engine treats as zero exposure).
+- **Readiness verdict (2026-05-24)**: **TIER 4**. Sharpe @ 5 bps near_close = 0.6146 (delta vs V11 +0.0867, below +0.10 TIER 1 lift). Gate PBO 0.9528 is the binding structural failure; DSR 0.8175 also fails (n_trials=36).
+- **Status**: research; deployment BLOCKED.
+
+### V14b-soft-bear-spy
+- **Code**: `src/research/ramp_phase4/variants.py::_variant_v14b_soft_bear_spy`
+- **Action when in_bear_soft_mode**: returns `{SPY: 1.0, __regime__: BEAR_SOFT_SPY}` (single-name 100%).
+- **Readiness verdict (2026-05-24)**: **TIER 4**. Sharpe @ 5 bps near_close = 0.6035 (delta vs V11 +0.0757). Same structural failures (PBO 0.9528, DSR 0.8075).
+- **Status**: research; deployment BLOCKED.
+
+### V14c-soft-bear-dampen
+- **Code**: `src/research/ramp_phase4/variants.py::_variant_v14c_soft_bear_dampen`
+- **Action when in_bear_soft_mode**: V11 weights * cfg.soft_bear_dampen_factor (default 0.5).
+- **Readiness verdict (2026-05-24)**: **TIER 4**. Sharpe @ 5 bps near_close = 0.6131 (delta vs V11 +0.0852). Same structural failures (PBO 0.9528, DSR 0.8153).
+- **Status**: research; deployment BLOCKED.
+
+### Shared infrastructure
+- **State machine**: `engine.py::_engine_pre_variant_update_soft_bear` (Schmitt trigger; `>= tau_in` enters, strict `< tau_out` exits; NaN no transition).
+- **State field**: `HarnessState.in_bear_soft_mode: bool`.
+- **Tau pre-registration**: `scripts/diagnostics/compute_tau_in_from_g1.py` -> `config/research/v14_tau_constants.json`. G1 labeler pinned at commit `9c48245`.
+- **Plan sentinel**: `src/research/ramp_phase4/plans.py::_SentinelPlan` + `PLAN_CASH_BEAR_SOFT`.
+- **Detector freshness**: `MarketRegimeDetector.last_classification_timestamp` field; each V14 variant asserts on it (assertion propagates -- bare except removed in commit `9078633`).
+- **Honesty discipline**: DSR n_trials_project = 36 (audited count: V11+pre-V11 cohort 22 + V12+sensitivity 5 + V12c 1 + V13 1 + V14a/b/c 3 + V14a tau sens 2 + V14c dampen sens 2). Gate PBO over 8-variant set {V01, V11, V12, V12c-cfg, V13-bear-invert, V14a/b/c}; diagnostic PBO over 4 orthogonal {V01, V11, V12, V14a-soft-bear-cash}. NOT strict OOS -- tau derived from G1 median on the same 2017-2026 window (independent of E3's lead-time sweep -- no in-sample optimization on the gate window).
+
+### Joint diagnosis
+
+The V14 family's TIER 4 verdict combined with V12 (Tier 3) and V12c/V13 (Tier 4) closes the entire BEAR-consumer line: argmax (V12, V12c, V13) and soft-score (V14a/b/c) both fail. E3's soft-score lead (24 trading days at tau=0.3) is real but insufficient to overcome the multi-trial penalty + variant-family correlation (PBO 0.95). Detector lag (~3.4 days post-trough mean) is the binding constraint.
+
+### V14d+ reserved
+- **V14d** candidate: BEAR_score + UNPREDICTABLE_score joint Schmitt trigger. Requires E3-equivalent analysis on UNPREDICTABLE_score (lead-time, drawdown correlation) before spec. Deferred.
+
+## V13+ -- reserved
+- **V13** (claimed): see V13-bear-invert above. Variant code preserved for diagnostic continuity even though TIER 4.
+- **V14** (claimed): see V14 factorial above. All three V14a/b/c variant codes preserved for diagnostic continuity even though TIER 4.
+- **V15** candidate: per-regime strategy routing (RAMP for bull, OMR for sideways, etc.). Requires per-regime adapter layer; Phase 4 harness has no such abstraction.
