@@ -1,6 +1,7 @@
 """Tests for engine: dataclasses + run_variant control flow."""
 from datetime import datetime
 from pathlib import Path
+import numpy as np
 import pandas as pd
 import pytest
 
@@ -644,3 +645,234 @@ def test_harness_config_allows_unknown_regime_keys():
         regime_positions={'BEAR': 'cash', 'FUTURE_REGIME': 'normal'},
     )
     assert 'FUTURE_REGIME' in cfg.regime_positions
+
+
+# ---------------------------------------------------------------------------
+# V12 Task 4: end-to-end integration tests via run_variant.
+#
+# Strategy: monkeypatch MarketRegimeDetector.classify_regime to return a
+# predetermined regime sequence (one regime per call). This drives run_variant
+# through any regime trajectory without needing real synthetic data that fires
+# regimes via detector logic.
+# ---------------------------------------------------------------------------
+
+
+def _build_v12_integration_panel(n_total: int) -> pd.DataFrame:
+    """Build a dummy daily panel: SPY + VIX + a few universe symbols.
+
+    Prices are smooth ramps; the detector is monkeypatched so they don't
+    affect regime classification. They only need to be finite and positive
+    so the engine can MTM, rank momentum, and compute trades.
+    """
+    dates = pd.date_range('2023-01-01', periods=n_total, freq='D')
+    return pd.DataFrame({
+        'SPY': pd.Series(np.linspace(400.0, 420.0, n_total), index=dates),
+        'VIX': pd.Series(np.full(n_total, 18.0), index=dates),
+        'AAPL': pd.Series(np.linspace(170.0, 180.0, n_total), index=dates),
+        'MSFT': pd.Series(np.linspace(340.0, 360.0, n_total), index=dates),
+        'GOOG': pd.Series(np.linspace(130.0, 145.0, n_total), index=dates),
+        'AMZN': pd.Series(np.linspace(100.0, 120.0, n_total), index=dates),
+    })
+
+
+def _install_fake_detector(monkeypatch, regime_sequence):
+    """Patch MarketRegimeDetector.classify_regime to walk regime_sequence.
+
+    Returns the closure's call_count dict so tests can inspect call counts.
+    Each call populates last_indicators + last_regime_scores so anything
+    downstream that reads cached fields gets sensible values.
+    """
+    call_count = {'n': 0}
+
+    def fake_classify(self, spy_data, vix_data, ts, **kwargs):
+        idx = call_count['n']
+        if idx >= len(regime_sequence):
+            regime = 'WEAK_BULL'  # default beyond the sequence
+        else:
+            regime = regime_sequence[idx]
+        call_count['n'] += 1
+        self.last_indicators = {
+            'current_price': 400.0,
+            'sma_20': 400.0, 'sma_50': 400.0, 'sma_200': 400.0,
+            'above_20': True, 'above_50': True, 'above_200': True,
+            'momentum_slope': 0.01,
+            'vix': 18.0, 'vix_percentile': 50.0,
+            'realized_vol': 0.15, 'volatility_spike': False,
+            'sma_20_slope': 0.005, 'sma_50_slope': 0.003,
+        }
+        self.last_regime_scores = {
+            'STRONG_BULL': 0.2, 'WEAK_BULL': 0.2, 'SIDEWAYS': 0.2,
+            'UNPREDICTABLE': 0.2, 'BEAR': 0.2,
+        }
+        self.last_regime_scores[regime] = 0.9
+        return regime, 0.9
+
+    monkeypatch.setattr(
+        'src.strategies.advanced.market_regime_detector.MarketRegimeDetector.classify_regime',
+        fake_classify,
+    )
+    return call_count
+
+
+def test_v12_integration_basic_liquidate_rebuild(tmp_path, monkeypatch):
+    """STRONG_BULL x3 + BEAR x3 + WEAK_BULL x4 with min_regime_days=0.
+
+    Verifies liquidation at tick 3, cash through ticks 3-5, rebuild at tick 6.
+    """
+    from src.research.ramp_phase4.variants import REGISTRY
+
+    regime_sequence = ['STRONG_BULL'] * 3 + ['BEAR'] * 3 + ['WEAK_BULL'] * 4
+    n_active = len(regime_sequence)
+    n_total = 300 + n_active
+
+    panel = _build_v12_integration_panel(n_total)
+    # Return the FULL panel (pre-roll + active) so _compute_plan_from_panel has
+    # >=252 rows of SPY/VIX history. The engine's start_date filter skips the
+    # first 300 records; only the active dates produce DailyRecords.
+    monkeypatch.setattr(
+        'src.research.ramp_phase4.engine.load_universe_panel',
+        lambda universe_csv, start, end: panel,
+    )
+    _install_fake_detector(monkeypatch, regime_sequence)
+
+    csv = tmp_path / 'u.csv'
+    csv.write_text('symbol\nAAPL\nMSFT\nGOOG\nAMZN\n')
+    cfg = HarnessConfig(
+        start_date=panel.index[300].to_pydatetime(),
+        end_date=panel.index[-1].to_pydatetime(),
+        universe_csv=csv,
+        initial_capital=100000.0,
+        cost_bps_per_side=5.0,
+    )
+
+    records = run_variant(cfg, REGISTRY['V12'])
+
+    assert len(records) == n_active
+
+    # Tick 0: STRONG_BULL -> 'normal' -> V11 picks. Positions populated post-trade.
+    assert records[0].regime == 'STRONG_BULL'
+    assert len(records[0].realized_weights) > 0, (
+        f"tick 0: expected positions after STRONG_BULL entry, "
+        f"got {records[0].realized_weights}"
+    )
+    assert records[0].turnover_usd > 0
+
+    # Ticks 1, 2: STRONG_BULL continues. Positions still held; turnover may be
+    # zero (delta_rebalance suppresses tiny rebalances) or non-zero (rebalance).
+    for i in (1, 2):
+        assert records[i].regime == 'STRONG_BULL'
+        assert len(records[i].realized_weights) > 0
+
+    # Tick 3: BEAR detected -> 'cash' -> liquidate. Turnover > 0; positions empty.
+    assert records[3].regime == 'BEAR'
+    assert records[3].turnover_usd > 0, (
+        f"tick 3: expected liquidation turnover on BEAR entry, "
+        f"got {records[3].turnover_usd}"
+    )
+    assert len(records[3].realized_weights) == 0, (
+        f"tick 3: expected empty positions after liquidation, "
+        f"got {records[3].realized_weights}"
+    )
+
+    # Ticks 4, 5: BEAR continues -> cash held. No additional turnover.
+    for i in (4, 5):
+        assert records[i].regime == 'BEAR'
+        assert records[i].turnover_usd == 0.0, (
+            f"tick {i}: expected zero turnover while in cash, "
+            f"got {records[i].turnover_usd}"
+        )
+        assert len(records[i].realized_weights) == 0
+
+    # Tick 6: WEAK_BULL -> 'normal' -> V11 rebuilds from cash. Turnover > 0.
+    assert records[6].regime == 'WEAK_BULL'
+    assert records[6].turnover_usd > 0, (
+        f"tick 6: expected rebuild turnover after WB validation, "
+        f"got {records[6].turnover_usd}"
+    )
+    assert len(records[6].realized_weights) > 0, (
+        f"tick 6: expected positions after rebuild, "
+        f"got {records[6].realized_weights}"
+    )
+
+
+def test_v12_integration_debouncing_rebuild(tmp_path, monkeypatch):
+    """BEAR/WEAK_BULL sequence with min_regime_days=3 (symmetric debouncing).
+
+    Sequence: BEAR BEAR WEAK_BULL BEAR BEAR BEAR BEAR WEAK_BULL WB WB WB WB.
+    Expected: ticks 0-4 normal (LVR=None), tick 5 liquidate (BEAR streak=3),
+    ticks 5-8 cash (WB transient at tick 7 stalls), tick 9 rebuild
+    (WB streak=3 -> LVR=WEAK_BULL -> normal).
+    """
+    from src.research.ramp_phase4.variants import REGISTRY
+
+    regime_sequence = [
+        'BEAR', 'BEAR', 'WEAK_BULL', 'BEAR', 'BEAR', 'BEAR',
+        'BEAR', 'WEAK_BULL', 'WEAK_BULL', 'WEAK_BULL',
+        'WEAK_BULL', 'WEAK_BULL',
+    ]
+    n_active = len(regime_sequence)
+    n_total = 300 + n_active
+
+    panel = _build_v12_integration_panel(n_total)
+    monkeypatch.setattr(
+        'src.research.ramp_phase4.engine.load_universe_panel',
+        lambda universe_csv, start, end: panel,
+    )
+    _install_fake_detector(monkeypatch, regime_sequence)
+
+    csv = tmp_path / 'u.csv'
+    csv.write_text('symbol\nAAPL\nMSFT\nGOOG\nAMZN\n')
+    cfg = HarnessConfig(
+        start_date=panel.index[300].to_pydatetime(),
+        end_date=panel.index[-1].to_pydatetime(),
+        universe_csv=csv,
+        initial_capital=100000.0,
+        cost_bps_per_side=5.0,
+        min_regime_days=3,
+    )
+
+    records = run_variant(cfg, REGISTRY['V12'])
+
+    assert len(records) == n_active
+
+    # Tick 5: BEAR streak hits 3 -> validated -> 'cash' -> liquidate.
+    assert records[5].regime == 'BEAR'
+    assert records[5].turnover_usd > 0, (
+        f"tick 5: expected liquidation turnover when BEAR validates, "
+        f"got {records[5].turnover_usd}"
+    )
+    assert len(records[5].realized_weights) == 0, (
+        f"tick 5: expected empty positions after liquidation, "
+        f"got {records[5].realized_weights}"
+    )
+
+    # Ticks 6-8: cash held. Tick 7's transient WEAK_BULL should NOT trigger
+    # re-entry (symmetric debouncing: WB streak=1 < 3, LVR still BEAR).
+    for i in (6, 7, 8):
+        assert records[i].turnover_usd == 0.0, (
+            f"tick {i}: expected zero turnover during cash hold "
+            f"(symmetric debouncing), got {records[i].turnover_usd}"
+        )
+        assert len(records[i].realized_weights) == 0, (
+            f"tick {i}: expected cash held, "
+            f"got positions {records[i].realized_weights}"
+        )
+
+    # Tick 9: WEAK_BULL streak reaches 3 (ticks 7, 8, 9) -> LVR=WEAK_BULL
+    # -> 'normal' -> V11 rebuilds from empty state.
+    assert records[9].regime == 'WEAK_BULL'
+    assert records[9].turnover_usd > 0, (
+        f"tick 9: expected rebuild turnover after WB validates, "
+        f"got {records[9].turnover_usd}"
+    )
+    assert len(records[9].realized_weights) > 0, (
+        f"tick 9: expected positions after rebuild, "
+        f"got {records[9].realized_weights}"
+    )
+
+    # Ticks 10, 11: V11 holds picks; no new liquidation/rebuild events.
+    for i in (10, 11):
+        assert len(records[i].realized_weights) > 0, (
+            f"tick {i}: expected positions held, "
+            f"got {records[i].realized_weights}"
+        )
