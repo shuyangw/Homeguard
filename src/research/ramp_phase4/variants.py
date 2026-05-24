@@ -356,6 +356,50 @@ def _variant_v14a_soft_bear_cash(
     return plan_v11
 
 
+def _variant_v14b_soft_bear_spy(
+    t: datetime, state, panel: pd.DataFrame, cfg,
+) -> Dict[str, float]:
+    """V14b: BEAR_score Schmitt-trigger -> SPY 100% on enter.
+
+    Tests E1's BEAR-as-buy hypothesis under a working trigger (soft scores
+    lead argmax by median 24 days at tau=0.3 per E3). V11's gross is
+    constant 1.0 (V01 base ignores exposure_pct; filters renormalize),
+    so 'V11 gross to SPY' simplifies to a fixed {SPY: 1.0} allocation.
+    """
+    plan_v11 = _variant_v11(t, state, panel, cfg)
+
+    spy_slice = panel['SPY'].dropna().loc[:t] if panel is not None else None
+    vix_slice = panel['VIX'].dropna().loc[:t] if panel is not None else None
+
+    spy_df = None
+    vix_df = None
+    if spy_slice is not None and vix_slice is not None \
+            and len(spy_slice) >= 252 and len(vix_slice) >= 252:
+        spy_df = pd.DataFrame({
+            'close': spy_slice, 'open': spy_slice, 'high': spy_slice, 'low': spy_slice,
+            'volume': 1e6,
+        })
+        vix_df = pd.DataFrame({'close': vix_slice})
+
+    try:
+        _DETECTOR.classify_regime(spy_df, vix_df, t)
+    except (DataInsufficientError, TypeError, ValueError, KeyError):
+        pass
+
+    bear_score = None
+    if _DETECTOR.last_classification_timestamp == t and _DETECTOR.last_regime_scores is not None:
+        bear_score = _DETECTOR.last_regime_scores.get('BEAR')
+
+    if bear_score is not None:
+        _engine_pre_variant_update_soft_bear(
+            state, bear_score, cfg.soft_bear_tau_in, cfg.soft_bear_tau_out,
+        )
+
+    if state.in_bear_soft_mode:
+        return {'SPY': 1.0, '__regime__': 'BEAR_SOFT_SPY'}
+    return plan_v11
+
+
 REGISTRY: Dict[str, VariantSpec] = {
     'V01': VariantSpec(
         id='V01',
@@ -401,5 +445,10 @@ REGISTRY: Dict[str, VariantSpec] = {
         id='V14a-soft-bear-cash',
         description='V11 + Schmitt-trigger BEAR_score consumer; in_bear_soft_mode -> cash',
         plan_fn=_variant_v14a_soft_bear_cash,
+    ),
+    'V14b-soft-bear-spy': VariantSpec(
+        id='V14b-soft-bear-spy',
+        description='V11 + Schmitt-trigger BEAR_score consumer; in_bear_soft_mode -> SPY 100%',
+        plan_fn=_variant_v14b_soft_bear_spy,
     ),
 }

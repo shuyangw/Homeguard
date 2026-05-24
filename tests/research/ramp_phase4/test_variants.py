@@ -662,3 +662,44 @@ def test_v14a_freshness_assertion_passes_with_explicit_call(monkeypatch):
 def test_v14a_registry_entry_exists():
     assert 'V14a-soft-bear-cash' in REGISTRY
     assert REGISTRY['V14a-soft-bear-cash'].plan_fn is _variant_v14a_soft_bear_cash
+
+
+def test_v14b_hysteresis_canonical_schmitt(monkeypatch):
+    """V14b: same state machine as V14a; action is {SPY: 1.0} instead of cash."""
+    from src.research.ramp_phase4.engine import HarnessState
+    from src.research.ramp_phase4.variants import _variant_v14b_soft_bear_spy
+
+    cfg = _v14_test_cfg()
+    state = HarnessState(cash_usd=100_000.0)
+    from src.research.ramp_phase4 import variants as v_mod
+    monkeypatch.setattr(v_mod, '_variant_v11', lambda t, s, p, c: {'__regime__': 'STRONG_BULL', 'AAPL': 1.0})
+
+    sequence_in_mode = [
+        (0.10, False),
+        (0.25, False),
+        (0.30, True),
+        (0.20, True),
+        (0.1999, False),
+        (0.50, True),
+    ]
+    base_date = datetime(2020, 1, 1)
+    for i, (score, expected_mode) in enumerate(sequence_in_mode):
+        _patch_detector_score(monkeypatch, score)
+        t = base_date + timedelta(days=i)
+        plan = _variant_v14b_soft_bear_spy(t, state, None, cfg)
+        assert state.in_bear_soft_mode is expected_mode
+        if expected_mode:
+            assert isinstance(plan, dict)
+            assert plan.get('SPY') == 1.0
+            assert '__regime__' in plan
+            assert plan['__regime__'] == 'BEAR_SOFT_SPY'
+            symbols = {k for k in plan.keys() if k not in ('__regime__',)}
+            assert symbols == {'SPY'}
+        else:
+            assert plan == {'__regime__': 'STRONG_BULL', 'AAPL': 1.0}
+
+
+def test_v14b_registry_entry_exists():
+    from src.research.ramp_phase4.variants import _variant_v14b_soft_bear_spy
+    assert 'V14b-soft-bear-spy' in REGISTRY
+    assert REGISTRY['V14b-soft-bear-spy'].plan_fn is _variant_v14b_soft_bear_spy
