@@ -16,6 +16,7 @@ import pandas as pd
 from src.research.ramp_phase4.config import HarnessConfig
 from src.research.ramp_phase4.costs import flat_bps_cost
 from src.research.ramp_phase4.data import load_universe_panel
+from src.research.ramp_phase4.plans import _SentinelPlan
 
 
 OVERLEVERAGE_EPSILON = 1e-3
@@ -39,6 +40,8 @@ class HarnessState:
     last_regime: Optional[str] = None
     regime_streak: Dict[str, int] = field(default_factory=dict)
     last_validated_regime: Optional[str] = None
+    # V14: Schmitt-trigger soft-bear consumer state.
+    in_bear_soft_mode: bool = False
 
 
 @dataclass
@@ -96,6 +99,30 @@ def _engine_pre_variant_update(state: HarnessState, regime: str, min_regime_days
         state.last_validated_regime = regime
 
 
+def _engine_pre_variant_update_soft_bear(
+    state: HarnessState,
+    bear_score: float,
+    tau_in: float,
+    tau_out: float,
+) -> None:
+    """V14 Schmitt-trigger state update.
+
+    Entry: bear_score >= tau_in -> in_bear_soft_mode = True.
+    Exit:  bear_score < tau_out (strict) -> in_bear_soft_mode = False.
+    Within band [tau_out, tau_in): no transition (state sticks).
+    NaN bear_score: no transition.
+
+    Called BEFORE the variant reads state.in_bear_soft_mode, so the variant
+    sees the updated value on the same tick the threshold was crossed.
+    """
+    if bear_score != bear_score:  # NaN check (NaN != NaN)
+        return
+    if not state.in_bear_soft_mode and bear_score >= tau_in:
+        state.in_bear_soft_mode = True
+    elif state.in_bear_soft_mode and bear_score < tau_out:
+        state.in_bear_soft_mode = False
+
+
 def run_variant(cfg: HarnessConfig, variant_spec: VariantLike) -> List[DailyRecord]:
     """Run one variant end-to-end through [cfg.start_date, cfg.end_date]."""
     panel = load_universe_panel(cfg.universe_csv, cfg.start_date, cfg.end_date)
@@ -143,9 +170,14 @@ def run_variant(cfg: HarnessConfig, variant_spec: VariantLike) -> List[DailyReco
             post_value = _portfolio_value(state, prices)
 
             # Plan_fn now sees post-execution state.
-            plan_output = variant_spec.plan_fn(ts, state, panel, cfg) or {}
-            regime_label = str(plan_output.pop('__regime__', 'STUB'))
-            target_weights = plan_output
+            plan_output = variant_spec.plan_fn(ts, state, panel, cfg)
+            if isinstance(plan_output, _SentinelPlan):
+                regime_label = plan_output.reason
+                target_weights: Dict[str, float] = {}
+            else:
+                plan_output = plan_output or {}
+                regime_label = str(plan_output.pop('__regime__', 'STUB'))
+                target_weights = plan_output
 
             if regime_label == 'SAFE_MODE':
                 state.pending_targets = {}
@@ -166,9 +198,14 @@ def run_variant(cfg: HarnessConfig, variant_spec: VariantLike) -> List[DailyReco
             continue
 
         # near_close branch (unchanged semantics).
-        plan_output = variant_spec.plan_fn(ts, state, panel, cfg) or {}
-        regime_label = str(plan_output.pop('__regime__', 'STUB'))
-        target_weights = plan_output
+        plan_output = variant_spec.plan_fn(ts, state, panel, cfg)
+        if isinstance(plan_output, _SentinelPlan):
+            regime_label = plan_output.reason
+            target_weights: Dict[str, float] = {}
+        else:
+            plan_output = plan_output or {}
+            regime_label = str(plan_output.pop('__regime__', 'STUB'))
+            target_weights = plan_output
 
         if regime_label == 'SAFE_MODE':
             # Hold current positions; no trades. Preserve last_target_symbols.
