@@ -354,10 +354,13 @@ def _build_doc(
     # Gate 3: PBO
     pbo_pass = pbo_value < PBO_THRESHOLD
 
-    # Gate 4: lag delta with rev4 floor
-    delta_abs = nc_v12_5 - lag_v12_5
+    # Gate 4: lag degradation, directional per spec rev4. The failure mode is
+    # lag << near_close (strategy relied on same-bar info); the opposite
+    # direction (lag > near_close) is safe and NOT penalized. The 0.1 absolute
+    # floor avoids vacuous tightness when |nc| is small.
+    nc_minus_lag = nc_v12_5 - lag_v12_5
     cap = max(LAG_DEGRADATION_FRACTION * abs(nc_v12_5), LAG_DEGRADATION_FLOOR)
-    lag_pass = abs(delta_abs) <= cap
+    lag_pass = nc_minus_lag <= cap
 
     # Gate 5: cost-floor + no-regress (both clauses)
     v11_ref = v11_lag_7p5.sharpe
@@ -541,8 +544,9 @@ def _build_doc(
     lines.append('- All metrics computed on net-of-cost daily returns.')
     lines.append('- Variants run at full window (start..end). Phase 4 is single-pass, '
                  'not walk-forward.')
-    lines.append('- Gate 4 floor (rev4): `|nc - lag| <= max(0.2 * |nc|, 0.1)` -- absolute '
-                 'floor of 0.1 prevents trivially-passing tiny-Sharpe runs.')
+    lines.append('- Gate 4 floor (rev4, directional): `(nc - lag) <= max(0.2 * |nc|, 0.1)` -- '
+                 'lag > near_close is the safe direction and is not penalized; the 0.1 '
+                 'absolute floor prevents vacuous tightness when |nc| is small.')
     lines.append('- Gate 5 (rev4-followup): both clauses required: '
                  'Sharpe(V12 @ 7.5bps lag) > 0.30 AND >= 0.9 * Sharpe(V11 @ 7.5bps lag).')
     lines.append('')
