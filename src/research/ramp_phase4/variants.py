@@ -13,6 +13,7 @@ from datetime import datetime
 from typing import Callable, Dict
 import pandas as pd
 
+from src.research.ramp_phase4.engine import _engine_pre_variant_update
 from src.research.ramp_phase4.filters import rank_buffer, min_hold
 from src.strategies.advanced.market_regime_detector import MarketRegimeDetector
 from src.strategies.advanced.ramp_strategy import RAMPSignals, REGIME_PARAMS
@@ -231,6 +232,52 @@ def _variant_v11(t: datetime, state, panel: pd.DataFrame, cfg) -> Dict[str, floa
     return targets
 
 
+def _variant_v12(t: datetime, state, panel: pd.DataFrame, cfg) -> Dict[str, float]:
+    """V12: V11 base + per-regime position override.
+
+    Per spec rev4: the engine update happens INSIDE this variant (not in
+    run_variant) because we need the regime to do the update, and the
+    regime comes from V11's plan output. The update is pre-variant in
+    the sense that it happens BEFORE the per-regime position decision.
+
+    With cfg.min_regime_days > 0, the active regime used for the mode
+    lookup is state.last_validated_regime (engine-managed). With
+    min_regime_days == 0 (v12.0.0 default), it's the instantaneous regime.
+
+    Position modes (cfg.regime_positions[regime]):
+        - 'normal': pass V11 plan through unchanged
+        - 'cash':   strip weights, return {'__regime__': regime}
+        - 'hold':   return {'__regime__': 'SAFE_MODE'} (preserve positions)
+
+    Any other value raises NotImplementedError (reserved for V13+ tickers).
+    """
+    plan = _variant_v11(t, state, panel, cfg)
+    regime = plan['__regime__']
+
+    _engine_pre_variant_update(state, regime, cfg.min_regime_days)
+
+    if cfg.min_regime_days > 0:
+        if state.last_validated_regime is None:
+            active_mode = 'normal'
+        else:
+            active_mode = cfg.regime_positions.get(
+                state.last_validated_regime, 'normal'
+            )
+    else:
+        active_mode = cfg.regime_positions.get(regime, 'normal')
+
+    if active_mode == 'normal':
+        return plan
+    elif active_mode == 'cash':
+        return {'__regime__': regime}
+    elif active_mode == 'hold':
+        return {'__regime__': 'SAFE_MODE'}
+    else:
+        raise NotImplementedError(
+            f"position_mode '{active_mode}' reserved for V13+"
+        )
+
+
 REGISTRY: Dict[str, VariantSpec] = {
     'V01': VariantSpec(
         id='V01',
@@ -261,5 +308,10 @@ REGISTRY: Dict[str, VariantSpec] = {
         id='V11',
         description='V01 + combined turnover-lite (V04 rank buffer + V05 min hold + V06 delta threshold via cfg)',
         plan_fn=_variant_v11,
+    ),
+    'V12': VariantSpec(
+        id='V12',
+        description='V11 + per-regime position override (BEAR -> cash default; min_regime_days=0 default; symmetric debouncing available)',
+        plan_fn=_variant_v12,
     ),
 }
