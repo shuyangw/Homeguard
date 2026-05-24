@@ -7,6 +7,7 @@ import pytest
 from src.research.ramp_phase4.config import HarnessConfig
 from src.research.ramp_phase4.engine import HarnessState, DailyRecord, compute_trades, run_variant
 from src.research.ramp_phase4.engine import apply_trades
+from src.research.ramp_phase4.engine import _engine_pre_variant_update
 
 
 def _tiny_cfg(tmp_path):
@@ -520,3 +521,62 @@ def test_one_day_lag_safe_mode_clears_pending(tmp_path, monkeypatch):
     assert records[3].turnover_usd == 0.0
     # Day 5: day 4's plan (Y: 1.0) executes -> rotate from X to Y -> non-zero turnover.
     assert records[4].turnover_usd > 0.0
+
+
+# ---------------------------------------------------------------------------
+# V12 Task 1: regime debouncing state + _engine_pre_variant_update helper.
+# ---------------------------------------------------------------------------
+
+
+def test_engine_regime_streak_increments():
+    """Two consecutive ticks of the same regime: streak goes 1 -> 2."""
+    state = HarnessState(cash_usd=100000.0)
+    _engine_pre_variant_update(state, 'BEAR', min_regime_days=0)
+    assert state.regime_streak == {'BEAR': 1}
+    assert state.last_regime == 'BEAR'
+    _engine_pre_variant_update(state, 'BEAR', min_regime_days=0)
+    assert state.regime_streak == {'BEAR': 2}
+    assert state.last_regime == 'BEAR'
+
+
+def test_engine_regime_streak_resets_on_flip():
+    """Regime BEAR -> WEAK_BULL: streak dict becomes {WEAK_BULL: 1}."""
+    state = HarnessState(cash_usd=100000.0)
+    _engine_pre_variant_update(state, 'BEAR', min_regime_days=0)
+    _engine_pre_variant_update(state, 'BEAR', min_regime_days=0)
+    _engine_pre_variant_update(state, 'WEAK_BULL', min_regime_days=0)
+    assert state.regime_streak == {'WEAK_BULL': 1}
+    assert state.last_regime == 'WEAK_BULL'
+
+
+def test_engine_last_validated_regime_with_min_zero():
+    """With min_regime_days=0, last_validated_regime tracks instantaneous regime."""
+    state = HarnessState(cash_usd=100000.0)
+    _engine_pre_variant_update(state, 'BEAR', min_regime_days=0)
+    assert state.last_validated_regime == 'BEAR'
+    _engine_pre_variant_update(state, 'WEAK_BULL', min_regime_days=0)
+    assert state.last_validated_regime == 'WEAK_BULL'
+
+
+def test_engine_last_validated_regime_with_min_three():
+    """With min_regime_days=3, last_validated_regime stays None for ticks 0-1,
+    becomes the regime on tick 2 (streak reaches 3)."""
+    state = HarnessState(cash_usd=100000.0)
+    _engine_pre_variant_update(state, 'BEAR', min_regime_days=3)
+    assert state.last_validated_regime is None
+    _engine_pre_variant_update(state, 'BEAR', min_regime_days=3)
+    assert state.last_validated_regime is None
+    _engine_pre_variant_update(state, 'BEAR', min_regime_days=3)
+    assert state.last_validated_regime == 'BEAR'
+
+
+def test_engine_first_tick_initialization():
+    """t=0 with last_regime=None correctly enters the flip branch."""
+    state = HarnessState(cash_usd=100000.0)
+    assert state.last_regime is None
+    assert state.regime_streak == {}
+    assert state.last_validated_regime is None
+    _engine_pre_variant_update(state, 'BEAR', min_regime_days=0)
+    assert state.regime_streak == {'BEAR': 1}
+    assert state.last_regime == 'BEAR'
+    assert state.last_validated_regime == 'BEAR'  # 1 >= 0

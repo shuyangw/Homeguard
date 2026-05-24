@@ -9,7 +9,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Callable, Dict, List, Protocol
+from typing import Callable, Dict, List, Optional, Protocol
 
 import pandas as pd
 
@@ -35,6 +35,10 @@ class HarnessState:
     # Phase 4 Wave 2 (one_day_lag timing): plan at close T, execute at close T+1.
     # In near_close mode this dict stays empty and is unused.
     pending_targets: Dict[str, float] = field(default_factory=dict)
+    # V12: per-regime debouncing state (pre-variant update each tick).
+    last_regime: Optional[str] = None
+    regime_streak: Dict[str, int] = field(default_factory=dict)
+    last_validated_regime: Optional[str] = None
 
 
 @dataclass
@@ -65,6 +69,31 @@ def _portfolio_value(state: HarnessState, prices: pd.Series) -> float:
             continue
         total += shares * px
     return total
+
+
+def _engine_pre_variant_update(state: HarnessState, regime: str, min_regime_days: int) -> None:
+    """Update streak + last_validated_regime BEFORE the variant runs on each tick.
+
+    Pre-variant ordering is committed by the V12 spec (rev4). The variant
+    sees the updated state, so a regime that just hit the threshold takes
+    effect on the same tick it hit it.
+
+    With min_regime_days=0 (the v12.0.0 default and all V01-V11 default),
+    `1 >= 0` is always true, so `last_validated_regime` tracks the
+    instantaneous regime; bit-equivalent to no-debouncing behavior.
+    """
+    # 1. Update regime streak.
+    if state.last_regime == regime:
+        state.regime_streak[regime] = state.regime_streak.get(regime, 0) + 1
+    else:
+        # Regime flip: reset streak. First-tick: last_regime is None,
+        # which never equals any real regime name, so this branch fires.
+        state.regime_streak = {regime: 1}
+    state.last_regime = regime
+
+    # 2. Update last_validated_regime if current regime has cleared threshold.
+    if state.regime_streak[regime] >= min_regime_days:
+        state.last_validated_regime = regime
 
 
 def run_variant(cfg: HarnessConfig, variant_spec: VariantLike) -> List[DailyRecord]:
