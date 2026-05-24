@@ -62,6 +62,11 @@ def main() -> int:
         ['git', 'log', '-1', '--format=%H', '--', LABELER_FILE],
         check=True, capture_output=True, text=True,
     ).stdout.strip()
+    if not labeler_commit:
+        raise RuntimeError(
+            f'git log returned no commit for {LABELER_FILE} -- '
+            f'file may be uncommitted or path is wrong.'
+        )
 
     out = {
         'tau_in': round(tau_in, 6),
@@ -78,8 +83,8 @@ def main() -> int:
             '(drawdown > 10% from 252-day trailing high)'
         ),
         'source_data': {
-            'labels': str(PANEL_PATH),
-            'scores': str(SCORES_PATH),
+            'panel': PANEL_PATH.as_posix(),
+            'scores': SCORES_PATH.as_posix(),
         },
     }
 
