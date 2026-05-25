@@ -81,10 +81,8 @@ From `H:/Stock_Data/alt_data/models/v20_detector/146e5d2/model_g1_shift10.metada
 
 ## Commits
 
-- `<R1>` feat(detector): WS-3d Gate 1 round 3 -- leading target G1_BEAR.shift(-10) retrain
-- `<R2>` diag(ws3d): Gate 1 round 3 verdict at G1_BEAR.shift(-10) -- BLOCKED at Schmitt-tau-0.30
-
-(Hashes filled in after commit; see `git log v12-bear-to-cash`.)
+- `8c476f0` feat(detector): WS-3d Gate 1 round 3 -- leading target G1_BEAR.shift(-10) retrain
+- `e3c030d` diag(ws3d): Gate 1 round 3 verdict at G1_BEAR.shift(-10) -- BLOCKED at Schmitt-tau-0.30
 
 ## Known Issues / Remaining Work
 
