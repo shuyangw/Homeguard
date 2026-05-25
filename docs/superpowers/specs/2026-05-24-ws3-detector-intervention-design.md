@@ -134,6 +134,9 @@ The diagnostic returns a verdict tuple `(M1, M2, M3)` where each is in {supporte
 | (sup, sup, sup) | WS-3d -- incremental tracks won't compound enough |
 | any 2+ inconclusive | WS-3d with expanded scope |
 | (ref, ref, ref) | WS-3d OR halt WS-3 entirely (campaign has hit a wall; explore alternative strategies) |
+| **lag-structural finding** (E8 exit-to-SPY-low lag < -5 days AND BEAR-soft firing days contribute < 15% of V-V11 excess) | **WS-3d** (the detector is structurally late; consumer-layer fixes cannot recover days the detector missed; trial-chain reset is the only escape from the DSR=36 trap) |
+
+The lag-structural row is the binding row when its predicate holds, irrespective of the (M1, M2, M3) tuple. It captures the campaign-level finding that three independent measurements (V12 gap_days = -3.42 trading days, original diagnostic H5 = 14-day SMA lag to first BEAR label, E8 exit-to-SPY-low lag = -8 trading days) converge on a structural detector lag. When the predicate holds, WS-3d is selected as the evidence-driven choice rather than as a decision-tree catch-all.
 
 Track selection is committed at the time E8 returns. The selected track receives a full implementation spec; non-selected tracks are filed for potential later consideration but do not block.
 
