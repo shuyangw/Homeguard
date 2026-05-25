@@ -87,7 +87,7 @@ Pre-committed (Amendment 2):
 | Indicator | Source | Frequency | History | Purpose |
 |---|---|---|---|---|
 | VIX/VIX3M ratio | CBOE direct or yfinance (^VIX, ^VIX3M) | daily | 2017-present | Term-structure inversion as drawdown leading indicator |
-| HY OAS | FRED series BAMLH0A0HYM2 | daily | 1997-present | High-yield credit spread; bond market leads equity vol |
+| HY credit-spread proxy (HYG/IEF ratio) | yfinance HYG, IEF ETFs | daily | 2007-present (both ETFs) | Price-based HY credit-spread proxy; substituted for FRED HY OAS in 2026-05 after ICE Data Indices licensing truncated the FRED series to a rolling 3-year window. See Amendment 5. |
 | NYSE A-D breadth | yfinance + S&P 500 universe; computed as % of constituents above 50-day MA | daily | 2017-present | Market breadth deterioration as drawdown leading indicator |
 | CBOE SKEW index | CBOE direct or yfinance (^SKEW) | daily | 2017-present | Tail-risk options pricing as drawdown leading indicator |
 | SPY OHLC | existing data acquisition | daily | 2017-present | Retained as backward-compat input; informs G1_BEAR label generation |
@@ -101,6 +101,16 @@ These 6 inputs constitute the canonical WS-3d input set. **Alternative input set
 - VIX futures basis (front - second month)
 
 Per WS-3 spec rev2 honesty discipline, sensitivity panels do NOT influence the gate verdict; the gate evaluates on the canonical 6-input set only.
+
+### Amendment 5 (2026-05-24): Forced data substitution -- HY OAS -> HYG/IEF proxy
+
+The WS-3d spec rev1 pre-committed to FRED BAMLH0A0HYM2 (HY OAS) as the canonical credit-spread input. In April 2026 ICE Data Indices changed the licensing terms; FRED now publishes only a rolling 3-year window of this series. The full 2017-present coverage required for LightGBM training on G1_BEAR labels is no longer available via FRED at any free tier.
+
+Substitution: **HYG/IEF ratio via yfinance** (iShares iBoxx US High Yield Corporate Bond ETF / iShares 7-10 Year Treasury ETF). Available 2007-present. Price-based proxy for HY credit spread; historical correlation with HY OAS is > 0.9 over typical post-2007 windows.
+
+This substitution is forced (data availability), not discretionary. The spec's other pre-commitments (LightGBM architecture, CPCV methodology, 5 sequential gates, fresh trial chain, mandatory forward OOS) are unchanged.
+
+Implementation: `src/data/leading_indicators/hy_proxy.py` (yfinance-based, mirrors the `vix_term.py` structural template). Tests at `tests/data/leading_indicators/test_hy_proxy.py`. The original `fred_hy_oas.py` module is removed.
 
 ## Architecture (pre-committed, Amendment 3)
 

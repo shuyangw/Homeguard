@@ -9,14 +9,14 @@ for the canonical input set.
 """
 
 from src.data.leading_indicators.vix_term import load_vix_term
-from src.data.leading_indicators.fred_hy_oas import load_hy_oas
+from src.data.leading_indicators.hy_proxy import load_hy_proxy
 from src.data.leading_indicators.breadth import load_breadth
 from src.data.leading_indicators.skew import load_skew
 from src.data.leading_indicators.loader import load_leading_indicators
 
 __all__ = [
     'load_vix_term',
-    'load_hy_oas',
+    'load_hy_proxy',
     'load_breadth',
     'load_skew',
     'load_leading_indicators',
