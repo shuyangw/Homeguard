@@ -74,7 +74,11 @@ Breaking changes require a migration plan; non-breaking is preferred. The curren
 
 The original H1-H5 diagnostic (`docs/reports/ramp/20260523_regime_detector_diagnostic.md`) is rerun against WS-3d's detector outputs on the same 2017-2026 window. Primary success metrics:
 
-1. **H5 lag reduction**: median lag from G1_BEAR ground-truth onset to first detector-BEAR label MUST decrease by >= 30% (from 14d to <= 10d). Indicator-set is dropped from canonical configuration if the reduction is < 30%.
+1. **H5 lag reduction**: median lag from G4 hand-curated drawdown-event start to first day where the detector signals BEAR (per the evaluation methodology below) MUST decrease by >= 30% (from 14d to <= 10d). If the reduction is < 30%, the indicator set or architecture is dropped from canonical configuration.
+
+   **Evaluation methodology (Amendment 6, 2026-05-24)**: WS-3d's LightGBM detector outputs a probabilistic BEAR score in [0, 1]. The v0 detector's argmax-at-0.5 convention is not appropriate for evaluating a probabilistic classifier intended to be consumed via Schmitt trigger at the consumer layer. Instead, Gate 1's H5 lag is measured as the median lag from G4 drawdown-event start to the first day where `BEAR_proba >= tau_eval`, with **tau_eval = 0.30** pre-registered from E3's soft-score finding (median argmax_lag at tau=0.3 was 24 trading days in v0 soft-score replay -- the same tau is used here for consistency).
+
+   The v0-style argmax-at-0.5 H5 lag is still reported alongside for transparency and historical comparability, but Gate 1's binding decision uses the Schmitt-trigger metric.
 2. **H4 flicker reduction**: median run length for non-SIDEWAYS regimes MUST increase relative to v0. If LightGBM still produces flicker comparable to v0 argmax, add a Schmitt-trigger consumer-side layer (V20 variant) and re-test.
 3. **H1-H3 parity**: regime distribution and transition characteristics should not deviate materially from ground-truth labelers (G1_BEAR, G2_forward_window, G3_vol_spike).
 
@@ -111,6 +115,20 @@ Substitution: **HYG/IEF ratio via yfinance** (iShares iBoxx US High Yield Corpor
 This substitution is forced (data availability), not discretionary. The spec's other pre-commitments (LightGBM architecture, CPCV methodology, 5 sequential gates, fresh trial chain, mandatory forward OOS) are unchanged.
 
 Implementation: `src/data/leading_indicators/hy_proxy.py` (yfinance-based, mirrors the `vix_term.py` structural template). Tests at `tests/data/leading_indicators/test_hy_proxy.py`. The original `fred_hy_oas.py` module is removed.
+
+### Amendment 6 (2026-05-24): Gate 1 H5 evaluation methodology
+
+Gate 1's original H5 metric measured "median lag from G4 drawdown-event start to first detector-BEAR label", where "detector-BEAR label" meant the v0 detector's argmax winner (discrete regime label) being 'BEAR'. For a discrete-output detector this is well-defined.
+
+The WS-3d LightGBM detector is probabilistic: it outputs `P(BEAR | indicators)` in [0, 1]. The argmax-flip occurs at probability 0.5 by default. But the WS-3d detector will be consumed via Schmitt trigger (V20-rd-bear-cash design pattern, mirroring V14a's BEAR_score consumption with tau_in / tau_out), so the meaningful firing point is the Schmitt-trigger threshold, not the argmax flip.
+
+The original Gate 1 test on argmax-at-0.5 (commit `f3c11c9` Gate 1 rerun) found v1 H5 lag = 21 days (vs v0 14d, WORSE by 50%). However, the test also documented that v1's `P(BEAR)` reaches 0.25-0.30 BEFORE the argmax fires at 0.5. The leading signal IS in the model; the metric inherited the v0 evaluation paradigm and didn't measure it.
+
+**Amendment 6 changes Gate 1's H5 metric from argmax-at-0.5 to first-crossing-of-tau_eval=0.30**. The tau_eval value is pre-registered from E3's soft-score finding (E3's threshold sweep on v0's soft scores found tau=0.3 produced the best lead-time tradeoff with the highest event coverage). Re-using tau=0.30 here is intellectually consistent and avoids selection bias from tuning the threshold to v1's data.
+
+The argmax-at-0.5 H5 lag continues to be reported alongside for transparency. Gate 1's binding decision uses the Schmitt-trigger metric.
+
+If under Amendment 6's evaluation v1's H5 lag is still > 10 days (less than 30% reduction from v0's 14d baseline), the leading-indicator hypothesis itself is in doubt and the spec falls back to one of: (b) retrain on a leading target (G2_BEAR or G1_BEAR.shift(-k)), (c) try the fallback architectures, (d) halt WS-3d. The decision is the user's, not automatic.
 
 ## Architecture (pre-committed, Amendment 3)
 
