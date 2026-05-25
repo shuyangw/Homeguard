@@ -119,3 +119,37 @@ The V14 family's TIER 4 verdict combined with V12 (Tier 3) and V12c/V13 (Tier 4)
 - **V13** (claimed): see V13-bear-invert above. Variant code preserved for diagnostic continuity even though TIER 4.
 - **V14** (claimed): see V14 factorial above. All three V14a/b/c variant codes preserved for diagnostic continuity even though TIER 4.
 - **V15** candidate: per-regime strategy routing (RAMP for bull, OMR for sideways, etc.). Requires per-regime adapter layer; Phase 4 harness has no such abstraction.
+
+## V20+ -- WS-3d new-detector family (reserved 2026-05-25)
+
+The V20+ block is reserved for variants consuming the WS-3d replacement detector (`MarketRegimeDetectorV1`), trained via LightGBM on leading indicators (VIX/VIX3M, HY OAS, NYSE breadth, CBOE SKEW). Spec at `docs/superpowers/specs/2026-05-25-ws3d-detector-replacement-design.md`.
+
+**Trial-chain reset**: V20+ family starts at `n_trials_project = 1` (fresh chain), separate from the v0-detector family's 36-trial chain. The reset is justified on three independent grounds: new inputs (4 leading indicators absent from v0), new scoring (LightGBM probability vs hand-tuned threshold formula), new architecture (tree-based classifier vs rule-based scoring). The v0 family's chain is preserved in the experiment registry; the two families have separate n_trials counters.
+
+**E8 lag-structural verdict drove this**: V12 gap_days = -3.42 + diagnostic H5 = 14d SMA lag + E8 exit-to-low lag = -8d all converge on structural detector lag. Consumer-layer fixes (V12/V12c/V13 on argmax; V14a/b/c on soft scores) cannot recover days the detector itself missed. WS-3d replaces the detector, not the consumer pattern.
+
+### V20-rd-bear-cash (canonical primary; reserved pending implementation)
+- **Code (planned)**: `src/research/ramp_phase4/variants.py::_variant_v20_rd_bear_cash`
+- **Detector**: `src/strategies/advanced/market_regime_detector_v1.py::MarketRegimeDetectorV1`
+- **Action when in_bear_soft_mode**: returns `PLAN_CASH_BEAR_SOFT` (same sentinel as V14a; consumption pattern mirrors V14a for direct A/B comparison vs v0 family).
+- **Tau**: pre-registered in `config/research/v20_tau_constants.json` (NOT inherited from v14 -- different score distribution).
+- **Status**: spec'd, not implemented.
+
+### V20b-rd-bear-spy (reserved; spec'd only if V20 primary passes)
+- Mirrors V14b. Only spec'd if V20-rd-bear-cash IS readiness + forward OOS pass. V14 factorial showed action convergence; the deferred V20b/c spec'ing checks whether the new detector breaks that convergence.
+
+### V20c-rd-bear-dampen (reserved; same gating as V20b)
+- Mirrors V14c. Same conditional spec rule.
+
+### V21 / V22 (open slots)
+- Reserved for future WS-3d-family variants (e.g., V20 with min-persistence overlay if Schmitt-trigger flickers persist, or a non-Schmitt consumer pattern on the new detector). No specific candidate yet.
+
+### V20+ family infrastructure
+- **New detector**: LightGBM classifier on G1_BEAR labels with purged combinatorial cross-validation. Input set: VIX/VIX3M ratio, HY OAS (FRED BAMLH0A0HYM2), NYSE breadth, CBOE SKEW, plus retained SPY/VIX for backwards-compat features.
+- **Validation gates** (sequential): Gate 0 data, Gate 1 diagnostic rerun (**H5 lag reduction >= 30%** required), Gate 2 tau registration, Gate 3 IS readiness, Gate 4 forward OOS (1+ month, Sharpe > 0), Gate 5 OMR audit (deployment-time only), Gate 6 deployment decision.
+- **Forward OOS mandatory**: no deployment recommendation without forward OOS regardless of IS verdicts. Minimum 21 trading days, ideally aligned with V11 A7 5-session standard.
+- **Backwards-compat**: V11-V14 consumers NOT migrated. v0 detector remains for existing variant family continuity. New detector is `MarketRegimeDetectorV1`; coexists with `MarketRegimeDetector`.
+
+### Joint diagnosis (cross-family)
+
+The v0-detector family closed exhaustively across all measured consumption axes: argmax (V12/V12c/V13) and soft-score (V14a/b/c). E8's lag-structural finding (consistent across V12, diagnostic, and E8 measurements) made WS-3d the evidence-driven track. The V20+ family tests whether a structurally faster detector unlocks the +0.10 TIER 1 lift bar that the v0 family could not clear despite a real +0.08 average soft-score Sharpe improvement. If V20-rd-bear-cash fails TIER 1, the regime-aware-RAMP research line closes -- the campaign will have produced 9 experiments of permanent evidence about detector limits.
