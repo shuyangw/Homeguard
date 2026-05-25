@@ -120,7 +120,36 @@ The V14 family's TIER 4 verdict combined with V12 (Tier 3) and V12c/V13 (Tier 4)
 - **V14** (claimed): see V14 factorial above. All three V14a/b/c variant codes preserved for diagnostic continuity even though TIER 4.
 - **V15** candidate: per-regime strategy routing (RAMP for bull, OMR for sideways, etc.). Requires per-regime adapter layer; Phase 4 harness has no such abstraction.
 
-## V20+ -- WS-3d new-detector family (reserved 2026-05-25)
+## V20+ -- WS-3d new-detector family (CLOSED 2026-06-02, TIER 4)
+
+**Closure verdict (2026-06-02)**: WS-3d officially HALTED after three failed
+Gate 1 retraining attempts. V20+ family closed at TIER 4 without any variant
+reaching readiness. The detector class `MarketRegimeDetectorV1` and the
+training pipeline (`scripts/diagnostics/train_detector_v1.py`) REMAIN in the
+codebase for diagnostic continuity; they are not deleted, just no longer
+active research targets. Closure session log:
+`docs/progress/20260524_RAMP_REGIME_DETECTOR_CAMPAIGN_CLOSURE.md`.
+
+**Three failed Gate 1 attempts**:
+- Round 1 (commit `f3c11c9`, G1_BEAR confirmation target, argmax-at-0.5):
+  H5 lag 21d vs v0 14d (-50% reduction). BLOCKED.
+- Round 2 (commit `146e5d2`, Amendment 6, Schmitt-tau-0.30 binding metric):
+  H5 lag 19.5d vs v0 2.0d (-875% reduction). BLOCKED. Surprise finding:
+  v0's rule-based `score_BEAR` is a fraction-of-criteria-met that fires on
+  day 1-2 of every drawdown at tau = 0.30; LightGBM's smooth posterior cannot
+  outpace this.
+- Round 3 (commit `e3c030d`, G1_BEAR.shift(-10) leading target):
+  H5 lag 11.0d at Schmitt-tau-0.30, 4/5 G4 events fired (missed
+  2025_dec_drawdown). Pre-registered round-3 criteria (<= 5d median AND
+  >= 5/5 events) both FAIL.
+
+**Root finding**: v0's rule-based score at Schmitt-tau-0.30 is essentially a
+1-2 day SMA-crossing alarm. Supervised ML models trained on G1_BEAR (a
+confirmation label) or G1_BEAR.shift(-10) (a leading target with worse class
+balance) produce smooth posteriors that take days to weeks to cross
+tau = 0.30. The V14a-level lag at tau_in = 0.5556 (the original "lag-
+structural finding" from V12/E8) is real but tau-specific, not a fundamental
+detector defect detector replacement can address with the same input class.
 
 The V20+ block is reserved for variants consuming the WS-3d replacement detector (`MarketRegimeDetectorV1`), trained via LightGBM on leading indicators (VIX/VIX3M, HY OAS, NYSE breadth, CBOE SKEW). Spec at `docs/superpowers/specs/2026-05-25-ws3d-detector-replacement-design.md`.
 
@@ -128,12 +157,12 @@ The V20+ block is reserved for variants consuming the WS-3d replacement detector
 
 **E8 lag-structural verdict drove this**: V12 gap_days = -3.42 + diagnostic H5 = 14d SMA lag + E8 exit-to-low lag = -8d all converge on structural detector lag. Consumer-layer fixes (V12/V12c/V13 on argmax; V14a/b/c on soft scores) cannot recover days the detector itself missed. WS-3d replaces the detector, not the consumer pattern.
 
-### V20-rd-bear-cash (canonical primary; reserved pending implementation)
-- **Code (planned)**: `src/research/ramp_phase4/variants.py::_variant_v20_rd_bear_cash`
-- **Detector**: `src/strategies/advanced/market_regime_detector_v1.py::MarketRegimeDetectorV1`
+### V20-rd-bear-cash (BLOCKED at WS-3d Gate 1; detector replacement halted before V20 variant readiness was tested)
+- **Code (planned, NOT implemented)**: `src/research/ramp_phase4/variants.py::_variant_v20_rd_bear_cash`
+- **Detector**: `src/strategies/advanced/market_regime_detector_v1.py::MarketRegimeDetectorV1` (class lives in codebase for diagnostic continuity)
 - **Action when in_bear_soft_mode**: returns `PLAN_CASH_BEAR_SOFT` (same sentinel as V14a; consumption pattern mirrors V14a for direct A/B comparison vs v0 family).
-- **Tau**: pre-registered in `config/research/v20_tau_constants.json` (NOT inherited from v14 -- different score distribution).
-- **Status**: spec'd, not implemented.
+- **Tau**: never pre-registered. Gate 1 BLOCKED before Gate 2 (tau registration).
+- **Status**: BLOCKED at WS-3d Gate 1; detector replacement halted before V20 variant readiness was tested. Variant code never landed.
 
 ### V20b-rd-bear-spy (reserved; spec'd only if V20 primary passes)
 - Mirrors V14b. Only spec'd if V20-rd-bear-cash IS readiness + forward OOS pass. V14 factorial showed action convergence; the deferred V20b/c spec'ing checks whether the new detector breaks that convergence.
@@ -152,4 +181,31 @@ The V20+ block is reserved for variants consuming the WS-3d replacement detector
 
 ### Joint diagnosis (cross-family)
 
-The v0-detector family closed exhaustively across all measured consumption axes: argmax (V12/V12c/V13) and soft-score (V14a/b/c). E8's lag-structural finding (consistent across V12, diagnostic, and E8 measurements) made WS-3d the evidence-driven track. The V20+ family tests whether a structurally faster detector unlocks the +0.10 TIER 1 lift bar that the v0 family could not clear despite a real +0.08 average soft-score Sharpe improvement. If V20-rd-bear-cash fails TIER 1, the regime-aware-RAMP research line closes -- the campaign will have produced 9 experiments of permanent evidence about detector limits.
+The v0-detector family closed exhaustively across all measured consumption
+axes: argmax (V12/V12c/V13) and soft-score (V14a/b/c). E8's lag-structural
+finding (consistent across V12, diagnostic, and E8 measurements) made WS-3d
+the evidence-driven track. The V20+ family was set up to test whether a
+structurally faster detector unlocks the +0.10 TIER 1 lift bar that the v0
+family could not clear despite a real +0.08 average soft-score Sharpe
+improvement.
+
+**Closure (2026-06-02)**: WS-3d was HALTED at Gate 1 after three failed
+retraining attempts (rounds 1-3 above). The lag-structural finding under
+Amendment 6's binding metric (Schmitt-tau-0.30) was reframed: v0 fires fast
+at tau = 0.30 (median 2.0d, 5/5 G4 events), and LightGBM on leading
+indicators -- even with a leading target G1_BEAR.shift(-10) -- cannot outpace
+v0's rule-based SMA-crossing criteria. The original "v0 is structurally
+late" finding from V12 (gap_days = -3.42) and E8 (exit-to-low = -8d) was
+tau-specific to V14a's tau_in = 0.5556, NOT a fundamental detector defect.
+
+The regime-aware-RAMP research line is closed under the current detector
+paradigm. The campaign produced 9 documented experiments + 3 WS-3d Gate 1
+rounds of permanent evidence about detector limits (see
+`docs/progress/20260524_RAMP_REGIME_DETECTOR_CAMPAIGN_CLOSURE.md`).
+`MarketRegimeDetectorV1` and the training pipeline remain in the codebase
+for diagnostic continuity; v0 detector and V11-V14 variants are unchanged.
+V11 paper validation continues independently. Future detector improvement
+would need to abandon the supervised classifier paradigm at the consumer
+threshold v0 already dominates (HMM with persistence in transition matrix,
+hand-crafted threshold ensemble on leading indicators, or a structurally
+different ground-truth labeler that fires before drawdowns).
