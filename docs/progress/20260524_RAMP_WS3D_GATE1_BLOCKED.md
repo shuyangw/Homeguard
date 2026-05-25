@@ -2,13 +2,29 @@
 
 ## Summary
 
-WS-3d Gate 1 BLOCKED. v1 LightGBM detector trained successfully (best CV mean
-logloss = 0.347 on 48-combination purged sweep), but on the apples-to-apples
-G4-event-basis H5 measurement, v1 median lag = 21d vs v0 baseline 14d
-(50% INCREASE, not the >=30% REDUCTION required by Pre-commitment 5). v1
-also missed the 2025_dec_drawdown entirely within a 50-day event window.
-Per spec, Gates 2-6 are NOT run; spec amendment is required before
-continuing.
+WS-3d Gate 1 STILL BLOCKED after Amendment 6 reframing.
+
+**Round 1 (argmax-at-0.5, pre-Amendment 6, commit f3c11c9):** v1 LightGBM
+detector trained successfully (best CV mean logloss = 0.347 on 48-combination
+purged sweep), but on the apples-to-apples G4-event-basis H5 measurement,
+v1 median lag = 21d vs v0 baseline 14d (50% INCREASE, not the >=30%
+REDUCTION required by Pre-commitment 5). v1 also missed the
+2025_dec_drawdown entirely.
+
+**Round 2 (Schmitt-tau-0.30 first-crossing, Amendment 6, commits 1b24b7b +
+<this-commit>):** Hypothesis from Round 1 -- that v1's `P(BEAR)` crosses
+0.25-0.30 before the argmax-at-0.5 flip -- was tested by reframing Gate 1's
+binding metric to Schmitt-tau-0.30 first-crossing (matching the
+V20-rd-bear-cash consumer-layer pattern). Result: v1 median lag at tau=0.30
+= 19.5d, v0 median lag at tau=0.30 = 2.0d (v0's rule-based `score_BEAR` is a
+fraction-of-criteria-met that flips immediately on the first
+above_20/above_50/above_200/vix_percentile criterion). Reduction = -875%.
+v1 is still SLOWER than v0 at the binding metric. The Schmitt-trigger
+reformulation does NOT rescue Gate 1.
+
+Per Amendment 6's last paragraph, the spec falls back to: (b) retrain on a
+leading target, (c) try fallback architectures, or (d) halt WS-3d. Decision
+is the user's, not automatic. Gates 2-6 remain NOT run.
 
 ## Changes Made
 
@@ -45,55 +61,103 @@ continuing.
   indicators (WS-3d)
 - `f3c11c9` feat(diagnostics): WS-3d detector replay + H1-H5 diagnostic
   rerun
+- `bb97e56` docs(progress): WS-3d Gate 1 session log -- BLOCKED at
+  diagnostic gate (Round 1)
+- `1b24b7b` spec(ws3d): Amendment 6 -- Gate 1 H5 metric changes to
+  Schmitt-tau-0.30 first-crossing
+- `<this-commit>` diag(ws3d): Gate 1 H5 rerun under Amendment 6 -- STILL
+  BLOCKED at Schmitt-tau-0.30
 
 ## Known Issues / Remaining Work
 
-**Gate 1 is BLOCKED.** Gates 2-6 NOT run.
+**Gate 1 is STILL BLOCKED under Amendment 6.** Gates 2-6 NOT run.
 
-H5 per-event detail (G4 basis):
+H5 per-event detail under BOTH metrics:
 
-| Event | v0 lag | v1 lag | Delta |
+| Event | v0 argmax | v1 argmax | v0 tau=0.30 | v1 tau=0.30 |
+|---|---|---|---|---|
+| Q4_2018_selloff | 14d | 26d | 2d | 26d |
+| COVID_crash | 14d | 8d | 2d | 7d |
+| 2022_bear_market | 14d | 20d | 14d | 17d |
+| 2025_tariff_drawdown | 5d | 22d | 2d | 22d |
+| 2025_dec_drawdown | 36d | DID NOT FIRE | 36d | DID NOT FIRE |
+
+Median lag summary:
+
+| Metric | v0 | v1 | Reduction |
 |---|---|---|---|
-| Q4_2018_selloff | 14d | 26d | WORSE 12d |
-| COVID_crash | 14d | 8d | BETTER 6d |
-| 2022_bear_market | 14d | 20d | WORSE 6d |
-| 2025_tariff_drawdown | 5d | 22d | WORSE 17d |
-| 2025_dec_drawdown | 36d | DID NOT FIRE | WORST |
+| argmax-at-0.5 (legacy, informational) | 14.0d | 21.0d | -50.0% |
+| **Schmitt-tau-0.30 (Amendment 6 binding)** | **2.0d** | **19.5d** | **-875.0%** |
 
-Recommended next steps for spec revision (documented in the report's
-Diagnosis section):
+Why Amendment 6 did not rescue Gate 1: v0's `score_BEAR` is a rule-based
+fraction-of-criteria-met (above_20 / above_50 / above_200 / vix_percentile),
+each independent and binary. The first time SPY closes below its 20-day MA
+on a drawdown, v0's score jumps to 0.20-0.40 immediately. So v0 at tau=0.30
+fires on day 1-2 of essentially every drawdown. v1's `bear_proba` is a
+LightGBM joint posterior P(G1_BEAR | indicators) -- a smoothly-rising
+function that takes weeks to cross 0.30 because G1_BEAR itself is a 10%
+drawdown confirmation and the supervised model learned to predict that
+confirmation, not its onset. The leading-indicator hypothesis (that
+VIX_term + HY proxy + breadth + SKEW would let LightGBM cross the
+consumer-layer threshold before v0's rule-based score) is FALSIFIED on
+G4 events.
 
-1. Lower BEAR_PROB_THRESHOLD or evaluate Gate 1 on a Schmitt-trigger label
-   rather than argmax-at-0.5. Raw P(BEAR) reaches 0.25-0.30 days before
-   the argmax flip.
-2. Train on a LEADING target (G2_BEAR forward-window, or G1_BEAR.shift(-k))
-   rather than the coincident G1_BEAR.
-3. Consider fallback architectures in the spec Appendix (HMM, threshold
-   ensemble) -- but none of these address the underlying issue that a
-   confirmation-label supervised model cannot be predicted ahead of itself
-   at a 0.5 decision threshold.
-4. Escalate to halt-or-redirect per parent WS-3 spec Appendix.
+Recommended escalation (Amendment 6's last paragraph):
 
-H2 recall is the silver lining: v1 = 96.5% vs v0 = 46.1%. On confirmed
-G1_BEAR days, v1 is dominant. The failure mode is purely lag (when the
-argmax flips), not coverage (whether it flips at all).
+(b) **Retrain on a LEADING target** -- use label = G1_BEAR.shift(-k) for
+    k in {5, 10, 15} (picking k that maximizes G4 lead-time), or use
+    G2_BEAR (forward 30-day return < -5% AND forward vol > 25%). G2 has
+    more class imbalance and is harder to learn but is fundamentally
+    leading.
+(c) **Try a fallback architecture** -- HMM (5-state) or threshold-ensemble.
+    Risk: HMM EM is unstable across rolling fits (mode collapse). None of
+    these address the supervised-on-confirmation-label issue, but they may
+    produce different lag characteristics.
+(d) **HALT WS-3d.** Three independent measurements of structural detector
+    lag (V12 gap_days=-3.42, v0 H5=14d argmax / 2d Schmitt, E8
+    exit-to-low=-8d) led to this spec. If a fresh architecture AND a
+    fresh leading-indicator input set AND a Schmitt-trigger evaluation
+    cannot reduce H5 lag, the regime-aware approach may be at its useful
+    limit for RAMP regardless of detector iteration. v0's rule-based
+    score at tau=0.30 (2d median lag) is the ceiling for any consumer
+    that uses the WS-3d input set and consumes via tau=0.30 -- v1 trails
+    that ceiling, so swapping the detector for V20-rd-bear-cash is a
+    REGRESSION at the consumer layer.
+
+The decision is the user's, not automatic.
+
+H2 recall is the silver lining: v1 = 96.5% vs v0 = 46.1% on confirmed
+G1_BEAR days. The failure mode is purely lag (when the score crosses the
+gate), not coverage.
 
 ## Validation
 
-- 11 new detector unit tests PASS
-- Existing test suite PASS (177 tests across ramp_phase4, diagnostics,
-  strategies.advanced, data.leading_indicators)
-- Training: 48-combination sweep ran cleanly; no degenerate folds reported.
-- Replay: 2360 day-rows written to `diagnostics/regime/v1/labels.parquet`
-  with 381 BEAR labels (16.1% of replay days, close to G1_BEAR's 17.6%
-  positive rate).
+- 11 detector unit tests PASS (re-run after Amendment 6 changes; the
+  diagnostic-script extension is independent of the detector module so
+  detector tests are unaffected).
 - Diagnostic: `docs/reports/ramp/20260601_ws3d_regime_diagnostic_rerun.md`
-  (9177 chars) contains H1-H5 comparison tables, G4 per-event detail, G1
-  per-onset detail, and a Diagnosis section enumerating spec revision
-  options.
-- Gate 1 verdict (G4 basis): FAIL.
-- No code changes to v0 detector, no V11-V14 variants modified. Schema
-  compat preserved per Pre-commitment 4.
+  rewritten with three H5 bases (Schmitt-tau-0.30 binding, argmax-at-0.5
+  legacy, G1_BEAR-onset informational). Now ~13k chars including
+  Amendment 6 section, per-event tables for both metrics, verdict block,
+  and updated diagnosis.
+- Gate 1 verdict (Amendment 6 binding, Schmitt-tau-0.30): FAIL.
+- Gate 1 verdict (legacy argmax-at-0.5): FAIL.
+- No code changes to v0 detector, v1 detector, or any V11-V14 variant.
+  Only `scripts/diagnostics/regime_detector_v1_diagnostic.py` and the
+  spec / report / session log were modified.
+- Schema compat preserved per Pre-commitment 4.
+
+## Amendment 6 self-review checklist
+
+- v0 baseline at Schmitt-tau-0.30 computed honestly from
+  `diagnostics/regime/v0_scores/labels.parquet` `score_BEAR` column (NOT
+  inherited from the 14d argmax-at-0.5 baseline). Result: 2.0d.
+- tau_eval=0.30 pre-registered from E3's soft-score finding, cited in spec
+  Amendment 6 and the report's Amendment 6 section. Not chosen post-hoc.
+- ASCII-only throughout (report renders via `encoding='ascii',
+  errors='replace'`).
+- BLOCKED escalation path documented: (b) retrain on leading target,
+  (c) alternative architecture, (d) halt WS-3d.
 
 ## Trial-chain bookkeeping
 

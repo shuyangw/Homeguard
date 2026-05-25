@@ -3,13 +3,16 @@
 Reads:
 - diagnostics/regime/v1/labels.parquet (v1 replay output)
 - diagnostics/regime/v0/labels.parquet (v0 replay output, locked baseline)
+- diagnostics/regime/v0_scores/labels.parquet (v0 replay with continuous score_BEAR)
 - diagnostics/regime/ground_truth.parquet (G1_BEAR, G2, G3, G4)
 
 H5 measurement (Pre-commitment 5, GATING):
-- For every G1_BEAR onset (transition False -> True), measure the lag in
-  trading days from the onset date to the first detector-BEAR label in a
-  forward 60-day window. v1 lag must be >= 30% lower than v0 lag (v0 14d
-  baseline from docs/reports/ramp/20260523_regime_detector_diagnostic.md).
+- For every G4 hand-curated drawdown-event start, measure the lag in calendar
+  days from the start date to the first detector-BEAR signal within the event
+  window. Two evaluation methodologies are reported:
+    - argmax-at-0.5 (legacy v0-style, informational post-Amendment 6)
+    - Schmitt-tau-0.30 first-crossing (binding for Gate 1 verdict, Amendment 6)
+  v1 lag must be >= 30% lower than v0 lag at the binding metric.
 
 Output:
 - docs/reports/ramp/20260601_ws3d_regime_diagnostic_rerun.md
@@ -34,13 +37,20 @@ logger = get_logger(__name__)
 
 V1_LABELS = Path('diagnostics/regime/v1/labels.parquet')
 V0_LABELS = Path('diagnostics/regime/v0/labels.parquet')
+V0_SCORES_LABELS = Path('diagnostics/regime/v0_scores/labels.parquet')
 GROUND_TRUTH = Path('diagnostics/regime/ground_truth.parquet')
 G4_EVENTS = Path('config/diagnostics/regime_events_2017_2026.csv')
 REPORT_PATH = Path('docs/reports/ramp/20260601_ws3d_regime_diagnostic_rerun.md')
 
 FORWARD_WINDOW_DAYS = 60  # forward lag-search window per spec
-V0_H5_BASELINE_DAYS = 14.0  # from 20260523_regime_detector_diagnostic.md
+V0_H5_BASELINE_DAYS = 14.0  # from 20260523_regime_detector_diagnostic.md (argmax-at-0.5 baseline)
 H5_REDUCTION_THRESHOLD_PCT = 30.0  # >= 30% reduction required to pass Gate 1
+
+# Amendment 6 (2026-05-24): Schmitt-trigger evaluation tau. Pre-registered from
+# E3's soft-score lead-time finding (tau=0.3 was best in v0's soft-score sweep).
+TAU_EVAL = 0.30
+V0_SCORE_BEAR_COL = 'score_BEAR'  # v0_scores schema (rule-based fraction in [0, 1])
+V1_BEAR_PROBA_COL = 'bear_proba'  # v1 schema (LightGBM predict_proba in [0, 1])
 
 
 def _load_labels(path: Path) -> pd.DataFrame:
@@ -122,6 +132,68 @@ def compute_h5_lag_g4(
     return pd.DataFrame(rows)
 
 
+def compute_h5_schmitt_lag_g4(
+    labels: pd.DataFrame,
+    score_col: str,
+    events_csv: Path,
+    tau_eval: float = TAU_EVAL,
+    event_type: str = 'drawdown',
+) -> pd.DataFrame:
+    """H5 metric (Amendment 6, 2026-05-24): median lag from G4 hand-curated
+    drawdown-event start to first day where score_col >= tau_eval.
+
+    Uses the same event-window cap [start_date, end_date] as the existing
+    argmax-at-0.5 G4 metric so the two are directly comparable.
+
+    Parameters
+    ----------
+    labels : pd.DataFrame
+        Indexed by date. Must contain score_col with a probability in [0, 1].
+    score_col : str
+        Column name of the continuous BEAR score.
+        - v1: 'bear_proba' (LightGBM predict_proba[..., 1])
+        - v0_scores: 'score_BEAR' (rule-based fraction-of-criteria-met)
+    events_csv : Path
+        G4 hand-curated events CSV.
+    tau_eval : float
+        Schmitt-trigger threshold for first-crossing detection.
+    event_type : str
+        Filter on event_type column (default 'drawdown').
+
+    Returns
+    -------
+    pd.DataFrame with [event, start_date, lag_days, fired_within_window].
+    """
+    if score_col not in labels.columns:
+        raise KeyError(
+            f"H5 Schmitt eval requires column {score_col!r} in labels; "
+            f"available: {list(labels.columns)}"
+        )
+    events = pd.read_csv(events_csv, parse_dates=['start_date', 'end_date'])
+    events = events[events['event_type'] == event_type]
+    rows = []
+    for _, ev in events.iterrows():
+        window = labels.loc[ev['start_date']:ev['end_date']]
+        scores = window[score_col]
+        crossings = window.index[scores >= tau_eval]
+        if len(crossings) == 0:
+            rows.append({
+                'event': ev['event_name'],
+                'start_date': ev['start_date'],
+                'lag_days': float('nan'),
+                'fired_within_window': False,
+            })
+        else:
+            lag = (crossings[0] - ev['start_date']).days
+            rows.append({
+                'event': ev['event_name'],
+                'start_date': ev['start_date'],
+                'lag_days': float(lag),
+                'fired_within_window': True,
+            })
+    return pd.DataFrame(rows)
+
+
 def summarize_h5(lag_df: pd.DataFrame) -> Dict:
     valid = lag_df['lag_days'].dropna()
     return {
@@ -190,17 +262,24 @@ def render_diagnosis(
     v1_lag_g4: pd.DataFrame,
     verdict: str,
 ) -> List[str]:
-    """Diagnosis + recommendation; structure differs by verdict."""
+    """Diagnosis + recommendation; structure differs by verdict.
+
+    Note: post-Amendment 6, `verdict` is the Schmitt-tau-0.30 binding verdict.
+    The diagnosis text below was originally written for the argmax-at-0.5
+    failure mode; it remains relevant because the argmax-at-0.5 BLOCKED finding
+    is still on the record and the spec's fallback options (b)/(c)/(d) listed
+    in Amendment 6's last paragraph mirror the recommendations here.
+    """
     lines: List[str] = []
     if verdict == 'PASS':
-        lines.append('Gate 1 PASS. Proceed to Gate 2 (pre-spec tau registration).')
+        lines.append('Gate 1 PASS (Amendment 6 binding metric). Proceed to Gate 2 (pre-spec tau registration).')
         lines.append('')
         return lines
 
     # FAIL/BLOCKED diagnosis.
     v0s = summarize_h5(v0_lag_g4)
     v1s = summarize_h5(v1_lag_g4)
-    lines.append('Gate 1 FAIL. WS-3d is BLOCKED at the diagnostic-rerun gate.')
+    lines.append('Gate 1 FAIL. WS-3d is BLOCKED at the diagnostic-rerun gate (Amendment 6 binding metric).')
     lines.append('')
     lines.append('### Root cause')
     lines.append('')
@@ -215,6 +294,17 @@ def render_diagnosis(
     lines.append('other side of this: v1 is dominant on confirmed G1_BEAR days but')
     lines.append('does not flip BEAR earlier than v0 on the GATE-relevant G4-event')
     lines.append('basis.')
+    lines.append('')
+    lines.append('Amendment 6 (Schmitt-tau-0.30 first-crossing) tested the alternative')
+    lines.append('that v1\'s probabilistic score crosses the consumer-layer threshold')
+    lines.append('earlier than the argmax flips at 0.5. It does -- v1\'s P(BEAR)')
+    lines.append('reaches 0.30 days before reaching 0.5 -- but v0\'s rule-based')
+    lines.append('`score_BEAR` is a fraction-of-criteria-met that flips immediately on')
+    lines.append('the first price-decline criterion (above_20, above_50, above_200,')
+    lines.append('vix_percentile). At tau=0.30, v0\'s score crosses on day 1-2 of most')
+    lines.append('drawdowns, while v1\'s P(BEAR) still takes weeks. The Schmitt-trigger')
+    lines.append('reformulation does not rescue Gate 1: v1 is slower than v0 at tau=0.30')
+    lines.append('on the binding metric.')
     lines.append('')
     lines.append('Per-event detail (G4 basis):')
     lines.append('')
@@ -462,8 +552,10 @@ def render_h4_section(v0: pd.DataFrame, v1: pd.DataFrame) -> List[str]:
 
 
 def gate1_verdict(v0_g4_median: float, v1_g4_median: float, v1_g1_median: float) -> tuple:
-    """Determine Gate 1 pass/fail based on the G4 same-basis methodology
-    (apples-to-apples with the 14d baseline of record from the 20260523 report).
+    """Legacy (argmax-at-0.5) Gate 1 verdict, retained for transparency.
+
+    After Amendment 6 (2026-05-24) this is NO LONGER the binding metric.
+    Use gate1_verdict_schmitt() for the post-amendment binding decision.
 
     Returns (verdict, reduction_pct_g4, reduction_pct_baseline).
     """
@@ -474,8 +566,6 @@ def gate1_verdict(v0_g4_median: float, v1_g4_median: float, v1_g1_median: float)
     reduction_pct_baseline = (
         (V0_H5_BASELINE_DAYS - v1_g4_median) / V0_H5_BASELINE_DAYS * 100.0
     )
-    # PASS criterion: v1 G4-basis median <= 10d (>=30% reduction from 14d baseline)
-    # OR if v0 same-run G4 median > 0, v1 reduces same-basis median by >= 30%.
     pass_baseline = v1_g4_median <= (
         V0_H5_BASELINE_DAYS * (1 - H5_REDUCTION_THRESHOLD_PCT / 100.0)
     )
@@ -490,7 +580,45 @@ def gate1_verdict(v0_g4_median: float, v1_g4_median: float, v1_g1_median: float)
     return verdict, reduction_pct_g4, reduction_pct_baseline
 
 
-def build_report(v0: pd.DataFrame, v1: pd.DataFrame, gt: pd.DataFrame) -> str:
+def gate1_verdict_schmitt(v0_schmitt_median: float, v1_schmitt_median: float) -> tuple:
+    """Amendment 6 binding Gate 1 verdict: Schmitt-tau-0.30 first-crossing on G4.
+
+    PASS criterion (apples-to-apples, both detectors evaluated at tau_eval=0.30):
+      - v1 median lag <= 10 calendar days (>=30% reduction from a 14d notional ceiling)
+      - AND v1 reduces v0's same-basis median by >= 30%
+
+    The v0 14d argmax-at-0.5 baseline is NOT used here -- Amendment 6 requires the
+    same metric on both detectors. v0's Schmitt-tau-0.30 median is the honest
+    baseline.
+
+    Returns (verdict, reduction_pct_v0_same_basis, v1_meets_absolute_floor).
+    """
+    if not np.isnan(v0_schmitt_median) and v0_schmitt_median > 0:
+        reduction_pct = (v0_schmitt_median - v1_schmitt_median) / v0_schmitt_median * 100.0
+    else:
+        reduction_pct = float('nan')
+    # Absolute floor: v1 must be at or below 10d (30% off 14d argmax-at-0.5 ceiling).
+    v1_meets_floor = (
+        not np.isnan(v1_schmitt_median)
+        and v1_schmitt_median <= V0_H5_BASELINE_DAYS * (1 - H5_REDUCTION_THRESHOLD_PCT / 100.0)
+    )
+    v1_reduces_v0 = (
+        not np.isnan(reduction_pct)
+        and reduction_pct >= H5_REDUCTION_THRESHOLD_PCT
+    )
+    if v1_meets_floor and v1_reduces_v0:
+        verdict = 'PASS'
+    else:
+        verdict = 'FAIL'
+    return verdict, reduction_pct, v1_meets_floor
+
+
+def build_report(
+    v0: pd.DataFrame,
+    v1: pd.DataFrame,
+    gt: pd.DataFrame,
+    v0_scores: pd.DataFrame,
+) -> str:
     """Assemble the H1-H5 markdown report."""
     g1 = gt['g1_bear']
     v0_lag = compute_h5_lag(v0, g1)
@@ -498,13 +626,28 @@ def build_report(v0: pd.DataFrame, v1: pd.DataFrame, gt: pd.DataFrame) -> str:
     v0_lag_g4 = compute_h5_lag_g4(v0, G4_EVENTS)
     v1_lag_g4 = compute_h5_lag_g4(v1, G4_EVENTS)
 
+    # Amendment 6: Schmitt-tau-0.30 first-crossing on G4 drawdown events.
+    v0_lag_schmitt = compute_h5_schmitt_lag_g4(
+        v0_scores, V0_SCORE_BEAR_COL, G4_EVENTS, TAU_EVAL,
+    )
+    v1_lag_schmitt = compute_h5_schmitt_lag_g4(
+        v1, V1_BEAR_PROBA_COL, G4_EVENTS, TAU_EVAL,
+    )
+
     v0s = summarize_h5(v0_lag)
     v1s = summarize_h5(v1_lag)
     v0s_g4 = summarize_h5(v0_lag_g4)
     v1s_g4 = summarize_h5(v1_lag_g4)
+    v0s_sch = summarize_h5(v0_lag_schmitt)
+    v1s_sch = summarize_h5(v1_lag_schmitt)
 
-    verdict, reduction_pct_g4, reduction_pct_baseline = gate1_verdict(
+    # Legacy argmax-at-0.5 verdict (informational post-Amendment 6).
+    verdict_argmax, reduction_pct_g4_argmax, reduction_pct_baseline_argmax = gate1_verdict(
         v0s_g4['median_lag'], v1s_g4['median_lag'], v1s['median_lag'],
+    )
+    # Amendment 6 binding verdict.
+    verdict, reduction_pct_schmitt, v1_meets_floor = gate1_verdict_schmitt(
+        v0s_sch['median_lag'], v1s_sch['median_lag'],
     )
     if v0s['median_lag'] > 0:
         reduction_pct_g1 = (v0s['median_lag'] - v1s['median_lag']) / v0s['median_lag'] * 100.0
@@ -514,34 +657,155 @@ def build_report(v0: pd.DataFrame, v1: pd.DataFrame, gt: pd.DataFrame) -> str:
     lines: List[str] = []
     lines.append('# WS-3d Diagnostic Rerun -- H1-H5 on the v1 LightGBM Detector')
     lines.append('')
-    lines.append('**Date**: 2026-06-01')
+    lines.append('**Date**: 2026-06-01 (Amendment 6 applied 2026-05-24)')
     lines.append(f'**Branch**: v12-bear-to-cash')
     lines.append('**Spec**: docs/superpowers/specs/2026-05-25-ws3d-detector-replacement-design.md')
     lines.append('**Gate**: Gate 1 (H5 lag reduction, GATING)')
-    lines.append('**Status**: Gate 1 ' + verdict)
+    lines.append('**Status**: Gate 1 ' + verdict + ' (binding metric: Schmitt-tau-0.30)')
     lines.append('')
+
+    # ---- Amendment 6 section (placed at top per task spec) ----
+    lines.append('## Amendment 6 (2026-05-24) -- Gate 1 H5 metric revision')
+    lines.append('')
+    lines.append('The original Gate 1 ran against argmax-at-0.5 evaluation (v0-historical')
+    lines.append('convention). Result: v1 H5 lag = 21 days vs v0 14 days (BLOCKED).')
+    lines.append('')
+    lines.append('Amendment 6 changes Gate 1\'s H5 metric to Schmitt-trigger first-crossing')
+    lines.append('at tau_eval = 0.30, matching the consumer-layer Schmitt-trigger pattern')
+    lines.append('V20-rd-bear-cash will use. tau_eval = 0.30 is pre-registered from E3\'s')
+    lines.append('soft-score lead-time finding (the same tau that maximized lead-time')
+    lines.append('coverage in v0\'s soft-score replay).')
+    lines.append('')
+    lines.append('Per-detector continuous score columns:')
+    lines.append('- v0: `score_BEAR` from `diagnostics/regime/v0_scores/labels.parquet`')
+    lines.append('  (rule-based fraction-of-criteria-met, range [0, 1])')
+    lines.append('- v1: `bear_proba` from `diagnostics/regime/v1/labels.parquet`')
+    lines.append('  (LightGBM `predict_proba(X)[:, 1]`, range [0, 1])')
+    lines.append('')
+    lines.append('### Updated H5 results')
+    lines.append('')
+    lines.append('| Metric | v0 | v1 (WS-3d) | Delta | Pass criterion |')
+    lines.append('|---|---|---|---|---|')
+    lines.append(
+        f'| Median H5 lag at argmax-at-0.5 (legacy) | {v0s_g4["median_lag"]:.1f}d '
+        f'| {v1s_g4["median_lag"]:.1f}d | {reduction_pct_g4_argmax:.1f}% '
+        f'| (informational only post-Amendment 6) |'
+    )
+    lines.append(
+        f'| **Median H5 lag at Schmitt-tau-0.30 (binding)** '
+        f'| {v0s_sch["median_lag"]:.1f}d | {v1s_sch["median_lag"]:.1f}d '
+        f'| {reduction_pct_schmitt:.1f}% '
+        f'| **>= 30% reduction (lag <= 10d) for Gate 1 PASS** |'
+    )
+    lines.append('')
+
+    # Per-event Schmitt-tau-0.30 table
+    lines.append('Per-event G4 detail at Schmitt-tau-0.30:')
+    lines.append('')
+    lines.append('| event | start | v0 lag (tau=0.30) | v0 fired | v1 lag (tau=0.30) | v1 fired |')
+    lines.append('|---|---|---|---|---|---|')
+    merged_sch = v0_lag_schmitt.merge(
+        v1_lag_schmitt, on=['event', 'start_date'], suffixes=('_v0', '_v1'),
+    )
+    for _, row in merged_sch.iterrows():
+        v0lag = row['lag_days_v0']
+        v1lag = row['lag_days_v1']
+        v0lag_s = f'{int(v0lag)}' if pd.notna(v0lag) else 'n/a'
+        v1lag_s = f'{int(v1lag)}' if pd.notna(v1lag) else 'n/a'
+        lines.append(
+            f'| {row["event"]} | {row["start_date"].date()} '
+            f'| {v0lag_s} | {row["fired_within_window_v0"]} '
+            f'| {v1lag_s} | {row["fired_within_window_v1"]} |'
+        )
+    lines.append('')
+
+    # Combined per-event comparison (argmax AND Schmitt)
+    lines.append('Per-event G4 detail -- argmax-at-0.5 AND Schmitt-tau-0.30:')
+    lines.append('')
+    lines.append('| event | start | v0 argmax | v1 argmax | v0 tau=0.30 | v1 tau=0.30 |')
+    lines.append('|---|---|---|---|---|---|')
+    merged_arg = v0_lag_g4.merge(
+        v1_lag_g4, on=['event', 'start_date'], suffixes=('_v0', '_v1'),
+    )
+    combo = merged_arg.merge(
+        merged_sch, on=['event', 'start_date'], suffixes=('_arg', '_sch'),
+    )
+    for _, row in combo.iterrows():
+        def s(col):
+            v = row[col]
+            return f'{int(v)}' if pd.notna(v) else 'n/a'
+        lines.append(
+            f'| {row["event"]} | {row["start_date"].date()} '
+            f'| {s("lag_days_v0_arg")} | {s("lag_days_v1_arg")} '
+            f'| {s("lag_days_v0_sch")} | {s("lag_days_v1_sch")} |'
+        )
+    lines.append('')
+
+    # Verdict block
+    lines.append('### Gate 1 verdict (Amendment 6)')
+    lines.append('')
+    if verdict == 'PASS':
+        lines.append(
+            f'**Gate 1 PASSED.** v1 median Schmitt-tau-0.30 lag = '
+            f'{v1s_sch["median_lag"]:.1f}d, '
+            f'a {reduction_pct_schmitt:.1f}% reduction from v0\'s {v0s_sch["median_lag"]:.1f}d.'
+        )
+        lines.append('Proceed to Gate 2 (pre-spec tau registration).')
+    else:
+        lines.append(
+            f'**Gate 1 STILL BLOCKED.** v1 median Schmitt-tau-0.30 lag = '
+            f'{v1s_sch["median_lag"]:.1f}d, '
+            f'v0 = {v0s_sch["median_lag"]:.1f}d, '
+            f'reduction = {reduction_pct_schmitt:.1f}% '
+            f'(threshold: >= {H5_REDUCTION_THRESHOLD_PCT:.0f}% AND v1 <= 10d).'
+        )
+        lines.append('')
+        lines.append('Under Amendment 6\'s binding metric, v1\'s LightGBM `bear_proba`')
+        lines.append('does not cross tau=0.30 earlier than v0\'s rule-based `score_BEAR`')
+        lines.append('on the G4 drawdown events. The leading-indicator hypothesis is in')
+        lines.append('doubt. Per Amendment 6\'s last paragraph, the spec falls back to')
+        lines.append('one of:')
+        lines.append('')
+        lines.append('  (b) retrain on a leading target (G2_BEAR forward-window, or')
+        lines.append('      G1_BEAR.shift(-k) for k in {5, 10, 15})')
+        lines.append('  (c) try the fallback architectures (HMM, threshold ensemble)')
+        lines.append('  (d) halt WS-3d -- accept that regime-aware approach may be at')
+        lines.append('      its useful limit for RAMP')
+        lines.append('')
+        lines.append('The decision is the user\'s, not automatic.')
+    lines.append('')
+
     lines.append('## Headline')
     lines.append('')
-    lines.append('Two H5 measurement bases are reported. The G4-event basis matches')
-    lines.append('the methodology of the 20260523 v0 baseline-of-record (14d) and is')
-    lines.append('the apples-to-apples comparison the Gate 1 verdict uses. The')
-    lines.append('G1_BEAR-onset basis (spec methodology) is also reported but')
-    lines.append('typically saturates to 0d because G1_BEAR is a drawdown-confirmed')
-    lines.append('label that fires AFTER the price weakness both detectors react to.')
+    lines.append('Three H5 measurement bases are reported. The Schmitt-tau-0.30 G4-event')
+    lines.append('basis is the binding metric for Gate 1 (Amendment 6). The argmax-at-0.5')
+    lines.append('G4-event basis matches the legacy 20260523 v0 baseline-of-record (14d)')
+    lines.append('and is informational only post-Amendment 6. The G1_BEAR-onset basis')
+    lines.append('typically saturates to 0d because G1_BEAR is a drawdown-confirmed label')
+    lines.append('that fires AFTER the price weakness both detectors react to.')
     lines.append('')
+    lines.append('Amendment 6 binding metric (Schmitt-tau-0.30 first-crossing on G4):')
+    lines.append(f'- v0 H5 median lag at tau=0.30: {v0s_sch["median_lag"]:.1f} days')
+    lines.append(f'- v1 H5 median lag at tau=0.30: {v1s_sch["median_lag"]:.1f} days')
+    lines.append(f'- Reduction (v0 same-basis): {reduction_pct_schmitt:.1f}%')
+    lines.append(f'- v1 meets <= 10d absolute floor: {v1_meets_floor}')
+    lines.append('')
+    lines.append('Legacy argmax-at-0.5 metric (informational only post-Amendment 6):')
     lines.append(f'- v0 H5 median lag, G4-event basis (this run): {v0s_g4["median_lag"]:.1f} days')
     lines.append(f'- v0 H5 baseline of record (20260523, G4-event basis): {V0_H5_BASELINE_DAYS:.1f} days')
     lines.append(f'- v1 H5 median lag, G4-event basis (this run): {v1s_g4["median_lag"]:.1f} days')
-    lines.append(f'- Reduction vs v0 G4-basis same run: {reduction_pct_g4:.1f}%')
-    lines.append(f'- Reduction vs 14d baseline of record: {reduction_pct_baseline:.1f}%')
+    lines.append(f'- Reduction vs v0 G4-basis same run: {reduction_pct_g4_argmax:.1f}%')
+    lines.append(f'- Reduction vs 14d baseline of record: {reduction_pct_baseline_argmax:.1f}%')
+    lines.append(f'- Legacy argmax-at-0.5 verdict (informational): {verdict_argmax}')
     lines.append('')
-    lines.append(f'- v0 H5 median lag, G1_BEAR-onset basis (this run): {v0s["median_lag"]:.1f} days')
-    lines.append(f'- v1 H5 median lag, G1_BEAR-onset basis (this run): {v1s["median_lag"]:.1f} days')
+    lines.append('G1_BEAR-onset basis (typically saturates to 0d):')
+    lines.append(f'- v0 H5 median lag: {v0s["median_lag"]:.1f} days')
+    lines.append(f'- v1 H5 median lag: {v1s["median_lag"]:.1f} days')
     lines.append(f'- Reduction vs v0 G1-basis same run: {reduction_pct_g1:.1f}%')
     lines.append('')
     lines.append(f'- Pre-commitment 5 threshold: >= {H5_REDUCTION_THRESHOLD_PCT:.0f}% reduction (v1 median <= 10d)')
     lines.append('')
-    lines.append(f'**Verdict: Gate 1 {verdict}**')
+    lines.append(f'**Verdict (Amendment 6 binding): Gate 1 {verdict}**')
     lines.append('')
 
     # G4 same-basis section
@@ -590,6 +854,11 @@ def main(argv: Optional[list] = None) -> int:
         raise FileNotFoundError(
             f'{V0_LABELS} not found. Run regime_detector_replay.py first.'
         )
+    if not V0_SCORES_LABELS.exists():
+        raise FileNotFoundError(
+            f'{V0_SCORES_LABELS} not found. Run regime_score_replay.py first '
+            f'(provides v0 continuous score_BEAR for Amendment 6 evaluation).'
+        )
     if not GROUND_TRUTH.exists():
         raise FileNotFoundError(
             f'{GROUND_TRUTH} not found. Run ground_truth_labelers.py first.'
@@ -597,20 +866,27 @@ def main(argv: Optional[list] = None) -> int:
 
     v1 = _load_labels(V1_LABELS)
     v0 = _load_labels(V0_LABELS)
+    v0_scores = _load_labels(V0_SCORES_LABELS)
     gt = pd.read_parquet(GROUND_TRUTH)
     gt['date'] = pd.to_datetime(gt['date'])
     gt = gt.set_index('date').sort_index()
 
-    common = v1.index.intersection(v0.index).intersection(gt.index)
+    common = (
+        v1.index
+        .intersection(v0.index)
+        .intersection(v0_scores.index)
+        .intersection(gt.index)
+    )
     v1 = v1.loc[common]
     v0 = v0.loc[common]
+    v0_scores = v0_scores.loc[common]
     gt = gt.loc[common]
     logger.info(
         f'[+] joined panel: {len(common)} days '
         f'({common.min().date()} to {common.max().date()})'
     )
 
-    report = build_report(v0, v1, gt)
+    report = build_report(v0, v1, gt, v0_scores)
     REPORT_PATH.parent.mkdir(parents=True, exist_ok=True)
     REPORT_PATH.write_text(report, encoding='ascii', errors='replace')
     logger.info(f'[+] wrote {REPORT_PATH} ({len(report)} chars)')
@@ -621,26 +897,40 @@ def main(argv: Optional[list] = None) -> int:
     v1_lag = compute_h5_lag(v1, g1)
     v0_lag_g4 = compute_h5_lag_g4(v0, G4_EVENTS)
     v1_lag_g4 = compute_h5_lag_g4(v1, G4_EVENTS)
+    v0_lag_sch = compute_h5_schmitt_lag_g4(
+        v0_scores, V0_SCORE_BEAR_COL, G4_EVENTS, TAU_EVAL,
+    )
+    v1_lag_sch = compute_h5_schmitt_lag_g4(
+        v1, V1_BEAR_PROBA_COL, G4_EVENTS, TAU_EVAL,
+    )
     v0s = summarize_h5(v0_lag)
     v1s = summarize_h5(v1_lag)
     v0s_g4 = summarize_h5(v0_lag_g4)
     v1s_g4 = summarize_h5(v1_lag_g4)
+    v0s_sch = summarize_h5(v0_lag_sch)
+    v1s_sch = summarize_h5(v1_lag_sch)
 
-    verdict, reduction_pct_g4, reduction_pct_baseline = gate1_verdict(
+    verdict_argmax, reduction_pct_g4_argmax, reduction_pct_baseline_argmax = gate1_verdict(
         v0s_g4['median_lag'], v1s_g4['median_lag'], v1s['median_lag'],
     )
+    verdict, reduction_pct_schmitt, v1_meets_floor = gate1_verdict_schmitt(
+        v0s_sch['median_lag'], v1s_sch['median_lag'],
+    )
 
-    logger.info('=== Gate 1 summary ===')
-    logger.info(f'v0 median lag, G4-event basis (this run): {v0s_g4["median_lag"]:.1f}d')
-    logger.info(f'v0 baseline of record (14d, G4 basis):    {V0_H5_BASELINE_DAYS:.1f}d')
-    logger.info(f'v1 median lag, G4-event basis (this run): {v1s_g4["median_lag"]:.1f}d')
-    logger.info(f'Reduction vs v0 G4-basis same run:        {reduction_pct_g4:.1f}%')
-    logger.info(f'Reduction vs 14d baseline of record:      {reduction_pct_baseline:.1f}%')
+    logger.info('=== Gate 1 summary (Amendment 6) ===')
+    logger.info(f'Binding metric: Schmitt-tau-{TAU_EVAL:.2f} first-crossing on G4 drawdown events')
+    logger.info(f'v0 median lag at tau={TAU_EVAL:.2f}: {v0s_sch["median_lag"]:.1f}d (fired {v0s_sch["n_fired"]}/{v0s_sch["n_onsets"]})')
+    logger.info(f'v1 median lag at tau={TAU_EVAL:.2f}: {v1s_sch["median_lag"]:.1f}d (fired {v1s_sch["n_fired"]}/{v1s_sch["n_onsets"]})')
+    logger.info(f'Reduction (v0 same-basis):          {reduction_pct_schmitt:.1f}%')
+    logger.info(f'v1 meets <= 10d absolute floor:     {v1_meets_floor}')
     logger.info('')
-    logger.info(f'v0 median lag, G1-onset basis (this run): {v0s["median_lag"]:.1f}d')
-    logger.info(f'v1 median lag, G1-onset basis (this run): {v1s["median_lag"]:.1f}d')
+    logger.info('Legacy argmax-at-0.5 (informational only post-Amendment 6):')
+    logger.info(f'v0 median lag, G4 argmax: {v0s_g4["median_lag"]:.1f}d')
+    logger.info(f'v1 median lag, G4 argmax: {v1s_g4["median_lag"]:.1f}d')
+    logger.info(f'Reduction vs v0 G4-basis: {reduction_pct_g4_argmax:.1f}%')
+    logger.info(f'Legacy argmax verdict:    {verdict_argmax}')
     logger.info('')
-    logger.info(f'GATE 1: {verdict}')
+    logger.info(f'GATE 1 (binding, Amendment 6): {verdict}')
     return 0
 
 

@@ -1,33 +1,104 @@
 # WS-3d Diagnostic Rerun -- H1-H5 on the v1 LightGBM Detector
 
-**Date**: 2026-06-01
+**Date**: 2026-06-01 (Amendment 6 applied 2026-05-24)
 **Branch**: v12-bear-to-cash
 **Spec**: docs/superpowers/specs/2026-05-25-ws3d-detector-replacement-design.md
 **Gate**: Gate 1 (H5 lag reduction, GATING)
-**Status**: Gate 1 FAIL
+**Status**: Gate 1 FAIL (binding metric: Schmitt-tau-0.30)
+
+## Amendment 6 (2026-05-24) -- Gate 1 H5 metric revision
+
+The original Gate 1 ran against argmax-at-0.5 evaluation (v0-historical
+convention). Result: v1 H5 lag = 21 days vs v0 14 days (BLOCKED).
+
+Amendment 6 changes Gate 1's H5 metric to Schmitt-trigger first-crossing
+at tau_eval = 0.30, matching the consumer-layer Schmitt-trigger pattern
+V20-rd-bear-cash will use. tau_eval = 0.30 is pre-registered from E3's
+soft-score lead-time finding (the same tau that maximized lead-time
+coverage in v0's soft-score replay).
+
+Per-detector continuous score columns:
+- v0: `score_BEAR` from `diagnostics/regime/v0_scores/labels.parquet`
+  (rule-based fraction-of-criteria-met, range [0, 1])
+- v1: `bear_proba` from `diagnostics/regime/v1/labels.parquet`
+  (LightGBM `predict_proba(X)[:, 1]`, range [0, 1])
+
+### Updated H5 results
+
+| Metric | v0 | v1 (WS-3d) | Delta | Pass criterion |
+|---|---|---|---|---|
+| Median H5 lag at argmax-at-0.5 (legacy) | 14.0d | 21.0d | -50.0% | (informational only post-Amendment 6) |
+| **Median H5 lag at Schmitt-tau-0.30 (binding)** | 2.0d | 19.5d | -875.0% | **>= 30% reduction (lag <= 10d) for Gate 1 PASS** |
+
+Per-event G4 detail at Schmitt-tau-0.30:
+
+| event | start | v0 lag (tau=0.30) | v0 fired | v1 lag (tau=0.30) | v1 fired |
+|---|---|---|---|---|---|
+| Q4_2018_selloff | 2018-10-03 | 2 | True | 26 | True |
+| COVID_crash | 2020-02-19 | 2 | True | 7 | True |
+| 2022_bear_market | 2022-01-04 | 14 | True | 17 | True |
+| 2025_tariff_drawdown | 2025-02-19 | 2 | True | 22 | True |
+| 2025_dec_drawdown | 2025-12-15 | 36 | True | n/a | False |
+
+Per-event G4 detail -- argmax-at-0.5 AND Schmitt-tau-0.30:
+
+| event | start | v0 argmax | v1 argmax | v0 tau=0.30 | v1 tau=0.30 |
+|---|---|---|---|---|---|
+| Q4_2018_selloff | 2018-10-03 | 14 | 26 | 2 | 26 |
+| COVID_crash | 2020-02-19 | 14 | 8 | 2 | 7 |
+| 2022_bear_market | 2022-01-04 | 14 | 20 | 14 | 17 |
+| 2025_tariff_drawdown | 2025-02-19 | 5 | 22 | 2 | 22 |
+| 2025_dec_drawdown | 2025-12-15 | 36 | n/a | 36 | n/a |
+
+### Gate 1 verdict (Amendment 6)
+
+**Gate 1 STILL BLOCKED.** v1 median Schmitt-tau-0.30 lag = 19.5d, v0 = 2.0d, reduction = -875.0% (threshold: >= 30% AND v1 <= 10d).
+
+Under Amendment 6's binding metric, v1's LightGBM `bear_proba`
+does not cross tau=0.30 earlier than v0's rule-based `score_BEAR`
+on the G4 drawdown events. The leading-indicator hypothesis is in
+doubt. Per Amendment 6's last paragraph, the spec falls back to
+one of:
+
+  (b) retrain on a leading target (G2_BEAR forward-window, or
+      G1_BEAR.shift(-k) for k in {5, 10, 15})
+  (c) try the fallback architectures (HMM, threshold ensemble)
+  (d) halt WS-3d -- accept that regime-aware approach may be at
+      its useful limit for RAMP
+
+The decision is the user's, not automatic.
 
 ## Headline
 
-Two H5 measurement bases are reported. The G4-event basis matches
-the methodology of the 20260523 v0 baseline-of-record (14d) and is
-the apples-to-apples comparison the Gate 1 verdict uses. The
-G1_BEAR-onset basis (spec methodology) is also reported but
-typically saturates to 0d because G1_BEAR is a drawdown-confirmed
-label that fires AFTER the price weakness both detectors react to.
+Three H5 measurement bases are reported. The Schmitt-tau-0.30 G4-event
+basis is the binding metric for Gate 1 (Amendment 6). The argmax-at-0.5
+G4-event basis matches the legacy 20260523 v0 baseline-of-record (14d)
+and is informational only post-Amendment 6. The G1_BEAR-onset basis
+typically saturates to 0d because G1_BEAR is a drawdown-confirmed label
+that fires AFTER the price weakness both detectors react to.
 
+Amendment 6 binding metric (Schmitt-tau-0.30 first-crossing on G4):
+- v0 H5 median lag at tau=0.30: 2.0 days
+- v1 H5 median lag at tau=0.30: 19.5 days
+- Reduction (v0 same-basis): -875.0%
+- v1 meets <= 10d absolute floor: False
+
+Legacy argmax-at-0.5 metric (informational only post-Amendment 6):
 - v0 H5 median lag, G4-event basis (this run): 14.0 days
 - v0 H5 baseline of record (20260523, G4-event basis): 14.0 days
 - v1 H5 median lag, G4-event basis (this run): 21.0 days
 - Reduction vs v0 G4-basis same run: -50.0%
 - Reduction vs 14d baseline of record: -50.0%
+- Legacy argmax-at-0.5 verdict (informational): FAIL
 
-- v0 H5 median lag, G1_BEAR-onset basis (this run): 0.0 days
-- v1 H5 median lag, G1_BEAR-onset basis (this run): 0.0 days
+G1_BEAR-onset basis (typically saturates to 0d):
+- v0 H5 median lag: 0.0 days
+- v1 H5 median lag: 0.0 days
 - Reduction vs v0 G1-basis same run: nan%
 
 - Pre-commitment 5 threshold: >= 30% reduction (v1 median <= 10d)
 
-**Verdict: Gate 1 FAIL**
+**Verdict (Amendment 6 binding): Gate 1 FAIL**
 
 ## H5 -- G4 same-basis (apples-to-apples)
 
@@ -85,7 +156,7 @@ measures from drawdown START rather than from drawdown CONFIRMATION.
 
 ## Diagnosis and recommendation
 
-Gate 1 FAIL. WS-3d is BLOCKED at the diagnostic-rerun gate.
+Gate 1 FAIL. WS-3d is BLOCKED at the diagnostic-rerun gate (Amendment 6 binding metric).
 
 ### Root cause
 
@@ -100,6 +171,17 @@ rather than precedes it. v1 H2 recall (96.5%) vs v0 (46.1%) is the
 other side of this: v1 is dominant on confirmed G1_BEAR days but
 does not flip BEAR earlier than v0 on the GATE-relevant G4-event
 basis.
+
+Amendment 6 (Schmitt-tau-0.30 first-crossing) tested the alternative
+that v1's probabilistic score crosses the consumer-layer threshold
+earlier than the argmax flips at 0.5. It does -- v1's P(BEAR)
+reaches 0.30 days before reaching 0.5 -- but v0's rule-based
+`score_BEAR` is a fraction-of-criteria-met that flips immediately on
+the first price-decline criterion (above_20, above_50, above_200,
+vix_percentile). At tau=0.30, v0's score crosses on day 1-2 of most
+drawdowns, while v1's P(BEAR) still takes weeks. The Schmitt-trigger
+reformulation does not rescue Gate 1: v1 is slower than v0 at tau=0.30
+on the binding metric.
 
 Per-event detail (G4 basis):
 
