@@ -6,8 +6,15 @@ labels and the underlying BEAR probability.
 
 Output schema mirrors v0 labels.parquet plus a `bear_proba` column.
 
+By default the script uses the most recent `model.pkl` artifact (round-1
+G1_BEAR target). Pass `--model-suffix g1_shift10` to load
+`model_g1_shift10.pkl` from the same git-SHA directory and write to
+`diagnostics/regime/v1_g1_shift10/labels.parquet`. The default keeps the
+round-1 output (`diagnostics/regime/v1/labels.parquet`) untouched.
+
 Usage:
-    PYTHONPATH=. python scripts/diagnostics/regime_detector_v1_replay.py [--model-path <path>]
+    PYTHONPATH=. python scripts/diagnostics/regime_detector_v1_replay.py \\
+        [--model-path <path>] [--model-suffix {g1_bear,g1_shift10,g2_bear}]
 """
 
 from __future__ import annotations
@@ -31,10 +38,23 @@ logger = get_logger(__name__)
 
 
 INPUT_PATH = Path('diagnostics/data/spy_vix_2016_2026.parquet')
-OUTPUT_PATH = Path('diagnostics/regime/v1/labels.parquet')
+# Default output dir for the round-1 / g1_bear model. Round-3 leading-target
+# replays write to v1_<suffix>/ instead so the round-1 labels stay intact.
+DEFAULT_OUTPUT_DIR = Path('diagnostics/regime/v1')
 REPLAY_START = datetime(2017, 1, 1)
 REPLAY_END = datetime(2026, 5, 22)
 WARMUP_DAYS = 400
+
+
+def _output_dir_for_suffix(model_suffix: str) -> Path:
+    """Output directory for the labels parquet, suffixed by target name.
+
+    - 'g1_bear' (default, backward compat) -> diagnostics/regime/v1/
+    - anything else                        -> diagnostics/regime/v1_<suffix>/
+    """
+    if model_suffix == 'g1_bear':
+        return DEFAULT_OUTPUT_DIR
+    return Path(f'diagnostics/regime/v1_{model_suffix}')
 
 
 def _identify_branch(scores: Dict[str, float]) -> str:
@@ -147,19 +167,29 @@ def replay_range(
     return df
 
 
-def _find_latest_model() -> Path:
-    """Discover the most recently saved v20 detector model artifact."""
+def _find_latest_model(model_suffix: str = 'g1_bear') -> Path:
+    """Discover the most recently saved v20 detector model artifact.
+
+    - model_suffix == 'g1_bear': look for the round-1 backward-compat
+      `model.pkl` (no target suffix in the filename).
+    - any other suffix: look for `model_<suffix>.pkl`.
+    """
     base = get_local_storage_dir() / 'alt_data' / 'models' / 'v20_detector'
     if not base.exists():
         raise FileNotFoundError(f'No v20_detector model directory at {base}')
+    if model_suffix == 'g1_bear':
+        pattern = '*/model.pkl'
+    else:
+        pattern = f'*/model_{model_suffix}.pkl'
     candidates = sorted(
-        base.glob('*/model.pkl'),
+        base.glob(pattern),
         key=lambda p: p.stat().st_mtime,
         reverse=True,
     )
     if not candidates:
         raise FileNotFoundError(
-            f'No model.pkl artifacts under {base}; run train_detector_v1.py first'
+            f'No artifacts matching {pattern} under {base}; '
+            f'run train_detector_v1.py --target {model_suffix} first'
         )
     return candidates[0]
 
@@ -170,6 +200,25 @@ def main(argv: Optional[list] = None) -> int:
         '--model-path', type=str, default=None,
         help='Override model artifact path (default: most recent under v20_detector/)',
     )
+    parser.add_argument(
+        '--model-suffix', type=str, default='g1_bear',
+        choices=['g1_bear', 'g1_shift10', 'g2_bear'],
+        help=(
+            'Target suffix for auto-discovery. g1_bear (default, backward compat) '
+            'loads `model.pkl` and writes to diagnostics/regime/v1/. '
+            'g1_shift10 / g2_bear load `model_<suffix>.pkl` and write to '
+            'diagnostics/regime/v1_<suffix>/. Ignored when --model-path is set; '
+            'in that case the output dir is still selected by --model-suffix so '
+            'pass them consistently.'
+        ),
+    )
+    parser.add_argument(
+        '--output-dir', type=str, default=None,
+        help=(
+            'Override output directory. Default: diagnostics/regime/v1/ for '
+            'g1_bear suffix, diagnostics/regime/v1_<suffix>/ otherwise.'
+        ),
+    )
     args = parser.parse_args(argv)
 
     if not INPUT_PATH.exists():
@@ -179,8 +228,18 @@ def main(argv: Optional[list] = None) -> int:
     panel = pd.read_parquet(INPUT_PATH)
     logger.info(f'[+] Loaded {len(panel)} rows from {INPUT_PATH}')
 
-    model_path = Path(args.model_path) if args.model_path else _find_latest_model()
-    logger.info(f'[+] Using model: {model_path}')
+    model_path = (
+        Path(args.model_path) if args.model_path
+        else _find_latest_model(args.model_suffix)
+    )
+    logger.info(f'[+] Using model: {model_path}  (suffix={args.model_suffix})')
+
+    output_dir = (
+        Path(args.output_dir) if args.output_dir
+        else _output_dir_for_suffix(args.model_suffix)
+    )
+    output_path = output_dir / 'labels.parquet'
+    logger.info(f'[+] Output labels: {output_path}')
 
     leading = load_leading_indicators(REPLAY_START, REPLAY_END, cache=True)
     detector = MarketRegimeDetectorV1(
@@ -190,7 +249,7 @@ def main(argv: Optional[list] = None) -> int:
 
     end = min(panel.index.max(), pd.Timestamp(REPLAY_END))
     df = replay_range(
-        panel, pd.Timestamp(REPLAY_START), end, detector, OUTPUT_PATH
+        panel, pd.Timestamp(REPLAY_START), end, detector, output_path
     )
 
     logger.info(f'[+] Done. {len(df)} replay days. Regime distribution:')

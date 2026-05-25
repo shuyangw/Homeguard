@@ -1,7 +1,8 @@
 """WS-3d diagnostic rerun: H1-H5 analyses on the v1 detector vs the v0 baseline.
 
 Reads:
-- diagnostics/regime/v1/labels.parquet (v1 replay output)
+- <labels_dir>/labels.parquet (v1 replay output; default
+  diagnostics/regime/v1/)
 - diagnostics/regime/v0/labels.parquet (v0 replay output, locked baseline)
 - diagnostics/regime/v0_scores/labels.parquet (v0 replay with continuous score_BEAR)
 - diagnostics/regime/ground_truth.parquet (G1_BEAR, G2, G3, G4)
@@ -15,14 +16,18 @@ H5 measurement (Pre-commitment 5, GATING):
   v1 lag must be >= 30% lower than v0 lag at the binding metric.
 
 Output:
-- docs/reports/ramp/20260601_ws3d_regime_diagnostic_rerun.md
+- docs/reports/ramp/<report_filename> (default
+  20260601_ws3d_regime_diagnostic_rerun.md for the round-1 g1_bear labels;
+  pass --report-path to write elsewhere for round-3 leading-target reruns)
 
 Usage:
-    PYTHONPATH=. python scripts/diagnostics/regime_detector_v1_diagnostic.py
+    PYTHONPATH=. python scripts/diagnostics/regime_detector_v1_diagnostic.py \\
+        [--labels-dir <dir>] [--report-path <md>]
 """
 
 from __future__ import annotations
 
+import argparse
 import sys
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -35,12 +40,12 @@ from src.utils.logger import get_logger
 logger = get_logger(__name__)
 
 
-V1_LABELS = Path('diagnostics/regime/v1/labels.parquet')
+DEFAULT_V1_LABELS_DIR = Path('diagnostics/regime/v1')
 V0_LABELS = Path('diagnostics/regime/v0/labels.parquet')
 V0_SCORES_LABELS = Path('diagnostics/regime/v0_scores/labels.parquet')
 GROUND_TRUTH = Path('diagnostics/regime/ground_truth.parquet')
 G4_EVENTS = Path('config/diagnostics/regime_events_2017_2026.csv')
-REPORT_PATH = Path('docs/reports/ramp/20260601_ws3d_regime_diagnostic_rerun.md')
+DEFAULT_REPORT_PATH = Path('docs/reports/ramp/20260601_ws3d_regime_diagnostic_rerun.md')
 
 FORWARD_WINDOW_DAYS = 60  # forward lag-search window per spec
 V0_H5_BASELINE_DAYS = 14.0  # from 20260523_regime_detector_diagnostic.md (argmax-at-0.5 baseline)
@@ -846,9 +851,33 @@ def build_report(
 
 
 def main(argv: Optional[list] = None) -> int:
-    if not V1_LABELS.exists():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        '--labels-dir', type=str, default=str(DEFAULT_V1_LABELS_DIR),
+        help=(
+            'Directory containing the v1 labels.parquet to diagnose. '
+            'Default: diagnostics/regime/v1/ (round-1 g1_bear). '
+            'For round-3 leading target, pass diagnostics/regime/v1_g1_shift10/.'
+        ),
+    )
+    parser.add_argument(
+        '--report-path', type=str, default=str(DEFAULT_REPORT_PATH),
+        help=(
+            'Output markdown report path. Default: '
+            'docs/reports/ramp/20260601_ws3d_regime_diagnostic_rerun.md. '
+            'For round-3 leading target, pass '
+            'docs/reports/ramp/20260602_ws3d_diagnostic_g1_shift10.md.'
+        ),
+    )
+    args = parser.parse_args(argv)
+
+    v1_labels_dir = Path(args.labels_dir)
+    v1_labels_path = v1_labels_dir / 'labels.parquet'
+    report_path = Path(args.report_path)
+
+    if not v1_labels_path.exists():
         raise FileNotFoundError(
-            f'{V1_LABELS} not found. Run regime_detector_v1_replay.py first.'
+            f'{v1_labels_path} not found. Run regime_detector_v1_replay.py first.'
         )
     if not V0_LABELS.exists():
         raise FileNotFoundError(
@@ -864,7 +893,8 @@ def main(argv: Optional[list] = None) -> int:
             f'{GROUND_TRUTH} not found. Run ground_truth_labelers.py first.'
         )
 
-    v1 = _load_labels(V1_LABELS)
+    logger.info(f'[+] loading v1 labels from {v1_labels_path}')
+    v1 = _load_labels(v1_labels_path)
     v0 = _load_labels(V0_LABELS)
     v0_scores = _load_labels(V0_SCORES_LABELS)
     gt = pd.read_parquet(GROUND_TRUTH)
@@ -887,9 +917,9 @@ def main(argv: Optional[list] = None) -> int:
     )
 
     report = build_report(v0, v1, gt, v0_scores)
-    REPORT_PATH.parent.mkdir(parents=True, exist_ok=True)
-    REPORT_PATH.write_text(report, encoding='ascii', errors='replace')
-    logger.info(f'[+] wrote {REPORT_PATH} ({len(report)} chars)')
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    report_path.write_text(report, encoding='ascii', errors='replace')
+    logger.info(f'[+] wrote {report_path} ({len(report)} chars)')
 
     # Recompute headline for stdout (so callers can scrape the verdict).
     g1 = gt['g1_bear']

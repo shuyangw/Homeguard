@@ -4,17 +4,34 @@ Inputs:
 - 4 leading indicators from src.data.leading_indicators
 - SPY + VIX OHLC for backwards-compat features (above_20, above_50, above_200,
   vix_percentile)
-- G1_BEAR binary label from scripts.diagnostics.ground_truth_labelers.label_g1_drawdown_bear
+- Binary label selected by --target:
+    * g1_bear (default, round 1 confirmation label): G1_BEAR from
+      label_g1_drawdown_bear
+    * g1_shift10 (round 3 leading target, 2026-05-24): G1_BEAR.shift(-10).
+      The model predicts whether G1_BEAR will fire 10 days from t; a model
+      that correctly learns this should fire 10 days BEFORE G1_BEAR onset.
+      The last 10 rows have unknown future labels and are filled with False
+      to avoid lookahead.
+    * g2_bear (forward-window leading label): label_g2_forward_window_bear,
+      forward 30d return < -5% AND forward vol > 25%.
+
+Purge/embargo:
+- g1_bear keeps the original purge=5, embargo=5 (label is point-in-time).
+- g1_shift10 uses purge=15, embargo=15 (10 days of shift + 5d buffer each side)
+  to prevent lookahead through overlapping shifted labels.
+- g2_bear uses purge=35, embargo=35 (30d forward window + 5d buffer).
 
 Output:
 - Trained LightGBM model artifact at
-  H:/Stock_Data/alt_data/models/v20_detector/<git_sha>/model.pkl
-- Training metadata JSON: feature importance, hyperparameters chosen, CV scores
-- Hyperparameter sweep bounded: max 48 combinations (4 n_estimators x 4 max_depth x 3 lr).
-  The entire sweep counts as 1 trial in the WS-3d family.
+  H:/Stock_Data/alt_data/models/v20_detector/<git_sha>/model_<target>.pkl
+- Training metadata JSON at model_<target>.metadata.json, recording target
+  name, shift, purge/embargo, and CV scores.
+- Hyperparameter sweep bounded: max 48 combinations (4 n_estimators x 4
+  max_depth x 3 lr). The entire sweep counts as 1 trial in the WS-3d family.
 
 Usage:
-  PYTHONPATH=. python scripts/diagnostics/train_detector_v1.py [--no-sweep]
+  PYTHONPATH=. python scripts/diagnostics/train_detector_v1.py \\
+      [--target {g1_bear,g1_shift10,g2_bear}] [--no-sweep]
 """
 
 from __future__ import annotations
@@ -33,7 +50,10 @@ import lightgbm as lgb
 import numpy as np
 import pandas as pd
 
-from scripts.diagnostics.ground_truth_labelers import label_g1_drawdown_bear
+from scripts.diagnostics.ground_truth_labelers import (
+    label_g1_drawdown_bear,
+    label_g2_forward_window_bear,
+)
 from src.data.leading_indicators import load_leading_indicators
 from src.settings import get_local_storage_dir
 from src.strategies.advanced.market_regime_detector_v1 import FEATURE_COLUMNS
@@ -47,8 +67,49 @@ TRAIN_START = datetime(2017, 1, 1)
 TRAIN_END = datetime(2026, 5, 22)
 
 N_FOLDS = 6
+# Default purge/embargo for the original point-in-time G1_BEAR target.
 PURGE_DAYS = 5
 EMBARGO_DAYS = 5
+
+# Target name -> (purge_days, embargo_days, shift, description)
+# Shift k means target_t = base_label_{t+k}. For g1_shift10 the last 10 rows
+# have unknown future labels and are masked to False.
+TARGET_CONFIG: Dict[str, Dict] = {
+    'g1_bear': {
+        'purge': 5,
+        'embargo': 5,
+        'shift': 0,
+        'base_label': 'G1_BEAR (drawdown >= 10% from trailing 252d high)',
+        'description': (
+            'Round 1 confirmation label. The model predicts P(G1_BEAR_t | indicators_t). '
+            'Known to lag because G1_BEAR fires after the drawdown is already ~10%.'
+        ),
+    },
+    'g1_shift10': {
+        'purge': 15,
+        'embargo': 15,
+        'shift': 10,
+        'base_label': 'G1_BEAR.shift(-10)',
+        'description': (
+            'Round 3 leading target (2026-05-24). The model predicts whether G1_BEAR '
+            'will fire 10 days from t; a model that learns this should fire 10 days '
+            'BEFORE G1_BEAR onset. Last 10 rows of target are unknown future -> False. '
+            'Purge/embargo enlarged to 15d to absorb the 10d shift + 5d buffer and '
+            'prevent lookahead via overlapping shifted labels.'
+        ),
+    },
+    'g2_bear': {
+        'purge': 35,
+        'embargo': 35,
+        'shift': 0,
+        'base_label': 'G2_BEAR (forward 30d return < -5% AND forward vol > 25%)',
+        'description': (
+            'Forward-window leading label. Fully forward-looking but in-sample only '
+            '(training data is historical). Purge/embargo widened to 35d to cover the '
+            '30d forward window + 5d buffer.'
+        ),
+    },
+}
 
 # Hyperparameter sweep -- AT MOST 48 combinations per spec.
 SWEEP_N_ESTIMATORS = [50, 100, 200, 500]
@@ -80,11 +141,44 @@ def get_git_sha() -> str:
         return 'unknown'
 
 
-def build_training_panel() -> Tuple[pd.DataFrame, pd.Series]:
+def _build_target(panel: pd.DataFrame, target: str) -> pd.Series:
+    """Construct the target label according to --target.
+
+    g1_bear:    G1_BEAR (point-in-time confirmation, round 1).
+    g1_shift10: G1_BEAR.shift(-10) -- the label at index t equals
+                G1_BEAR_{t+10}. Last 10 rows' future labels are unknown
+                and are filled with False to avoid lookahead.
+    g2_bear:    G2_BEAR forward-window leading label.
+    """
+    if target == 'g1_bear':
+        y = label_g1_drawdown_bear(panel).astype(int)
+        y.name = 'g1_bear'
+        return y
+    if target == 'g1_shift10':
+        base = label_g1_drawdown_bear(panel).astype(int)
+        shifted = base.shift(-10)
+        # Fill the trailing 10 rows (future unknown) with False/0 to avoid
+        # accidentally leaking NaNs into y. This is a conservative choice:
+        # it slightly understates positive rate near the panel tail but
+        # never lookaheads.
+        y = shifted.fillna(0).astype(int)
+        y.name = 'g1_shift10'
+        return y
+    if target == 'g2_bear':
+        y = label_g2_forward_window_bear(panel).astype(int)
+        y.name = 'g2_bear'
+        return y
+    raise ValueError(
+        f'Unknown --target {target!r}; must be one of '
+        f'{list(TARGET_CONFIG.keys())}'
+    )
+
+
+def build_training_panel(target: str) -> Tuple[pd.DataFrame, pd.Series]:
     """Build the feature matrix X and label series y for training.
 
     Returns (X, y) indexed by trade date. X has FEATURE_COLUMNS columns.
-    y is G1_BEAR boolean labels.
+    y is the binary target selected by `target` (see TARGET_CONFIG).
     """
     logger.info('[+] loading SPY/VIX panel from diagnostics/data/...')
     panel = pd.read_parquet(SPY_VIX_PANEL)
@@ -123,14 +217,16 @@ def build_training_panel() -> Tuple[pd.DataFrame, pd.Series]:
     X = X[FEATURE_COLUMNS]
     X = X.dropna()
 
-    y = label_g1_drawdown_bear(panel).astype(int)
-    y.name = 'g1_bear'
+    y = _build_target(panel, target)
 
     common = X.index.intersection(y.index)
     X = X.loc[common]
     y = y.loc[common]
 
-    logger.info(f'[+] training panel: {len(X)} rows, {y.sum()} positives ({y.mean()*100:.1f}%)')
+    logger.info(
+        f'[+] training panel ({target}): {len(X)} rows, '
+        f'{int(y.sum())} positives ({y.mean()*100:.2f}%)'
+    )
     return X, y
 
 
@@ -216,7 +312,12 @@ def evaluate_hp_combo(
     }
 
 
-def run_sweep(X: pd.DataFrame, y: pd.Series) -> Tuple[Dict, List[Dict]]:
+def run_sweep(
+    X: pd.DataFrame,
+    y: pd.Series,
+    purge_days: int = PURGE_DAYS,
+    embargo_days: int = EMBARGO_DAYS,
+) -> Tuple[Dict, List[Dict]]:
     """Run purged CV sweep over the bounded hyperparameter grid.
 
     Returns (best_hp_with_metadata, all_results_sorted_by_logloss).
@@ -224,11 +325,11 @@ def run_sweep(X: pd.DataFrame, y: pd.Series) -> Tuple[Dict, List[Dict]]:
     splits = purged_kfold_indices(
         n_samples=len(X),
         n_folds=N_FOLDS,
-        purge=PURGE_DAYS,
-        embargo=EMBARGO_DAYS,
+        purge=purge_days,
+        embargo=embargo_days,
     )
     logger.info(
-        f'[+] purged CV: {N_FOLDS} folds, purge={PURGE_DAYS}d, embargo={EMBARGO_DAYS}d'
+        f'[+] purged CV: {N_FOLDS} folds, purge={purge_days}d, embargo={embargo_days}d'
     )
 
     combos = list(product(SWEEP_N_ESTIMATORS, SWEEP_MAX_DEPTH, SWEEP_LEARNING_RATE))
@@ -279,12 +380,23 @@ def save_artifact(
     model: lgb.LGBMClassifier,
     metadata: Dict,
     git_sha: str,
+    target: str,
 ) -> Tuple[Path, Path]:
-    """Persist the trained model + metadata under the git-SHA scoped path."""
+    """Persist the trained model + metadata under the git-SHA scoped path.
+
+    Files are suffixed by target name so the round-1 (g1_bear) artifacts
+    remain intact when round-3 (g1_shift10) runs.
+    """
     base = get_local_storage_dir() / 'alt_data' / 'models' / 'v20_detector' / git_sha
     base.mkdir(parents=True, exist_ok=True)
-    model_path = base / 'model.pkl'
-    meta_path = base / 'metadata.json'
+    # Backward compat: g1_bear continues to write model.pkl + metadata.json.
+    # Other targets write model_<target>.pkl + model_<target>.metadata.json.
+    if target == 'g1_bear':
+        model_path = base / 'model.pkl'
+        meta_path = base / 'metadata.json'
+    else:
+        model_path = base / f'model_{target}.pkl'
+        meta_path = base / f'model_{target}.metadata.json'
 
     joblib.dump(model, model_path)
     with open(meta_path, 'w', encoding='ascii') as f:
@@ -297,6 +409,20 @@ def save_artifact(
 def main(argv: Optional[List[str]] = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
+        '--target',
+        type=str,
+        default='g1_bear',
+        choices=sorted(TARGET_CONFIG.keys()),
+        help=(
+            'Training target. g1_bear (default, round 1 confirmation label) '
+            'reproduces the round-1/2 model. g1_shift10 (round 3 leading '
+            'target) trains on G1_BEAR.shift(-10) so the model fires earlier '
+            'by construction. g2_bear trains on the forward-window leading '
+            'label. Each non-default target writes to a target-suffixed '
+            'artifact path.'
+        ),
+    )
+    parser.add_argument(
         '--no-sweep', action='store_true',
         help='Skip hyperparameter sweep; train once with defaults (100/4/0.05)',
     )
@@ -305,7 +431,17 @@ def main(argv: Optional[List[str]] = None) -> int:
     git_sha = get_git_sha()
     logger.info(f'[+] git SHA: {git_sha}')
 
-    X, y = build_training_panel()
+    cfg = TARGET_CONFIG[args.target]
+    purge_days = int(cfg['purge'])
+    embargo_days = int(cfg['embargo'])
+    shift = int(cfg['shift'])
+    logger.info(
+        f'[+] target={args.target} ({cfg["base_label"]}), '
+        f'shift={shift}, purge={purge_days}d, embargo={embargo_days}d'
+    )
+    logger.info(f'[+] target description: {cfg["description"]}')
+
+    X, y = build_training_panel(args.target)
 
     if args.no_sweep:
         best_hp = {
@@ -317,7 +453,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         sweep_results = []
         n_combos = 1
         logger.info(f'[+] skipping sweep; using default hp {best_hp}')
-        splits = purged_kfold_indices(len(X), N_FOLDS, PURGE_DAYS, EMBARGO_DAYS)
+        splits = purged_kfold_indices(len(X), N_FOLDS, purge_days, embargo_days)
         cv = evaluate_hp_combo(X, y, best_hp, splits)
         best = {
             'hp': best_hp,
@@ -327,7 +463,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             'n_valid_folds': cv['n_valid_folds'],
         }
     else:
-        best, sweep_results = run_sweep(X, y)
+        best, sweep_results = run_sweep(X, y, purge_days, embargo_days)
         n_combos = len(sweep_results)
 
     final_model = fit_final_model(X, y, best['hp'])
@@ -339,6 +475,10 @@ def main(argv: Optional[List[str]] = None) -> int:
     metadata = {
         'git_sha': git_sha,
         'trained_at': datetime.now().isoformat(),
+        'target': args.target,
+        'target_shift_days': shift,
+        'target_base_label': cfg['base_label'],
+        'target_description': cfg['description'],
         'train_start': str(TRAIN_START.date()),
         'train_end': str(TRAIN_END.date()),
         'n_samples': int(len(X)),
@@ -347,8 +487,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         'feature_columns': FEATURE_COLUMNS,
         'feature_importance': feature_importance,
         'cv_n_folds': N_FOLDS,
-        'cv_purge_days': PURGE_DAYS,
-        'cv_embargo_days': EMBARGO_DAYS,
+        'cv_purge_days': purge_days,
+        'cv_embargo_days': embargo_days,
         'sweep_n_combos': n_combos,
         'best_hp': best['hp'],
         'best_mean_logloss': best['mean_logloss'],
@@ -358,9 +498,10 @@ def main(argv: Optional[List[str]] = None) -> int:
         'sweep_top10': sweep_results[:10] if sweep_results else [],
         'spec_reference': 'docs/superpowers/specs/2026-05-25-ws3d-detector-replacement-design.md',
     }
-    save_artifact(final_model, metadata, git_sha)
+    save_artifact(final_model, metadata, git_sha, args.target)
     logger.info(
-        f'[+] Done. Best CV mean logloss = {best["mean_logloss"]:.5f} '
+        f'[+] Done. target={args.target} '
+        f'best CV mean logloss = {best["mean_logloss"]:.5f} '
         f'(std = {best["std_logloss"]:.5f})'
     )
     logger.info(f'[+] Feature importance: {feature_importance}')
