@@ -1,0 +1,72 @@
+{
+  "tau_in": 0.555556,
+  "tau_out": 0.455556,
+  "a1": {
+    "total_bear_soft_days": 366,
+    "gated_window_days": 2355,
+    "pct_of_gated": 15.54140127388535,
+    "n_events": 25,
+    "median_duration": 9.0
+  },
+  "a2": {
+    "V14a-soft-bear-cash": {
+      "bear_soft_sum_excess": -0.037555120924590124,
+      "bear_soft_pct_of_total_excess": 9.750092355341167,
+      "bear_soft_std_excess": 0.0370054045036563,
+      "nb_std_excess": 0.002436237177830724,
+      "total_excess": -0.38517707890240827
+    },
+    "V14b-soft-bear-spy": {
+      "bear_soft_sum_excess": -0.08468422277198917,
+      "bear_soft_pct_of_total_excess": 52.81992224388523,
+      "bear_soft_std_excess": 0.024289935196709213,
+      "nb_std_excess": 0.0017256716834633601,
+      "total_excess": -0.16032629200205373
+    },
+    "V14c-soft-bear-dampen": {
+      "bear_soft_sum_excess": -0.04118582278410299,
+      "bear_soft_pct_of_total_excess": 18.61268644958335,
+      "bear_soft_std_excess": 0.019681694587759143,
+      "nb_std_excess": 0.0011572089133138226,
+      "total_excess": -0.22127822813576137
+    }
+  },
+  "a3": {
+    "corr_v14a_v14b": 0.5091536107650302,
+    "corr_v14a_v14c": 0.6359338779832492,
+    "corr_v14b_v14c": 0.857276668339053,
+    "n_events": 25
+  },
+  "a4": {
+    "pooled_corr_spy_v11": 0.7927259689407201,
+    "n_pooled_days": 366
+  },
+  "a5": {
+    "n_exits": 25,
+    "median_lag_days": -8.0,
+    "mean_lag_days": -4.52,
+    "mean_5d_excess": -0.010735292183014292,
+    "mean_10d_excess": 0.0016081224726243936,
+    "mean_20d_excess": 0.0059011179003305835
+  },
+  "verdicts": {
+    "M1": "inconclusive",
+    "M2": "refuted",
+    "M3": "refuted"
+  },
+  "track": "WS-3d with expanded scope OR halt WS-3 and pursue alternative strategies",
+  "schmitt_overlap_pct": 100.0,
+  "schmitt_engine_days": 366,
+  "schmitt_reconstructed_days": 366,
+  "lag_sanity_check": {
+    "mode": "one_day_lag",
+    "n_bear_soft_days": 366,
+    "pct_gated": 15.54140127388535,
+    "n_events": 25,
+    "median_duration": 9.0,
+    "pooled_corr_spy_v11": 0.8050974646976233,
+    "n_exits": 25,
+    "median_lag_days": -8.0,
+    "mean_10d_excess": -0.0003654678410754553
+  }
+}

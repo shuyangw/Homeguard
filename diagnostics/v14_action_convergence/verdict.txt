@@ -1,0 +1,30 @@
+=== Experiment 8 Verdict ===
+
+M1 (rare events): inconclusive
+  - Total BEAR-soft days: 366 (15.54% of gated window)
+  - Median event duration: 9.0 days
+  - BEAR-soft partition contribution to V14a-V11 excess: 9.75%
+
+M2 (action equivalence): refuted
+  - Cross-variant per-event correlation: 0.5092 (V14a/V14b), 0.6359 (V14a/V14c), 0.8573 (V14b/V14c)
+  - Pooled corr(SPY, V11) during BEAR-soft: 0.7927 (n=366 days)
+
+M3 (exit-timing failure): refuted
+  - Median exit-to-SPY-low lag: -8.0 days
+  - Mean 10d post-exit V14a-V11 excess: 0.1608%
+  - N exits analyzed: 25
+
+Decision matrix output: WS-3d with expanded scope OR halt WS-3 and pursue alternative strategies
+
+Interpretation: With M1 inconclusive, M2 refuted, M3 refuted, the diagnostic points to WS-3d with expanded scope OR halt WS-3 and pursue alternative strategies as the next intervention. The V14a/b/c convergence is consistent with this mechanism reading; the verdict supersedes assumed priors about which axis (trigger / hysteresis / exit logic) is binding.
+
+--- one_day_lag sanity check ---
+mode: one_day_lag
+n_bear_soft_days: 366
+pct_gated: 15.54140127388535
+n_events: 25
+median_duration: 9.0
+pooled_corr_spy_v11: 0.8050974646976233
+n_exits: 25
+median_lag_days: -8.0
+mean_10d_excess: -0.0003654678410754553
