@@ -35,7 +35,12 @@ from src.api_key import API_KEY, API_SECRET
 from src.data.acquisition.alpaca_universe import list_active_us_equities
 from src.data.acquisition.plugins.alpaca_equities import AlpacaEquitiesPlugin
 from src.data.acquisition.status_tracker import rebuild_tracker, write_tracker_csv
-from src.settings import get_local_storage_dir, get_output_dir
+from src.settings import (
+    EQUITIES_SIP_RAW_1MIN,
+    EQUITIES_SIP_SPLIT_1MIN,
+    get_local_storage_dir,
+    get_output_dir,
+)
 from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -43,8 +48,8 @@ logger = get_logger(__name__)
 
 FEEDS_AVAILABLE = ("raw", "split")
 FEED_TO_SUBDIR = {
-    "raw": "equities_1min_sip_raw",
-    "split": "equities_1min_sip_split",
+    "raw": EQUITIES_SIP_RAW_1MIN,
+    "split": EQUITIES_SIP_SPLIT_1MIN,
 }
 
 
@@ -125,8 +130,8 @@ def setup_file_logger(log_path: Path) -> None:
 
 
 PASS_CONFIGS = {
-    "raw": (DataFeed.SIP, Adjustment.RAW, "equities_1min_sip_raw"),
-    "split": (DataFeed.SIP, Adjustment.SPLIT, "equities_1min_sip_split"),
+    "raw": (DataFeed.SIP, Adjustment.RAW, EQUITIES_SIP_RAW_1MIN),
+    "split": (DataFeed.SIP, Adjustment.SPLIT, EQUITIES_SIP_SPLIT_1MIN),
 }
 
 

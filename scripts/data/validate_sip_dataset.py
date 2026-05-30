@@ -30,14 +30,19 @@ from src.data.acquisition.status_tracker import (
     rebuild_tracker,
     write_tracker_csv,
 )
-from src.settings import get_local_storage_dir, get_output_dir
+from src.settings import (
+    EQUITIES_SIP_RAW_1MIN,
+    EQUITIES_SIP_SPLIT_1MIN,
+    get_local_storage_dir,
+    get_output_dir,
+)
 from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
 PASS_TO_SUBDIR = {
-    "raw": "equities_1min_sip_raw",
-    "split": "equities_1min_sip_split",
+    "raw": EQUITIES_SIP_RAW_1MIN,
+    "split": EQUITIES_SIP_SPLIT_1MIN,
 }
 
 LOW_BAR_THRESHOLD = 100

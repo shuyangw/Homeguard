@@ -20,7 +20,12 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 import pandas as pd
 
-from src.settings import get_local_storage_dir, get_output_dir
+from src.settings import (
+    EQUITIES_SIP_RAW_1MIN,
+    EQUITIES_SIP_SPLIT_1MIN,
+    get_local_storage_dir,
+    get_output_dir,
+)
 from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -28,8 +33,8 @@ logger = get_logger(__name__)
 
 def compare_symbol(base_dir: Path, symbol: str) -> list[dict]:
     """Compare one symbol's raw vs split partitions. Returns diff rows."""
-    raw_dir = base_dir / "equities_1min_sip_raw" / f"symbol={symbol}"
-    split_dir = base_dir / "equities_1min_sip_split" / f"symbol={symbol}"
+    raw_dir = base_dir / EQUITIES_SIP_RAW_1MIN / f"symbol={symbol}"
+    split_dir = base_dir / EQUITIES_SIP_SPLIT_1MIN / f"symbol={symbol}"
 
     raw_parts = {
         p.relative_to(raw_dir): p
@@ -91,8 +96,8 @@ def main(argv=None) -> int:
     args = parser.parse_args(argv)
 
     base_dir = get_local_storage_dir()
-    raw_dir = base_dir / "equities_1min_sip_raw"
-    split_dir = base_dir / "equities_1min_sip_split"
+    raw_dir = base_dir / EQUITIES_SIP_RAW_1MIN
+    split_dir = base_dir / EQUITIES_SIP_SPLIT_1MIN
     if not (raw_dir.exists() and split_dir.exists()):
         logger.error("Both raw and split pass folders must exist")
         return 1
