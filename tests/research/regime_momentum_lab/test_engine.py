@@ -4,9 +4,9 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from src.research.ramp_phase4.config import HarnessConfig
-from src.research.ramp_phase4.engine import HarnessState, DailyRecord, compute_trades, run_variant
-from src.research.ramp_phase4.engine import apply_trades
+from src.research.regime_momentum_lab.config import HarnessConfig
+from src.research.regime_momentum_lab.engine import HarnessState, DailyRecord, compute_trades, run_variant
+from src.research.regime_momentum_lab.engine import apply_trades
 
 
 def _tiny_cfg(tmp_path):
@@ -52,7 +52,7 @@ def test_run_variant_empty_variant_returns_per_day_records(tmp_path, monkeypatch
     cfg = _tiny_cfg(tmp_path)
     panel = _tiny_panel()
     monkeypatch.setattr(
-        'src.research.ramp_phase4.engine.load_universe_panel',
+        'src.research.regime_momentum_lab.engine.load_universe_panel',
         lambda c, s, e: panel,
     )
     variant_spec = type('Spec', (), {
@@ -70,7 +70,7 @@ def test_run_variant_marks_to_market_correctly(tmp_path, monkeypatch):
     cfg = _tiny_cfg(tmp_path)
     panel = _tiny_panel()
     monkeypatch.setattr(
-        'src.research.ramp_phase4.engine.load_universe_panel',
+        'src.research.regime_momentum_lab.engine.load_universe_panel',
         lambda c, s, e: panel,
     )
 
@@ -107,7 +107,7 @@ def test_run_variant_handles_nan_pricing_with_forced_exit(tmp_path, monkeypatch)
         'VIX': [15.0, 15.1, 15.2, 15.3],
     }, index=idx)
     monkeypatch.setattr(
-        'src.research.ramp_phase4.engine.load_universe_panel',
+        'src.research.regime_momentum_lab.engine.load_universe_panel',
         lambda c, s, e: panel,
     )
 
@@ -210,7 +210,7 @@ def test_run_variant_applies_cost_to_cash(tmp_path, monkeypatch):
     panel = pd.DataFrame({
         'AAA': [100.0, 101.0], 'SPY': [400.0, 401.0], 'VIX': [15.0, 15.1],
     }, index=idx)
-    monkeypatch.setattr('src.research.ramp_phase4.engine.load_universe_panel', lambda c, s, e: panel)
+    monkeypatch.setattr('src.research.regime_momentum_lab.engine.load_universe_panel', lambda c, s, e: panel)
 
     call = {'n': 0}
     def variant_fn(t, st, pn, cf):
@@ -232,7 +232,7 @@ def test_run_variant_applies_cost_to_cash(tmp_path, monkeypatch):
 def test_run_variant_aborts_on_overleverage(tmp_path, monkeypatch):
     cfg = _tiny_cfg(tmp_path)
     panel = _tiny_panel()
-    monkeypatch.setattr('src.research.ramp_phase4.engine.load_universe_panel', lambda c, s, e: panel)
+    monkeypatch.setattr('src.research.regime_momentum_lab.engine.load_universe_panel', lambda c, s, e: panel)
     spec = type('Spec', (), {'id': 'BAD', 'plan_fn': staticmethod(lambda t, st, pn, cf: {'AAA': 1.5})})()
     with pytest.raises(ValueError, match='overleverage'):
         run_variant(cfg, spec)
@@ -241,7 +241,7 @@ def test_run_variant_aborts_on_overleverage(tmp_path, monkeypatch):
 def test_run_variant_records_regime_when_variant_provides(tmp_path, monkeypatch):
     cfg = _tiny_cfg(tmp_path)
     panel = _tiny_panel()
-    monkeypatch.setattr('src.research.ramp_phase4.engine.load_universe_panel', lambda c, s, e: panel)
+    monkeypatch.setattr('src.research.regime_momentum_lab.engine.load_universe_panel', lambda c, s, e: panel)
     def variant_fn(t, st, pn, cf):
         return {'__regime__': 'STRONG_BULL', 'AAA': 0.05}
     spec = type('Spec', (), {'id': 'R', 'plan_fn': staticmethod(variant_fn)})()
@@ -253,7 +253,7 @@ def test_run_variant_safe_mode_skips_rebalance(tmp_path, monkeypatch):
     """If variant returns {'__regime__': 'SAFE_MODE'} the engine holds current weights."""
     cfg = _tiny_cfg(tmp_path)
     panel = _tiny_panel()
-    monkeypatch.setattr('src.research.ramp_phase4.engine.load_universe_panel', lambda c, s, e: panel)
+    monkeypatch.setattr('src.research.regime_momentum_lab.engine.load_universe_panel', lambda c, s, e: panel)
     call = {'n': 0}
     def variant_fn(t, st, pn, cf):
         call['n'] += 1

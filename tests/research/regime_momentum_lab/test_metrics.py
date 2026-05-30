@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.research.ramp_phase4.metrics import (
+from src.research.regime_momentum_lab.metrics import (
     sharpe_ratio, cagr, max_drawdown,
     avg_daily_turnover, cost_drag_pct, regime_attribution,
 )

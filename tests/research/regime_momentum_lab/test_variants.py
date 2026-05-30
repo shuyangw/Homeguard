@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.research.ramp_phase4.variants import REGISTRY, VariantSpec
+from src.research.regime_momentum_lab.variants import REGISTRY, VariantSpec
 
 
 def _calm_panel(n=300):

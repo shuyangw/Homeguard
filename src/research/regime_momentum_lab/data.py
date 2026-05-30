@@ -1,9 +1,9 @@
 """Alpaca SIP universe panel loader.
 
 Primary source: aggregated daily closes derived from the FRESH 1-min SIP
-split tree at `H:/Stock_Data/equities_1min_sip_split/symbol=<SYM>/year=<Y>/
-month=<M>/data.parquet`. Aggregation result is cached at
-`<storage>/cache/ramp_phase4/equities_daily_from_sip.parquet` (long-form
+split tree at the canonical location returned by get_equities_sip_split_1min_dir()
+(post-reorg: equities/sip_split/1min). Aggregation result is cached at
+`<storage>/cache/regime_momentum/equities_daily_from_sip.parquet` (long-form
 panel, columns `symbol`, `trade_date`, `close`).
 
 Fallback source (legacy, stale at 2025-12-04): single long-form
@@ -33,6 +33,17 @@ except ImportError:
         return 'data'
 
 try:
+    from src.settings.data_paths import get_equities_sip_split_1min_dir
+except ImportError:
+    try:
+        from src.settings.data_paths import get_data_dir
+        def get_equities_sip_split_1min_dir() -> Path:
+            return get_data_dir('equities/sip_split/1min')
+    except ImportError:
+        def get_equities_sip_split_1min_dir() -> Path:
+            return Path(get_local_storage_dir()) / 'equities' / 'sip_split' / '1min'
+
+try:
     from src.utils.logger import logger
 except ImportError:  # pragma: no cover
     import logging
@@ -41,8 +52,10 @@ except ImportError:  # pragma: no cover
 
 AUX_SYMBOLS = ['SPY', 'VIX']
 
+# Legacy relative path kept for reference; no longer used in path construction.
+# The canonical source is now returned by get_equities_sip_split_1min_dir().
 SIP_SPLIT_REL = 'equities_1min_sip_split'
-SIP_DAILY_CACHE_REL = 'cache/ramp_phase4/equities_daily_from_sip.parquet'
+SIP_DAILY_CACHE_REL = 'cache/regime_momentum/equities_daily_from_sip.parquet'
 LEGACY_DAILY_CACHE_REL = 'equities_daily_cache.parquet'
 
 
@@ -178,18 +191,21 @@ def _aggregate_to_daily_from_sip_split(
 ) -> pd.DataFrame:
     """Aggregate the 1-min SIP split tree to a wide daily-close panel.
 
-    Walks `H:/Stock_Data/equities_1min_sip_split/symbol=<SYM>/year=<Y>/month=<M>/data.parquet`
-    for each requested symbol, restricts to RTH where possible, and groups by
-    trade date taking the LAST close.
+    Walks the canonical SIP split source (get_equities_sip_split_1min_dir()) /
+    symbol=<SYM>/year=<Y>/month=<M>/data.parquet for each requested symbol,
+    restricts to RTH where possible, and groups by trade date taking the LAST close.
 
     Returns a wide DataFrame indexed by date (tz-naive midnight) with columns
     = requested symbols. Symbols whose `symbol=<SYM>` partition is absent
     contribute an all-NaN column.
     """
-    storage = Path(get_local_storage_dir())
-    root = storage / SIP_SPLIT_REL
+    root = get_equities_sip_split_1min_dir()
     if not root.exists():
-        raise RuntimeError(f'SIP split tree not found at {root}')
+        raise RuntimeError(
+            f'SIP split source tree not found at canonical location {root}. '
+            f'The data-reorg moved it from the legacy equities_1min_sip_split layout; '
+            f'verify the H: migration ran (VERIFY SOURCE PATH).'
+        )
 
     series_map: dict = {}
     missing: List[str] = []
@@ -224,7 +240,7 @@ def _load_or_build_sip_daily_cache(
 ) -> Optional[pd.DataFrame]:
     """Try the SIP-aggregated daily cache; (re)build it if missing or stale.
 
-    Cache layout: long-form Parquet at `<storage>/cache/ramp_phase4/
+    Cache layout: long-form Parquet at `<storage>/cache/regime_momentum/
     equities_daily_from_sip.parquet` with columns (`symbol`, `trade_date`,
     `close`). Easy to merge new dates in without rewriting the whole file.
 
@@ -238,7 +254,7 @@ def _load_or_build_sip_daily_cache(
     """
     storage = Path(get_local_storage_dir())
     cache_path = storage / SIP_DAILY_CACHE_REL
-    sip_root = storage / SIP_SPLIT_REL
+    sip_root = get_equities_sip_split_1min_dir()
 
     if not sip_root.exists():
         return None
@@ -331,7 +347,7 @@ def _read_closes_from_parquet(symbols: List[str], start: datetime, end: datetime
 
     Source resolution (in order):
       1. Aggregated daily cache from the FRESH 1-min SIP split tree
-         (`<storage>/cache/ramp_phase4/equities_daily_from_sip.parquet`),
+         (`<storage>/cache/regime_momentum/equities_daily_from_sip.parquet`),
          rebuilt on demand if missing or its max date is before `end`.
       2. Legacy `<storage>/equities_daily_cache.parquet` (stale ~2025-12-04),
          used only if the SIP path fails or yields no rows.

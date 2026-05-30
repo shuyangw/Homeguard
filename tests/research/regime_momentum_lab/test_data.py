@@ -5,7 +5,7 @@ from unittest.mock import patch
 import pandas as pd
 import pytest
 
-from src.research.ramp_phase4.data import (
+from src.research.regime_momentum_lab.data import (
     load_universe_panel,
     _aggregate_symbol_daily,
 )
@@ -31,7 +31,7 @@ def fake_panel():
 
 
 def test_load_universe_panel_returns_wide_dataframe(fake_universe_csv, fake_panel):
-    with patch('src.research.ramp_phase4.data._read_closes_from_parquet') as mock_read:
+    with patch('src.research.regime_momentum_lab.data._read_closes_from_parquet') as mock_read:
         mock_read.return_value = fake_panel
         result = load_universe_panel(
             fake_universe_csv,
@@ -43,7 +43,7 @@ def test_load_universe_panel_returns_wide_dataframe(fake_universe_csv, fake_pane
 
 
 def test_load_universe_panel_includes_spy_and_vix(fake_universe_csv, fake_panel):
-    with patch('src.research.ramp_phase4.data._read_closes_from_parquet') as mock_read:
+    with patch('src.research.regime_momentum_lab.data._read_closes_from_parquet') as mock_read:
         mock_read.return_value = fake_panel
         result = load_universe_panel(
             fake_universe_csv,
@@ -92,7 +92,7 @@ def test_load_universe_panel_propagates_nans_for_delisted_symbol(fake_universe_c
         'SPY': [400.0 + i for i in range(10)],
         'VIX': [15.0 + i * 0.1 for i in range(10)],
     }, index=idx)
-    with patch('src.research.ramp_phase4.data._read_closes_from_parquet') as mock_read:
+    with patch('src.research.regime_momentum_lab.data._read_closes_from_parquet') as mock_read:
         mock_read.return_value = panel_with_delisting
         result = load_universe_panel(
             fake_universe_csv,

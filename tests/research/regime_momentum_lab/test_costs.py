@@ -1,5 +1,5 @@
 """Tests for flat_bps_cost."""
-from src.research.ramp_phase4.costs import flat_bps_cost
+from src.research.regime_momentum_lab.costs import flat_bps_cost
 
 
 def test_flat_bps_cost_zero_when_no_trades():

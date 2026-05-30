@@ -2,7 +2,7 @@
 from datetime import datetime
 from pathlib import Path
 
-from src.research.ramp_phase4.config import HarnessConfig
+from src.research.regime_momentum_lab.config import HarnessConfig
 
 
 def test_harness_config_construction_defaults():

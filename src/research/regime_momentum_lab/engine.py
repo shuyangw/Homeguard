@@ -13,9 +13,9 @@ from typing import Callable, Dict, List, Protocol
 
 import pandas as pd
 
-from src.research.ramp_phase4.config import HarnessConfig
-from src.research.ramp_phase4.costs import flat_bps_cost
-from src.research.ramp_phase4.data import load_universe_panel
+from src.research.regime_momentum_lab.config import HarnessConfig
+from src.research.regime_momentum_lab.costs import flat_bps_cost
+from src.research.regime_momentum_lab.data import load_universe_panel
 
 
 OVERLEVERAGE_EPSILON = 1e-3

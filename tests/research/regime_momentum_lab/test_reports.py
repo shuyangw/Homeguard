@@ -3,8 +3,8 @@ from datetime import datetime
 import pandas as pd
 import pytest
 
-from src.research.ramp_phase4.reports import build_variant_report
-from src.research.ramp_phase4.reports import build_parity_report
+from src.research.regime_momentum_lab.reports import build_variant_report
+from src.research.regime_momentum_lab.reports import build_parity_report
 
 
 def _fake_records(n=10, regime='STRONG_BULL', daily_return=0.001):

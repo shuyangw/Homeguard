@@ -12,10 +12,10 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-from src.research.ramp_phase4.config import HarnessConfig
-from src.research.ramp_phase4.engine import run_variant
-from src.research.ramp_phase4.variants import REGISTRY
-from src.research.ramp_phase4.reports import build_parity_report
+from src.research.regime_momentum_lab.config import HarnessConfig
+from src.research.regime_momentum_lab.engine import run_variant
+from src.research.regime_momentum_lab.variants import REGISTRY
+from src.research.regime_momentum_lab.reports import build_parity_report
 
 
 def _parse_args(argv=None):
