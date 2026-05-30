@@ -26,7 +26,9 @@ class DownloadManifest:
     def __init__(self, base_dir: Path, source: str):
         self.source = source
         self._dir = base_dir / "_manifests"
-        self._path = self._dir / f"{source}.json"
+        # Flatten nested subdir into a single filename: "equities/iex/1min" -> "equities_iex_1min.json"
+        manifest_name = source.replace("/", "_") + ".json"
+        self._path = self._dir / manifest_name
         self._lock = threading.Lock()
         self._data: dict[str, Any] = {"source": source, "entries": {}}
         self._load()

@@ -10,6 +10,7 @@ import pandas as pd
 
 from src.data.acquisition.base import BaseDownloader
 from src.data.news.news_downloader import NewsDownloader as LegacyNewsDownloader
+from src.settings import NEWS_ALPACA
 from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -35,7 +36,7 @@ class AlpacaNewsPlugin(BaseDownloader):
         return NEWS_SCHEMA
 
     def _get_storage_subdir(self) -> str:
-        return "news"
+        return NEWS_ALPACA
 
     def _normalize_symbol(self, symbol: str) -> str:
         return symbol

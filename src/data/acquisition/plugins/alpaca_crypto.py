@@ -10,6 +10,7 @@ from alpaca.data.requests import CryptoBarsRequest
 from src.api_key import API_KEY, API_SECRET
 from src.data.acquisition.base import BaseDownloader
 from src.data.acquisition.schemas import CANONICAL_OHLCV_SCHEMA
+from src.settings import CRYPTO_ALPACA_1MIN
 from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -50,7 +51,7 @@ class AlpacaCryptoPlugin(BaseDownloader):
         return CANONICAL_OHLCV_SCHEMA
 
     def _get_storage_subdir(self) -> str:
-        return "crypto_1min"
+        return CRYPTO_ALPACA_1MIN
 
     def _normalize_symbol(self, symbol: str) -> str:
         return symbol.replace("/", "_")

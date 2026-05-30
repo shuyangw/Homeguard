@@ -11,6 +11,7 @@ from alpaca.data.requests import StockBarsRequest
 from src.api_key import API_KEY, API_SECRET
 from src.data.acquisition.base import BaseDownloader
 from src.data.acquisition.schemas import CANONICAL_OHLCV_SCHEMA
+from src.settings import EQUITIES_IEX_1MIN
 from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -59,7 +60,7 @@ class AlpacaEquitiesPlugin(BaseDownloader):
         return CANONICAL_OHLCV_SCHEMA
 
     def _get_storage_subdir(self) -> str:
-        return self._storage_subdir_override or "equities_1min"
+        return self._storage_subdir_override or EQUITIES_IEX_1MIN
 
     def _normalize_symbol(self, symbol: str) -> str:
         return symbol

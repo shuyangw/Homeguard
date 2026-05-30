@@ -35,7 +35,7 @@ import polars as pl
 from botocore.client import Config
 from botocore.exceptions import ClientError
 
-from src.settings import get_local_storage_dir
+from src.settings import FX_MASSIVE_QUOTES_RAW, get_local_storage_dir
 from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -230,7 +230,7 @@ def download_pairs(
         # for this (year, month), skip the per-day downloads entirely.
         if skip_existing:
             all_exist = all(
-                (root / "fx_quotes_raw" / f"symbol={p.hg_symbol}"
+                (root / FX_MASSIVE_QUOTES_RAW / f"symbol={p.hg_symbol}"
                  / f"year={year}" / f"month={month}" / "data.parquet").exists()
                 for p in pairs
             )
@@ -267,7 +267,7 @@ def download_pairs(
         # Flush per-symbol
         for hg_sym, rows in month_buffers.items():
             out_path = (
-                root / "fx_quotes_raw" / f"symbol={hg_sym}"
+                root / FX_MASSIVE_QUOTES_RAW / f"symbol={hg_sym}"
                 / f"year={year}" / f"month={month}" / "data.parquet"
             )
             if skip_existing and out_path.exists():

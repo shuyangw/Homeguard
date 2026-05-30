@@ -112,10 +112,12 @@ class BaseDownloader(ABC):
         return getattr(_thread_local, attr)
 
     def _emit_event(self, event: str, **fields: Any) -> None:
-        """Append one JSON event line to <subdir>.progress.jsonl. Crash-safe."""
+        """Append one JSON event line to <flattened-subdir>.progress.jsonl. Crash-safe."""
         log_dir = self.base_output_dir / "_manifests"
         log_dir.mkdir(parents=True, exist_ok=True)
-        log_path = log_dir / f"{self._get_storage_subdir()}.progress.jsonl"
+        # Flatten nested subdir into a single filename to match manifest layout
+        flat_name = self._get_storage_subdir().replace("/", "_")
+        log_path = log_dir / f"{flat_name}.progress.jsonl"
         record = {
             "ts": datetime.now(timezone.utc).isoformat(),
             "event": event,

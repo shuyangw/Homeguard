@@ -50,6 +50,54 @@ from src.settings.settings import (
 )
 
 # ============================================================================
+# Canonical asset-class data path constants
+# ============================================================================
+from src.settings.data_paths import (
+    # Constants
+    EQUITIES_IEX_1MIN,
+    EQUITIES_IEX_1MIN_BY_DATE,
+    EQUITIES_SIP_RAW_1MIN,
+    EQUITIES_SIP_SPLIT_1MIN,
+    CRYPTO_ALPACA_1MIN,
+    CRYPTO_ALPACA_1HOUR,
+    CRYPTO_ALPACA_1DAY,
+    CRYPTO_ALPACA_ARCHIVE_1MIN,
+    FUTURES_DATABENTO_1MIN,
+    FUTURES_DATABENTO_MBP1,
+    FUTURES_DATABENTO_TRADES,
+    FUTURES_DATABENTO_STAGING,
+    FUTURES_DATABENTO_1MIN_OI_ROLL,
+    FUTURES_DATABENTO_PER_CONTRACT_1MIN,
+    FUTURES_DATABENTO_PER_CONTRACT_DAILY,
+    FUTURES_DATABENTO_OPTIONS_1MIN,
+    FUTURES_DATABENTO_STATISTICS,
+    FUTURES_DATABENTO_STATUS,
+    FUTURES_DEFINITIONS,
+    FX_MASSIVE_1MIN,
+    FX_MASSIVE_QUOTES_MINUTE_AGGREGATED,
+    FX_MASSIVE_QUOTES_RAW,
+    FX_POLYGON_1MIN_BACKFILL,
+    NEWS_ALPACA,
+    OPTIONS_THETADATA_LOGS,
+    OPTIONS_THETADATA_CHAINS,
+    OPTIONS_THETADATA_GEX_DAILY,
+    OPTIONS_THETADATA_COMBINED,
+    # Mapping + accessors
+    LEGACY_TO_CANONICAL,
+    manifest_filename,
+    get_data_dir,
+    get_equities_iex_1min_dir,
+    get_equities_sip_raw_1min_dir,
+    get_equities_sip_split_1min_dir,
+    get_crypto_alpaca_1min_dir,
+    get_futures_databento_1min_dir,
+    get_futures_databento_mbp1_dir,
+    get_futures_databento_trades_dir,
+    get_fx_massive_1min_dir,
+    get_news_alpaca_dir,
+)
+
+# ============================================================================
 # Config-driven Backtesting
 # ============================================================================
 from src.settings.schema import (
