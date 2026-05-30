@@ -25,7 +25,7 @@ class TestCryptoPlugin:
         )
 
         plugin = AlpacaCryptoPlugin.__new__(AlpacaCryptoPlugin)
-        assert plugin._get_storage_subdir() == "crypto_1min"
+        assert plugin._get_storage_subdir() == "crypto/alpaca/1min"
 
     @patch(
         "src.data.acquisition.plugins.alpaca_crypto.CryptoHistoricalDataClient"

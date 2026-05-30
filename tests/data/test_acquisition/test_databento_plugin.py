@@ -48,7 +48,7 @@ class TestSymbolNormalization:
 
         with tempfile.TemporaryDirectory() as tmpdir:
             plugin = DatabentoFuturesPlugin(output_dir=Path(tmpdir))
-            assert plugin._get_storage_subdir() == "futures_1min"
+            assert plugin._get_storage_subdir() == "futures/databento/1min"
 
     @patch("src.data.acquisition.plugins.databento_futures.db")
     @patch.dict(os.environ, {"DATABENTO_API_KEY": "test-key"})
@@ -61,7 +61,7 @@ class TestSymbolNormalization:
             plugin = DatabentoFuturesPlugin(
                 output_dir=Path(tmpdir), schema="trades"
             )
-            assert plugin._get_storage_subdir() == "futures_trades"
+            assert plugin._get_storage_subdir() == "futures/databento/trades"
 
     @patch("src.data.acquisition.plugins.databento_futures.db")
     @patch.dict(os.environ, {"DATABENTO_API_KEY": "test-key"})
@@ -201,10 +201,10 @@ class TestFetchOhlcv:
             )
             assert result.succeeded == 1
 
-            # Verify stored in futures_1min (not futures_trades)
+            # Verify stored in futures/databento/1min (not futures/databento/trades)
             ohlcv_parquet = (
                 Path(tmpdir)
-                / "futures_1min"
+                / "futures" / "databento" / "1min"
                 / "symbol=ES"
                 / "year=2024"
                 / "month=1"
@@ -312,7 +312,7 @@ class TestFetchTrades:
             # Verify raw trades stored
             trades_parquet = (
                 Path(tmpdir)
-                / "futures_trades"
+                / "futures" / "databento" / "trades"
                 / "symbol=ES"
                 / "year=2024"
                 / "month=1"
@@ -323,7 +323,7 @@ class TestFetchTrades:
             # Verify reconstructed OHLCV stored
             ohlcv_parquet = (
                 Path(tmpdir)
-                / "futures_1min"
+                / "futures" / "databento" / "1min"
                 / "symbol=ES"
                 / "year=2024"
                 / "month=1"
