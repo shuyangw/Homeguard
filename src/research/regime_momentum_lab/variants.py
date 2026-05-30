@@ -166,7 +166,7 @@ def _variant_plain(t: datetime, state, panel: pd.DataFrame, cfg) -> Dict[str, fl
     momentum = ramp.calculate_momentum_scores(prices_slice)
     if momentum is None or len(momentum) == 0:
         return {'__regime__': regime}
-    top = list(momentum.index[:V1_PARAMS['top_n']])
+    top = list(momentum.sort_values(ascending=False).index[:V1_PARAMS['top_n']])
     if not top:
         return {'__regime__': regime}
     per_weight = 1.0 / len(top)
@@ -202,6 +202,10 @@ REGISTRY: Dict[str, VariantSpec] = {
         aliases=('V8',),
     ),
 }
+
+
+_ALL_ALIASES = [a for s in REGISTRY.values() for a in s.aliases]
+assert len(_ALL_ALIASES) == len(set(_ALL_ALIASES)), 'Duplicate alias in REGISTRY'
 
 
 def resolve(name: str) -> VariantSpec:

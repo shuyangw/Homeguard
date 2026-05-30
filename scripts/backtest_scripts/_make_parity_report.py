@@ -41,10 +41,12 @@ def main() -> int:
         timing_mode=args.timing,
     )
     from src.utils.logger import logger
-    logger.info(f'[parity] V01 at {args.cost_bps} bps...')
-    v01_records = run_variant(cfg, resolve('V01'))
-    logger.info(f'[parity] V03 at {args.cost_bps} bps...')
-    v03_records = run_variant(cfg, resolve('V03'))
+    v01_spec = resolve('V01')
+    v03_spec = resolve('V03')
+    logger.info(f'[parity] {v01_spec.id} at {args.cost_bps} bps...')
+    v01_records = run_variant(cfg, v01_spec)
+    logger.info(f'[parity] {v03_spec.id} at {args.cost_bps} bps...')
+    v03_records = run_variant(cfg, v03_spec)
     md = build_parity_report(
         v01_records=v01_records,
         v03_records=v03_records,
