@@ -38,20 +38,30 @@ print(f"Downloaded {result.total_bars} bars, {result.failed} failures")
 
 ### Directory Layout
 
-Data is stored in Hive-partitioned format by timeframe:
+Data is stored in Hive-partitioned format under `<asset_class>/<source>/<frequency>/`:
 
 ```
 {local_storage_dir}/
-├── equities_1min/           # Minute data
-│   └── symbol={SYMBOL}/
-│       └── year={YYYY}/
-│           └── month={MM}/
-│               └── data.parquet
-├── equities_1hour/          # Hourly data
-│   └── ...
-└── equities_1day/           # Daily data
-    └── ...
+├── equities/
+│   ├── iex/1min/           # Alpaca IEX, raw
+│   ├── sip_raw/1min/       # Alpaca SIP, raw (Algo Trader Plus)
+│   └── sip_split/1min/     # Alpaca SIP, split-adjusted
+├── crypto/
+│   └── alpaca/{1min,1hour,1day}/
+├── futures/
+│   └── databento/{1min,mbp1,trades,...}/
+├── fx/
+│   ├── massive/{1min,quotes_raw,...}/
+│   └── polygon/1min_backfill/
+├── news/alpaca/
+├── options/{chains,gex_daily,options_combined}/
+└── alt_data/{fred,cot}/    # macro/positioning, not strict asset class
+
+Per-symbol layout (same across all asset classes):
+  <subdir>/symbol={SYM}/year={YYYY}/month={MM}/data.parquet
 ```
+
+Canonical subdir constants live in `src/settings/data_paths.py` -- e.g. `EQUITIES_SIP_RAW_1MIN`, `CRYPTO_ALPACA_1MIN`, `FUTURES_DATABENTO_1MIN`. Always reference these instead of hardcoding strings.
 
 ### Platform-Specific Paths
 
