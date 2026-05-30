@@ -58,7 +58,7 @@ class TestEquitiesPlugin:
 
         plugin = AlpacaEquitiesPlugin.__new__(AlpacaEquitiesPlugin)
         plugin._storage_subdir_override = None
-        assert plugin._get_storage_subdir() == "equities_1min"
+        assert plugin._get_storage_subdir() == "equities/iex/1min"
 
     def test_normalize_symbol_passthrough(self):
         from src.data.acquisition.plugins.alpaca_equities import (
@@ -162,4 +162,4 @@ class TestStorageSubdirOverride:
 
         plugin = AlpacaEquitiesPlugin.__new__(AlpacaEquitiesPlugin)
         plugin._storage_subdir_override = None
-        assert plugin._get_storage_subdir() == "equities_1min"
+        assert plugin._get_storage_subdir() == "equities/iex/1min"

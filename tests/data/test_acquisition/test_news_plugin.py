@@ -6,7 +6,7 @@ class TestNewsPlugin:
         from src.data.acquisition.plugins.alpaca_news import AlpacaNewsPlugin
 
         plugin = AlpacaNewsPlugin.__new__(AlpacaNewsPlugin)
-        assert plugin._get_storage_subdir() == "news"
+        assert plugin._get_storage_subdir() == "news/alpaca"
 
     def test_normalize_symbol_passthrough(self):
         from src.data.acquisition.plugins.alpaca_news import AlpacaNewsPlugin
