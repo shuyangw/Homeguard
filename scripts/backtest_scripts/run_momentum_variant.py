@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""CLI to run a Phase 4 variant against Alpaca SIP data and emit a Markdown report."""
+"""Run a regime-momentum backtest variant against SIP data and emit a Markdown report."""
 
 from __future__ import annotations
 
@@ -22,6 +22,25 @@ def _git_sha() -> str:
         return 'unknown'
 
 
+def _format_turnover_line(variant: str, bps: float, records=None, _turnover: float | None = None) -> str:
+    """One-line realized-turnover summary. Pass _turnover directly in tests; in
+    production pass `records` and let it route through the metric."""
+    if _turnover is None:
+        from src.research.regime_momentum_lab.metrics import avg_daily_turnover
+        _turnover = avg_daily_turnover(records)
+    return (f'[turnover] {variant} @ {bps}bps: '
+            f'avg_daily_turnover={_turnover:.4f} ({_turnover * 100:.2f}% of portfolio/day)')
+
+
+def _validate_rebalance_frequency(freq: str) -> None:
+    """Fail loud on cadences the engine does not yet honor (PR 6 builds weekly)."""
+    if freq != 'daily':
+        raise NotImplementedError(
+            f'rebalance_frequency={freq!r} is not implemented in the engine yet '
+            f'(see PR 6, gated on the daily cost verdict). Only "daily" is supported. '
+            f'The HarnessConfig field exists but engine.run_variant does not branch on it.')
+
+
 def _parse_args(argv=None):
     p = argparse.ArgumentParser(description='Run a Phase 4 variant.')
     p.add_argument('--variant', required=True, choices=list(REGISTRY.keys()))
@@ -34,11 +53,17 @@ def _parse_args(argv=None):
                    default=Path('config/universes/sp500-2025.csv'))
     p.add_argument('--initial-capital', type=float, default=100000.0)
     p.add_argument('--output', type=Path, required=True)
+    p.add_argument('--rebalance-frequency',
+                   choices=['daily', 'weekly_friday', 'weekly_wednesday'],
+                   default='daily',
+                   help='Rebalance cadence. Only "daily" is implemented today; '
+                        'weekly_* is built in PR 6 (gated on the daily cost verdict).')
     return p.parse_args(argv)
 
 
 def main() -> int:
     args = _parse_args()
+    _validate_rebalance_frequency(args.rebalance_frequency)
     spec = REGISTRY[args.variant]
     tiers = [float(t) for t in args.cost_bps.split(',') if t.strip()]
 
@@ -51,6 +76,7 @@ def main() -> int:
             initial_capital=args.initial_capital,
             cost_bps_per_side=bps,
             timing_mode=args.timing,
+            rebalance_frequency=args.rebalance_frequency,
         )
         from src.utils.logger import logger
         logger.info(f'[phase4] Running {args.variant} at {bps} bps...')
@@ -68,6 +94,8 @@ def main() -> int:
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(md)
     print(f'wrote {args.output}')
+    for bps, records in records_by_tier.items():
+        print(_format_turnover_line(args.variant, bps, records=records))
     return 0
 
 
