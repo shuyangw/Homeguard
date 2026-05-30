@@ -11,6 +11,7 @@ import polars as pl
 from src.data.acquisition.aggregators import trades_to_ohlcv_1m
 from src.data.acquisition.base import BaseDownloader, DownloadResult
 from src.data.acquisition.schemas import CANONICAL_OHLCV_SCHEMA, FUTURES_TRADES_SCHEMA
+from src.settings import FUTURES_DATABENTO_1MIN, FUTURES_DATABENTO_MBP1, FUTURES_DATABENTO_TRADES
 from src.utils.logger import get_logger
 
 try:
@@ -235,10 +236,10 @@ class DatabentoFuturesPlugin(BaseDownloader):
         if self._storage_subdir_override:
             return self._storage_subdir_override
         if self._schema == "ohlcv-1m":
-            return "futures_1min"
+            return FUTURES_DATABENTO_1MIN
         if self._schema == "mbp-1":
-            return "futures_mbp1"
-        return "futures_trades"
+            return FUTURES_DATABENTO_MBP1
+        return FUTURES_DATABENTO_TRADES
 
     def _normalize_symbol(self, symbol: str) -> str:
         return symbol
@@ -286,8 +287,8 @@ class DatabentoFuturesPlugin(BaseDownloader):
 
     def _reconstruct_ohlcv(self, symbols: List[str]) -> None:
         """Read raw trades and write OHLCV-1m parquet files."""
-        trades_dir = self.base_output_dir / "futures_trades"
-        ohlcv_dir = self.base_output_dir / "futures_1min"
+        trades_dir = self.base_output_dir / FUTURES_DATABENTO_TRADES
+        ohlcv_dir = self.base_output_dir / FUTURES_DATABENTO_1MIN
 
         for symbol in symbols:
             fs_symbol = self._normalize_symbol(symbol)

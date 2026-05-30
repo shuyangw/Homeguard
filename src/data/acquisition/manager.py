@@ -60,13 +60,19 @@ class DataAcquisitionManager:
     def get_status(self, source: str) -> Dict[str, int]:
         """Get manifest status for a source."""
         from src.data.acquisition.manifest import DownloadManifest
-        from src.settings import get_local_storage_dir
+        from src.settings import (
+            CRYPTO_ALPACA_1MIN,
+            EQUITIES_IEX_1MIN,
+            FUTURES_DATABENTO_TRADES,
+            NEWS_ALPACA,
+            get_local_storage_dir,
+        )
 
         storage_subdir = {
-            "equities": "equities_1min",
-            "crypto": "crypto_1min",
-            "futures": "futures_trades",
-            "news": "news",
+            "equities": EQUITIES_IEX_1MIN,
+            "crypto": CRYPTO_ALPACA_1MIN,
+            "futures": FUTURES_DATABENTO_TRADES,
+            "news": NEWS_ALPACA,
         }.get(source, source)
 
         manifest = DownloadManifest(get_local_storage_dir(), storage_subdir)

@@ -45,7 +45,7 @@ from botocore.client import Config
 from botocore.exceptions import ClientError
 
 from src.data.acquisition.schemas import CANONICAL_OHLCV_SCHEMA
-from src.settings import get_local_storage_dir
+from src.settings import FX_MASSIVE_1MIN, get_local_storage_dir
 from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -253,7 +253,7 @@ def download_pairs(
         # Flush month buffers per symbol
         for hg_sym, rows in month_buffers.items():
             out_path = (
-                root / "fx_1min" / f"symbol={hg_sym}"
+                root / FX_MASSIVE_1MIN / f"symbol={hg_sym}"
                 / f"year={year}" / f"month={month}" / "data.parquet"
             )
             if skip_existing and out_path.exists():
