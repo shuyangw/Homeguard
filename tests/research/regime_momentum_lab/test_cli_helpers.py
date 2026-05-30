@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-_CLI_PATH = Path('scripts/backtest_scripts/run_momentum_variant.py')
+_CLI_PATH = Path(__file__).parents[3] / 'scripts' / 'backtest_scripts' / 'run_momentum_variant.py'
 
 
 def _load_cli():

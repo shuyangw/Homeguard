@@ -42,7 +42,7 @@ def _validate_rebalance_frequency(freq: str) -> None:
 
 
 def _parse_args(argv=None):
-    p = argparse.ArgumentParser(description='Run a Phase 4 variant.')
+    p = argparse.ArgumentParser(description='Run a regime-momentum backtest variant.')
     p.add_argument('--variant', required=True, choices=list(REGISTRY.keys()))
     p.add_argument('--start', required=True, type=lambda s: datetime.strptime(s, '%Y-%m-%d'))
     p.add_argument('--end', required=True, type=lambda s: datetime.strptime(s, '%Y-%m-%d'))
