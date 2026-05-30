@@ -22,7 +22,9 @@ was 5 commits behind `origin/main` -- the draft had been authored against an old
 | Engine ignores `rebalance_frequency` (the field is declared but the loop may not branch on it) | **CONFIRMED** -- `engine.py` has zero weekday/weekly branching; it rebalances every day unconditionally | Weekly rebalance is **unbuilt code**, not a CLI passthrough. The weekly comparison is split into a **gated PR 6**; PR 5 ships **daily-only** first. |
 | `config/trading/strategy_toggle.yaml` carries a **dead/deletable** `ramp.variant: v11` field | **RETRACTED** -- the field is **present and live-shaped** (`ramp: v11`, `cscm/mp/omr: v01`), added by the deploy-sync commit `00ed0cb (#7)`. It is **present-but-inert**: round-tripped in the raw toggle dict, read by no accessor | PR 4 drops all variant work. The field is acknowledged in a **deferred-work appendix**, not edited. |
 | Toggle read path is the `ToggleConfig` dataclass (which "drops" `variant` at parse time) | **REFINED** -- accessors read the **raw dict** (`config.get('enabled')`); `ToggleConfig` exists but is not the read path. A future variant accessor is `config.get('variant')` mirroring `is_enabled` | Captured in the deferred appendix so the eventual wiring targets the right code path. |
-| *(new, from the data-reorg commits)* | A canonical-paths module `src/settings/data_paths.py` (+ `get_data_dir(subdir)`) landed in the 5 catch-up commits | Implementation **must branch from `origin/main`**; PR 1.2 may route the cache through `get_data_dir(...)`. |
+| *(new, from the data-reorg commits)* | A canonical-paths module `src/settings/data_paths.py` (+ `get_data_dir(subdir)`, `get_equities_sip_split_1min_dir()`) landed in the 5 catch-up commits | Implementation **must branch from `origin/main`**; PR 1.2 routes both cache and source paths through it. |
+| *(new, found during feedback incorporation)* | The reorg moved the **SIP source** tree's canonical path: `data_paths.py` defines `EQUITIES_SIP_SPLIT_1MIN = "equities/sip_split/1min"` with a legacy map `equities_1min_sip_split -> equities/sip_split/1min`. But `data.py` (untouched by the reorg) still hardcodes the **old** `SIP_SPLIT_REL = 'equities_1min_sip_split'` | **PR 1.2 reconciles the source path too** (not just the cache). If the H: migration has run, `data.py`'s SIP rebuild is already stale and would fail "SIP split tree not found". See PR 1.2 and the risk register. |
+| *(new)* `36eb91b` merged `ramp-phase4-turnover-regime-research` into main (2026-05-21) | Confirmed ancestor of `origin/main`; added `docs/reports/ramp/20260519_phase4_v01.md`, `..._v01_vs_v03_parity.md`, and phaseB SIP docs | PR 5a **reuses/cross-checks** these existing turnover/parity numbers before regenerating cold. |
 
 **Net structural change:** six PRs instead of five (PR 6 = gated weekly), PR 2's
 `--rebalance-frequency` flag is fail-loud on `weekly_*`, PR 4 loses its variant-toggle
@@ -40,7 +42,7 @@ This is an execution plan for a coding agent. Ground rules:
 3. **One PR per section, in order.** PRs are ordered by leverage and risk. Each has a "Definition of done" and a "Validation" block -- run validation before opening the next PR. Do not batch.
 4. **No behavior changes disguised as refactors.** PR 1 (module rename) and PR 2 (CLI rename) change zero numeric outputs. PR 3 is the only PR that adds computation paths, and even there the existing two variants produce byte-identical results before and after.
 5. **Decisions are already made.** Where this plan resolves a choice, it says so. If you discover a fact that invalidates a decision (as happened with the draft), STOP and surface it rather than improvising.
-6. **The point is the turnover measurement in PR 5a.** PRs 1-4 are the instrument; PR 5a is the experiment that decides whether RAMP is salvageable as a daily strategy. PR 6 (weekly) exists only if PR 5a says daily fails its cost floor. Keep that framing -- do not let the refactor become the goal.
+6. **The point is the turnover measurement in PR 5a.** PRs 1-4 are the instrument; PR 5a is the experiment that decides whether RAMP is salvageable as a daily strategy. PR 6 (weekly) exists only if PR 5a fires Branch 2 (cost-bound: gross return alive, cost flips net negative) -- not if daily already clears costs, and not if the alpha is dead. Measure before building. Keep that framing -- do not let the refactor become the goal.
 
 ---
 
@@ -63,11 +65,11 @@ The RAMP research code has three compounding problems:
 | **PR 3** | Variant registry: rename `V01`/`V03` -> `prod_no_crash`/`prod`; add `plain` + `bear_cash`; add `aliases` + `resolve()` | Medium | 1 day | PR 5a |
 | **PR 4** | Archive the four dated investigation scripts under `_archived/`; record the inert `ramp.variant` field in a deferred-work appendix (no edit) | Low | 1-2 hr | None |
 | **PR 5a** | Measure realized **daily** turnover; daily cost sensitivity; write findings report with the verdict | None (research) | 1 day | -- |
-| **PR 6** (gated) | **Only if PR 5a shows daily fails its cost floor:** build a tested weekly-rebalance feature in the engine, then run the weekly cost-sensitivity comparison + report addendum | Medium | 1-1.5 days | -- |
+| **PR 6** (gated) | **Only if PR 5a fires Branch 2 (cost-bound: gross alive, net flipped by cost):** build a tested weekly-rebalance feature in the engine, then run the weekly cost-sensitivity comparison + report addendum | Medium | 1-1.5 days | -- |
 
 **Total estimated effort**: ~3 working days for PRs 1-5a; +1-1.5 days for PR 6 if triggered.
 
-**Outcome.** After PR 4 the active tree loses four ~500-line near-duplicate scripts, all variants run through one tested engine, the module name describes what the code is, the `v{n}` collision is gone (old report labels still resolve via aliases), and the inert toggle field is documented rather than misleading. After PR 5a you have a measured (not assumed) daily turnover number and a cost verdict on whether RAMP clears its transaction-cost floor at daily cadence in any of {`plain`, `prod`, `bear_cash`}. PR 6 answers the same at weekly cadence only if daily fails.
+**Outcome.** After PR 4 the active tree loses four ~500-line near-duplicate scripts, all variants run through one tested engine, the module name describes what the code is, the `v{n}` collision is gone (old report labels still resolve via aliases), and the inert toggle field is documented rather than misleading. After PR 5a you have a measured (not assumed) daily turnover number and a pre-registered three-branch verdict on whether RAMP clears its transaction-cost floor at daily cadence in any of {`plain`, `prod`, `bear_cash`}. PR 6 answers the same at weekly cadence only if PR 5a fired Branch 2 (cost-bound) -- not if it cleared costs (Branch 1) and not if the alpha is dead (Branch 3).
 
 ---
 
@@ -82,7 +84,7 @@ The RAMP research code has three compounding problems:
 - Add the two decision-relevant variants that currently live only in dated scripts: `plain` (no overlay) and `bear_cash` (overlay + BEAR->cash; one flag, since `compute_plan` already takes `bear_to_cash`).
 - Archive the four dated investigation scripts under `_archived/` so their audit trail survives but their dead reimplemented-loop code leaves the active tree.
 - Measure realized **daily** turnover and produce a findings report answering: what is realized daily turnover, and does any variant clear realistic transaction costs at daily cadence?
-- **(Gated)** If daily fails, build a tested weekly-rebalance feature in the engine and extend the findings report with the weekly comparison.
+- **(Gated)** Only if PR 5a shows RAMP is *cost-bound* (gross return alive but cost flips net negative -- Branch 2), build a tested weekly-rebalance feature in the engine and extend the findings report with the weekly comparison. If the alpha is gone (Branch 3), do not build weekly.
 
 ### Non-goals
 
@@ -201,6 +203,12 @@ scripts/backtest_scripts/_make_parity_report.py    (import lines only)
   - (a) Physically move it: `mv <root>/cache/ramp_phase4/ <root>/cache/regime_momentum/`. Preferred -- preserves the cached SIP pull.
   - (b) Let the loader re-create it on next run (the SIP-build path exists). Slower first run.
 - If the agent cannot reach the H: drive, it MUST NOT attempt the move -- leave a `MIGRATION REQUIRED` note in the PR description and ensure the loader **fails loud** (not silently empty) if the cache is absent.
+
+**1.2b Reconcile the SIP SOURCE path (the reorg moved it).** Separate from the cache: the reorg relocated the SIP split *source* tree. `data.py` rebuilds the daily panel from `SIP_SPLIT_REL = 'equities_1min_sip_split'` (locator ~line 44; `root = storage / SIP_SPLIT_REL`), but `data_paths.py` now defines the canonical location as `EQUITIES_SIP_SPLIT_1MIN = 'equities/sip_split/1min'` (helper `get_equities_sip_split_1min_dir()`), with an explicit legacy map `equities_1min_sip_split -> equities/sip_split/1min`. `data.py` was NOT updated by the reorg, so its hardcoded source path is stale relative to the new canonical layout.
+- Update `SIP_SPLIT_REL` to resolve via the canonical helper: prefer `get_equities_sip_split_1min_dir()` (or `get_data_dir('equities/sip_split/1min')`) over the bare legacy string, so the loader follows the post-reorg layout.
+- This is still a **zero-numeric-change** edit *provided the data is byte-identical at the new location* -- it is a path reconciliation, not a logic change. The numeric-identity check in Validation must confirm this (if the rebuild produces different numbers, the source data differs between old and new locations -- STOP).
+- **Migration coupling:** whether the rebuild works depends on whether the H: migration physically moved `equities_1min_sip_split/` to `equities/sip_split/1min/`. If it ran, the OLD `data.py` is already broken on a cache miss; this reconciliation fixes it. If it has not run, point at whichever location actually holds the data and note `MIGRATION REQUIRED` for the other. Either way the loader must **fail loud** (not silently empty) if neither location resolves.
+- If the agent cannot reach the H: drive, it cannot confirm which location holds the data -- make the reconciliation code-correct (point at the canonical helper), and leave a `VERIFY SOURCE PATH` note in the PR description for Shuyang to confirm against the actual drive before PR 5a.
 
 **1.3 Move the test directory and fix monkeypatch strings.** `git mv tests/research/ramp_phase4 tests/research/regime_momentum_lab`. Then:
 - Update all `from src.research.ramp_phase4.X` imports across the 8 test files.
@@ -461,9 +469,13 @@ pytest tests/ -q                                  # full suite still green
 
 **This PR writes NO production code** -- it runs the harness built in PRs 1-3 and writes a report. Weekly cadence is PR 6, gated on this PR's verdict.
 
+**Where this runs (important):** PRs 1-4 are refactor/archival and run anywhere (no market data needed beyond what the tests mock). PR 5a and PR 6, by contrast, need the **actual SIP data on the H: drive** -- the daily panel is rebuilt from `equities/sip_split/1min` (post-reorg) or read from the `cache/regime_momentum/` Parquet. A coding-agent sandbox almost certainly cannot reach H:, so **the experiment must run on Shuyang's box, not the sandbox.** Do not expect turnover numbers to come back from an agent run; the agent's job for PR 5a is to prepare the commands/report scaffold and (if it can) reuse the `36eb91b` outputs, then hand off the data-dependent runs.
+
 **Estimated effort**: 1 day.
 
 ### Steps
+
+**5a.0 Reuse or cross-check existing outputs first (don't regenerate cold).** The merge `36eb91b` (`ramp-phase4-turnover-regime-research`, on `origin/main`) already produced phase4 reports: `docs/reports/ramp/20260519_phase4_v01.md` and `docs/reports/ramp/20260519_phase4_v01_vs_v03_parity.md`, plus the phaseB SIP docs (`docs/progress/20260519_RAMP_PHASE4_phaseB_*.md`). Read these first -- they likely already contain `V01`/`V03` (now `prod_no_crash`/`prod`) turnover and parity numbers over an overlapping window. Reuse them where they answer 5a directly, and cross-check any regenerated number against them (a large divergence on the same variant/window is a finding -- the rename was supposed to be numerically identical). Only regenerate what these don't cover (notably `plain` and `bear_cash`, which did not exist as registered variants then).
 
 **5a.1 Measure realized daily turnover** (the headline number `T`). Run each variant at 0 bps over the full IS+OOS+EXT-OOS span and the EXT-OOS span separately, capturing the `[turnover]` line:
 ```
@@ -489,28 +501,33 @@ done
 **5a.3 Write the findings report** at `docs/reports/ramp/YYYYMMDD_turnover_cost_sensitivity.md` (house style: Context / Methodology / results tables / Conclusion / Implications). It must answer explicitly:
 1. **Realized daily turnover** `T` for each variant, vs the assumed 1.0; implied cost drag at 5 bps (`2 * 5bps * T` per day) against each variant's gross daily return.
 2. **Net Sharpe/CAGR/MaxDD at 0/2.5/5/7.5 bps, daily** for `plain`, `prod`, `bear_cash` -- harness-measured.
-3. **The daily verdict**, in one of:
-   - "RAMP clears realistic costs at daily realized turnover" -> recommend a variant; deploy decision moves to a separate plan. **PR 6 not triggered.**
-   - "RAMP does not clear costs at daily cadence" -> **PR 6 triggered**: test the weekly structural lever (note CSCM clears costs weekly).
-4. **Statistical honesty**: Sharpe SE on ~331 EXT-OOS days is ~0.17 -- differences below ~0.2 are noise. Do not tune any parameter on EXT-OOS.
+3. **The daily verdict -- a PRE-REGISTERED three-branch decision tree.** Write this rule into the report (and commit it) *before* generating the numbers, so the gate is a pre-committed tree, not an eyeball call. This matters specifically because PR 6 produces a *second* (weekly) result set; a pre-registered gate is what prevents post-hoc cadence-picking -- the researcher-degrees-of-freedom trap the deflated-Sharpe discipline exists to prevent. The fork is on **gross vs cost**, because "net is negative" conflates two economically opposite cases: cost can only ever be *cut* by weekly rebalancing, it can never *manufacture* gross return. Evaluate on the **best variant** (`plain`/`prod`/`bear_cash`) over EXT-OOS, target cost tier **5 bps**, with rough pre-committed thresholds (SE on ~331 EXT-OOS days is ~0.17, so treat |Sharpe| < ~0.2 as indistinguishable from zero):
+
+   - **Branch 1 -- clears costs daily.** Best variant's **net** EXT-OOS Sharpe at 5 bps is positive and above the noise floor (> ~0.2) with positive net CAGR. -> Recommend that variant; the deploy decision moves to a separate plan. **PR 6 NOT triggered.**
+   - **Branch 2 -- cost-bound (the ONLY PR 6 trigger).** Best variant's **gross** (0 bps) EXT-OOS Sharpe is alive (> ~0.2, positive gross CAGR), but applying 5 bps flips **net** to <= ~0. -> Cost is the binding constraint, and weekly rebalancing attacks exactly that (it cuts turnover -> cost). **PR 6 triggered.**
+   - **Branch 3 -- alpha-dead (do NOT trigger PR 6).** Best variant's **gross** (0 bps) EXT-OOS Sharpe is already <= ~0.2 / gross CAGR <= 0. -> The edge is gone; cost was never the problem. Weekly rebalancing is *mechanically incapable* of rescuing it (it cannot create gross return). -> Recommend retiring RAMP as a standalone daily strategy / folding the momentum signal into a multi-factor sleeve; redeploy `regime_momentum_lab` to the FX work. **PR 6 NOT triggered** -- building the weekly engine here would be wasted work confirming what the gross number already proved.
+
+   State the chosen thresholds explicitly in the report and note they are rough (the ~0.17 SE means small differences are noise); the point is that the branch *boundaries* are fixed before the numbers land, not that the thresholds are precise.
+4. **Statistical honesty**: Sharpe SE on ~331 EXT-OOS days is ~0.17 -- differences below ~0.2 are noise. Do not tune any parameter on EXT-OOS. Do not move a branch boundary after seeing the number.
 5. **Forensics**: on days `plain` beats `prod`, what regime was recorded? (Uses `plain`'s metadata-only regime label.)
 
 **5a.4 Update the RAMP report index** with a pointer to the findings report and the turnover number `T`, so it is not re-derived later.
 
 ### Definition of done
 
-- A findings report exists with answers 1-5; `T` is stated per variant; a daily verdict is recommended; the report explicitly states whether PR 6 is triggered.
+- A findings report exists with answers 1-5; `T` is stated per variant; the **pre-registered 3-branch verdict (branch 1/2/3)** is evaluated and the report explicitly states which branch fired and therefore whether PR 6 is triggered.
+- The branch thresholds were written into the report *before* the numbers (verifiable from commit order: the threshold-defining commit precedes the results commit).
 
 ### Validation (internal consistency)
 
 The harness-measured turnover at 0 bps must match the turnover implied by cost drag at higher tiers (same trades). Spot-check one variant: cost_drag at 5 bps should equal ~`2 * 0.0005 * T * days * mean_portfolio_value`. If not, the cost model and turnover metric disagree -- one is wrong.
-Also smoke-check the daily SIP loader works post-data-reorg on the synced tree (the reorg didn't touch `src/research/`, but `data.py`'s `src/settings` imports should resolve).
+**Source-path smoke-check (not just imports):** before any run, confirm the SIP *source* tree actually resolves at its post-reorg canonical location -- `get_equities_sip_split_1min_dir()` should point at existing data under `equities/sip_split/1min` on the H: drive (per PR 1.2b). It is not enough that `data.py`'s `src/settings` imports resolve; the *data* must be reachable there, or the rebuild fails "SIP split tree not found" on a cache miss. If the cache Parquet is present this is moot for the run, but verify it anyway so a later cache eviction doesn't silently break the rebuild.
 
 ---
 
 ## PR 6 (gated): Weekly rebalance -- engine feature + comparison
 
-**Trigger**: Build this PR **only if** PR 5a's verdict is "RAMP does not clear costs at daily cadence." If daily clears costs, skip PR 6 and move to the deploy decision.
+**Trigger**: Build this PR **only if PR 5a fired Branch 2 (cost-bound: gross alive, net flipped negative by cost).** Do NOT build it for Branch 1 (clears costs daily -- no need) or Branch 3 (alpha-dead -- weekly cannot manufacture gross return, so building it would only confirm what the gross number already proved). Branch 2 is the single case where weekly's mechanism (cut turnover -> cut cost) addresses the actual binding constraint.
 
 **Goal**: Implement weekly rebalancing in the engine (the `rebalance_frequency` field is declared but unhonored), then re-run the cost sweep weekly and extend the findings report.
 
@@ -541,7 +558,7 @@ for V in plain prod bear_cash; do
 done
 ```
 **6.5** Extend the findings report with: weekly net Sharpe/CAGR/MaxDD at each tier; the turnover reduction weekly achieves vs daily; and the final verdict, in one of:
-- "Clears costs only at weekly cadence" -> recommend weekly rebalance (the CSCM-style structural fix).
+- "Clears costs only at weekly cadence" -> recommend weekly rebalance as the structural fix. (CSCM clears costs at weekly cadence, which shows weekly *can* work in principle -- but CSCM differs from RAMP in asset class, regime complexity, and universe, not just cadence, so treat it as evidence weekly is *worth testing*, not proof it fixes *this*. The harness-measured weekly result, not the CSCM analogy, is the basis for the recommendation.)
 - "Does not clear costs at any tested cadence" -> recommend retiring RAMP as a standalone daily strategy, fold the momentum signal into a multi-factor sleeve, and redeploy `regime_momentum_lab` to the FX work.
 
 ### Definition of done
@@ -559,6 +576,9 @@ done
 | Starting from a stale local `main` (as the draft did) | Medium | High (re-introduces the corrected findings) | Ground rule 1: branch from `origin/main`; confirm `ramp.variant` present and `src/settings/data_paths.py` exists before starting |
 | Monkeypatch string-literal miss in test rename (PR 1.3) | Medium | High (silent broken mock) | Dedicated grep for the string form; confirm 41/41 AND spot-check one patched test fails correctly when the real function is broken |
 | Cache-path change orphans the SIP Parquet on H: (PR 1.2) | High (agent likely can't reach H:) | Medium | `MIGRATION REQUIRED` note; loader fails loud on missing cache, never silently empty |
+| `data.py`'s SIP **source** path (`SIP_SPLIT_REL`) is stale post-reorg (PR 1.2b) | High (data.py untouched by the reorg; canonical path moved to `equities/sip_split/1min`) | High (silent on a cache hit; on a cache miss the rebuild fails or, worse, reads a stale tree if both exist) | PR 1.2b reconciles to `get_equities_sip_split_1min_dir()`; PR 5a source-path smoke-check confirms the canonical location holds data before any run; `VERIFY SOURCE PATH` note if agent can't reach H: |
+| Building weekly (PR 6) when alpha is dead (Branch 3) -- wasted work | Medium (the draft's coarse trigger would do this) | Medium | PR 5a's pre-registered 3-branch gate: only Branch 2 triggers PR 6; Branch 3 (gross <= ~0) explicitly does not |
+| Post-hoc cadence-picking across daily (PR 5a) and weekly (PR 6) result sets | Medium | High (researcher DoF inflates apparent Sharpe) | Branch thresholds pre-committed in PR 5a *before* numbers; commit order proves it; no boundary moves after seeing results |
 | `bear_cash` empty-targets case mishandled by `compute_trades` (PR 3.2) | Low | Medium | `test_bear_cash_goes_to_cash_in_bear` asserts body weights sum to 0; verify against `engine.compute_trades` |
 | Variant-ordering inverts vs Phase 3A (PR 3 sanity check) | Low | High (a plan_fn is wrong) | Cross-check `bear_cash > plain > prod` at 0% cost before PR 5a |
 | Weekly rebalance turnover/holiday accounting wrong (PR 6.1) | Medium | Medium | Explicit holiday rule in docstring; tests assert trades only on target day and ~1/5 turnover |
