@@ -1,7 +1,6 @@
-"""Stateful target-weight backtest engine for RAMP Phase 4 research.
+"""Regime-momentum backtest engine: stateful daily/rebalance loop for regime_momentum_lab variants.
 
 Single entry: run_variant(cfg, variant_spec) -> list[DailyRecord].
-Tasks 7-11 will extend the loop with MTM, trades, costs, and regime tracking.
 """
 
 from __future__ import annotations

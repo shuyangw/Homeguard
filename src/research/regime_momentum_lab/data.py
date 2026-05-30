@@ -150,7 +150,7 @@ def _aggregate_symbol_daily(symbol_dir: Path, start: datetime, end: datetime) ->
             try:
                 dfs.append(pd.read_parquet(parquet_path, columns=['timestamp', 'close']))
             except Exception as exc:
-                logger.warning(f'[phase4] failed reading {parquet_path}: {exc}')
+                logger.warning(f'[rml] failed reading {parquet_path}: {exc}')
                 continue
 
     if not dfs:
@@ -223,10 +223,10 @@ def _aggregate_to_daily_from_sip_split(
             daily.name = sym
             series_map[sym] = daily
         if (i + 1) % 50 == 0:
-            logger.info(f'[phase4] SIP daily aggregation progress: {i + 1}/{len(symbols)}')
+            logger.info(f'[rml] SIP daily aggregation progress: {i + 1}/{len(symbols)}')
 
     if missing:
-        logger.warning(f'[phase4] SIP partitions missing for {len(missing)} symbol(s); '
+        logger.warning(f'[rml] SIP partitions missing for {len(missing)} symbol(s); '
                        f'first few: {missing[:5]}')
 
     panel = pd.concat(series_map.values(), axis=1)
@@ -271,13 +271,13 @@ def _load_or_build_sip_daily_cache(
             if pd.notna(max_date) and max_date >= end_ts - pd.Timedelta(days=CACHE_SLACK_DAYS):
                 use_cache = True
             else:
-                logger.info(f'[phase4] SIP daily cache stale (max={max_date.date() if pd.notna(max_date) else None}'
+                logger.info(f'[rml] SIP daily cache stale (max={max_date.date() if pd.notna(max_date) else None}'
                             f' < end-{CACHE_SLACK_DAYS}d={(end_ts - pd.Timedelta(days=CACHE_SLACK_DAYS)).date()}); rebuilding.')
         except Exception as exc:
-            logger.warning(f'[phase4] failed inspecting SIP daily cache; rebuilding: {exc}')
+            logger.warning(f'[rml] failed inspecting SIP daily cache; rebuilding: {exc}')
 
     if not use_cache:
-        logger.info(f'[phase4] building SIP daily cache for {len(symbols)} symbols '
+        logger.info(f'[rml] building SIP daily cache for {len(symbols)} symbols '
                     f'(window {start.date()}..{end.date()}); first run may take 5-15 min.')
         wide = _aggregate_to_daily_from_sip_split(symbols, start, end)
         if wide.empty:
@@ -291,7 +291,7 @@ def _load_or_build_sip_daily_cache(
         long_df.columns = ['trade_date', 'symbol', 'close']
         cache_path.parent.mkdir(parents=True, exist_ok=True)
         long_df.to_parquet(cache_path, index=False)
-        logger.info(f'[phase4] wrote SIP daily cache: {cache_path} '
+        logger.info(f'[rml] wrote SIP daily cache: {cache_path} '
                     f'({len(long_df):,} rows, {wide.shape[1]} symbols)')
 
     # Read what we need from the cache.
@@ -365,17 +365,17 @@ def _read_closes_from_parquet(symbols: List[str], start: datetime, end: datetime
         sip_panel = _load_or_build_sip_daily_cache(symbols, start, end)
         if sip_panel is not None and not sip_panel.empty:
             panel = sip_panel
-            logger.info(f'[phase4] using FRESH SIP-aggregated daily panel '
+            logger.info(f'[rml] using FRESH SIP-aggregated daily panel '
                         f'({panel.shape[0]} dates x {panel.shape[1]} symbols).')
     except Exception as exc:
-        logger.warning(f'[phase4] SIP daily aggregation failed; '
+        logger.warning(f'[rml] SIP daily aggregation failed; '
                        f'falling back to legacy cache: {exc}')
 
     # Source 2: legacy stale cache.
     if panel is None or panel.empty:
         legacy = _read_closes_from_legacy_cache(symbols, start, end)
         panel = legacy
-        logger.warning(f'[phase4] using LEGACY (stale) daily cache '
+        logger.warning(f'[rml] using LEGACY (stale) daily cache '
                        f'({panel.shape[0]} dates x {panel.shape[1]} symbols).')
 
     # VIX comes from yfinance if requested.
