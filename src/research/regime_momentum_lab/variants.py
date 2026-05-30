@@ -1,9 +1,13 @@
 """Variant registry + plan_fns for the Phase B harness.
 
-V01: production REGIME_PARAMS, ignores crash exposure (matches existing reports).
-V03: production REGIME_PARAMS, honors planner's crash exposure (target-weight-correct).
+prod_no_crash: production REGIME_PARAMS, ignores crash exposure (matches existing reports).
+prod:          production REGIME_PARAMS, honors planner's crash exposure (target-weight-correct).
+plain:         vanilla momentum, fixed V1_PARAMS, no regime overlay (regime recorded for forensics).
+bear_cash:     prod but BEAR regime -> 100% cash (bear_to_cash=True).
 
-Both delegate to compute_plan from src.strategies.advanced.ramp_target_planner.
+Both prod and prod_no_crash delegate to compute_plan from
+src.strategies.advanced.ramp_target_planner. Legacy aliases V01/V03/V0/V1/V8 resolve
+via resolve() for backward-compatible report labels.
 """
 
 from __future__ import annotations
@@ -26,13 +30,17 @@ class VariantSpec:
     id: str
     description: str
     plan_fn: PlanFn
+    aliases: tuple = ()
 
 
 # Module-scoped singletons; constructing RAMPSignals is cheap with empty universe.
 _DETECTOR = MarketRegimeDetector()
 
+# Vanilla-momentum fixed params. Origin: ramp_root_cause_20260505.py (archived).
+V1_PARAMS = {'long_p': 21, 'short_p': 5, 'long_w': 0.3, 'pen_w': 5.0, 'top_n': 10}
 
-def _compute_plan_from_panel(t: datetime, panel: pd.DataFrame) -> "RampPlan":
+
+def _compute_plan_from_panel(t: datetime, panel: pd.DataFrame, bear_to_cash: bool = False):
     """Wrap compute_plan with the parameters derivable from the panel and detector."""
     spy = panel['SPY'].dropna()
     vix = panel['VIX'].dropna()
@@ -77,11 +85,12 @@ def _compute_plan_from_panel(t: datetime, panel: pd.DataFrame) -> "RampPlan":
         current_positions={},  # backtest is stateless from planner's perspective; engine tracks state
         vix=float(vix_slice.iloc[-1]),
         spy_drawdown=spy_dd,
+        bear_to_cash=bear_to_cash,
     )
 
 
-def _variant_v01(t: datetime, state, panel: pd.DataFrame, cfg) -> Dict[str, float]:
-    """V01: 'fresh portfolio every day' baseline.
+def _variant_prod_no_crash(t: datetime, state, panel: pd.DataFrame, cfg) -> Dict[str, float]:
+    """prod_no_crash: 'fresh portfolio every day' baseline.
 
     Uses planner output but IGNORES exposure_pct (sets gross to 1.0 always).
     """
@@ -97,10 +106,10 @@ def _variant_v01(t: datetime, state, panel: pd.DataFrame, cfg) -> Dict[str, floa
     return out
 
 
-def _variant_v03(t: datetime, state, panel: pd.DataFrame, cfg) -> Dict[str, float]:
-    """V03: target-weight-correct production.
+def _variant_prod(t: datetime, state, panel: pd.DataFrame, cfg) -> Dict[str, float]:
+    """prod: target-weight-correct production.
 
-    Same selection as V01 but honors planner's exposure_pct
+    Same selection as prod_no_crash but honors planner's exposure_pct
     (1.0 normally, 0.5 in crash regimes).
     """
     plan = _compute_plan_from_panel(t, panel)
@@ -115,15 +124,98 @@ def _variant_v03(t: datetime, state, panel: pd.DataFrame, cfg) -> Dict[str, floa
     return out
 
 
+def _variant_bear_cash(t: datetime, state, panel: pd.DataFrame, cfg) -> Dict[str, float]:
+    """prod, but BEAR regime -> 100% cash (bear_to_cash=True)."""
+    plan = _compute_plan_from_panel(t, panel, bear_to_cash=True)
+    if plan is None:
+        return {'__regime__': 'SAFE_MODE'}
+    targets = list(plan.targets.keys())
+    if not targets:
+        return {'__regime__': plan.regime}
+    per_weight = float(plan.exposure_pct) / len(targets)
+    out: Dict[str, float] = {sym: per_weight for sym in targets}
+    out['__regime__'] = plan.regime
+    return out
+
+
+def _variant_plain(t: datetime, state, panel: pd.DataFrame, cfg) -> Dict[str, float]:
+    """Vanilla momentum: fixed params, equal-weight top-N, full exposure.
+
+    Regime is recorded for forensics but has zero effect on selection, sizing,
+    or exposure (no overlay).
+    """
+    spy = panel['SPY'].dropna()
+    vix = panel['VIX'].dropna()
+    if t not in spy.index or t not in vix.index:
+        return {'__regime__': 'SAFE_MODE'}
+    spy_slice = spy.loc[:t]
+    vix_slice = vix.loc[:t]
+    if len(spy_slice) < 252 or len(vix_slice) < 252:
+        return {'__regime__': 'SAFE_MODE'}
+    spy_df = pd.DataFrame({'close': spy_slice, 'open': spy_slice, 'high': spy_slice,
+                           'low': spy_slice, 'volume': 1e6})
+    vix_df = pd.DataFrame({'close': vix_slice})
+    try:
+        regime, _ = _DETECTOR.classify_regime(spy_df, vix_df, t)
+    except Exception:
+        regime = 'SAFE_MODE'
+    universe_cols = [c for c in panel.columns if c not in ('SPY', 'VIX')]
+    prices_slice = panel.loc[:t, universe_cols]
+    ramp = RAMPSignals(symbols=universe_cols)
+    ramp._current_params = V1_PARAMS
+    momentum = ramp.calculate_momentum_scores(prices_slice)
+    if momentum is None or len(momentum) == 0:
+        return {'__regime__': regime}
+    top = list(momentum.index[:V1_PARAMS['top_n']])
+    if not top:
+        return {'__regime__': regime}
+    per_weight = 1.0 / len(top)
+    out: Dict[str, float] = {sym: per_weight for sym in top}
+    out['__regime__'] = regime
+    return out
+
+
 REGISTRY: Dict[str, VariantSpec] = {
-    'V01': VariantSpec(
-        id='V01',
-        description='Fresh portfolio every day; production REGIME_PARAMS; ignores crash exposure',
-        plan_fn=_variant_v01,
+    'plain': VariantSpec(
+        id='plain',
+        description='Vanilla momentum, fixed params (pen_w=5.0, top_n=10), no regime overlay; '
+                    'regime recorded for forensics only',
+        plan_fn=_variant_plain,
+        aliases=('V1',),
     ),
-    'V03': VariantSpec(
-        id='V03',
-        description='Target-weight-correct production; honors planner exposure_pct',
-        plan_fn=_variant_v03,
+    'prod': VariantSpec(
+        id='prod',
+        description='Production RAMP: regime overlay + per-regime params + 0.5x crash multiplier',
+        plan_fn=_variant_prod,
+        aliases=('V03', 'V0'),
+    ),
+    'prod_no_crash': VariantSpec(
+        id='prod_no_crash',
+        description='Overlay + per-regime params, crash multiplier ignored (parity-test baseline)',
+        plan_fn=_variant_prod_no_crash,
+        aliases=('V01',),
+    ),
+    'bear_cash': VariantSpec(
+        id='bear_cash',
+        description='Production overlay but BEAR regime -> 100% cash (bear_to_cash=True)',
+        plan_fn=_variant_bear_cash,
+        aliases=('V8',),
     ),
 }
+
+
+def resolve(name: str) -> VariantSpec:
+    """Look up a variant by canonical id or any registered alias.
+
+    Lets historical report labels (V0, V01, V03, V1, V8) keep resolving after
+    the rename. Raises KeyError with the full id list on miss. Note: v11 is a
+    toggle value, not a registry variant.
+    """
+    if name in REGISTRY:
+        return REGISTRY[name]
+    for spec in REGISTRY.values():
+        if name in spec.aliases:
+            return spec
+    raise KeyError(
+        f'Unknown variant {name!r}. Known ids: {sorted(REGISTRY)}; '
+        f'aliases: {sorted(a for s in REGISTRY.values() for a in s.aliases)}')

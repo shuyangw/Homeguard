@@ -14,7 +14,7 @@ from pathlib import Path
 
 from src.research.regime_momentum_lab.config import HarnessConfig
 from src.research.regime_momentum_lab.engine import run_variant
-from src.research.regime_momentum_lab.variants import REGISTRY
+from src.research.regime_momentum_lab.variants import REGISTRY, resolve
 from src.research.regime_momentum_lab.reports import build_parity_report
 
 
@@ -42,9 +42,9 @@ def main() -> int:
     )
     from src.utils.logger import logger
     logger.info(f'[parity] V01 at {args.cost_bps} bps...')
-    v01_records = run_variant(cfg, REGISTRY['V01'])
+    v01_records = run_variant(cfg, resolve('V01'))
     logger.info(f'[parity] V03 at {args.cost_bps} bps...')
-    v03_records = run_variant(cfg, REGISTRY['V03'])
+    v03_records = run_variant(cfg, resolve('V03'))
     md = build_parity_report(
         v01_records=v01_records,
         v03_records=v03_records,

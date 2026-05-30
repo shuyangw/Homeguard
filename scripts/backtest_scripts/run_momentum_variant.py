@@ -11,7 +11,7 @@ from pathlib import Path
 
 from src.research.regime_momentum_lab.config import HarnessConfig
 from src.research.regime_momentum_lab.engine import run_variant
-from src.research.regime_momentum_lab.variants import REGISTRY
+from src.research.regime_momentum_lab.variants import REGISTRY, resolve
 from src.research.regime_momentum_lab.reports import build_variant_report
 
 
@@ -43,7 +43,9 @@ def _validate_rebalance_frequency(freq: str) -> None:
 
 def _parse_args(argv=None):
     p = argparse.ArgumentParser(description='Run a regime-momentum backtest variant.')
-    p.add_argument('--variant', required=True, choices=list(REGISTRY.keys()))
+    p.add_argument('--variant', required=True,
+                   help='Variant id or legacy alias. Known ids: '
+                        'plain, prod, prod_no_crash, bear_cash (aliases: V0/V01/V03/V1/V8).')
     p.add_argument('--start', required=True, type=lambda s: datetime.strptime(s, '%Y-%m-%d'))
     p.add_argument('--end', required=True, type=lambda s: datetime.strptime(s, '%Y-%m-%d'))
     p.add_argument('--cost-bps', type=str, default='0,2.5,5,7.5',
@@ -64,7 +66,7 @@ def _parse_args(argv=None):
 def main() -> int:
     args = _parse_args()
     _validate_rebalance_frequency(args.rebalance_frequency)
-    spec = REGISTRY[args.variant]
+    spec = resolve(args.variant)
     tiers = [float(t) for t in args.cost_bps.split(',') if t.strip()]
 
     records_by_tier = {}
@@ -79,12 +81,12 @@ def main() -> int:
             rebalance_frequency=args.rebalance_frequency,
         )
         from src.utils.logger import logger
-        logger.info(f'[phase4] Running {args.variant} at {bps} bps...')
+        logger.info(f'[phase4] Running {spec.id} at {bps} bps...')
         records = run_variant(cfg, spec)
         records_by_tier[bps] = records
 
     md = build_variant_report(
-        variant_id=args.variant,
+        variant_id=spec.id,
         variant_description=spec.description,
         records_by_cost_bps=records_by_tier,
         git_commit=_git_sha(),
@@ -95,7 +97,7 @@ def main() -> int:
     args.output.write_text(md)
     print(f'wrote {args.output}')
     for bps, records in records_by_tier.items():
-        print(_format_turnover_line(args.variant, bps, records=records))
+        print(_format_turnover_line(spec.id, bps, records=records))
     return 0
 
 
