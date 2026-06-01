@@ -86,9 +86,11 @@ Authoritative methodology: `docs/methodology/backtesting.md` (Sections 1-5, 9, 1
 
 ---
 
-## Gate 0: shared data prep (do once, before the data-gated variants)
+## Gate 0: shared prep -- data + run-durability (do once)
 
-These tasks unblock V30 and V33. The 9 close-only variants do NOT need Gate 0.
+G0.1-G0.4 unblock the data-gated variants (V30, V33); the 9 close-only variants
+need none of them. **G0.5 is run-durability infra that applies to the WHOLE gate
+-- do it before any long run.**
 
 - [ ] **G0.1 Validate the parquet read defect.** Full-table reads of the daily
   cache and the 1-min SIP files throw `OSError: Repetition level histogram size
@@ -110,6 +112,30 @@ These tasks unblock V30 and V33. The 9 close-only variants do NOT need Gate 0.
   universe (~503 symbols) into the persistent `fundamentals_cache.parquet`.
   LIMITATION to document: sector is a current snapshot, not point-in-time
   (same class as the survivorship caveat already in every Phase-4 report).
+
+- [ ] **G0.5 Per-backtest durability: wire the experiment registry into the
+  readiness orchestrator** *(run-durability -- applies to ALL variants, not data prep)*
+  - **Audit finding (2026-06-01):** the readiness orchestrators are
+    all-or-nothing -- v11/v12/v14 run 12-30 backtests in memory and write ONE
+    report at the very end (`ramp_phase4_v11_readiness.py:477`, `v12:702`,
+    `v14:848`); a crash at backtest 12/18 loses everything, no resume.
+    `append_run` is called from `src/backtest_runner.py:664` ONLY -- the research
+    orchestrators bypass it, so `output/experiments.duckdb` holds 4 stale rows
+    (last write 2026-05-13) despite the entire V01->V14 + detector campaign.
+  - **Fix (one change closes three gaps: checkpoint + resume + Section 9.3 mandate):**
+    - [ ] After EACH sub-backtest in the gate, call `src.experiments.append_run(...)`
+      with the full metrics row + return stream (methodology Section 9.3) -- this
+      IS the per-step disk write.
+    - [ ] Before running a sub-backtest, query the registry for a matching prior
+      run (key on variant_id + timing + cost_bps + git SHA + data-snapshot date);
+      if present, SKIP and reuse -- makes the gate resumable.
+    - [ ] Where the gate uses `grid_search`, pass `on_trial_complete`
+      (`make_trial_callback`) so per-trial rows persist too.
+    - [ ] Atomic-write any non-registry artifact the orchestrator emits
+      (write-to-`.tmp` + `os.replace`), matching `src/data/acquisition/base.py:161`.
+  - **Not a hard blocker:** close-only variants CAN run without G0.5, but the
+    gate would have NO step-level durability and would not populate the registry.
+    Mandatory before any multi-hour optimizer run.
 
 ---
 
