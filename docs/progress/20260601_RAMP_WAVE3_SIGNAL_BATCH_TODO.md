@@ -94,6 +94,21 @@ is too strong to discard; but V11 stays the deployed paper incumbent until V28 c
 - **OPEN LEAD (untested, the one direction the data supports):** HYBRID = V28/V31 up-market
   signal + V11 regime-cash BEAR overlay -- keep the momentum edge, restore downside protection.
 
+**PARAMETER ROBUSTNESS GATE (new pipeline stage, 2026-06-01):** a variation-tier robustness MAP
+(NOT a search) now lives at strategy-lead Phase 6.5 + `.claude/rules/strategy-pipeline.md`. Vary
+each tunable in a +/-10/+/-20% neighborhood around the FIXED a-priori center; verdict STABLE
+(neighbors >= 0.9 of center Sharpe) vs BRITTLE (-> reject); NEVER adopt the best variation; log
+all to the registry (`phase='robustness_sensitivity'`). Budget by promise: BAD 5 / NOT-THAT-GOOD
+10 / GOOD 25. Tier assignments for the Wave-3 family (for when we run it):
+- V28 GOOD -> 25 (vary blend weights ~0.5/0.3/0.2, horizons ~21/63/126, reversal ~0.1)
+- V31 GOOD -> 25 (vary beta window {60,90,126}, residual horizon {15,21,30})
+- V02+V05 NOT-THAT-GOOD -> 10 (failed family DSR; vary top_n {8,10,12}, min_hold {3,5,7})
+- V26 BAD -> 5 (tie + fails cost gate; vary lambda {0.5,1,1.5}, winsor {2,3,4})
+- V33-core BAD -> 5 (worse + fails cost gate; vary abs-mom horizons, min_hold)
+NOTE: all five are already WF-REJECTED, so a stability map on them is mostly confirmatory; the
+highest-value application is V28/V31 (does the up-market signal sit on a stable plateau? -> informs
+whether the HYBRID is worth building) and, going forward, the hybrid candidate itself.
+
 **(superseded) NEXT PHASE (was IN PROGRESS 2026-06-01):** V28 + V31 walk-forward / OOS-robustness validation.
 - V28/V31 daily-return correlation = **0.801** (<= 0.85 -> INDEPENDENT, carry BOTH). V28-V11
   0.477, V31-V11 0.565 (both genuinely different from the incumbent).
