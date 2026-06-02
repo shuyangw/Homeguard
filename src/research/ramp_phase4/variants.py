@@ -632,7 +632,223 @@ def _variant_v31(t: datetime, state, panel: pd.DataFrame, cfg) -> Dict[str, floa
     return targets
 
 
+_V26_LAMBDA = 1.0         # Fixed 21d-vs-5d weight. NOT swept (conserves DSR budget).
+_V26_WINSOR_SIGMA = 3.0   # Winsorization clip level in cross-sectional sigma units.
+_V26_BOUNDED_THRESHOLD = 1.0  # V27 sub-refinement: bounded-penalty threshold (z5 units).
+# V27 bounded-penalty variant: tested as an informational sensitivity within V26,
+# NOT a separate registry entry (conserves DSR budget). To activate: set
+# _V26_USE_BOUNDED_PENALTY = True in a one-off sensitivity run (see spec). Default False.
+_V26_USE_BOUNDED_PENALTY = False
+
 _V28_LAMBDA_REV = 0.1  # Fixed 5d reversal penalty weight. NOT swept (conserves DSR budget).
+
+
+def _compute_v26_zscore_scores(
+    t: datetime,
+    panel: pd.DataFrame,
+    lambda_: float = _V26_LAMBDA,
+    winsor_sigma: float = _V26_WINSOR_SIGMA,
+    use_bounded_penalty: bool = _V26_USE_BOUNDED_PENALTY,
+    bounded_threshold: float = _V26_BOUNDED_THRESHOLD,
+) -> "pd.Series | None":
+    """Compute cross-sectional z-score normalized momentum scores (vectorized).
+
+    Score per universe symbol = z21 - lambda * penalty_term
+
+    where:
+      z21 = cross-sectional zscore(trailing 21d return), winsorized at winsor_sigma
+      z5  = cross-sectional zscore(trailing 5d return),  winsorized at winsor_sigma
+      penalty_term (default): z5  -- symmetric reversal penalty
+      penalty_term (bounded, V27 sub-refinement): max(0, z5 - bounded_threshold)
+        This only penalizes names with STRONG recent short-term momentum (z5 > 1.0)
+        and ignores mild short-term moves.
+
+    Rationale: the production V11 signal (RAMPSignals.calculate_momentum_scores) uses
+    raw 21d and 5d returns. When raw-return magnitudes differ across market regimes
+    (e.g., BEAR days show tiny returns, STRONG_BULL shows large swings) the 5d
+    reversal penalty can dominate or be negligible depending on scale. Cross-sectional
+    z-scoring makes the 21d and 5d terms comparable regardless of regime volatility,
+    so the lambda weight has stable economic meaning: lambda=1.0 means the two terms
+    are equally weighted after normalization.
+
+    Winsorization at +/-winsor_sigma (applied BEFORE z-scoring) prevents a single
+    symbol with an extreme raw return (e.g., a 10-sigma gap up) from dominating the
+    cross-sectional distribution and distorting all other symbols' z-scores.
+
+    Parameters:
+      lambda_: weight on the short-term reversal penalty term (FIXED at 1.0; NOT swept).
+      winsor_sigma: raw-return winsorization level in cross-sectional sigma (FIXED at 3.0).
+      use_bounded_penalty: if True, applies V27 sub-refinement (penalty = max(0, z5-threshold)).
+      bounded_threshold: V27 threshold in z5 units (FIXED at 1.0; NOT swept).
+
+    Returns a Series of scores (higher = better), index = symbol.
+    Returns None if there is insufficient history (< 21+2 rows).
+    """
+    universe_cols = [c for c in panel.columns if c not in ('SPY', 'VIX')]
+    if not universe_cols:
+        return None
+    if t not in panel.index:
+        return None
+
+    prices_slice = panel.loc[:t, universe_cols]
+    min_rows = 21 + 2  # need 22 price points for a 21-day return
+    if len(prices_slice) < min_rows:
+        return None
+
+    prices = prices_slice.apply(pd.to_numeric, errors='coerce').values.astype(np.float64)
+    n_rows = prices.shape[0]
+
+    def _safe_return(lookback: int) -> np.ndarray:
+        """Trailing lookback-day return for each symbol; NaN if start price invalid."""
+        if n_rows < lookback + 1:
+            return np.full(prices.shape[1], np.nan)
+        p_end = prices[-1, :]
+        p_start = prices[-(lookback + 1), :]
+        valid = (p_start > 0) & ~np.isnan(p_start) & ~np.isnan(p_end)
+        return np.where(valid, p_end / p_start - 1.0, np.nan)
+
+    def _cross_sectional_zscore_winsorized(raw_ret: np.ndarray) -> np.ndarray:
+        """Winsorize raw returns at +/-winsor_sigma, then z-score cross-sectionally.
+
+        Winsorization order: clip at +/-winsor_sigma of the UNCLIPPED distribution,
+        then z-score the clipped values. This prevents extreme outliers from pulling
+        the mean/std before clipping.
+        """
+        valid_mask = ~np.isnan(raw_ret)
+        if valid_mask.sum() < 2:
+            return raw_ret  # not enough points to z-score; return as-is (all NaN anyway)
+        vals = raw_ret[valid_mask]
+        mu = np.mean(vals)
+        sigma = np.std(vals, ddof=1)
+        if sigma < 1e-12:
+            z = np.zeros_like(raw_ret)
+            z[~valid_mask] = np.nan
+            return z
+        # Clip at +/-winsor_sigma of the original distribution.
+        lo = mu - winsor_sigma * sigma
+        hi = mu + winsor_sigma * sigma
+        clipped = np.where(valid_mask, np.clip(raw_ret, lo, hi), np.nan)
+        # Re-compute mean/std of clipped values for final z-score.
+        clipped_valid = clipped[valid_mask]
+        mu2 = np.mean(clipped_valid)
+        sigma2 = np.std(clipped_valid, ddof=1)
+        if sigma2 < 1e-12:
+            z = np.zeros_like(clipped)
+            z[~valid_mask] = np.nan
+            return z
+        z = np.where(valid_mask, (clipped - mu2) / sigma2, np.nan)
+        return z
+
+    ret_21d = _safe_return(21)
+    ret_5d = _safe_return(5)
+
+    z21 = _cross_sectional_zscore_winsorized(ret_21d)
+    z5 = _cross_sectional_zscore_winsorized(ret_5d)
+
+    if use_bounded_penalty:
+        # V27 bounded-penalty sub-refinement: only penalize strong recent momentum.
+        penalty = np.maximum(0.0, z5 - bounded_threshold)
+    else:
+        penalty = z5
+
+    scores_arr = z21 - lambda_ * penalty
+
+    result = pd.Series(scores_arr, index=universe_cols).dropna()
+    if len(result) == 0:
+        return None
+    return result
+
+
+def _variant_v26(t: datetime, state, panel: pd.DataFrame, cfg) -> Dict[str, float]:
+    """V26: V11 structure with z-score normalized momentum ranking.
+
+    Replaces V11's raw momentum ranking with a cross-sectionally z-scored signal:
+      score = z(21d_return) - lambda * z(5d_return)
+
+    where each term is cross-sectionally z-scored (winsorized at 3 sigma before
+    z-scoring) over the universe on each day. lambda=1.0 is FIXED (NOT swept).
+
+    Everything else is identical to V11 (rank_buffer + min_hold + delta via cfg),
+    so the ONLY difference vs V11 is the ranking signal. This isolates the signal
+    effect for a clean vs-V11 read.
+
+    Rationale: the production V11 signal uses raw returns. When raw-return magnitudes
+    differ across market regimes (tiny BEAR returns vs large STRONG_BULL swings),
+    the 5d reversal penalty can dominate or be negligible depending on scale.
+    Cross-sectional z-scoring makes the two terms comparable: lambda=1.0 means
+    equal weighting of normalized momentum and normalized reversal penalty, so
+    the penalty has stable economic meaning regardless of regime volatility.
+
+    V27 sub-refinement (bounded penalty) is available as an informational
+    sensitivity toggle (_V26_USE_BOUNDED_PENALTY) -- it is NOT a separate registry
+    entry and does NOT affect V26 defaults.
+
+    lambda=1.0, winsor_sigma=3.0, and (if activated) bounded_threshold=1.0 are all
+    FIXED and NOT grid-searched, to conserve the DSR trial budget.
+
+    Minimum history: >= 21 trading days; insufficient history returns SAFE_MODE.
+    """
+    scores = _compute_v26_zscore_scores(t, panel)
+
+    # Need regime and top_n from the detector -- same call pattern as V31/V28.
+    spy = panel['SPY'].dropna()
+    vix = panel['VIX'].dropna()
+    if t not in spy.index or t not in vix.index:
+        return {'__regime__': 'SAFE_MODE'}
+    spy_slice = spy.loc[:t]
+    vix_slice = vix.loc[:t]
+    if len(spy_slice) < 252 or len(vix_slice) < 252:
+        return {'__regime__': 'SAFE_MODE'}
+
+    spy_df = pd.DataFrame({
+        'close': spy_slice, 'open': spy_slice, 'high': spy_slice, 'low': spy_slice,
+        'volume': 1e6,
+    })
+    vix_df = pd.DataFrame({'close': vix_slice})
+    try:
+        regime, _confidence = _DETECTOR.classify_regime(spy_df, vix_df, t)
+    except Exception:
+        return {'__regime__': 'SAFE_MODE'}
+
+    if scores is None or len(scores) == 0:
+        return {'__regime__': 'SAFE_MODE'}
+
+    top_n = REGIME_PARAMS.get(regime, {}).get('top_n', 10)
+
+    # Select top_n symbols by z-score score (highest = best).
+    ranked = scores.dropna().sort_values(ascending=False)
+    if len(ranked) == 0:
+        return {'__regime__': regime}
+    target_symbols = list(ranked.head(top_n).index)
+    if not target_symbols:
+        return {'__regime__': regime}
+
+    proposed = {sym: 1.0 / top_n for sym in target_symbols}
+
+    # Build universe ranking from z-score scores (same shape expected by rank_buffer).
+    ranking = pd.Series(
+        range(1, len(ranked) + 1),
+        index=ranked.index,
+    )
+
+    targets = rank_buffer(
+        proposed_targets=proposed,
+        state=state,
+        buffer_size=top_n // 2,
+        universe_ranking=ranking,
+        top_n=top_n,
+    )
+
+    targets = min_hold(
+        proposed_targets=targets,
+        state=state,
+        current_date=t,
+        min_hold_days=5,
+        crash_exit=False,
+    )
+
+    targets['__regime__'] = regime
+    return targets
 
 
 def _compute_v28_multihorizon_scores(
@@ -847,6 +1063,17 @@ REGISTRY: Dict[str, VariantSpec] = {
             'Attacks H6/H8 -- high-beta lagged winners removed from BEAR selections.'
         ),
         plan_fn=_variant_v31,
+    ),
+    'V26': VariantSpec(
+        id='V26',
+        description=(
+            'Z-score normalized score: score = z(21d_return) - lambda * z(5d_return); '
+            'cross-sectional z-score per day, winsorized at 3 sigma. '
+            'V11 scaffold (rank_buffer + min_hold + delta via cfg). '
+            'lambda=1.0 fixed (not swept). Attacks scale instability of raw-return '
+            'penalty term: z-scoring makes the 21d and 5d terms comparable across regimes.'
+        ),
+        plan_fn=_variant_v26,
     ),
     'V28': VariantSpec(
         id='V28',

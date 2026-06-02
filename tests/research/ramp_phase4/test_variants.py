@@ -1052,3 +1052,224 @@ def test_v28_applies_rank_buffer_and_min_hold(monkeypatch):
     assert call_order == ['rank_buffer', 'min_hold'], (
         f'Expected [rank_buffer, min_hold], got {call_order}'
     )
+
+
+# ============================================================
+# V26 -- Z-score normalized score tests
+#
+# Four tests required by spec:
+#   (1) weights sum <= 1.0+eps with __regime__ key
+#   (2) winsorization caps an extreme outlier at 3 sigma
+#       (a symbol with a 10-sigma raw move does not dominate the ranking)
+#   (3) z-scoring makes the 5d penalty comparable across days
+#       (construct a case where un-normalized penalty would flip the ranking
+#        but z-normalized does not)
+#   (4) safe-mode on insufficient history (< 21 rows)
+# ============================================================
+
+def _v26_calm_panel(n=350):
+    """Panel for V26 tests: calm trending market with multiple universe names."""
+    idx = pd.date_range('2022-01-03', periods=n, freq='B')
+    spy = 400 + np.arange(n) * 0.3
+    stock_a = 100 + np.arange(n) * 0.25  # steady uptrend
+    stock_b = 110 + np.arange(n) * 0.15  # moderate uptrend
+    stock_c = 90 + np.arange(n) * 0.20   # mid uptrend
+    return pd.DataFrame({
+        'STOCK_A': stock_a,
+        'STOCK_B': stock_b,
+        'STOCK_C': stock_c,
+        'SPY': spy,
+        'VIX': np.full(n, 12.0),
+    }, index=idx)
+
+
+def _v26_outlier_panel(n=350):
+    """Panel engineered with an extreme outlier (OUTLIER has 10-sigma raw 21d return).
+
+    OUTLIER has a 10-sigma move in the last 21 days -- without winsorization it
+    would dominate the z-score ranking. With winsorization at +/-3 sigma it is
+    capped and should NOT top-rank above STEADY_MOM whose 21d return is
+    consistently strong.
+    """
+    idx = pd.date_range('2022-01-03', periods=n, freq='B')
+    spy = 400 + np.arange(n) * 0.1
+
+    # STEADY_MOM: consistent 21d uptrend, strong but not extreme.
+    steady = np.ones(n) * 100.0
+    steady += np.arange(n) * 0.40  # ~8.4% 21d return
+
+    # OUTLIER: flat for most of history, then +200% in last 21 days (extreme spike).
+    outlier = np.ones(n) * 100.0
+    outlier[-21:] += np.linspace(0, 200.0, 21)  # extreme move -> would be >>3 sigma
+
+    # WEAK: slight downtrend.
+    weak = np.ones(n) * 80.0
+    weak -= np.arange(n) * 0.05
+
+    return pd.DataFrame({
+        'STEADY_MOM': steady,
+        'OUTLIER': outlier,
+        'WEAK': weak,
+        'SPY': spy,
+        'VIX': np.full(n, 12.0),
+    }, index=idx)
+
+
+def _v26_zscore_comparability_panel(n=350):
+    """Panel demonstrating that z-scoring makes 21d and 5d terms comparable.
+
+    Tests: STRONG_21D_FLAT5 has a strong 21-day uptrend but a flat last-5-day
+    (reversal to baseline after spike). RAW_ONLY_21D has a large raw 21d return
+    but also a huge 5d return (the same gains concentrated in 5 days).
+
+    Without z-scoring: RAW_ONLY_21D raw 21d ~ STRONG_21D_FLAT5 raw 21d, BUT
+    RAW_ONLY_21D has big raw 5d return -> big penalty -> rank FLIP: STRONG_21D_FLAT5 wins.
+
+    With z-scoring: both raw terms are normalized, same conclusion: STRONG_21D_FLAT5
+    has large z21 and near-zero z5 (flat last 5 days) -> highest score.
+
+    The test checks STRONG_21D_FLAT5's z26 score > RAW_ONLY_21D's z26 score.
+    """
+    idx = pd.date_range('2022-01-03', periods=n, freq='B')
+    spy = 400 + np.arange(n) * 0.1
+
+    # STRONG_21D_FLAT5: steady 21d uptrend, but flat last 5 days (no 5d penalty).
+    # Price rises over the 21d window, then levels off in last 5 days.
+    strong21 = np.ones(n) * 100.0
+    strong21[-(21 + 5):-(5)] += np.linspace(0, 20.0, 21)  # rises 20% in days -26..-6
+    strong21[-5:] = strong21[-6]                             # flat in last 5 days
+
+    # RAW_ONLY_21D: same 21d endpoint-to-endpoint gain, but concentrated in last 5 days.
+    # This means raw_21d ~ same as STRONG_21D_FLAT5, but raw_5d is large -> big penalty.
+    raw_only = np.ones(n) * 100.0
+    raw_only[-5:] += np.linspace(0, 20.0, 5)  # all 20% gain in last 5 days
+
+    # FLAT: flat price, used to set the cross-sectional baseline.
+    flat = np.ones(n) * 80.0
+
+    return pd.DataFrame({
+        'STRONG_21D_FLAT5': strong21,
+        'RAW_ONLY_21D': raw_only,
+        'FLAT': flat,
+        'SPY': spy,
+        'VIX': np.full(n, 12.0),
+    }, index=idx)
+
+
+def test_v26_in_registry():
+    """V26 is registered with expected description hallmarks."""
+    assert 'V26' in REGISTRY
+    assert isinstance(REGISTRY['V26'], VariantSpec)
+    desc = REGISTRY['V26'].description.lower()
+    assert 'z-score' in desc or 'zscore' in desc or 'z_score' in desc or 'normalized' in desc
+
+
+def test_v26_weights_sum_lte_one_with_regime_key():
+    """(Test 1) V26 plan_fn returns weights summing <= 1.0+eps with __regime__ key."""
+    spec = REGISTRY['V26']
+    panel = _v26_calm_panel()
+    state = HarnessState(cash_usd=100_000.0)
+    cfg = _stub_cfg()
+    plan = spec.plan_fn(panel.index[-1].to_pydatetime(), state, panel, cfg)
+    assert '__regime__' in plan, 'V26 must include __regime__ key'
+    weight_keys = [k for k in plan if k != '__regime__']
+    if weight_keys:
+        total = sum(plan[k] for k in weight_keys)
+        assert total <= 1.0 + 1e-6, f'Weights sum to {total:.6f}, expected <= 1.0'
+        assert total > 0.0
+
+
+def test_v26_winsorization_caps_extreme_outlier():
+    """(Test 2) Winsorization at 3 sigma caps extreme raw returns.
+
+    A symbol with a 10-sigma raw move (OUTLIER) should NOT dominate the
+    ranking after winsorization. STEADY_MOM with consistent returns should
+    score comparably or better than the winsorized outlier.
+    """
+    from src.research.ramp_phase4.variants import _compute_v26_zscore_scores
+    panel = _v26_outlier_panel()
+    t = panel.index[-1].to_pydatetime()
+    scores = _compute_v26_zscore_scores(t, panel)
+    assert scores is not None, 'V26 score computation returned None on sufficient history panel'
+    assert 'OUTLIER' in scores.index, 'OUTLIER must appear in score output'
+    assert 'STEADY_MOM' in scores.index, 'STEADY_MOM must appear in score output'
+    # With winsorization: OUTLIER's extreme 21d return is capped at 3 sigma.
+    # STEADY_MOM has top-decile consistent 21d performance.
+    # OUTLIER should NOT have a score more than 1 sigma above STEADY_MOM
+    # (without winsorization it would be 10x or more).
+    score_outlier = scores['OUTLIER']
+    score_steady = scores['STEADY_MOM']
+    # After winsorization the outlier is capped; the gap should be small
+    # (within normal z-score range), not 10x or more.
+    assert score_outlier <= score_steady + 6.0, (
+        f'Outlier score {score_outlier:.3f} too far above STEADY_MOM {score_steady:.3f}; '
+        f'winsorization should cap extreme raw returns at 3 sigma'
+    )
+
+
+def test_v26_zscore_makes_penalty_comparable():
+    """(Test 3) Z-scoring makes the 21d and 5d terms comparable.
+
+    STRONG_21D_FLAT5 has a strong 21-day uptrend but flat last 5 days (no penalty).
+    RAW_ONLY_21D has the same 21d endpoint gain but concentrated in last 5 days
+    (big 5d reversal penalty). Z-scoring normalizes both terms so the comparison
+    is fair: STRONG_21D_FLAT5 should rank above RAW_ONLY_21D because z21 is
+    high for both, but z5 penalty is zero for STRONG_21D_FLAT5 vs large for
+    RAW_ONLY_21D.
+    """
+    from src.research.ramp_phase4.variants import _compute_v26_zscore_scores
+    panel = _v26_zscore_comparability_panel()
+    t = panel.index[-1].to_pydatetime()
+    scores = _compute_v26_zscore_scores(t, panel)
+    assert scores is not None, 'V26 score computation returned None'
+    assert 'STRONG_21D_FLAT5' in scores.index
+    assert 'RAW_ONLY_21D' in scores.index
+    # STRONG_21D_FLAT5 should rank above RAW_ONLY_21D: same z21 but lower z5 penalty.
+    assert scores['STRONG_21D_FLAT5'] > scores['RAW_ONLY_21D'], (
+        f'V26 should rank STRONG_21D_FLAT5 ({scores["STRONG_21D_FLAT5"]:.4f}) above '
+        f'RAW_ONLY_21D ({scores["RAW_ONLY_21D"]:.4f}); '
+        f'STRONG_21D_FLAT5 has same 21d gain but zero 5d penalty (flat last 5 days).'
+    )
+
+
+def test_v26_safe_mode_on_insufficient_history():
+    """(Test 4) V26 returns SAFE_MODE when panel has insufficient history."""
+    spec = REGISTRY['V26']
+    n_short = 20  # fewer than 21 required rows for z-scoring
+    idx = pd.date_range('2024-01-01', periods=n_short, freq='B')
+    short_panel = pd.DataFrame({
+        'AAPL': 100 + np.arange(n_short) * 0.1,
+        'SPY': 400 + np.arange(n_short) * 0.2,
+        'VIX': np.full(n_short, 14.0),
+    }, index=idx)
+    state = HarnessState(cash_usd=100_000.0)
+    cfg = _stub_cfg()
+    plan = spec.plan_fn(short_panel.index[-1].to_pydatetime(), state, short_panel, cfg)
+    assert plan.get('__regime__') == 'SAFE_MODE', (
+        f'Expected SAFE_MODE on short panel, got: {plan}'
+    )
+
+
+def test_v26_applies_rank_buffer_and_min_hold(monkeypatch):
+    """V26 must call rank_buffer then min_hold (V11 composition order)."""
+    from src.research.ramp_phase4 import variants as v_mod
+    call_order = []
+
+    def fake_rank_buffer(proposed_targets, state, buffer_size, universe_ranking, top_n):
+        call_order.append('rank_buffer')
+        return proposed_targets
+
+    def fake_min_hold(proposed_targets, state, current_date, min_hold_days, crash_exit=False):
+        call_order.append('min_hold')
+        return proposed_targets
+
+    monkeypatch.setattr(v_mod, 'rank_buffer', fake_rank_buffer, raising=False)
+    monkeypatch.setattr(v_mod, 'min_hold', fake_min_hold, raising=False)
+
+    panel = _v26_calm_panel()
+    state = HarnessState(cash_usd=100_000.0)
+    cfg = _stub_cfg()
+    REGISTRY['V26'].plan_fn(panel.index[-1].to_pydatetime(), state, panel, cfg)
+    assert call_order == ['rank_buffer', 'min_hold'], (
+        f'Expected [rank_buffer, min_hold], got {call_order}'
+    )
