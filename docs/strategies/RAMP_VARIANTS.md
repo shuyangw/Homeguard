@@ -209,3 +209,62 @@ would need to abandon the supervised classifier paradigm at the consumer
 threshold v0 already dominates (HMM with persistence in transition matrix,
 hand-crafted threshold ensemble on leading indicators, or a structurally
 different ground-truth labeler that fires before drawdowns).
+
+## Wave-3 signal-construction family (2026-06-01)
+
+After the regime-detector campaign closed (timing capped at +0.08 Sharpe), this
+family attacked **signal construction / stock selection** instead -- the lens the
+root-cause investigation (H2/H6/H8) pointed at but the campaign never tested. Each
+variant (except V02+V05) is "V11 with ONLY the ranking metric swapped." All run on
+clean split-adjusted SIP data via `scripts/backtest_scripts/ramp_phase4_wave3_readiness.py`.
+Family gate report: `docs/reports/ramp/20260601_wave3_family_gate.md`. Session log:
+`docs/progress/20260601_RAMP_WAVE3_SIGNAL_PROBE.md`.
+
+**Turnover note:** the legacy "V11 turnover 39%" figure used a different definition;
+measured through this runner, V11's annualized two-sided turnover is ~10,325% -- the
+same order as every Wave-3 variant. Compare turnover only runner-to-runner.
+
+### V26 -- z-score normalized score
+- **Code**: `src/research/ramp_phase4/variants.py::_variant_v26`
+- **Description**: V11 chain; ranking swapped to score = z(21d) - 1.0*z(5d), cross-sectional, winsorized 3 sigma. V27 bounded-penalty (lambda*max(0, z5-1.0)) folded in as an informational parameter, NOT a separate gate trial.
+- **Report**: `docs/reports/ramp/20260601_wave3_v26.md`
+- **Verdict (2026-06-01)**: TIE with V11 -- Sharpe 0.533 nc / 0.664 lag at 5 bps (+0.005 vs V11). PSR 0.947. **Cost gate FAILS at 7.5 bps (0.438).** V27 had zero effect. Not a clear advance.
+- **Status**: research; not advancing.
+
+### V28 -- multi-horizon momentum ensemble
+- **Code**: `src/research/ramp_phase4/variants.py::_variant_v28`
+- **Description**: V11 chain; ranking swapped to 0.5*ret_21d + 0.3*ret_63d + 0.2*ret_126d - 0.1*ret_5d (fixed weights, no grid search).
+- **Report**: `docs/reports/ramp/20260601_wave3_v28.md`
+- **Verdict (2026-06-01)**: **BEATS V11 -- TOP CANDIDATE.** Sharpe 0.811 nc / 0.851 lag at 5 bps (**+0.283** vs V11 0.528); PSR 0.993; max DD -42.0%; LOWEST turnover in family (5,264%, ~half of V11); cost gate PASS (0.766 at 7.5 bps). Beats V11 in all three sub-windows. Family DSR passes at n_trials <= 12 (Wave-3 reset), fails at >= 36. Family **PBO = 0.503** (binding -- selection time-period-unstable).
+- **Status**: research; **HOLD -> graduate to purged/embargoed walk-forward** (PBO makes WF mandatory). V11 stays paper incumbent until V28 clears.
+
+### V31 -- beta-residual momentum
+- **Code**: `src/research/ramp_phase4/variants.py::_variant_v31`
+- **Description**: V11 chain; ranking swapped to residual 21d return after removing trailing 90d SPY beta. Directly attacks H6/H8 (BEAR high-beta lagged-winner losers, e.g. SMCI/ENPH/MU).
+- **Report**: `docs/reports/ramp/20260601_wave3_v31.md` (NOTE: an earlier in-session number of 0.307 was WRONG -- it ran on a corrupt legacy cache + an object-dtype `pct_change` bug; both fixed, re-run clean at the family gate).
+- **Verdict (2026-06-01)**: **BEATS V11 -- strong co-candidate.** Sharpe 0.769 (+0.241); **LOWEST max DD in family (-33.5%)**; PSR 0.990; cost gate PASS (0.702 at 7.5 bps). Beats V11 in all sub-windows.
+- **Status**: research; co-candidate for the V28 walk-forward (check V28/V31 correlation; if > 0.85 pick one via OOS Sharpe).
+
+### V33-core -- absolute-momentum cash gate (detector-free)
+- **Code**: `src/research/ramp_phase4/variants.py::_variant_v33_core`
+- **Description**: Regime-free; buy only names with ret_21d>0 AND ret_63d>0, top_n among survivors, cash residual when fewer qualify, + min_hold(5). Endogenous crash protection. Liquidity screen (volume / G0.3) deferred -- rejected on the close-only core.
+- **Report**: `docs/reports/ramp/20260601_wave3_v33-core.md`
+- **Verdict (2026-06-01)**: NOT ADVANCING. Sharpe 0.479 (-0.049 vs V11); **cost gate FAILS at 7.5 bps (0.372).** Cuts max DD (-52.4% vs V11 -66.2%) but halves CAGR doing it -- net-negative Sharpe trade. An asymmetric faster-re-entry gate might recover it.
+- **Status**: research; not advancing as-is.
+
+### V02+V05 -- vanilla momentum + min-hold (REGIME-FREE)
+- **Code**: `src/research/ramp_phase4/variants.py::_variant_v02_v05`
+- **Description**: RAMPSignals SIDEWAYS params (21/5), fixed top_n=10, NO regime switching, NO rank_buffer (minimal control), + min_hold(5). The H2 diagnostic: can the regime apparatus be dropped entirely?
+- **Report**: `docs/reports/ramp/20260601_wave3_v02+v05.md`
+- **Verdict (2026-06-01)**: **BEATS V11 -- Sharpe 0.683 (+0.155)**, most sub-window-consistent (graceful, not tail-driven). PSR 0.980; cost gate PASS (0.598). Family DSR FAILS at all n_trials (kurtosis 25.5). **Direct support for H2: regime-free beats regime-aware.**
+- **Status**: research; HOLD secondary -- valued as mechanism confirmation (H2) and to inform V28's parameter design more than as a standalone deployment candidate.
+
+### Wave-3 family verdict (2026-06-01)
+Three variants beat V11 materially (V28 +0.283, V31 +0.241, V02+V05 +0.155) and pass
+the 1.5x cost gate that **V11 itself fails** (0.452 at 7.5 bps). PSR clears for all three.
+The binding gate is **PBO = 0.503** (family selection is time-period-unstable), which
+makes a purged/embargoed walk-forward MANDATORY before any graduation. **V28 = HOLD ->
+walk-forward** (V31 co-candidate); null option (ship V11) rejected; V11 remains the
+deployed paper incumbent until V28 clears the walk-forward. Next gate: methodology
+Section 3 walk-forward, >= 3 rolling windows, purge 21d / embargo 2%, OOS/IS >= 0.70,
+every OOS sub-window must beat V11.

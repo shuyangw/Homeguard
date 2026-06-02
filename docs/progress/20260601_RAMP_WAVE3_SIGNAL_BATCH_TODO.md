@@ -43,6 +43,49 @@ passes 7.5 bps cost gate; paper-deployed 2026-05-23)
 
 ---
 
+## >>> FAMILY GATE VERDICT (2026-06-01) -- PROBE COMPLETE <<<
+
+All 5 variants implemented, run on CLEAN split-adjusted data, gated together.
+Report: `docs/reports/ramp/20260601_wave3_family_gate.md`.
+
+**Clean cross-section (5 bps near_close, full window, 2355 days):**
+
+| Variant | Sharpe | vs V11 | Max DD | AnnTO | 7.5bps | Cost gate |
+|---|---:|---:|---:|---:|---:|:--:|
+| **V28** multi-horizon ensemble | **0.811** | **+0.283** | -42.0% | 5,264% | 0.766 | PASS |
+| **V31** beta-residual | **0.769** | **+0.241** | **-33.5%** | 7,217% | 0.702 | PASS |
+| **V02+V05** vanilla (regime-free) | **0.683** | **+0.155** | -57.5% | 10,275% | 0.598 | PASS |
+| V11 incumbent | 0.528 | -- | -66.2% | 10,325% | 0.452 | **FAIL** |
+| V26 z-score | 0.533 | +0.005 | -42.7% | 9,492% | 0.438 | FAIL |
+| V33-core abs-mom | 0.479 | -0.049 | -52.3% | 9,711% | 0.372 | FAIL |
+
+**FOUR variants beat/tie V11; THREE beat it materially (V28, V31, V02+V05) and pass the
+1.5x cost gate that V11 ITSELF FAILS.** Signal construction was the right lens -- this is a
+real result, NOT bounded by the +0.08 detector-timing ceiling.
+
+**Statistical gate:**
+- **PSR:** V28 0.993, V31 0.990, V02+V05 0.980 (all pass vs SR=0).
+- **DSR (n_trials sensitivity):** V28 PASSES at n<=12 (Wave-3 family-reset, documented),
+  FAILS at n>=36 (if chained to the v0/detector campaign). V02+V05 fails at all n (kurt 25.5).
+- **PBO = 0.503** -- crosses the 0.50 "strong overfitting" line. Family selection is
+  time-period-unstable (sub-window orderings differ). **This is the binding gate: do NOT
+  skip a formal walk-forward.**
+- **Sub-window stability:** V28 beats V11 in ALL three eras (2017-21 +0.08, 2022-24 +0.17,
+  2024-26 +0.81); the 2024-26 surge (1.429) may be tail-regime concentration. V02+V05 most
+  consistent (graceful, not tail-driven).
+
+**VERDICT: V28 = HOLD -> GRADUATE TO PURGED/EMBARGOED WALK-FORWARD** (methodology Section 3;
+PBO failure means the walk-forward is mandatory, not optional). V31 is a strong co-candidate
+(lowest DD, directly attacks H6/H8) -- check V28/V31 correlation; if >0.85 pick one via WF
+OOS. V02+V05 = HOLD secondary (H2 mechanism confirmation: regime-free beats regime-aware).
+**Null option (ship V11) is NOT the call** -- +0.28 Sharpe with PSR 0.993 across all sub-windows
+is too strong to discard; but V11 stays the deployed paper incumbent until V28 clears the WF.
+
+**NEXT PHASE (not yet started):** V28 (and V31) purged/embargoed walk-forward, >=3 rolling
+windows, purge 21d / embargo 2%, OOS/IS ratio >= 0.70, every OOS sub-window must beat V11.
+
+---
+
 ## Why this batch exists (the lens)
 
 The 2026-05-24 regime-detector campaign closed the **regime-TIMING** line with a
@@ -92,6 +135,42 @@ G0.1-G0.4 unblock the data-gated variants (V30, V33); the 9 close-only variants
 need none of them. **G0.5 is run-durability infra that applies to the WHOLE gate
 -- do it before any long run.**
 
+- [x] **G0.0 (RESOLVED 2026-06-01 -- it was a STALE PATH, not a missing rebuild)**
+  **Root cause: `SIP_SPLIT_REL` pointed at the OLD tree location.** The 1-min SIP tree
+  moved to `equities/sip_split/1min` (~2026-05); the stale constant made
+  `_load_or_build_sip_daily_cache` return None and silently fall through to the corrupt
+  LEGACY cache. **Fix (commit 429df47): one-line path correction + docstrings.** The clean
+  `daily_from_sip` cache (2017..2026-05-15, NFLX continuous, no unadjusted splits) ALREADY
+  existed and is now used. V11's 0.528 baseline is UNAFFECTED (V11 ran 2026-05-23 before the
+  tree moved, on this same clean cache -- no re-validation needed). Verified end-to-end:
+  loader reports "FRESH SIP-aggregated daily panel", NFLX worst daily ret -3.9%. 137 tests pass.
+  This also closes **G0.2** (stale path constant). NOTE: V31's recorded Sharpe is contaminated
+  (ran on legacy before the fix); re-run V31 clean before the family gate so its return stream
+  is uncorrupted. Turnover verdict (7133%) stands regardless.
+  - **(superseded) original finding -- kept for the record:** legacy daily cache
+  `equities_daily_from_sip.parquet`... (the corrupt artifact was actually the separate
+  `equities_daily_cache.parquet` LEGACY fallback, not the daily_from_sip cache).
+  - **Finding:** `H:/Stock_Data/cache/ramp_phase4/equities_daily_from_sip.parquet`
+    (the LEGACY cache `load_universe_panel` currently falls back to) carries the
+    UNADJUSTED Netflix 10:1 split: NFLX 2025-11-17 prev=1116.975 -> cur=110.15
+    (-90.1% phantom return). V31's equity went negative downstream (-102% on
+    2025-12-05; NaN CAGR; MaxDD > -100%). If one split is unadjusted, others across
+    2017-2026 likely are too.
+  - **`sip_split` is CORRECT:** column-subset (`['timestamp','close']`) reads of
+    `H:/Stock_Data/equities/sip_split/1min/symbol=NFLX/...` succeed AND show NFLX
+    continuous (~110) across 2025-11-17. So the canonical split-adjusted source is
+    clean; only the legacy daily roll-up is corrupt. Column-subset reads sidestep
+    the G0.1 full-table defect.
+  - **Fix:** rebuild the daily close panel by reading ONLY the `close` column from
+    each `sip_split` monthly parquet (split-adjusted, continuous) and aggregating to
+    daily last; point `load_universe_panel` at the rebuilt cache. (Same column-subset
+    technique G0.3 uses for volume.)
+  - **Contaminates:** ALL Wave-3 variants AND the V11 incumbent baseline (0.528) --
+    V11's window ends 2026-05-16, so if V11 held NFLX on 2025-11-17 its baseline is
+    also unreliable. Re-validate V11 on the clean cache before trusting any vs-V11 delta.
+  - **Blocks:** V28, V26, V02+V05, V33-core (the rest of the probe) -- do NOT run
+    them on the contaminated cache.
+
 - [ ] **G0.1 Validate the parquet read defect.** Full-table reads of the daily
   cache and the 1-min SIP files throw `OSError: Repetition level histogram size
   mismatch`. Column-subset and footer reads work. Confirm a column-subset read of
@@ -113,8 +192,13 @@ need none of them. **G0.5 is run-durability infra that applies to the WHOLE gate
   LIMITATION to document: sector is a current snapshot, not point-in-time
   (same class as the survivorship caveat already in every Phase-4 report).
 
-- [ ] **G0.5 Per-backtest durability: wire the experiment registry into the
+- [x] **G0.5 Per-backtest durability: wire the experiment registry into the
   readiness orchestrator** *(run-durability -- applies to ALL variants, not data prep)*
+  *(DONE 2026-06-01: built `scripts/backtest_scripts/ramp_phase4_wave3_readiness.py`
+  -- single-variant runner with per-step append_run, resume-skip on
+  (strategy+cost+timing+git SHA+snapshot), atomic .tmp+os.replace artifact writes.
+  Validated on V31: 4 full-window runs persisted, 10,928 return-stream rows,
+  resume-skip confirmed.)*
   - **Audit finding (2026-06-01):** the readiness orchestrators are
     all-or-nothing -- v11/v12/v14 run 12-30 backtests in memory and write ONE
     report at the very end (`ramp_phase4_v11_readiness.py:477`, `v12:702`,
@@ -143,44 +227,102 @@ need none of them. **G0.5 is run-durability infra that applies to the WHOLE gate
 
 ### Tier 1 -- ready now (close-only), highest evidence-alignment
 
-- [ ] **V31 -- Beta-residual momentum** *(highest evidence-alignment)*
+- [x] **V31 -- Beta-residual momentum** -- **VERDICT (CORRECTED at family gate): BEATS V11
+  -- Sharpe 0.769 (+0.241), LOWEST max DD -33.5%, cost gate PASS. 2nd-best variant.**
+  *(dispatch 1 number 0.307 was WRONG -- TWO bugs: ran on the corrupt legacy cache AND a
+  dtype bug (pct_change on object cols -> np.isnan TypeError) masked by that cache. Both
+  fixed; re-run clean at the family gate.)* *(2026-06-01)*
   - **Mechanism:** rank residual returns after removing trailing SPY beta
     (estimate beta over 60-126d; rank residual 21d return).
   - **Attacks:** H6/H8 directly -- the BEAR losers were high-beta names that only
     looked strong on market beta. Residualizing removes exactly those.
-  - **Data:** close + SPY (in panel). READY.
-  - [ ] Implement plan_fn in `variants.py`; register in `REGISTRY`
-  - [ ] TDD: `tests/research/ramp_phase4/test_variants.py`
-  - [ ] Run gate; record metrics row
+  - **Result:** built as "V11 with the ranking metric swapped" (90d beta window).
+    Sharpe 0.307 near_close / 0.314 one_day_lag at 5 bps (vs V11 0.528, **delta
+    -0.221**). PSR 0.930 (FAILS 0.95). **Annualized turnover 7133%** vs V11's 39%
+    -- the beta-residual score is wildly unstable day-to-day; rank_buffer + min_hold
+    cannot hold it. ~7%/yr cost drag. Disqualified on turnover alone, independent of
+    the data defect below. Report: `docs/reports/ramp/20260601_wave3_v31.md`.
+  - **CAVEAT:** the Sharpe is contaminated by the legacy-cache split defect (see
+    Gate-0 finding below); turnover is data-defect-independent so the verdict stands.
+  - [x] Implement plan_fn in `variants.py`; register in `REGISTRY`
+  - [x] TDD: `tests/research/ramp_phase4/test_variants.py` (137 pass)
+  - [x] Run gate; record metrics row
 
-- [ ] **V28 -- Multi-horizon momentum ensemble** *(highest base-rate)*
+- [x] **V28 -- Multi-horizon momentum ensemble** -- **VERDICT: BEATS V11 -- TOP CANDIDATE
+  (+0.283 Sharpe at HALF the turnover; turnover "disqualification" was a phantom, see
+  correction block below)** *(2026-06-01, dispatch 2)*
   - **Mechanism:** blend 21d/63d/126d relative returns with fixed weights
-    (0.5/0.3/0.2) + small 5d reversal penalty. No grid search.
+    (0.5/0.3/0.2) + 0.1 * 5d reversal penalty. No grid search.
   - **Attacks:** signal instability (the H2 root). A more stable signal may
     reduce the need for regime gating entirely.
-  - **Data:** close + >=126d lookback (cache spans 2017->2026). READY.
-  - [ ] Implement / register / TDD / run / record
+  - **Result:** Sharpe **0.811** near_close / **0.851** one_day_lag at 5 bps
+    (vs V11 0.528, **+0.283 BEAT**); PSR 0.9928 (PASSES); 7.5 bps 0.766 (cost gate
+    passes on flat-bps). Monthly win 54%, PF 1.16. P&L from STRONG/WEAK_BULL;
+    BEAR/UNPREDICTABLE drag (same shape as V11). **BUT annualized turnover 5264%
+    vs V11's 39% (135x)** -- the multi-horizon score reranks the universe daily;
+    delta_rebalance 0.02 + rank_buffer + min_hold can't hold it. The flat 5 bps
+    model understates true market impact at this churn, so the 0.811 net is
+    optimistic. Report: `docs/reports/ramp/20260601_wave3_v28.md`.
+  - **Read:** the multi-horizon BLEND has genuine alpha (clean PSR, lag-robust) --
+    the signal is good; the TURNOVER is the problem. Refinement axis: pair the V28
+    signal with stronger turnover control (V08 weekly rebalance / wider rank_buffer /
+    longer min_hold / higher delta threshold) and re-measure NET. Most promising
+    lead so far, conditional on taming turnover.
+  - [x] Implement / register / TDD (142 pass) / run / record
 
-- [ ] **V26 -- Z-score normalized score** *(cheap fragility fix)*
-  - **Mechanism:** score = z(21d return) - lambda * z(5d return); cross-sectional
-    z each day, winsorized at 3 sigma.
-  - **Attacks:** the current penalty-term scale can let the short-term penalty
-    dominate. Z-scoring makes the terms comparable.
-  - **Data:** close only. READY.
-  - **Sub-refinement (fold in, do NOT spend a separate trial):**
-    **V27 bounded penalty** = lambda * max(0, z_5d - threshold). Test as a
-    parameter of V26, not a registry entry, to conserve the DSR budget.
-  - [ ] Implement / register / TDD / run / record
+> **!!! CORRECTION (2026-06-01, after running V11 through the SAME runner): the
+> "turnover blowup" was a PHANTOM -- a definitional mismatch, not a real defect.**
+> The "V11 turnover 39%" baseline (in memory, the TODO, and HARDCODED in the runner's
+> report template) used a DIFFERENT metric than the Wave-3 runner's annualized two-sided
+> turnover. Measured through the SAME runner, **V11's AnnTO is 10,325%** at 5 bps
+> near_close -- the SAME order as every Wave-3 variant. Corrected, internally-consistent
+> turnover (runner AnnTO, near_close 5 bps):
+>
+> | Variant | Sharpe | AnnTO | Read (corrected) |
+> |---|---:|---:|---|
+> | V11 (incumbent) | 0.528 | 10,325% | baseline |
+> | **V28** | **0.811** | **5,264%** | **BEAT: +0.283 Sharpe at ~HALF the turnover** |
+> | **V02+V05** | **0.683** | 10,275% | **BEAT: +0.155 Sharpe at ~same turnover** |
+> | V26 | 0.533 | 9,492% | tie |
+> | V31 | 0.307 | 7,133% | worse Sharpe (NOT a turnover outlier) |
+>
+> **Earlier "turnover-disqualified" verdicts for V28/V26/V02 were WRONG.** Judge the
+> family on Sharpe + PSR + the family DSR/PBO gate + EXT-OOS robustness. V28 (multi-horizon
+> ensemble) is the standout; V02+V05 beating V11 while REGIME-FREE is direct support for
+> H2 (the regime apparatus may be net-negative). Runner report string fixed in code.
 
-- [ ] **V02+V05 -- Vanilla momentum + min-hold** *(regime-free diagnostic)*
-  - **Mechanism:** single 21/5 score, fixed top-N, NO regime param switching,
-    with V05 min-hold (the dominant turnover lever from Wave 1).
-  - **Tests:** H2's implication -- can you drop the entire regime apparatus and
-    keep the turnover rescue? If this matches V11, the regime machinery is dead
-    weight.
-  - **Data:** close only. READY. (A "plain" variant may already exist from the
-    consolidation work -- verify before re-implementing.)
-  - [ ] Implement / register / TDD / run / record
+- [x] **V26 -- Z-score normalized score** -- **VERDICT: TIE with V11 (Sharpe +0.005,
+  similar turnover ~9,492%); not a clear advance. Cost gate fails at 7.5 bps** *(2026-06-01, dispatch 3)*
+  - **Mechanism:** score = z(21d) - 1.0 * z(5d); cross-sectional z each day, winsorized at 3 sigma.
+  - **Result:** near_close 0.533 / one_day_lag 0.664 at 5 bps (vs V11 0.528 -- **+0.005,
+    a TIE not a beat**). PSR 0.9465 (nc) / 0.9769 (lag). **Turnover 9492%** (worst in the
+    batch). **Cost gate FAILS at 7.5 bps (0.438 < 0.5).** Regime drag shape matches
+    V11/V28/V31 (BEAR/UNPREDICTABLE negative). Report: `docs/reports/ramp/20260601_wave3_v26.md`.
+  - **V27 bounded penalty (informational sensitivity, folded in -- no separate trial):**
+    Sharpe 0.533, identical to default -- the bounded threshold (penalize only z5>1.0)
+    has ZERO impact on this signal. V27 is dead.
+  - **Read:** z-scoring did NOT fix fragility; it churns as hard as raw scores. The lag
+    Sharpe 0.664/PSR 0.977 is the strongest raw number so far, but same "alpha exists,
+    turnover kills it" story. Not advancing as-is.
+  - [x] Implement / register / TDD (148 pass) / run / record
+
+- [x] **V02+V05 -- Vanilla momentum + min-hold** -- **VERDICT: BEATS V11 (+0.155 Sharpe at
+  ~same turnover); REGIME-FREE -> direct support for H2** *(2026-06-01, dispatch 4)*
+  - **Mechanism:** RAMPSignals SIDEWAYS params (21/5, long_w 0.5, pen_w 2.0), fixed
+    top_n=10, NO regime switching, NO rank_buffer (minimal control), + min_hold(5).
+  - **Result:** near_close 0.683 / one_day_lag 0.844 at 5 bps (vs V11 0.528,
+    **+0.155 raw BEAT**); PSR 0.9804/0.9949; 7.5 bps 0.598 (cost gate passes).
+    Turnover 10,275%. All days labelled VANILLA (detector confirmed uninvolved).
+    Report: `docs/reports/ramp/20260601_wave3_v02+v05.md`.
+  - **H2 read:** regime apparatus NOT clearly dead weight -- V02 deliberately omits
+    rank_buffer, so its turnover vs V11 mostly measures rank_buffer's effect, not the
+    regime logic. The Sharpe BEAT is real at gross level.
+  - **!! MEASUREMENT FLAG:** V02 has no rank_buffer AND blows up; but V31/V28/V26 DO
+    use rank_buffer and ALSO blew up. That inconsistency means the "V11 = 39% turnover"
+    baseline may be computed differently than the Wave-3 runner's annualized turnover.
+    **Must run V11 THROUGH THE WAVE-3 RUNNER for an apples-to-apples turnover number
+    before trusting any turnover-blowup narrative.** (Resolving next, pre-family-gate.)
+  - [x] Implement / register / TDD (153 pass) / run / record
 
 ### Tier 2 -- ready now (close-only), secondary
 
@@ -219,17 +361,20 @@ need none of them. **G0.5 is run-durability infra that applies to the WHOLE gate
 
 ### Tier 3 -- needs Gate 0 data prep
 
-- [ ] **V33 -- Absolute-momentum + liquidity filter** *(detector-free crash protection)*
-  - **Mechanism:** only buy names with positive absolute 21/63d return AND
-    adequate dollar volume; otherwise cash.
-  - **Attacks:** H6 from the signal side, WITHOUT the lagging detector -- a
-    regime-free risk-off mechanism. Liquidity screen also fixes cost
-    underestimation on names like SMCI.
-  - **Data:** abs-mom = close only (CORE RUNS NOW); liquidity = volume (needs
-    G0.1 + G0.2 + G0.3).
-  - [ ] Run **abs-mom core** on close-only data first (no Gate 0)
-  - [ ] Add liquidity screen after G0.3; re-run
-  - [ ] Implement / register / TDD / run / record
+- [x] **V33-core -- Absolute-momentum cash gate (close-only)** -- **VERDICT: NOT ADVANCING
+  (cuts drawdown but costs more CAGR than it saves)** *(2026-06-01, dispatch 5)*
+  - **Mechanism:** regime-free; buy only names with ret_21d>0 AND ret_63d>0, top_n by
+    momentum among survivors, cash residual when <top_n qualify, + min_hold(5).
+  - **Result:** near_close 0.479 / one_day_lag 0.573 at 5 bps (vs V11 0.528, **-0.049**);
+    AnnTO 9,711%; PSR 0.922; **cost gate FAILS at near_close 7.5 bps (0.372 < 0.5)**.
+    **Max DD -52.4% vs V11 -66.2% (the cash gate DOES cut tail risk -13.8 pp)** but
+    CAGR halves (8.4% vs V02's 16.8%) -- de-risks through recoveries too. Net-negative
+    Sharpe trade. Report: `docs/reports/ramp/20260601_wave3_v33-core.md`.
+  - **Read:** endogenous crash protection works for drawdown but the Sharpe cost is too
+    high; an asymmetric (faster re-entry) gate might recover it, but not as-is.
+  - **Liquidity screen (volume / Gate 0.3): still deferred -- not needed, V33-core already
+    rejected on the close-only core.**
+  - [x] Implement / register / TDD (159 pass) / run / record
 
 - [ ] **V30 -- Sector-relative momentum** *(needs G0.4 sector fetch)*
   - **Mechanism:** rank stocks by excess return vs sector median (or sector ETF).

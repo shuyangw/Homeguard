@@ -1,5 +1,13 @@
 # RAMP Research State -- 2026-05-24
 
+> **SUPERSEDED (2026-06-01):** the regime-detector line closed negative (timing capped at
+> +0.08 Sharpe; see `20260524_RAMP_REGIME_DETECTOR_CAMPAIGN_CLOSURE.md`). The next research
+> wave pivoted to **signal construction** and FOUND lift: V28 (+0.283), V31 (+0.241),
+> V02+V05 (+0.155) all beat V11. Current state + verdict:
+> `20260601_RAMP_WAVE3_SIGNAL_PROBE.md`, family gate `docs/reports/ramp/20260601_wave3_family_gate.md`,
+> glossary `docs/strategies/RAMP_VARIANTS.md`. Next gate: V28 purged/embargoed walk-forward
+> (PBO 0.503 makes it mandatory). V11 remains the deployed paper incumbent.
+
 ## Summary
 
 Three concurrent RAMP research workstreams in flight as of 2026-05-24:
