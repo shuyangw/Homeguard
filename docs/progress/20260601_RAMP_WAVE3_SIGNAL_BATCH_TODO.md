@@ -81,8 +81,26 @@ OOS. V02+V05 = HOLD secondary (H2 mechanism confirmation: regime-free beats regi
 **Null option (ship V11) is NOT the call** -- +0.28 Sharpe with PSR 0.993 across all sub-windows
 is too strong to discard; but V11 stays the deployed paper incumbent until V28 clears the WF.
 
-**NEXT PHASE (not yet started):** V28 (and V31) purged/embargoed walk-forward, >=3 rolling
-windows, purge 21d / embargo 2%, OOS/IS ratio >= 0.70, every OOS sub-window must beat V11.
+**WALK-FORWARD COMPLETE (2026-06-01): V28 + V31 both REJECT. Null option ACTIVE -- V11 stays.**
+- 7 sequential OOS calendar-year windows. V28 beat V11 in 3/7 (worst -0.496); V31 in 5/7
+  (worst -0.745). Pooled OOS Sharpe V28 0.889 / V31 0.910 > V11 0.647, but the edge is
+  concentrated in 2023-2025 up-markets; both regime-free signals lose the 2020/2022 BEAR
+  years where V11's regime-cash mode protects. PBO 0.503 was prescient. Neither graduates.
+- Report: `docs/reports/ramp/20260601_wave3_walkforward.md`; session log
+  `docs/progress/20260601_RAMP_WAVE3_WALKFORWARD.md`. 201 tests pass.
+- **OPEN LEAD (untested, the one direction the data supports):** HYBRID = V28/V31 up-market
+  signal + V11 regime-cash BEAR overlay -- keep the momentum edge, restore downside protection.
+
+**(superseded) NEXT PHASE (was IN PROGRESS 2026-06-01):** V28 + V31 walk-forward / OOS-robustness validation.
+- V28/V31 daily-return correlation = **0.801** (<= 0.85 -> INDEPENDENT, carry BOTH). V28-V11
+  0.477, V31-V11 0.565 (both genuinely different from the incumbent).
+- METHODOLOGY (D0): V28/V31 have FIXED a-priori parameters (no fitting), so this is NOT
+  parameter-optimization walk-forward -- the overfitting vector is variant SELECTION (PBO
+  0.503), not parameter fitting. Rigor applied: (a) sequential OOS robustness across >=5
+  rolling windows -- V28 (and V31) must beat V11 in EVERY OOS window, no Sharpe collapse;
+  (b) selection robustness (per-window family ranking); (c) NO weight optimization (keep
+  fixed); light a-priori-neighborhood sensitivity optional + DSR-costed. Document which
+  parts of methodology Section 3 bind given no fitting.
 
 ---
 

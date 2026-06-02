@@ -236,14 +236,16 @@ same order as every Wave-3 variant. Compare turnover only runner-to-runner.
 - **Description**: V11 chain; ranking swapped to 0.5*ret_21d + 0.3*ret_63d + 0.2*ret_126d - 0.1*ret_5d (fixed weights, no grid search).
 - **Report**: `docs/reports/ramp/20260601_wave3_v28.md`
 - **Verdict (2026-06-01)**: **BEATS V11 -- TOP CANDIDATE.** Sharpe 0.811 nc / 0.851 lag at 5 bps (**+0.283** vs V11 0.528); PSR 0.993; max DD -42.0%; LOWEST turnover in family (5,264%, ~half of V11); cost gate PASS (0.766 at 7.5 bps). Beats V11 in all three sub-windows. Family DSR passes at n_trials <= 12 (Wave-3 reset), fails at >= 36. Family **PBO = 0.503** (binding -- selection time-period-unstable).
-- **Status**: research; **HOLD -> graduate to purged/embargoed walk-forward** (PBO makes WF mandatory). V11 stays paper incumbent until V28 clears.
+- **Walk-forward verdict (2026-06-01): REJECT.** Report `docs/reports/ramp/20260601_wave3_walkforward.md`. Beats V11 in only **3/7** sequential OOS calendar-year windows (worst -0.496 in 2022 BEAR). Pooled OOS Sharpe 0.889 > V11 0.647, but the full-window edge is period-concentrated in 2023-2025 up-markets; being regime-free, V28 has no BEAR downside protection. Mean family rank 3.7/6, top-2 in only 14% of windows -- confirms the PBO 0.503 selection-instability finding.
+- **Status**: research; **REJECT on OOS robustness.** NOT graduating. V11 remains the deployed paper incumbent. (Lead worth noting: V28 signal + V11's regime-cash BEAR overlay -- a hybrid that pairs the better up-market signal with downside protection -- is an untested follow-up hypothesis.)
 
 ### V31 -- beta-residual momentum
 - **Code**: `src/research/ramp_phase4/variants.py::_variant_v31`
 - **Description**: V11 chain; ranking swapped to residual 21d return after removing trailing 90d SPY beta. Directly attacks H6/H8 (BEAR high-beta lagged-winner losers, e.g. SMCI/ENPH/MU).
 - **Report**: `docs/reports/ramp/20260601_wave3_v31.md` (NOTE: an earlier in-session number of 0.307 was WRONG -- it ran on a corrupt legacy cache + an object-dtype `pct_change` bug; both fixed, re-run clean at the family gate).
 - **Verdict (2026-06-01)**: **BEATS V11 -- strong co-candidate.** Sharpe 0.769 (+0.241); **LOWEST max DD in family (-33.5%)**; PSR 0.990; cost gate PASS (0.702 at 7.5 bps). Beats V11 in all sub-windows.
-- **Status**: research; co-candidate for the V28 walk-forward (check V28/V31 correlation; if > 0.85 pick one via OOS Sharpe).
+- **Walk-forward verdict (2026-06-01): REJECT.** V28/V31 correlation 0.801 (independent, both validated). Beats V11 in **5/7** OOS windows (better than V28) but worst window -0.745 (2022 BEAR) -- below any HOLD threshold. Pooled OOS Sharpe 0.910 > V11 0.647; mean family rank 2.6/6, top-2 in 71% of windows (the most rank-stable challenger, but still loses the BEAR years). Same regime-free downside-protection gap as V28.
+- **Status**: research; **REJECT on OOS robustness.** NOT graduating. V11 remains the deployed paper incumbent.
 
 ### V33-core -- absolute-momentum cash gate (detector-free)
 - **Code**: `src/research/ramp_phase4/variants.py::_variant_v33_core`
@@ -264,7 +266,14 @@ Three variants beat V11 materially (V28 +0.283, V31 +0.241, V02+V05 +0.155) and 
 the 1.5x cost gate that **V11 itself fails** (0.452 at 7.5 bps). PSR clears for all three.
 The binding gate is **PBO = 0.503** (family selection is time-period-unstable), which
 makes a purged/embargoed walk-forward MANDATORY before any graduation. **V28 = HOLD ->
-walk-forward** (V31 co-candidate); null option (ship V11) rejected; V11 remains the
-deployed paper incumbent until V28 clears the walk-forward. Next gate: methodology
-Section 3 walk-forward, >= 3 rolling windows, purge 21d / embargo 2%, OOS/IS >= 0.70,
-every OOS sub-window must beat V11.
+walk-forward** (V31 co-candidate); V11 remains the deployed paper incumbent until V28 clears.
+
+**WALK-FORWARD OUTCOME (2026-06-01): BOTH V28 AND V31 REJECT -> null option ACTIVE, V11 STAYS.**
+Across 7 sequential OOS calendar-year windows, V28 beat V11 in only 3/7 (worst -0.496) and V31
+in 5/7 (worst -0.745) -- both fail the "beat V11 in every OOS window" bar. Pooled OOS Sharpes
+(V28 0.889, V31 0.910) DO exceed V11 (0.647), but the full-window edge is concentrated in
+2023-2025 up-markets; both regime-free signals lose the 2020/2022 BEAR years where V11's
+regime-cash mode protects. PBO 0.503 was prescient. **V11 remains the deployed incumbent; no
+candidate graduates.** Report: `docs/reports/ramp/20260601_wave3_walkforward.md`. **Open lead
+(untested):** a HYBRID = the V28/V31 up-market signal + V11's regime-cash BEAR overlay, to keep
+the momentum edge while restoring downside protection -- the one direction the data points to.
