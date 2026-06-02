@@ -449,6 +449,167 @@ def _variant_v14c_soft_bear_dampen(
     return plan_v11
 
 
+def _compute_beta_residual_ranking(
+    t: datetime,
+    panel: pd.DataFrame,
+    beta_window: int = 90,
+    return_window: int = 21,
+) -> "pd.Series | None":
+    """Compute cross-sectional beta-residual momentum scores.
+
+    For each universe symbol at date t:
+      1. Estimate OLS beta to SPY over the trailing `beta_window` days.
+      2. Residual momentum score = stock_return_window - beta * SPY_return_window.
+      3. Return a Series of scores (higher = better), index = symbol.
+
+    Returns None if there is insufficient history or SPY data is unavailable.
+
+    Rationale (H6/H8 attack): in BEAR, RAMP's standard momentum ranking selects
+    high-beta names (SMCI/ENPH/MU) that appeared strong because the market was
+    rising, not due to idiosyncratic strength. Residualizing removes exactly the
+    beta-driven component so the ranking captures genuine stock-level alpha.
+
+    Design choice: beta_window=90 (midpoint of the 60-126d spec range) is fixed,
+    not swept, to avoid a parameter-search trial against the experiment budget.
+    """
+    spy = panel['SPY'].dropna()
+    if t not in spy.index:
+        return None
+    spy_slice = spy.loc[:t]
+    if len(spy_slice) < beta_window + return_window:
+        return None
+
+    universe_cols = [c for c in panel.columns if c not in ('SPY', 'VIX')]
+    prices_slice = panel.loc[:t, universe_cols]
+
+    spy_returns = spy_slice.pct_change().dropna()
+    if len(spy_returns) < beta_window:
+        return None
+    spy_beta_window = spy_returns.iloc[-beta_window:]
+    spy_21d_return = float((spy_slice.iloc[-1] / spy_slice.iloc[-return_window - 1]) - 1.0)
+
+    scores: Dict[str, float] = {}
+    for sym in universe_cols:
+        prices = prices_slice[sym].dropna()
+        if len(prices) < beta_window + return_window:
+            continue
+        stock_returns = prices.pct_change().dropna()
+        if len(stock_returns) < beta_window:
+            continue
+        stock_beta_window = stock_returns.iloc[-beta_window:]
+
+        # Align the two return series by index for the OLS regression.
+        aligned = pd.concat(
+            [stock_beta_window.rename('stock'), spy_beta_window.rename('spy')],
+            axis=1,
+        ).dropna()
+        if len(aligned) < 20:
+            continue
+        x = aligned['spy'].values
+        y = aligned['stock'].values
+        x_mean = x.mean()
+        x_var = float(((x - x_mean) ** 2).mean())
+        if x_var < 1e-12:
+            beta = 0.0
+        else:
+            beta = float(((x - x_mean) * (y - y.mean())).mean() / x_var)
+
+        # 21d raw return for this stock.
+        prices_valid = prices.iloc[-return_window - 1:]
+        if len(prices_valid) < return_window + 1:
+            continue
+        stock_21d_return = float((prices_valid.iloc[-1] / prices_valid.iloc[0]) - 1.0)
+        scores[sym] = stock_21d_return - beta * spy_21d_return
+
+    if not scores:
+        return None
+    return pd.Series(scores)
+
+
+def _variant_v31(t: datetime, state, panel: pd.DataFrame, cfg) -> Dict[str, float]:
+    """V31: V11 structure with beta-residual momentum ranking.
+
+    Replaces V11's raw momentum ranking with beta-residual momentum:
+      residual_score = stock_21d_return - beta_90d * SPY_21d_return
+
+    Everything else is identical to V11 (rank_buffer + min_hold + delta via cfg),
+    so the ONLY difference vs V11 is the ranking signal. This isolates the signal
+    effect for a clean vs-V11 read.
+
+    Rationale: H6/H8 from the root-cause investigation showed that RAMP's BEAR
+    selections were dominated by high-beta names (SMCI/ENPH/MU) that appeared
+    strong only because the market was rising. Residualizing the momentum score
+    removes that beta-driven component so the selection favors genuine
+    idiosyncratic alpha.
+
+    Beta window: 90 days (fixed; midpoint of 60-126d spec range; NOT swept to
+    conserve the DSR trial budget).
+    """
+    # Compute beta-residual scores.
+    residual_scores = _compute_beta_residual_ranking(t, panel)
+
+    # Need regime and top_n from the detector -- use same detector call as V11.
+    spy = panel['SPY'].dropna()
+    vix = panel['VIX'].dropna()
+    if t not in spy.index or t not in vix.index:
+        return {'__regime__': 'SAFE_MODE'}
+    spy_slice = spy.loc[:t]
+    vix_slice = vix.loc[:t]
+    if len(spy_slice) < 252 or len(vix_slice) < 252:
+        return {'__regime__': 'SAFE_MODE'}
+
+    spy_df = pd.DataFrame({
+        'close': spy_slice, 'open': spy_slice, 'high': spy_slice, 'low': spy_slice,
+        'volume': 1e6,
+    })
+    vix_df = pd.DataFrame({'close': vix_slice})
+    try:
+        regime, _confidence = _DETECTOR.classify_regime(spy_df, vix_df, t)
+    except Exception:
+        return {'__regime__': 'SAFE_MODE'}
+
+    if residual_scores is None or len(residual_scores) == 0:
+        return {'__regime__': 'SAFE_MODE'}
+
+    top_n = REGIME_PARAMS.get(regime, {}).get('top_n', 10)
+
+    # Select top_n symbols by residual score (highest = best).
+    ranked = residual_scores.dropna().sort_values(ascending=False)
+    if len(ranked) == 0:
+        return {'__regime__': regime}
+    target_symbols = list(ranked.head(top_n).index)
+    if not target_symbols:
+        return {'__regime__': regime}
+
+    proposed = {sym: 1.0 / top_n for sym in target_symbols}
+
+    # Build universe ranking from residual scores (same shape expected by rank_buffer).
+    sorted_residual = ranked
+    ranking = pd.Series(
+        range(1, len(sorted_residual) + 1),
+        index=sorted_residual.index,
+    )
+
+    targets = rank_buffer(
+        proposed_targets=proposed,
+        state=state,
+        buffer_size=top_n // 2,
+        universe_ranking=ranking,
+        top_n=top_n,
+    )
+
+    targets = min_hold(
+        proposed_targets=targets,
+        state=state,
+        current_date=t,
+        min_hold_days=5,
+        crash_exit=False,
+    )
+
+    targets['__regime__'] = regime
+    return targets
+
+
 REGISTRY: Dict[str, VariantSpec] = {
     'V01': VariantSpec(
         id='V01',
@@ -504,5 +665,14 @@ REGISTRY: Dict[str, VariantSpec] = {
         id='V14c-soft-bear-dampen',
         description='V11 + Schmitt-trigger BEAR_score consumer; in_bear_soft_mode -> V11 plan * dampen_factor (default 0.5)',
         plan_fn=_variant_v14c_soft_bear_dampen,
+    ),
+    'V31': VariantSpec(
+        id='V31',
+        description=(
+            'Beta-residual momentum: ranks stocks by (21d_return - beta_90d * SPY_21d_return); '
+            'V11 scaffold (rank_buffer + min_hold + delta via cfg). '
+            'Attacks H6/H8 -- high-beta lagged winners removed from BEAR selections.'
+        ),
+        plan_fn=_variant_v31,
     ),
 }

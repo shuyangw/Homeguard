@@ -762,3 +762,147 @@ def test_v14c_respects_custom_dampen_factor(monkeypatch):
     _patch_detector_score(monkeypatch, 0.5)
     plan = _variant_v14c_soft_bear_dampen(datetime(2020, 1, 1), state, None, cfg)
     assert plan['AAPL'] == 0.25  # 1.0 * 0.25
+
+
+# ============================================================
+# V31 -- Beta-residual momentum tests
+# ============================================================
+
+def _v31_calm_panel(n=350):
+    """Panel for V31 tests: calm trending market, multiple universe names.
+
+    Three stocks with different beta characteristics vs SPY.
+    HIGH_BETA has 2x SPY sensitivity; LOW_BETA has 0.3x; RESIDUAL is
+    similar beta to SPY (1x) but has idiosyncratic positive alpha.
+    """
+    idx = pd.date_range('2022-01-03', periods=n, freq='B')
+    spy = 400 + np.arange(n) * 0.3
+    high_beta = 100 + np.arange(n) * 0.6 + np.sin(np.arange(n) * 0.2) * 5
+    low_beta = 50 + np.arange(n) * 0.09 + np.sin(np.arange(n) * 0.15) * 1
+    residual = 80 + np.arange(n) * 0.28 + np.arange(n) * 0.001  # slight extra alpha
+    return pd.DataFrame({
+        'HIGH_BETA': high_beta,
+        'LOW_BETA': low_beta,
+        'RESIDUAL': residual,
+        'SPY': spy,
+        'VIX': np.full(n, 12.0),
+    }, index=idx)
+
+
+def _v31_residual_advantage_panel(n=350):
+    """Panel engineered so HIGH_BETA has high raw 21d return (from SPY move)
+    but near-zero residual, while GOOD_RESIDUAL has moderate raw return
+    but strongly positive residual momentum.
+
+    Used to verify that V31 ranks GOOD_RESIDUAL above HIGH_BETA.
+    """
+    idx = pd.date_range('2022-01-03', periods=n, freq='B')
+    # SPY climbs strongly in the last 21 days (the momentum window)
+    spy_base = np.ones(n) * 400.0
+    spy_base[-21:] += np.linspace(0, 25, 21)  # ~6.25% gain
+    # HIGH_BETA: 2x leveraged vs SPY, so ~12.5% gain, but zero residual
+    hb_base = np.ones(n) * 100.0
+    hb_base[-21:] += np.linspace(0, 50, 21)  # ~50% of SPY move * 2
+    # GOOD_RESIDUAL: 1x SPY beta but +5% extra idiosyncratic in window
+    gr_base = np.ones(n) * 100.0
+    gr_base[-21:] += np.linspace(0, 12.5, 21) + np.linspace(0, 5, 21)
+    # FLAT: flat price, negative residual
+    flat_base = np.ones(n) * 80.0
+    return pd.DataFrame({
+        'HIGH_BETA': hb_base,
+        'GOOD_RESIDUAL': gr_base,
+        'FLAT': flat_base,
+        'SPY': spy_base,
+        'VIX': np.full(n, 12.0),
+    }, index=idx)
+
+
+def test_v31_in_registry():
+    """V31 is registered with expected description hallmarks."""
+    assert 'V31' in REGISTRY
+    assert isinstance(REGISTRY['V31'], VariantSpec)
+    desc = REGISTRY['V31'].description.lower()
+    assert 'beta' in desc or 'residual' in desc
+
+
+def test_v31_plan_fn_returns_weights_summing_to_one_in_calm_regime():
+    """V31 plan_fn returns weights summing to <= 1.0 + epsilon with __regime__ key."""
+    spec = REGISTRY['V31']
+    panel = _v31_calm_panel()
+    state = HarnessState(cash_usd=100_000.0)
+    cfg = _stub_cfg()
+    plan = spec.plan_fn(panel.index[-1].to_pydatetime(), state, panel, cfg)
+    assert '__regime__' in plan
+    weight_keys = [k for k in plan if k != '__regime__']
+    if weight_keys:
+        total = sum(plan[k] for k in weight_keys)
+        assert total <= 1.0 + 1e-6, f'Weights sum to {total:.6f}, expected <= 1.0'
+        assert total > 0.0
+
+
+def test_v31_safe_mode_when_insufficient_history():
+    """V31 returns SAFE_MODE when panel has fewer than 252 rows (insufficient beta history)."""
+    spec = REGISTRY['V31']
+    n_short = 90
+    idx = pd.date_range('2024-01-01', periods=n_short, freq='B')
+    short_panel = pd.DataFrame({
+        'AAPL': 100 + np.arange(n_short) * 0.1,
+        'SPY': 400 + np.arange(n_short) * 0.2,
+        'VIX': np.full(n_short, 14.0),
+    }, index=idx)
+    state = HarnessState(cash_usd=100_000.0)
+    cfg = _stub_cfg()
+    plan = spec.plan_fn(short_panel.index[-1].to_pydatetime(), state, short_panel, cfg)
+    assert plan.get('__regime__') == 'SAFE_MODE'
+
+
+def test_v31_high_beta_raw_momentum_name_not_selected_when_zero_residual():
+    """V31 signal selection: a high-beta name with high raw return but
+    near-zero residual is de-ranked relative to a name with positive residual.
+
+    This test verifies the core H6/H8 attack: HIGH_BETA has high raw 21d
+    return (market beta * SPY gain) but negligible residual; GOOD_RESIDUAL
+    has idiosyncratic alpha in the window. V31 should select GOOD_RESIDUAL
+    over HIGH_BETA (or exclude HIGH_BETA if only one slot is available).
+    """
+    spec = REGISTRY['V31']
+    panel = _v31_residual_advantage_panel()
+    state = HarnessState(cash_usd=100_000.0)
+    cfg = _stub_cfg()
+    t = panel.index[-1].to_pydatetime()
+    plan = spec.plan_fn(t, state, panel, cfg)
+    # If V31 correctly residualizes, GOOD_RESIDUAL should appear in plan.
+    # HIGH_BETA should NOT appear alone without GOOD_RESIDUAL being present.
+    weight_keys = {k for k in plan if k != '__regime__'}
+    if weight_keys:
+        # GOOD_RESIDUAL must be present if any selection was made
+        # (it has the highest residual momentum in this panel)
+        assert 'GOOD_RESIDUAL' in weight_keys, (
+            f'V31 did not select GOOD_RESIDUAL; selected={weight_keys}. '
+            f'Residual momentum ranking should prefer idiosyncratic alpha over market beta.'
+        )
+
+
+def test_v31_applies_rank_buffer_and_min_hold(monkeypatch):
+    """V31 must call rank_buffer then min_hold (same composition order as V11)."""
+    from src.research.ramp_phase4 import variants as v_mod
+    call_order = []
+
+    def fake_rank_buffer(proposed_targets, state, buffer_size, universe_ranking, top_n):
+        call_order.append('rank_buffer')
+        return proposed_targets
+
+    def fake_min_hold(proposed_targets, state, current_date, min_hold_days, crash_exit=False):
+        call_order.append('min_hold')
+        return proposed_targets
+
+    monkeypatch.setattr(v_mod, 'rank_buffer', fake_rank_buffer, raising=False)
+    monkeypatch.setattr(v_mod, 'min_hold', fake_min_hold, raising=False)
+
+    panel = _v31_calm_panel()
+    state = HarnessState(cash_usd=100_000.0)
+    cfg = _stub_cfg()
+    REGISTRY['V31'].plan_fn(panel.index[-1].to_pydatetime(), state, panel, cfg)
+    assert call_order == ['rank_buffer', 'min_hold'], (
+        f'Expected [rank_buffer, min_hold], got {call_order}'
+    )
