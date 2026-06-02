@@ -65,7 +65,9 @@ def _make(strategy="ramp", decision_id="abc", timestamp="2026-04-24T15:55:56-04:
 
 class TestLatest:
     def test_latest_reads_from_latest_dir(self, tmp_decisions_dir):
-        append(_make(decision_id="newest"))
+        # regime set -> substantive record (a blocked/empty record no longer
+        # updates _latest; see writer._is_substantive).
+        append(_make(decision_id="newest", regime="STRONG_BULL"))
         rec = latest("ramp")
         assert rec is not None
         assert rec.decision_id == "newest"

@@ -76,8 +76,39 @@ def _atomic_append_large(target: Path, line_bytes: bytes) -> None:
     os.replace(tmp.name, target)
 
 
+def _is_substantive(rec: DecisionRecord) -> bool:
+    """True if the record carries a real decision worth snapshotting to _latest.
+
+    A blocked or errored run (failed preconditions -- strategy disabled, lock not
+    acquired, health check failed) early-returns before reaching the inputs or
+    logic stages, so its `inputs` are empty (StrategyInputs.empty()) and
+    `logic_decisions` is None. Such a record must NOT overwrite _latest: the
+    runner polls every 15s and `_should_run_now` matches the whole rebalance
+    minute, so a second poll firing while the first rebalance still holds the
+    execution lock emits exactly such an empty record -- and unconditionally
+    overwriting _latest with it clobbers the day's real rebalance decision that
+    the A7 comparator (scripts/trading/compare_paper_vs_plan.py) reads, producing
+    a spurious VACUOUS verdict. The full record is still appended to the day's
+    JSONL for diagnostics regardless; only the _latest snapshot is protected.
+    """
+    ld = rec.logic_decisions
+    if ld is not None and ld.target_weights:
+        return True
+    inp = rec.inputs
+    if inp is not None and (inp.momentum_scores or inp.regime is not None):
+        return True
+    return False
+
+
 def _update_latest(rec: DecisionRecord) -> None:
-    """Atomically rewrite _latest/<strategy>.json with this record."""
+    """Atomically rewrite _latest/<strategy>.json with this record.
+
+    Skips non-substantive (blocked/errored) records so they cannot clobber the
+    day's real decision -- see _is_substantive. The record is still in the day's
+    JSONL either way.
+    """
+    if not _is_substantive(rec):
+        return
     target = paths.latest_path(rec.strategy)
     target.parent.mkdir(parents=True, exist_ok=True)
     line = rec.to_jsonl_line()

@@ -14,7 +14,7 @@ def _write_decision_log_entry(path: Path, target_weights: dict, regime: str = "S
         "strategy": "ramp",
         "as_of": "2026-05-20T15:55:00-04:00",
         "schema_version": 2,
-        "strategy_inputs": {
+        "inputs": {
             "regime": regime,
             "regime_confidence": 0.85,
             "regime_scores": {"STRONG_BULL": 0.85, "WEAK_BULL": 0.05,
@@ -67,7 +67,7 @@ class TestPaperComparator:
             "strategy": "ramp",
             "as_of": "2026-05-20T15:55:00-04:00",
             "schema_version": 2,
-            "strategy_inputs": None,
+            "inputs": None,
             "logic_decisions": None,
         }
         log_path = tmp_path / "log.json"
@@ -134,7 +134,7 @@ class TestRecomputeIntegration:
             "strategy": "ramp",
             "as_of": "2026-05-20T15:55:00-04:00",
             "schema_version": 2,
-            "strategy_inputs": {
+            "inputs": {
                 "regime": "STRONG_BULL",
                 "regime_confidence": 0.9,
                 "regime_scores": {
@@ -185,7 +185,7 @@ class TestRecomputeIntegration:
             "strategy": "ramp",
             "as_of": "2026-05-20T15:55:00-04:00",
             "schema_version": 2,
-            "strategy_inputs": {
+            "inputs": {
                 "regime": "STRONG_BULL",
                 "regime_confidence": 0.9,
                 "regime_scores": {"STRONG_BULL": 0.9},
@@ -214,6 +214,73 @@ class TestRecomputeIntegration:
         symbols_flagged = {d["symbol"] for d in result["divergences"]}
         assert "SYM99" in symbols_flagged
         assert "SYM09" in symbols_flagged
+
+
+class TestRealSchemaRegression:
+    """Regression for the A7 key-mismatch bug (2026-06-02).
+
+    The comparator read rec.get('strategy_inputs') but DecisionRecord serializes
+    that field under the key 'inputs' (record.py / asdict). The hand-fabricated
+    dicts in the other tests masked this by also using 'strategy_inputs'. These
+    tests serialize a REAL DecisionRecord via to_jsonl_line() so the comparator
+    is exercised against the actual on-disk schema -- if the key ever drifts
+    again, these fail.
+    """
+
+    def _real_record_line(self, momentum_scores: dict, top_n: int, log_weights: dict) -> str:
+        from src.trading.decision_log.record import (
+            DecisionRecord, TriggerInfo, PreconditionResults, StrategyInputs,
+            LogicDecisions, RunMetadata,
+        )
+        rec = DecisionRecord(
+            schema_version=2,
+            decision_id="real-1",
+            strategy="ramp",
+            timestamp="2026-05-20T15:55:00-04:00",
+            trigger=TriggerInfo(
+                kind="scheduled_rebalance", schedule_time="15:55",
+                actual_fire_time="2026-05-20T15:55:00-04:00", delay_seconds=0.0,
+            ),
+            preconditions=PreconditionResults.empty(),
+            inputs=StrategyInputs(
+                regime="STRONG_BULL", regime_confidence=0.9,
+                regime_scores={"STRONG_BULL": 0.9}, vix=18.0, spy_drawdown_pct=-0.02,
+                momentum_scores=momentum_scores, regime_params={"top_n": top_n},
+            ),
+            logic_decisions=LogicDecisions(
+                top_n=top_n, target_symbols=list(log_weights.keys()),
+                target_weights=log_weights,
+                target_value_usd={s: w * 100_000 for s, w in log_weights.items()},
+                reduce_exposure=False, exposure_pct=1.0,
+                exit_signals=[], hold_signals=[], skip_reasons={},
+            ),
+            executions=[], post_state=None, error=None,
+            metadata=RunMetadata(
+                broker_name="ibkr", data_provider="alpaca", git_sha="abc",
+                initial_capital_usd=100000.0, strategy_version=11,
+                process_pid=1, hostname="h",
+            ),
+        )
+        return rec.to_jsonl_line()
+
+    def test_real_record_is_not_vacuous_and_recomputes_nonempty_plan(self, tmp_path):
+        import pytest
+        from scripts.trading.compare_paper_vs_plan import compare_session
+
+        momentum_scores = {f"SYM{i:02d}": round(0.10 - 0.003 * i, 4) for i in range(25)}
+        top_20 = sorted(momentum_scores.items(), key=lambda x: -x[1])[:20]
+        log_weights = {sym: 0.05 for sym, _ in top_20}
+
+        log_path = tmp_path / "ramp.json"
+        log_path.write_text(self._real_record_line(momentum_scores, 20, log_weights))
+
+        result = compare_session(log_path)
+        # The bug made strategy_inputs always empty -> plan {} -> NOT vacuous but
+        # plan_total_gross 0.0 and every position a Sev-1 FAIL. Correct behavior:
+        # the inputs are read, plan recomputes to the same 20 names -> PASS.
+        assert result["status"] != "VACUOUS", result
+        assert result["plan_total_gross"] == pytest.approx(1.0, abs=1e-9), result
+        assert result["status"] == "PASS", result["divergences"]
 
 
 class TestV11Comparator:

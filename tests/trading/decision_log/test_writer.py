@@ -12,7 +12,7 @@ import pytest
 from src.trading.decision_log import paths
 from src.trading.decision_log.record import (
     DecisionRecord, TriggerInfo, PreconditionResults, GateResult,
-    StrategyInputs, RunMetadata,
+    StrategyInputs, LogicDecisions, RunMetadata,
 )
 from src.trading.decision_log.writer import (
     append, _cleanup_old_files, write_position_state,
@@ -43,6 +43,28 @@ def _record(strategy="ramp", timestamp="2026-04-24T15:55:56-04:00", decision_id=
             initial_capital_usd=100000.0, strategy_version=1, process_pid=1, hostname="h",
         ),
     )
+
+
+def _substantive_record(strategy="ramp", timestamp="2026-04-24T15:55:56-04:00", decision_id="abc-1"):
+    """A record that reached the logic stage (real rebalance decision).
+
+    Distinct from _record() (a blocked/empty run): this one carries
+    logic_decisions.target_weights, so it is 'substantive' and should update
+    the _latest snapshot.
+    """
+    rec = _record(strategy=strategy, timestamp=timestamp, decision_id=decision_id)
+    rec.logic_decisions = LogicDecisions(
+        top_n=10,
+        target_symbols=["AAPL"],
+        target_weights={"AAPL": 0.1},
+        target_value_usd={"AAPL": 10000.0},
+        reduce_exposure=False,
+        exposure_pct=1.0,
+        exit_signals=[],
+        hold_signals=[],
+        skip_reasons={},
+    )
+    return rec
 
 
 class TestAppend:
@@ -82,19 +104,48 @@ class TestAppend:
 
 
 class TestLatestSnapshot:
-    def test_append_writes_latest_snapshot(self, tmp_decisions_dir):
-        rec = _record(strategy="ramp", decision_id="latest-1")
+    def test_append_writes_latest_snapshot_for_substantive_record(self, tmp_decisions_dir):
+        rec = _substantive_record(strategy="ramp", decision_id="latest-1")
         append(rec)
         latest = tmp_decisions_dir / "_latest" / "ramp.json"
         assert latest.exists()
         loaded = json.loads(latest.read_text())
         assert loaded["decision_id"] == "latest-1"
 
-    def test_append_overwrites_latest_snapshot(self, tmp_decisions_dir):
-        append(_record(decision_id="first"))
-        append(_record(decision_id="second"))
+    def test_substantive_record_overwrites_latest_snapshot(self, tmp_decisions_dir):
+        append(_substantive_record(decision_id="first"))
+        append(_substantive_record(decision_id="second"))
         latest = tmp_decisions_dir / "_latest" / "ramp.json"
         assert json.loads(latest.read_text())["decision_id"] == "second"
+
+    def test_blocked_record_does_not_clobber_latest(self, tmp_decisions_dir):
+        # Regression for the A7 VACUOUS bug: a substantive rebalance decision is
+        # written, then a blocked/empty run (e.g. lock contention on a later 15s
+        # poll) fires. The blocked record must NOT overwrite the day's real
+        # decision in _latest -- otherwise the A7 comparator reads an empty
+        # snapshot and reports VACUOUS forever.
+        append(_substantive_record(decision_id="real-rebalance"))
+        append(_record(decision_id="blocked-rerun"))  # non-substantive
+        latest = tmp_decisions_dir / "_latest" / "ramp.json"
+        loaded = json.loads(latest.read_text())
+        assert loaded["decision_id"] == "real-rebalance"
+        assert (loaded.get("logic_decisions") or {}).get("target_weights")
+
+    def test_blocked_record_still_appended_to_jsonl(self, tmp_decisions_dir):
+        # The blocked record is preserved in the day's JSONL for diagnostics --
+        # only the _latest snapshot is protected.
+        append(_substantive_record(decision_id="real-rebalance"))
+        append(_record(decision_id="blocked-rerun"))
+        target = tmp_decisions_dir / "ramp_20260424.jsonl"
+        ids = [json.loads(l)["decision_id"] for l in target.read_text().strip().split("\n")]
+        assert ids == ["real-rebalance", "blocked-rerun"]
+
+    def test_no_latest_when_only_nonsubstantive(self, tmp_decisions_dir):
+        # If a day produces only blocked records, _latest is simply not created
+        # by them (no empty snapshot to mislead the comparator).
+        append(_record(decision_id="blocked-only"))
+        latest = tmp_decisions_dir / "_latest" / "ramp.json"
+        assert not latest.exists()
 
 
 class TestRetention:

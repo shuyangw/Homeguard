@@ -250,7 +250,12 @@ def compare_session(
     # logic_decisions may be None for pre-F5 decision logs OR SAFE_MODE days;
     # treat absent as empty so the comparator doesn't crash on None.get().
     log_weights = (rec.get("logic_decisions") or {}).get("target_weights") or {}
-    strategy_inputs = rec.get("strategy_inputs") or {}
+    # The DecisionRecord schema (src/trading/decision_log/record.py) serializes
+    # the strategy inputs under the key "inputs" (asdict field name). Reading the
+    # legacy key "strategy_inputs" here always returned {}, which made
+    # _recompute_plan() see no momentum and recompute an empty (zero) plan -- so
+    # every real session diverged from the zero plan and FAILed. Read "inputs".
+    strategy_inputs = rec.get("inputs") or {}
 
     if not log_weights and not strategy_inputs:
         return {
