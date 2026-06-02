@@ -259,7 +259,8 @@ same order as every Wave-3 variant. Compare turnover only runner-to-runner.
 - **Description**: RAMPSignals SIDEWAYS params (21/5), fixed top_n=10, NO regime switching, NO rank_buffer (minimal control), + min_hold(5). The H2 diagnostic: can the regime apparatus be dropped entirely?
 - **Report**: `docs/reports/ramp/20260601_wave3_v02+v05.md`
 - **Verdict (2026-06-01)**: **BEATS V11 -- Sharpe 0.683 (+0.155)**, most sub-window-consistent (graceful, not tail-driven). PSR 0.980; cost gate PASS (0.598). Family DSR FAILS at all n_trials (kurtosis 25.5). **Direct support for H2: regime-free beats regime-aware.**
-- **Status**: research; HOLD secondary -- valued as mechanism confirmation (H2) and to inform V28's parameter design more than as a standalone deployment candidate.
+- **Walk-forward (2026-06-01): REJECT, but the most BEAR-robust challenger.** Beat V11 in 4/7 OOS windows; worst window -0.120 (2022) -- the BEST worst-case of any challenger, and it actually BEATS V11 (-0.266) in the 2022 BEAR year (regime-free vanilla degraded gracefully where V28/V31 cratered). Still fails the every-window bar.
+- **Status**: research; REJECT on OOS robustness. Strongest H2 evidence AND the best base for the hybrid lead (its BEAR-robustness is the property V28/V31 lack).
 
 ### Wave-3 family verdict (2026-06-01)
 Three variants beat V11 materially (V28 +0.283, V31 +0.241, V02+V05 +0.155) and pass
@@ -274,6 +275,12 @@ in 5/7 (worst -0.745) -- both fail the "beat V11 in every OOS window" bar. Poole
 (V28 0.889, V31 0.910) DO exceed V11 (0.647), but the full-window edge is concentrated in
 2023-2025 up-markets; both regime-free signals lose the 2020/2022 BEAR years where V11's
 regime-cash mode protects. PBO 0.503 was prescient. **V11 remains the deployed incumbent; no
-candidate graduates.** Report: `docs/reports/ramp/20260601_wave3_walkforward.md`. **Open lead
-(untested):** a HYBRID = the V28/V31 up-market signal + V11's regime-cash BEAR overlay, to keep
-the momentum edge while restoring downside protection -- the one direction the data points to.
+candidate graduates.** Report: `docs/reports/ramp/20260601_wave3_walkforward.md`.
+
+**ALL FIVE proposed variants were OOS-evaluated per window; ALL FIVE REJECT** (none beats V11 in
+every window; every variant's worst window is 2022): V28 3/7 (worst -0.496), V31 5/7 (-0.745),
+V02+V05 4/7 (-0.120, the BEST worst-case -- beats V11 in the BEAR year), V26 3/7 (-0.589),
+V33-core 4/7 (-1.543, the abs-mom "crash" gate whipsawed worst). The "V11 stays" verdict is robust
+across the whole family. **Open lead (untested):** a HYBRID = up-market signal + V11's regime-cash
+BEAR overlay; V02+V05's relative BEAR-robustness suggests a regime-free-vanilla base, not only
+V28/V31 -- the one direction the data points to.

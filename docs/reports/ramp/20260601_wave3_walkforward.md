@@ -197,6 +197,23 @@ Per-window Sharpe at 7.5 bps for V28, V31, and V11.
 
 **V31 RATIONALE**: OOS performance insufficient. Full-window edge was concentrated in specific periods; walk-forward confirms REJECT.
 
+### Remaining family variants -- OOS verdicts (from the same per-window data, added 2026-06-01)
+
+All five proposed Wave-3 variants were OOS-evaluated per window above. Formal verdicts for the
+non-candidate three (they did not advance from the family gate, but the every-window bar is
+applied here for completeness):
+
+| Variant | Win rate vs V11 | Worst window | Every-window bar | Note |
+|---|:--:|---:|:--:|---|
+| V02+V05 | 4/7 | -0.120 (2022) | REJECT | BEST worst-case of all challengers; BEATS V11 (-0.266) in the 2022 BEAR year -- the most BEAR-robust challenger and the best hybrid base |
+| V26 | 3/7 | -0.589 (2022) | REJECT | only an in-sample tie to begin with |
+| V33-core | 4/7 | -1.543 (2022) | REJECT | the "crash protection" variant had the WORST 2022 -- its abs-mom cash gate whipsawed in the choppy bear |
+
+**Family-wide conclusion: ALL FIVE proposed variants REJECT.** None beats V11 in every OOS window;
+every variant's worst window is 2022. The "V11 stays" verdict is robust across the entire family,
+not just the two candidates. The most actionable signal: V02+V05's relative BEAR-robustness points
+the hybrid lead (signal + regime-cash overlay) toward a regime-free-vanilla base, not only V28/V31.
+
 ### Null Option
 
 V11 remains the deployed paper incumbent regardless of the above verdicts.

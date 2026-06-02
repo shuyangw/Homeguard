@@ -82,10 +82,13 @@ OOS. V02+V05 = HOLD secondary (H2 mechanism confirmation: regime-free beats regi
 is too strong to discard; but V11 stays the deployed paper incumbent until V28 clears the WF.
 
 **WALK-FORWARD COMPLETE (2026-06-01): V28 + V31 both REJECT. Null option ACTIVE -- V11 stays.**
-- 7 sequential OOS calendar-year windows. V28 beat V11 in 3/7 (worst -0.496); V31 in 5/7
-  (worst -0.745). Pooled OOS Sharpe V28 0.889 / V31 0.910 > V11 0.647, but the edge is
-  concentrated in 2023-2025 up-markets; both regime-free signals lose the 2020/2022 BEAR
-  years where V11's regime-cash mode protects. PBO 0.503 was prescient. Neither graduates.
+- 7 sequential OOS calendar-year windows. **ALL FIVE proposed variants were OOS-evaluated;
+  ALL FIVE REJECT** (none beats V11 in every window; every worst window is 2022): V28 3/7
+  (worst -0.496), V31 5/7 (-0.745), V02+V05 4/7 (-0.120 = best worst-case, beats V11 in BEAR),
+  V26 3/7 (-0.589), V33-core 4/7 (-1.543, abs-mom gate whipsawed). Pooled OOS V28 0.889 /
+  V31 0.910 > V11 0.647, but the edge is concentrated in 2023-2025 up-markets; the regime-free
+  signals lose the 2020/2022 BEAR years where V11's regime-cash mode protects. PBO 0.503 was
+  prescient. The "V11 stays" verdict is robust across the WHOLE family.
 - Report: `docs/reports/ramp/20260601_wave3_walkforward.md`; session log
   `docs/progress/20260601_RAMP_WAVE3_WALKFORWARD.md`. 201 tests pass.
 - **OPEN LEAD (untested, the one direction the data supports):** HYBRID = V28/V31 up-market
