@@ -577,7 +577,7 @@ def _build_md_report(
             f'worst = {worst_label} at Sharpe {worst_sharpe:.4f}). '
             'Cliff-edge sensitivity indicates the parameter surface is lumpy, which is '
             'consistent with overfitting. The HYBRID build decision should treat this as '
-            'a negative signal for {variant_id}.'
+            f'a negative signal for {variant_id}.'
         )
     lines.append('')
     lines.append(

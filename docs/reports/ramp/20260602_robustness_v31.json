@@ -1,0 +1,350 @@
+{
+  "variant_id": "V31",
+  "git_sha": "a2b4b9a4fb8b0406be45dcb6dc2f4363713ebc9e",
+  "window_start": "2017-01-01",
+  "window_end": "2026-05-16",
+  "universe": "config\\universes\\sp500-2025.csv",
+  "generated_at": "2026-06-02T00:39:49.522663",
+  "budget": 25,
+  "n_variations": 25,
+  "center_sharpe_measured": 0.7684878689447324,
+  "center_sharpe_ref": 0.769,
+  "stability_threshold": 0.9,
+  "verdict": "BRITTLE",
+  "min_ratio": 0.7284778335657373,
+  "worst_neighbor_sharpe": 0.5598263778904089,
+  "worst_neighbor_label": "bw72_rh25",
+  "red_flag_count": 2,
+  "red_flag_labels": [
+    "bw99_rh21",
+    "bw108_rh21"
+  ],
+  "trial_count_treatment": "phase=robustness_sensitivity; none promoted; no selection-trial added to project count",
+  "variations": [
+    {
+      "label": "bw72_rh17",
+      "is_center": false,
+      "params": {
+        "beta_window": 72,
+        "residual_horizon": 17
+      },
+      "sharpe": 0.6996527476866127,
+      "cagr": 0.1575723800027038,
+      "max_dd": -0.39076916709786746,
+      "run_id": "2c589bb3-06a9-4dbe-a713-563194b98c1e",
+      "ratio_to_center": 0.9104278362225258
+    },
+    {
+      "label": "bw72_rh19",
+      "is_center": false,
+      "params": {
+        "beta_window": 72,
+        "residual_horizon": 19
+      },
+      "sharpe": 0.6854412452054955,
+      "cagr": 0.15182918445261873,
+      "max_dd": -0.37701869518663483,
+      "run_id": "7baa104c-3591-46bc-9420-1ebd1946c663",
+      "ratio_to_center": 0.8919350231861508
+    },
+    {
+      "label": "bw72_rh21",
+      "is_center": false,
+      "params": {
+        "beta_window": 72,
+        "residual_horizon": 21
+      },
+      "sharpe": 0.729287116794681,
+      "cagr": 0.16288278397331757,
+      "max_dd": -0.3397413203431117,
+      "run_id": "171f4fc3-7760-4c9b-8ae6-9131585df688",
+      "ratio_to_center": 0.9489897580245724
+    },
+    {
+      "label": "bw72_rh23",
+      "is_center": false,
+      "params": {
+        "beta_window": 72,
+        "residual_horizon": 23
+      },
+      "sharpe": 0.703258866659175,
+      "cagr": 0.1562780134200381,
+      "max_dd": -0.33565069551472587,
+      "run_id": "d1520be9-c331-4296-b697-fb1acdc16baa",
+      "ratio_to_center": 0.9151203227513166
+    },
+    {
+      "label": "bw72_rh25",
+      "is_center": false,
+      "params": {
+        "beta_window": 72,
+        "residual_horizon": 25
+      },
+      "sharpe": 0.5598263778904089,
+      "cagr": 0.11422205737101843,
+      "max_dd": -0.42341897171739,
+      "run_id": "ce4ef496-ffdb-4264-b094-511812150e6a",
+      "ratio_to_center": 0.7284778335657373
+    },
+    {
+      "label": "bw81_rh17",
+      "is_center": false,
+      "params": {
+        "beta_window": 81,
+        "residual_horizon": 17
+      },
+      "sharpe": 0.7403689764295417,
+      "cagr": 0.1701548378387796,
+      "max_dd": -0.38827814822378726,
+      "run_id": "17907b1d-f58c-4f17-96eb-f3ec5bf7416e",
+      "ratio_to_center": 0.9634101022911359
+    },
+    {
+      "label": "bw81_rh19",
+      "is_center": false,
+      "params": {
+        "beta_window": 81,
+        "residual_horizon": 19
+      },
+      "sharpe": 0.6250172620126793,
+      "cagr": 0.13464196417359808,
+      "max_dd": -0.36609042692077465,
+      "run_id": "95954ca7-c4bc-4d06-aa00-4bec5e5d8237",
+      "ratio_to_center": 0.8133079092984731
+    },
+    {
+      "label": "bw81_rh21",
+      "is_center": false,
+      "params": {
+        "beta_window": 81,
+        "residual_horizon": 21
+      },
+      "sharpe": 0.7227246989188151,
+      "cagr": 0.1611045777484743,
+      "max_dd": -0.3276733235969217,
+      "run_id": "aa32962d-8ede-4255-9873-a4951e7eb71c",
+      "ratio_to_center": 0.9404503676957736
+    },
+    {
+      "label": "bw81_rh23",
+      "is_center": false,
+      "params": {
+        "beta_window": 81,
+        "residual_horizon": 23
+      },
+      "sharpe": 0.6725166277224487,
+      "cagr": 0.14793902951026583,
+      "max_dd": -0.34063789654579235,
+      "run_id": "02355f46-0c36-4e15-9316-792d8a87c8bf",
+      "ratio_to_center": 0.8751167778951814
+    },
+    {
+      "label": "bw81_rh25",
+      "is_center": false,
+      "params": {
+        "beta_window": 81,
+        "residual_horizon": 25
+      },
+      "sharpe": 0.5865736365977853,
+      "cagr": 0.12214344625154716,
+      "max_dd": -0.43276434892505805,
+      "run_id": "61815ce7-ba25-4759-92c4-37bb67f52ee0",
+      "ratio_to_center": 0.7632828835714127
+    },
+    {
+      "label": "bw90_rh17",
+      "is_center": false,
+      "params": {
+        "beta_window": 90,
+        "residual_horizon": 17
+      },
+      "sharpe": 0.7357421330841132,
+      "cagr": 0.1684675559831028,
+      "max_dd": -0.4066509551070626,
+      "run_id": "fee7967f-7936-4092-8e15-335ec40ffa6e",
+      "ratio_to_center": 0.9573893913178033
+    },
+    {
+      "label": "bw90_rh19",
+      "is_center": false,
+      "params": {
+        "beta_window": 90,
+        "residual_horizon": 19
+      },
+      "sharpe": 0.5966443470137035,
+      "cagr": 0.12579250286806487,
+      "max_dd": -0.3660020285190988,
+      "run_id": "1db03fef-4135-4101-bb10-b225a285f5ac",
+      "ratio_to_center": 0.7763874631267765
+    },
+    {
+      "label": "CENTER_bw90_rh21",
+      "is_center": true,
+      "params": {
+        "beta_window": 90,
+        "residual_horizon": 21
+      },
+      "sharpe": 0.7684878689447324,
+      "cagr": 0.17397965065788745,
+      "max_dd": -0.3350710638041267,
+      "run_id": "a7e1b49c-6624-4306-a233-c85926522fe2",
+      "ratio_to_center": 1.0
+    },
+    {
+      "label": "bw90_rh23",
+      "is_center": false,
+      "params": {
+        "beta_window": 90,
+        "residual_horizon": 23
+      },
+      "sharpe": 0.6880148562097413,
+      "cagr": 0.15202183050039753,
+      "max_dd": -0.3305097122609691,
+      "run_id": "95ac85ab-a165-45d8-96f8-c43917d59a5e",
+      "ratio_to_center": 0.8952839517876912
+    },
+    {
+      "label": "bw90_rh25",
+      "is_center": false,
+      "params": {
+        "beta_window": 90,
+        "residual_horizon": 25
+      },
+      "sharpe": 0.6027191407611939,
+      "cagr": 0.12627428432358778,
+      "max_dd": -0.42268320507648127,
+      "run_id": "a2023e45-92b4-42fd-af55-2a5bf4f315a1",
+      "ratio_to_center": 0.7842923292840421
+    },
+    {
+      "label": "bw99_rh17",
+      "is_center": false,
+      "params": {
+        "beta_window": 99,
+        "residual_horizon": 17
+      },
+      "sharpe": 0.7556448951918875,
+      "cagr": 0.17554399660787978,
+      "max_dd": -0.4017162576506598,
+      "run_id": "5fcba597-018c-4990-a777-b5ce0a6cb099",
+      "ratio_to_center": 0.9832879941612084
+    },
+    {
+      "label": "bw99_rh19",
+      "is_center": false,
+      "params": {
+        "beta_window": 99,
+        "residual_horizon": 19
+      },
+      "sharpe": 0.6070663643816331,
+      "cagr": 0.12912772011849682,
+      "max_dd": -0.37263624980757754,
+      "run_id": "3162b35d-f8a9-4549-914b-20a0b7efdcc2",
+      "ratio_to_center": 0.789949183212535
+    },
+    {
+      "label": "bw99_rh21",
+      "is_center": false,
+      "params": {
+        "beta_window": 99,
+        "residual_horizon": 21
+      },
+      "sharpe": 0.8454835499515496,
+      "cagr": 0.19750347779500954,
+      "max_dd": -0.31038338777671415,
+      "run_id": "7070d38e-8fda-4764-8ead-5305e786ecab",
+      "ratio_to_center": 1.1001911469501082
+    },
+    {
+      "label": "bw99_rh23",
+      "is_center": false,
+      "params": {
+        "beta_window": 99,
+        "residual_horizon": 23
+      },
+      "sharpe": 0.6979281767371129,
+      "cagr": 0.1559741503149552,
+      "max_dd": -0.3327030087261912,
+      "run_id": "94a9c96c-1a40-4ef0-be57-f422571239b2",
+      "ratio_to_center": 0.908183726693682
+    },
+    {
+      "label": "bw99_rh25",
+      "is_center": false,
+      "params": {
+        "beta_window": 99,
+        "residual_horizon": 25
+      },
+      "sharpe": 0.6554748821359366,
+      "cagr": 0.14162070368451363,
+      "max_dd": -0.38953466708123113,
+      "run_id": "0a133b8e-0425-45bd-b6aa-401d939235fa",
+      "ratio_to_center": 0.8529410920123147
+    },
+    {
+      "label": "bw108_rh17",
+      "is_center": false,
+      "params": {
+        "beta_window": 108,
+        "residual_horizon": 17
+      },
+      "sharpe": 0.6820484396562437,
+      "cagr": 0.1528724375610382,
+      "max_dd": -0.40163015038384897,
+      "run_id": "0c950a51-5dbe-4fb8-9de9-55231124d458",
+      "ratio_to_center": 0.8875201121818812
+    },
+    {
+      "label": "bw108_rh19",
+      "is_center": false,
+      "params": {
+        "beta_window": 108,
+        "residual_horizon": 19
+      },
+      "sharpe": 0.6047687185135403,
+      "cagr": 0.12788868726738412,
+      "max_dd": -0.3737895151744148,
+      "run_id": "06f95836-82b8-4d52-8244-ce60bca6cd79",
+      "ratio_to_center": 0.7869593560975698
+    },
+    {
+      "label": "bw108_rh21",
+      "is_center": false,
+      "params": {
+        "beta_window": 108,
+        "residual_horizon": 21
+      },
+      "sharpe": 0.8060799555144093,
+      "cagr": 0.18535403208052603,
+      "max_dd": -0.3106154796153265,
+      "run_id": "6b58d1f7-bd78-40a1-9c15-8308f2c80f9e",
+      "ratio_to_center": 1.0489169550864834
+    },
+    {
+      "label": "bw108_rh23",
+      "is_center": false,
+      "params": {
+        "beta_window": 108,
+        "residual_horizon": 23
+      },
+      "sharpe": 0.6481214358969426,
+      "cagr": 0.14065936131233658,
+      "max_dd": -0.34926588724329055,
+      "run_id": "7155c40c-def0-4f14-960a-03232330902c",
+      "ratio_to_center": 0.8433723707140961
+    },
+    {
+      "label": "bw108_rh25",
+      "is_center": false,
+      "params": {
+        "beta_window": 108,
+        "residual_horizon": 25
+      },
+      "sharpe": 0.644011127561113,
+      "cagr": 0.13817865923863826,
+      "max_dd": -0.4054595849813022,
+      "run_id": "4c07e9fe-77d1-432f-a295-42482308c3a8",
+      "ratio_to_center": 0.8380238043906306
+    }
+  ]
+}
