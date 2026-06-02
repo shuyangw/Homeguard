@@ -92,12 +92,54 @@ backtest-optimizer / implementation dispatch, and verify the return against it:
 > 4. **RESULTS:** the full metrics row (every metric in the Metrics section), the verdict,
 >    the report `.md` + `.json` paths, and the experiment-registry `run_id`s
 >    (`append_run` per Section 9.3 — raise on failure, no silent success).
-> Do NOT report the phase done until all four artifacts exist on disk.
+> 5. **ROBUSTNESS (when a variation-tier sweep was run):** the STABLE/BRITTLE verdict + the
+>    >= 0.9 neighbor ratio, the swept grid with every variation's Sharpe (registry-logged,
+>    `phase='robustness_sensitivity'`), the worst neighbor, and the trial-count treatment.
+>    NEVER report the best variation as a promotion -- a stability map does not adopt a winner.
+> Do NOT report the phase done until all required artifacts exist on disk.
 
 After return, the orchestrator: reads the report, queries the registry for the
 `run_id`s, **updates the canonical glossary + TODO + tracked twin + session log**, and
 only then marks `[x]`. The most common failure is documenting RESULTS in the report but
 NOT in the glossary / tracked TODO — Gate D2 (c)+(d) exist specifically to catch that.
+
+## Parameter robustness gate (variation tiers)
+
+After a variant produces a headline result, characterize the STABILITY of its parameter
+neighborhood before trusting/graduating it. **This is a robustness MAP, not an optimization
+search** -- it answers "is this edge a stable plateau or a knife-edge?", not "what's the best
+config?".
+
+**Tier (classified at the Validate step from the headline result vs the incumbent):**
+- **BAD** (does NOT beat the incumbent, OR fails the 1.5x cost gate at 7.5 bps) -> **5 variations.**
+- **NOT-THAT-GOOD** (beats the incumbent but < +0.10 Sharpe lift, OR fails PSR/DSR) -> **10 variations.**
+- **GOOD** (beats the incumbent by >= +0.10 AND passes the cost gate AND PSR) -> **25 variations.**
+
+Budget escalates with promise so validation DEPTH tracks deployment likelihood: a GOOD candidate
+(heading to walk-forward / possibly paper) earns the deepest stability proof; a BAD one gets a
+cheap confirmation it is robustly dead.
+
+**Rules (NON-NEGOTIABLE -- stability map, not a search):**
+1. Vary each tunable parameter in a NEIGHBORHOOD around the FIXED a-priori center (e.g. +/-10%
+   and +/-20% per parameter, plus small grid combinations up to the tier budget). The center
+   config remains THE candidate.
+2. **NEVER adopt the best variation as the new default.** A variation that beats the center
+   materially is a RED FLAG (arbitrary center / lumpy surface), not a free upgrade -> investigate.
+   Promote it ONLY by re-entering it as its OWN a-priori candidate with its own gate +
+   walk-forward + its own trial count. No silent upgrades.
+3. **Verdict (methodology Section 5.5):** STABLE if neighbors hold >= 0.9 of the center Sharpe
+   across the swept range; else BRITTLE. **A BRITTLE result is REJECTED regardless of center
+   Sharpe** (cliff-edge = overfit) and does NOT proceed to walk-forward.
+4. **Honest trial accounting:** log EVERY variation to the experiment registry (`append_run`,
+   `phase='robustness_sensitivity'`). State the trial-count treatment explicitly per Section 9.4
+   -- a fixed-center stability sweep informs STABLE/BRITTLE; any variation ever promoted (rule 2)
+   adds to the project selection-trial count that feeds DSR.
+5. This gate PRECEDES and gates the walk-forward (Phase 7 / Section 3): BRITTLE -> stop; STABLE ->
+   carry the unchanged center config forward.
+
+**Document the robustness map maximally** (per Documentation gates): the swept grid, every
+variation's Sharpe, the STABLE/BRITTLE classification + the >= 0.9 ratio, the worst neighbor, and
+the trial-count decision. Update the canonical glossary with the stability verdict.
 
 ## Backtest integrity (authoritative)
 

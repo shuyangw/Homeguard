@@ -412,6 +412,39 @@ Read the backtest report and check:
 
 Write validation notes to TODO.md. Update: `[x]` Validate.
 
+### Phase 6.5: Parameter robustness fan-out (variation tiers)
+
+**Orchestrator classifies the tier; dispatch a self-writing agent to run the sweep.**
+
+After a variant's headline result, characterize the STABILITY of its parameter neighborhood
+before graduating it. **This is a robustness MAP, NOT an optimization search** -- "is this edge
+a stable plateau or a knife-edge?", not "what's the best config?".
+
+**Tier (from the headline result vs the incumbent):**
+- **BAD** (does NOT beat incumbent, OR fails 1.5x cost gate at 7.5 bps) -> **5 variations**
+- **NOT-THAT-GOOD** (beats incumbent but < +0.10 Sharpe lift, OR fails PSR/DSR) -> **10 variations**
+- **GOOD** (beats incumbent >= +0.10 AND passes cost gate AND PSR) -> **25 variations**
+
+Budget escalates with promise: validation DEPTH tracks deployment likelihood.
+
+**Rules (NON-NEGOTIABLE):**
+1. Vary each tunable in a NEIGHBORHOOD around the FIXED a-priori center (+/-10%, +/-20%, plus
+   small combos up to the tier budget). The center stays THE candidate.
+2. **NEVER adopt the best variation.** A variation that materially beats the center is a RED FLAG
+   (arbitrary center / lumpy surface) -> investigate; promote only by re-entering it as its OWN
+   a-priori candidate with its own gate + walk-forward + trial count. No silent upgrades.
+3. **Verdict (Section 5.5):** STABLE if neighbors hold >= 0.9 of center Sharpe across the range;
+   else BRITTLE. **BRITTLE -> REJECT regardless of center Sharpe** (cliff-edge = overfit); does
+   NOT proceed to walk-forward.
+4. **Honest trial accounting:** log EVERY variation to the registry (`append_run`,
+   `phase='robustness_sensitivity'`); state the trial-count treatment per Section 9.4.
+5. This gate PRECEDES Phase 7 / the walk-forward: BRITTLE stops here; STABLE carries the
+   unchanged center config forward.
+
+**On completion (orchestrator):** record the STABLE/BRITTLE verdict + the >= 0.9 ratio + worst
+neighbor in TODO.md and the canonical glossary; verify the registry rows; document the swept grid
+maximally (per the Documentation gates -- the ROBUSTNESS contract item). Update TODO.md: `[x]` Robustness.
+
 ### Phase 7: Parameter optimization
 **Agent: backtest-optimizer** (self-writing)
 **Prompt must include:**
