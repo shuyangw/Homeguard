@@ -237,7 +237,16 @@ same order as every Wave-3 variant. Compare turnover only runner-to-runner.
 - **Report**: `docs/reports/ramp/20260601_wave3_v28.md`
 - **Verdict (2026-06-01)**: **BEATS V11 -- TOP CANDIDATE.** Sharpe 0.811 nc / 0.851 lag at 5 bps (**+0.283** vs V11 0.528); PSR 0.993; max DD -42.0%; LOWEST turnover in family (5,264%, ~half of V11); cost gate PASS (0.766 at 7.5 bps). Beats V11 in all three sub-windows. Family DSR passes at n_trials <= 12 (Wave-3 reset), fails at >= 36. Family **PBO = 0.503** (binding -- selection time-period-unstable).
 - **Walk-forward verdict (2026-06-01): REJECT.** Report `docs/reports/ramp/20260601_wave3_walkforward.md`. Beats V11 in only **3/7** sequential OOS calendar-year windows (worst -0.496 in 2022 BEAR). Pooled OOS Sharpe 0.889 > V11 0.647, but the full-window edge is period-concentrated in 2023-2025 up-markets; being regime-free, V28 has no BEAR downside protection. Mean family rank 3.7/6, top-2 in only 14% of windows -- confirms the PBO 0.503 selection-instability finding.
-- **Status**: research; **REJECT on OOS robustness.** NOT graduating. V11 remains the deployed paper incumbent. (Lead worth noting: V28 signal + V11's regime-cash BEAR overlay -- a hybrid that pairs the better up-market signal with downside protection -- is an untested follow-up hypothesis.)
+- **Parameter robustness (Phase 6.5, 2026-06-02): BRITTLE.** 25-variation neighborhood sweep
+  (`docs/reports/ramp/20260602_robustness_v28.md`). min(neighbor)/center Sharpe = 0.832 (< 0.90
+  STABLE bar); the 21d horizon is sensitive (h21=17d -> 0.675) and 5 neighbors BEAT the center
+  (e.g. h63=50d -> 0.871) -- a lumpy surface with an arbitrary center, not a discovered plateau.
+  The better neighbors are NOT adopted (in-sample best-of-25 = the p-hack the gate resists; they
+  would fail OOS like the center).
+- **Status**: research; **REJECT (two independent reasons: OOS walk-forward + parameter BRITTLE).**
+  NOT graduating; V11 remains the deployed paper incumbent. The hybrid lead built on the V28 signal
+  is now LOW-EV -- a signal this parameter-sensitive is unlikely to deliver stable alpha even with a
+  regime overlay. Recommend NOT building it.
 
 ### V31 -- beta-residual momentum
 - **Code**: `src/research/ramp_phase4/variants.py::_variant_v31`
@@ -245,7 +254,12 @@ same order as every Wave-3 variant. Compare turnover only runner-to-runner.
 - **Report**: `docs/reports/ramp/20260601_wave3_v31.md` (NOTE: an earlier in-session number of 0.307 was WRONG -- it ran on a corrupt legacy cache + an object-dtype `pct_change` bug; both fixed, re-run clean at the family gate).
 - **Verdict (2026-06-01)**: **BEATS V11 -- strong co-candidate.** Sharpe 0.769 (+0.241); **LOWEST max DD in family (-33.5%)**; PSR 0.990; cost gate PASS (0.702 at 7.5 bps). Beats V11 in all sub-windows.
 - **Walk-forward verdict (2026-06-01): REJECT.** V28/V31 correlation 0.801 (independent, both validated). Beats V11 in **5/7** OOS windows (better than V28) but worst window -0.745 (2022 BEAR) -- below any HOLD threshold. Pooled OOS Sharpe 0.910 > V11 0.647; mean family rank 2.6/6, top-2 in 71% of windows (the most rank-stable challenger, but still loses the BEAR years). Same regime-free downside-protection gap as V28.
-- **Status**: research; **REJECT on OOS robustness.** NOT graduating. V11 remains the deployed paper incumbent.
+- **Parameter robustness (Phase 6.5, 2026-06-02): BRITTLE.** 25-variation sweep
+  (`docs/reports/ramp/20260602_robustness_v31.md`). min(neighbor)/center Sharpe = 0.729 (< 0.90);
+  the rh=25 row collapses (worst bw72/rh25 -> 0.560) and bw=99 beats the center (0.846) -- the
+  center (bw=90, rh=21) is not on the plateau optimum. Lumpy surface; better neighbors NOT adopted.
+- **Status**: research; **REJECT (two independent reasons: OOS walk-forward + parameter BRITTLE).**
+  NOT graduating; V11 remains the deployed paper incumbent.
 
 ### V33-core -- absolute-momentum cash gate (detector-free)
 - **Code**: `src/research/ramp_phase4/variants.py::_variant_v33_core`
@@ -281,6 +295,10 @@ candidate graduates.** Report: `docs/reports/ramp/20260601_wave3_walkforward.md`
 every window; every variant's worst window is 2022): V28 3/7 (worst -0.496), V31 5/7 (-0.745),
 V02+V05 4/7 (-0.120, the BEST worst-case -- beats V11 in the BEAR year), V26 3/7 (-0.589),
 V33-core 4/7 (-1.543, the abs-mom "crash" gate whipsawed worst). The "V11 stays" verdict is robust
-across the whole family. **Open lead (untested):** a HYBRID = up-market signal + V11's regime-cash
-BEAR overlay; V02+V05's relative BEAR-robustness suggests a regime-free-vanilla base, not only
-V28/V31 -- the one direction the data points to.
+across the whole family. **Open lead (was: the HYBRID) -- now LOW-EV.** Parameter-robustness
+(Phase 6.5, 2026-06-02) found V28 AND V31 BRITTLE (min/center 0.832 / 0.729, lumpy surfaces with
+better-than-center neighbors = arbitrary centers). So the two strongest signals are dead on TWO
+independent grounds (OOS walk-forward REJECT + parameter brittleness) -- a hybrid built on them is
+unlikely to deliver stable alpha. V02+V05 (most BEAR-robust, NOT robustness-tested) is the only
+untested hybrid base, but it failed family DSR + OOS too. **Net: the Wave-3 signal line is closed;
+V11 stays the deployed incumbent; do NOT build the hybrid absent a NEW structural idea.**

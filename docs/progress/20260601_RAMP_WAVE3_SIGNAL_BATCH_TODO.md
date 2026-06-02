@@ -109,6 +109,20 @@ NOTE: all five are already WF-REJECTED, so a stability map on them is mostly con
 highest-value application is V28/V31 (does the up-market signal sit on a stable plateau? -> informs
 whether the HYBRID is worth building) and, going forward, the hybrid candidate itself.
 
+**ROBUSTNESS SWEEP RESULT (2026-06-02): V28 and V31 BOTH BRITTLE.** Built the reusable
+`scripts/backtest_scripts/ramp_phase4_robustness.py` (factory-parametrized variants + 25-point
+neighborhood sweep + STABLE/BRITTLE verdict + registry logging). Reports
+`docs/reports/ramp/20260602_robustness_{v28,v31}.md`; 53 runs logged (`phase='robustness_sensitivity'`).
+- V28: min(neighbor)/center 0.832 (< 0.90); 21d horizon sensitive (h21=17d -> 0.675); 5 neighbors
+  beat center (h63=50d -> 0.871) = lumpy surface / arbitrary center.
+- V31: min/center 0.729; rh=25 row collapses (0.560); bw=99 beats center (0.846).
+- **The "better" neighbors are NOT adopted** -- in-sample best-of-25 is the p-hack the gate resists;
+  they'd fail OOS like the centers.
+- **Implication: the HYBRID lead (#149) is now LOW-EV.** V28/V31 are dead on TWO independent grounds
+  (OOS reject + parameter brittleness). A signal this param-sensitive won't yield stable alpha even
+  with a regime overlay. **Recommend NOT building the hybrid absent a new structural idea. Wave-3
+  signal line CLOSED; V11 remains the deployed incumbent.**
+
 **(superseded) NEXT PHASE (was IN PROGRESS 2026-06-01):** V28 + V31 walk-forward / OOS-robustness validation.
 - V28/V31 daily-return correlation = **0.801** (<= 0.85 -> INDEPENDENT, carry BOTH). V28-V11
   0.477, V31-V11 0.565 (both genuinely different from the incumbent).
