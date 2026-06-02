@@ -1,7 +1,7 @@
 """Alpaca SIP universe panel loader.
 
 Primary source: aggregated daily closes derived from the FRESH 1-min SIP
-split tree at `H:/Stock_Data/equities_1min_sip_split/symbol=<SYM>/year=<Y>/
+split tree at `H:/Stock_Data/equities/sip_split/1min/symbol=<SYM>/year=<Y>/
 month=<M>/data.parquet`. Aggregation result is cached at
 `<storage>/cache/ramp_phase4/equities_daily_from_sip.parquet` (long-form
 panel, columns `symbol`, `trade_date`, `close`).
@@ -41,7 +41,12 @@ except ImportError:  # pragma: no cover
 
 AUX_SYMBOLS = ['SPY', 'VIX']
 
-SIP_SPLIT_REL = 'equities_1min_sip_split'
+# The 1-min SIP split tree moved from `<storage>/equities_1min_sip_split` to
+# `<storage>/equities/sip_split/1min` (~2026-05). When this constant went stale,
+# `_load_or_build_sip_daily_cache` silently fell through to the corrupt LEGACY
+# daily cache (unadjusted splits, e.g. NFLX 10:1 on 2025-11-17). Keep this
+# pointed at the live tree. See docs/progress/20260601_RAMP_WAVE3_*.
+SIP_SPLIT_REL = 'equities/sip_split/1min'
 SIP_DAILY_CACHE_REL = 'cache/ramp_phase4/equities_daily_from_sip.parquet'
 LEGACY_DAILY_CACHE_REL = 'equities_daily_cache.parquet'
 
@@ -178,7 +183,7 @@ def _aggregate_to_daily_from_sip_split(
 ) -> pd.DataFrame:
     """Aggregate the 1-min SIP split tree to a wide daily-close panel.
 
-    Walks `H:/Stock_Data/equities_1min_sip_split/symbol=<SYM>/year=<Y>/month=<M>/data.parquet`
+    Walks `H:/Stock_Data/equities/sip_split/1min/symbol=<SYM>/year=<Y>/month=<M>/data.parquet`
     for each requested symbol, restricts to RTH where possible, and groups by
     trade date taking the LAST close.
 
