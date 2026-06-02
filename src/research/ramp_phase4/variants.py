@@ -645,6 +645,23 @@ _V26_USE_BOUNDED_PENALTY = False
 
 _V28_LAMBDA_REV = 0.1  # Fixed 5d reversal penalty weight. NOT swept (conserves DSR budget).
 
+# ============================================================
+# V28 CENTER PARAMETERS (a-priori, fixed before any sweep)
+# ============================================================
+_V28_CENTER_BLEND_21D = 0.5
+_V28_CENTER_BLEND_63D = 0.3
+_V28_CENTER_BLEND_126D = 0.2
+_V28_CENTER_H_21 = 21
+_V28_CENTER_H_63 = 63
+_V28_CENTER_H_126 = 126
+_V28_CENTER_LAMBDA_REV = _V28_LAMBDA_REV
+
+# ============================================================
+# V31 CENTER PARAMETERS (a-priori, fixed before any sweep)
+# ============================================================
+_V31_CENTER_BETA_WINDOW = 90
+_V31_CENTER_RESIDUAL_HORIZON = 21
+
 
 def _compute_v26_zscore_scores(
     t: datetime,
@@ -857,15 +874,18 @@ def _variant_v26(t: datetime, state, panel: pd.DataFrame, cfg) -> Dict[str, floa
 def _compute_v28_multihorizon_scores(
     t: datetime,
     panel: pd.DataFrame,
-    blend_21d: float = 0.5,
-    blend_63d: float = 0.3,
-    blend_126d: float = 0.2,
+    blend_21d: float = _V28_CENTER_BLEND_21D,
+    blend_63d: float = _V28_CENTER_BLEND_63D,
+    blend_126d: float = _V28_CENTER_BLEND_126D,
     lambda_rev: float = _V28_LAMBDA_REV,
+    h_21: int = _V28_CENTER_H_21,
+    h_63: int = _V28_CENTER_H_63,
+    h_126: int = _V28_CENTER_H_126,
 ) -> "pd.Series | None":
     """Compute multi-horizon momentum ensemble scores (vectorized).
 
-    Score per universe symbol = blend_21d*ret_21d + blend_63d*ret_63d
-                                + blend_126d*ret_126d - lambda_rev*ret_5d
+    Score per universe symbol = blend_21d*ret_h21 + blend_63d*ret_h63
+                                + blend_126d*ret_h126 - lambda_rev*ret_5d
 
     where ret_Nd is the trailing N-trading-day simple return from the close
     panel at date t. lambda_rev=0.1 is a fixed reversal penalty (not swept).
@@ -874,8 +894,11 @@ def _compute_v28_multihorizon_scores(
     reliance on regime gating. Higher base-rate than single-window momentum
     because the blend averages over transient signal noise.
 
-    Blend weights are fixed (0.5/0.3/0.2) and not grid-searched.
-    Requires >= 126 + 2 price points (i.e. >= 127 rows) for the longest
+    Default blend weights (0.5/0.3/0.2) and horizons (21/63/126) are the
+    a-priori center for the Phase 6.5 robustness sweep. They are NOT
+    grid-searched in the headline run.
+
+    Requires >= max(h_21, h_63, h_126) + 2 price points for the longest
     horizon return. Returns None if insufficient history.
     """
     universe_cols = [c for c in panel.columns if c not in ('SPY', 'VIX')]
@@ -885,7 +908,7 @@ def _compute_v28_multihorizon_scores(
         return None
 
     prices_slice = panel.loc[:t, universe_cols]
-    min_rows = 126 + 2  # need 127 price points for a 126-day return
+    min_rows = h_126 + 2  # need h_126+1 price points for the longest-horizon return
     if len(prices_slice) < min_rows:
         return None
 
@@ -903,9 +926,9 @@ def _compute_v28_multihorizon_scores(
         return np.where(valid, p_end / p_start - 1.0, np.nan)
 
     ret_5d = _safe_return(5)
-    ret_21d = _safe_return(21)
-    ret_63d = _safe_return(63)
-    ret_126d = _safe_return(126)
+    ret_21d = _safe_return(h_21)
+    ret_63d = _safe_return(h_63)
+    ret_126d = _safe_return(h_126)
 
     scores = (
         blend_21d * ret_21d
@@ -1178,6 +1201,193 @@ def _variant_v33_core(t: datetime, state, panel: pd.DataFrame, cfg) -> Dict[str,
 
     targets['__regime__'] = 'ABSMOM'
     return targets
+
+
+def make_v28_plan_fn(
+    blend_21d: float = _V28_CENTER_BLEND_21D,
+    blend_63d: float = _V28_CENTER_BLEND_63D,
+    blend_126d: float = _V28_CENTER_BLEND_126D,
+    lambda_rev: float = _V28_CENTER_LAMBDA_REV,
+    h_21: int = _V28_CENTER_H_21,
+    h_63: int = _V28_CENTER_H_63,
+    h_126: int = _V28_CENTER_H_126,
+) -> PlanFn:
+    """Factory: return a V28 plan_fn parameterized by the given blend weights and horizons.
+
+    Calling make_v28_plan_fn() with NO arguments returns a function that is
+    byte-for-byte behaviorally identical to _variant_v28 (same defaults).
+
+    The three blend weights are renormalized to sum=1.0 before use so that
+    callers can pass un-normalized neighborhood offsets without altering the
+    relative importance of the three horizons beyond intent.
+
+    Parameters
+    ----------
+    blend_21d, blend_63d, blend_126d : blend weights (renormalized internally)
+    lambda_rev : reversal penalty weight on the 5d return
+    h_21, h_63, h_126 : return horizons (trading days)
+    """
+    total = blend_21d + blend_63d + blend_126d
+    if total <= 0:
+        raise ValueError(
+            f"make_v28_plan_fn: blend weights must sum > 0, got {total}"
+        )
+    w21 = blend_21d / total
+    w63 = blend_63d / total
+    w126 = blend_126d / total
+
+    def _plan_fn(t: datetime, state, panel: pd.DataFrame, cfg) -> Dict[str, float]:
+        scores = _compute_v28_multihorizon_scores(
+            t, panel,
+            blend_21d=w21,
+            blend_63d=w63,
+            blend_126d=w126,
+            lambda_rev=lambda_rev,
+            h_21=h_21,
+            h_63=h_63,
+            h_126=h_126,
+        )
+
+        spy = panel['SPY'].dropna()
+        vix = panel['VIX'].dropna()
+        if t not in spy.index or t not in vix.index:
+            return {'__regime__': 'SAFE_MODE'}
+        spy_slice = spy.loc[:t]
+        vix_slice = vix.loc[:t]
+        if len(spy_slice) < 252 or len(vix_slice) < 252:
+            return {'__regime__': 'SAFE_MODE'}
+
+        spy_df = pd.DataFrame({
+            'close': spy_slice, 'open': spy_slice, 'high': spy_slice, 'low': spy_slice,
+            'volume': 1e6,
+        })
+        vix_df = pd.DataFrame({'close': vix_slice})
+        try:
+            regime, _confidence = _DETECTOR.classify_regime(spy_df, vix_df, t)
+        except Exception:
+            return {'__regime__': 'SAFE_MODE'}
+
+        if scores is None or len(scores) == 0:
+            return {'__regime__': 'SAFE_MODE'}
+
+        top_n = REGIME_PARAMS.get(regime, {}).get('top_n', 10)
+
+        ranked = scores.dropna().sort_values(ascending=False)
+        if len(ranked) == 0:
+            return {'__regime__': regime}
+        target_symbols = list(ranked.head(top_n).index)
+        if not target_symbols:
+            return {'__regime__': regime}
+
+        proposed = {sym: 1.0 / top_n for sym in target_symbols}
+
+        ranking = pd.Series(
+            range(1, len(ranked) + 1),
+            index=ranked.index,
+        )
+
+        targets = rank_buffer(
+            proposed_targets=proposed,
+            state=state,
+            buffer_size=top_n // 2,
+            universe_ranking=ranking,
+            top_n=top_n,
+        )
+
+        targets = min_hold(
+            proposed_targets=targets,
+            state=state,
+            current_date=t,
+            min_hold_days=5,
+            crash_exit=False,
+        )
+
+        targets['__regime__'] = regime
+        return targets
+
+    return _plan_fn
+
+
+def make_v31_plan_fn(
+    beta_window: int = _V31_CENTER_BETA_WINDOW,
+    residual_horizon: int = _V31_CENTER_RESIDUAL_HORIZON,
+) -> PlanFn:
+    """Factory: return a V31 plan_fn parameterized by beta_window and residual_horizon.
+
+    Calling make_v31_plan_fn() with NO arguments returns a function that is
+    byte-for-byte behaviorally identical to _variant_v31 (same defaults).
+
+    Parameters
+    ----------
+    beta_window : trailing window (days) for OLS beta estimation
+    residual_horizon : trailing window (days) for the return used in residual scoring
+    """
+    def _plan_fn(t: datetime, state, panel: pd.DataFrame, cfg) -> Dict[str, float]:
+        residual_scores = _compute_beta_residual_ranking(
+            t, panel,
+            beta_window=beta_window,
+            return_window=residual_horizon,
+        )
+
+        spy = panel['SPY'].dropna()
+        vix = panel['VIX'].dropna()
+        if t not in spy.index or t not in vix.index:
+            return {'__regime__': 'SAFE_MODE'}
+        spy_slice = spy.loc[:t]
+        vix_slice = vix.loc[:t]
+        if len(spy_slice) < 252 or len(vix_slice) < 252:
+            return {'__regime__': 'SAFE_MODE'}
+
+        spy_df = pd.DataFrame({
+            'close': spy_slice, 'open': spy_slice, 'high': spy_slice, 'low': spy_slice,
+            'volume': 1e6,
+        })
+        vix_df = pd.DataFrame({'close': vix_slice})
+        try:
+            regime, _confidence = _DETECTOR.classify_regime(spy_df, vix_df, t)
+        except Exception:
+            return {'__regime__': 'SAFE_MODE'}
+
+        if residual_scores is None or len(residual_scores) == 0:
+            return {'__regime__': 'SAFE_MODE'}
+
+        top_n = REGIME_PARAMS.get(regime, {}).get('top_n', 10)
+
+        ranked = residual_scores.dropna().sort_values(ascending=False)
+        if len(ranked) == 0:
+            return {'__regime__': regime}
+        target_symbols = list(ranked.head(top_n).index)
+        if not target_symbols:
+            return {'__regime__': regime}
+
+        proposed = {sym: 1.0 / top_n for sym in target_symbols}
+
+        sorted_residual = ranked
+        ranking = pd.Series(
+            range(1, len(sorted_residual) + 1),
+            index=sorted_residual.index,
+        )
+
+        targets = rank_buffer(
+            proposed_targets=proposed,
+            state=state,
+            buffer_size=top_n // 2,
+            universe_ranking=ranking,
+            top_n=top_n,
+        )
+
+        targets = min_hold(
+            proposed_targets=targets,
+            state=state,
+            current_date=t,
+            min_hold_days=5,
+            crash_exit=False,
+        )
+
+        targets['__regime__'] = regime
+        return targets
+
+    return _plan_fn
 
 
 REGISTRY: Dict[str, VariantSpec] = {

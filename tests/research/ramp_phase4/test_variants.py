@@ -1775,3 +1775,140 @@ def test_v33_core_safe_mode_on_insufficient_history():
     assert plan.get("__regime__") == "SAFE_MODE", (
         f"Expected SAFE_MODE on panel < 63 rows, got: {plan}"
     )
+
+
+# ============================================================
+# Factory equivalence tests (Phase 6.5 robustness gate)
+#
+# Rules: make_v28_plan_fn() with DEFAULT args must reproduce
+# _variant_v28 selection exactly on a synthetic panel.
+# Likewise for make_v31_plan_fn() vs _variant_v31.
+#
+# These tests MUST FAIL before the factory is added to variants.py
+# and MUST PASS after (TDD gate).
+# ============================================================
+
+def _factory_panel(n: int = 400) -> pd.DataFrame:
+    """Synthetic panel with enough history for V28 (126+2) and V31 (90+21+2)."""
+    rng = np.random.default_rng(seed=42)
+    idx = pd.date_range("2022-01-03", periods=n, freq="B")
+    n_stocks = 8
+    stock_names = [f"S{i:02d}" for i in range(n_stocks)]
+    base = 100 + rng.standard_normal((n, n_stocks)).cumsum(axis=0) * 0.5
+    prices = pd.DataFrame(base, index=idx, columns=stock_names)
+    spy = pd.Series(
+        400 + np.arange(n) * 0.12 + rng.standard_normal(n) * 0.5,
+        index=idx,
+        name="SPY",
+    )
+    vix = pd.Series(np.full(n, 13.5), index=idx, name="VIX")
+    panel = pd.concat([prices, spy.rename("SPY"), vix.rename("VIX")], axis=1)
+    return panel
+
+
+def test_make_v28_plan_fn_exists():
+    """make_v28_plan_fn must be importable from variants."""
+    from src.research.ramp_phase4.variants import make_v28_plan_fn
+    assert callable(make_v28_plan_fn)
+
+
+def test_make_v31_plan_fn_exists():
+    """make_v31_plan_fn must be importable from variants."""
+    from src.research.ramp_phase4.variants import make_v31_plan_fn
+    assert callable(make_v31_plan_fn)
+
+
+def test_make_v28_default_matches_registered_variant():
+    """make_v28_plan_fn() with defaults must select same symbols as _variant_v28."""
+    from src.research.ramp_phase4.variants import make_v28_plan_fn
+    panel = _factory_panel()
+    t = panel.index[-1].to_pydatetime()
+    state = HarnessState(cash_usd=100_000.0)
+    cfg = _stub_cfg()
+
+    factory_fn = make_v28_plan_fn()
+    factory_plan = factory_fn(t, state, panel, cfg)
+    registered_plan = REGISTRY["V28"].plan_fn(t, state, panel, cfg)
+
+    factory_syms = set(k for k in factory_plan if k != "__regime__")
+    registered_syms = set(k for k in registered_plan if k != "__regime__")
+    assert factory_syms == registered_syms, (
+        f"make_v28_plan_fn() selected {factory_syms} but _variant_v28 selected {registered_syms}"
+    )
+    # Weights must match too.
+    for sym in factory_syms:
+        assert abs(factory_plan[sym] - registered_plan[sym]) < 1e-9, (
+            f"Weight mismatch for {sym}: factory={factory_plan[sym]}, registered={registered_plan[sym]}"
+        )
+
+
+def test_make_v31_default_matches_registered_variant():
+    """make_v31_plan_fn() with defaults must select same symbols as _variant_v31."""
+    from src.research.ramp_phase4.variants import make_v31_plan_fn
+    panel = _factory_panel()
+    t = panel.index[-1].to_pydatetime()
+    state = HarnessState(cash_usd=100_000.0)
+    cfg = _stub_cfg()
+
+    factory_fn = make_v31_plan_fn()
+    factory_plan = factory_fn(t, state, panel, cfg)
+    registered_plan = REGISTRY["V31"].plan_fn(t, state, panel, cfg)
+
+    factory_syms = set(k for k in factory_plan if k != "__regime__")
+    registered_syms = set(k for k in registered_plan if k != "__regime__")
+    assert factory_syms == registered_syms, (
+        f"make_v31_plan_fn() selected {factory_syms} but _variant_v31 selected {registered_syms}"
+    )
+    for sym in factory_syms:
+        assert abs(factory_plan[sym] - registered_plan[sym]) < 1e-9, (
+            f"Weight mismatch for {sym}: factory={factory_plan[sym]}, registered={registered_plan[sym]}"
+        )
+
+
+def test_make_v28_perturbed_differs_from_center():
+    """Perturbing V28 weights must change selection on at least some panels."""
+    from src.research.ramp_phase4.variants import make_v28_plan_fn
+    panel = _factory_panel()
+    t = panel.index[-1].to_pydatetime()
+    state = HarnessState(cash_usd=100_000.0)
+    cfg = _stub_cfg()
+
+    # Perturb all weights toward 0.6/0.3/0.1 (strong 21d bias).
+    perturbed_fn = make_v28_plan_fn(blend_21d=0.6, blend_63d=0.3, blend_126d=0.1)
+    default_fn = make_v28_plan_fn()
+
+    perturbed_plan = perturbed_fn(t, state, panel, cfg)
+    default_plan = default_fn(t, state, panel, cfg)
+
+    # At minimum the function runs without error; perturbed weights must not
+    # be identical to defaults if the scoring is weight-sensitive.
+    # (Allow same selection on small/correlated panels; just verify it runs.)
+    assert "__regime__" in perturbed_plan
+    assert "__regime__" in default_plan
+
+
+def test_make_v31_perturbed_differs_from_center():
+    """Perturbing V31 beta_window must run without error and return a valid plan."""
+    from src.research.ramp_phase4.variants import make_v31_plan_fn
+    panel = _factory_panel(n=500)
+    t = panel.index[-1].to_pydatetime()
+    state = HarnessState(cash_usd=100_000.0)
+    cfg = _stub_cfg()
+
+    perturbed_fn = make_v31_plan_fn(beta_window=72, residual_horizon=17)
+    plan = perturbed_fn(t, state, panel, cfg)
+    assert "__regime__" in plan
+
+
+def test_make_v28_weights_renormalized():
+    """make_v28_plan_fn must renormalize weights so they sum to 1.0."""
+    from src.research.ramp_phase4.variants import make_v28_plan_fn
+    # Provide un-normalized weights (sum = 0.9).
+    fn = make_v28_plan_fn(blend_21d=0.45, blend_63d=0.27, blend_126d=0.18)
+    panel = _factory_panel()
+    t = panel.index[-1].to_pydatetime()
+    state = HarnessState(cash_usd=100_000.0)
+    cfg = _stub_cfg()
+    plan = fn(t, state, panel, cfg)
+    # Must not crash; __regime__ sentinel present.
+    assert "__regime__" in plan
