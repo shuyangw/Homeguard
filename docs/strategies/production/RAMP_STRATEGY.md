@@ -13,6 +13,26 @@
 
 ---
 
+> **2026-06-01 Wave-3 research update — challengers to V11 found; V11 still the deployed incumbent.**
+>
+> The Wave-3 signal-construction probe (5 variants, clean split-adjusted data) produced
+> **three variants that beat V11 and pass the 1.5x cost gate V11 itself fails**: V28
+> multi-horizon ensemble (Sharpe 0.811, +0.283), V31 beta-residual (0.769, +0.241, lowest
+> drawdown), V02+V05 regime-free vanilla (0.683, +0.155 -- evidence the regime apparatus may be
+> net-negative, H2). The binding gate is family **PBO = 0.503**: a purged/embargoed
+> walk-forward is MANDATORY before any of these can graduate. **No deployment change** -- V11
+> remains the production-paper incumbent until V28 clears the walk-forward. See
+> `docs/reports/ramp/20260601_wave3_family_gate.md`, glossary `docs/strategies/RAMP_VARIANTS.md`,
+> session log `docs/progress/20260601_RAMP_WAVE3_SIGNAL_PROBE.md`.
+>
+> **Turnover-definition caveat:** the "turnover ... 39%" figures in this doc are the Wave-1
+> turnover metric. The Wave-3 research harness reports a DIFFERENT measure -- annualized
+> two-sided turnover (~10,325% for V11 itself) -- so the two numbers are NOT comparable. Always
+> compare turnover within one definition; do not read the research harness's AnnTO against this
+> doc's 39%.
+
+---
+
 ## Overview
 
 RAMP extends the basic momentum protection strategy with market regime detection, dynamically adapting parameters based on whether the market is in a bull, bear, sideways, or unpredictable state.

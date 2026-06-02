@@ -1,5 +1,15 @@
 # Post-Campaign Next Steps -- 2026-05-25
 
+> **UPDATE 2026-06-01 -- the signal-construction research wave was EXECUTED.** It ran as the
+> RAMP Wave-3 signal-construction probe (5 variants). Result: **V28 multi-horizon ensemble
+> (+0.283 Sharpe), V31 beta-residual (+0.241), V02+V05 regime-free vanilla (+0.155) all beat
+> V11**, and all three pass the 1.5x cost gate V11 itself fails. Family PBO = 0.503 -> a
+> purged/embargoed walk-forward is mandatory before graduation. **Verdict: V28 HOLD ->
+> walk-forward (V31 co-candidate); null option rejected; V11 stays the deployed paper
+> incumbent.** See `20260601_RAMP_WAVE3_SIGNAL_PROBE.md`, family gate
+> `docs/reports/ramp/20260601_wave3_family_gate.md`, glossary `docs/strategies/RAMP_VARIANTS.md`.
+> Next phase (not started): the V28 walk-forward.
+
 **Date**: 2026-05-25
 **Status**: Proposed
 **Owner**: Shuyang
