@@ -228,10 +228,16 @@ def _lookup_prior_run(
     cost_bps: float,
     timing_mode: str,
     git_sha: str,
+    window_start: datetime,
+    window_end: datetime,
 ) -> Optional[Tuple[str, pd.DataFrame]]:
     """Query the registry for a matching prior run.
 
-    Key: strategy_name + cost_bps + timing_mode in notes + git_sha.
+    Key: strategy_name + cost_bps + timing_mode in notes + git_sha +
+         window_start + window_end.
+
+    Including window dates prevents a smoke run (3-year slice) from being
+    incorrectly reused for a full-window run with the same git_sha.
 
     Returns (run_id, return_stream_df) if found, None otherwise.
     The return_stream_df has columns: date, return_pct, position_count.
@@ -240,8 +246,6 @@ def _lookup_prior_run(
         init_db(db_path)
         con = _connect_with_retry(db_path, read_only=True)
         try:
-            # Match on strategy_name, cost_bps, git_sha, and timing_mode
-            # (embedded in the notes field as 'V31 near_close 5.0bps' pattern).
             result = con.execute(
                 """
                 SELECT run_id FROM runs
@@ -250,10 +254,19 @@ def _lookup_prior_run(
                   AND git_sha = ?
                   AND notes LIKE ?
                   AND phase = 'wave3_readiness'
+                  AND window_start = ?
+                  AND window_end = ?
                 ORDER BY timestamp_utc DESC
                 LIMIT 1
                 """,
-                [strategy_name, cost_bps, git_sha, f'%{timing_mode}%'],
+                [
+                    strategy_name,
+                    cost_bps,
+                    git_sha,
+                    f'%{timing_mode}%',
+                    window_start.date(),
+                    window_end.date(),
+                ],
             ).fetchone()
             if not result:
                 return None
@@ -320,7 +333,10 @@ def _run_or_reuse(
     Raises if the registry write fails (per Section 9.3).
     """
     strategy_name = f'RAMP-{variant_id}'
-    prior = _lookup_prior_run(args.db_path, strategy_name, cost_bps, timing_mode, git_sha)
+    prior = _lookup_prior_run(
+        args.db_path, strategy_name, cost_bps, timing_mode, git_sha,
+        args.start, args.end,
+    )
 
     if prior is not None:
         run_id, stream = prior

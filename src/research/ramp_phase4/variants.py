@@ -11,6 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Callable, Dict
+import numpy as np
 import pandas as pd
 
 from src.research.ramp_phase4.engine import (
@@ -455,7 +456,7 @@ def _compute_beta_residual_ranking(
     beta_window: int = 90,
     return_window: int = 21,
 ) -> "pd.Series | None":
-    """Compute cross-sectional beta-residual momentum scores.
+    """Compute cross-sectional beta-residual momentum scores (vectorized).
 
     For each universe symbol at date t:
       1. Estimate OLS beta to SPY over the trailing `beta_window` days.
@@ -471,59 +472,79 @@ def _compute_beta_residual_ranking(
 
     Design choice: beta_window=90 (midpoint of the 60-126d spec range) is fixed,
     not swept, to avoid a parameter-search trial against the experiment budget.
+
+    Performance: uses vectorized numpy matrix operations over all symbols at once
+    instead of a per-symbol Python loop. For 488 symbols at 90-day window, this
+    reduces per-day cost from ~43k Python OLS iterations to a single matrix op.
     """
     spy = panel['SPY'].dropna()
     if t not in spy.index:
         return None
     spy_slice = spy.loc[:t]
-    if len(spy_slice) < beta_window + return_window:
+    min_history = beta_window + return_window + 1
+    if len(spy_slice) < min_history:
         return None
 
     universe_cols = [c for c in panel.columns if c not in ('SPY', 'VIX')]
-    prices_slice = panel.loc[:t, universe_cols]
-
-    spy_returns = spy_slice.pct_change().dropna()
-    if len(spy_returns) < beta_window:
+    if not universe_cols:
         return None
-    spy_beta_window = spy_returns.iloc[-beta_window:]
-    spy_21d_return = float((spy_slice.iloc[-1] / spy_slice.iloc[-return_window - 1]) - 1.0)
 
-    scores: Dict[str, float] = {}
-    for sym in universe_cols:
-        prices = prices_slice[sym].dropna()
-        if len(prices) < beta_window + return_window:
-            continue
-        stock_returns = prices.pct_change().dropna()
-        if len(stock_returns) < beta_window:
-            continue
-        stock_beta_window = stock_returns.iloc[-beta_window:]
+    # Slice the price matrix once for the window we need.
+    needed_rows = beta_window + return_window + 2  # +2 for pct_change NaN drop
+    prices_matrix = panel.loc[:t, universe_cols].iloc[-needed_rows:]
+    spy_matrix = spy_slice.iloc[-needed_rows:]
 
-        # Align the two return series by index for the OLS regression.
-        aligned = pd.concat(
-            [stock_beta_window.rename('stock'), spy_beta_window.rename('spy')],
-            axis=1,
-        ).dropna()
-        if len(aligned) < 20:
-            continue
-        x = aligned['spy'].values
-        y = aligned['stock'].values
-        x_mean = x.mean()
-        x_var = float(((x - x_mean) ** 2).mean())
-        if x_var < 1e-12:
-            beta = 0.0
-        else:
-            beta = float(((x - x_mean) * (y - y.mean())).mean() / x_var)
+    # Pct-change returns (drop first NaN row).
+    stock_rets = prices_matrix.pct_change().iloc[1:]  # (beta_window+return_window+1, n_syms)
+    spy_rets = spy_matrix.pct_change().iloc[1:]       # same length
 
-        # 21d raw return for this stock.
-        prices_valid = prices.iloc[-return_window - 1:]
-        if len(prices_valid) < return_window + 1:
-            continue
-        stock_21d_return = float((prices_valid.iloc[-1] / prices_valid.iloc[0]) - 1.0)
-        scores[sym] = stock_21d_return - beta * spy_21d_return
-
-    if not scores:
+    if len(stock_rets) < beta_window + return_window:
         return None
-    return pd.Series(scores)
+
+    # Beta regression window: last `beta_window` rows of returns.
+    x = spy_rets.iloc[-beta_window:].values.reshape(-1)       # (beta_window,)
+    Y = stock_rets.iloc[-beta_window:].values                  # (beta_window, n_syms)
+
+    # Valid columns: no NaN in beta window.
+    valid_mask = ~np.isnan(Y).any(axis=0)
+    Y_valid = Y[:, valid_mask]
+    cols_valid = [c for c, v in zip(universe_cols, valid_mask) if v]
+
+    if Y_valid.shape[1] == 0:
+        return None
+
+    # Vectorized OLS: beta_i = cov(x, Y_i) / var(x).
+    x_centered = x - x.mean()
+    x_var = float((x_centered ** 2).mean())
+    if x_var < 1e-12:
+        betas = np.zeros(Y_valid.shape[1])
+    else:
+        Y_centered = Y_valid - Y_valid.mean(axis=0, keepdims=True)
+        betas = (x_centered @ Y_centered) / (len(x) * x_var)
+
+    # 21-day returns: (last_price / price_21d_ago) - 1.
+    prices_full = prices_matrix[cols_valid].values  # (needed_rows, n_valid)
+    spy_full = spy_matrix.values                    # (needed_rows,)
+
+    # Need return_window+1 price points from the end.
+    if prices_full.shape[0] < return_window + 1:
+        return None
+    p_end = prices_full[-1, :]
+    p_start = prices_full[-(return_window + 1), :]
+    spy_21d_return = float(spy_full[-1] / spy_full[-(return_window + 1)] - 1.0)
+
+    # Any stock where start price is NaN or zero -> exclude.
+    start_valid = (p_start > 0) & ~np.isnan(p_start) & ~np.isnan(p_end)
+    stock_21d = np.where(start_valid, p_end / p_start - 1.0, np.nan)
+    residual_scores = stock_21d - betas * spy_21d_return
+
+    result = pd.Series(
+        residual_scores,
+        index=cols_valid,
+    ).dropna()
+    if len(result) == 0:
+        return None
+    return result
 
 
 def _variant_v31(t: datetime, state, panel: pd.DataFrame, cfg) -> Dict[str, float]:
