@@ -491,7 +491,10 @@ def _compute_beta_residual_ranking(
 
     # Slice the price matrix once for the window we need.
     needed_rows = beta_window + return_window + 2  # +2 for pct_change NaN drop
-    prices_matrix = panel.loc[:t, universe_cols].iloc[-needed_rows:]
+    # Convert to float64 numpy; apply(pd.to_numeric) coerces object/NA columns.
+    prices_matrix = panel.loc[:t, universe_cols].iloc[-needed_rows:].apply(
+        pd.to_numeric, errors='coerce'
+    )
     spy_matrix = spy_slice.iloc[-needed_rows:]
 
     # Pct-change returns (drop first NaN row). fill_method=None: do not forward-fill NaN
@@ -503,8 +506,8 @@ def _compute_beta_residual_ranking(
         return None
 
     # Beta regression window: last `beta_window` rows of returns.
-    x = spy_rets.iloc[-beta_window:].values.reshape(-1)       # (beta_window,)
-    Y = stock_rets.iloc[-beta_window:].values                  # (beta_window, n_syms)
+    x = spy_rets.iloc[-beta_window:].values.astype(np.float64).reshape(-1)   # (beta_window,)
+    Y = stock_rets.iloc[-beta_window:].values.astype(np.float64)              # (beta_window, n_syms)
 
     # Valid columns: no NaN in beta window.
     valid_mask = ~np.isnan(Y).any(axis=0)
