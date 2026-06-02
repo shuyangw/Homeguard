@@ -1,0 +1,90 @@
+{
+  "variant_id": "V28",
+  "git_sha": "dcdcb39750e1b3e7b3db7eae690ca4e34b4ebbff",
+  "window_start": "2017-01-01",
+  "window_end": "2026-05-16",
+  "universe": "config\\universes\\sp500-2025.csv",
+  "generated_at": "2026-06-01T20:54:03.295190",
+  "sub_runs": [
+    {
+      "cost_bps": 5.0,
+      "timing_mode": "near_close",
+      "run_id": "6a6eced1-bb4e-40f6-afa4-8981cf7035a6",
+      "reused_from_registry": false,
+      "metrics": {
+        "sharpe": 0.8111895699562492,
+        "cagr": 0.20033077124404652,
+        "max_dd": -0.41999350279524356,
+        "max_dd_duration_days": 544,
+        "calmar": 0.4769854055140285,
+        "monthly_win_pct": 0.5398230088495575,
+        "profit_factor": 1.1586921110737434,
+        "trade_days": 1842,
+        "avg_hold_est_days": 5.007714369354386,
+        "ann_turnover": 52.64207505035469,
+        "psr_vs_0": 0.9927915077885698,
+        "n_records": 2355
+      }
+    },
+    {
+      "cost_bps": 7.5,
+      "timing_mode": "near_close",
+      "run_id": "d2bd80a6-d222-4ed1-a3f9-892f64c8e723",
+      "reused_from_registry": false,
+      "metrics": {
+        "sharpe": 0.765561567099902,
+        "cagr": 0.18561722681730286,
+        "max_dd": -0.4332114582936824,
+        "max_dd_duration_days": 550,
+        "calmar": 0.428467953152498,
+        "monthly_win_pct": 0.5398230088495575,
+        "profit_factor": 1.1492036023275887,
+        "trade_days": 1847,
+        "avg_hold_est_days": 5.0061195050445555,
+        "ann_turnover": 52.45423195700373,
+        "psr_vs_0": 0.9895819519113088,
+        "n_records": 2355
+      }
+    },
+    {
+      "cost_bps": 5.0,
+      "timing_mode": "one_day_lag",
+      "run_id": "f7f91054-f9dd-4ee7-9e28-8beb3d6e6d13",
+      "reused_from_registry": false,
+      "metrics": {
+        "sharpe": 0.8505652973556379,
+        "cagr": 0.21255397262640652,
+        "max_dd": -0.38290861375199103,
+        "max_dd_duration_days": 507,
+        "calmar": 0.5551036591829642,
+        "monthly_win_pct": 0.584070796460177,
+        "profit_factor": 1.167028587610763,
+        "trade_days": 1829,
+        "avg_hold_est_days": 5.358858668767476,
+        "ann_turnover": 49.19788413216999,
+        "psr_vs_0": 0.9947617376293686,
+        "n_records": 2355
+      }
+    },
+    {
+      "cost_bps": 7.5,
+      "timing_mode": "one_day_lag",
+      "run_id": "3ee24b36-74b4-4f51-b17d-25eb8d6177e1",
+      "reused_from_registry": false,
+      "metrics": {
+        "sharpe": 0.8108355363324997,
+        "cagr": 0.19956954759891565,
+        "max_dd": -0.3920705398771009,
+        "max_dd_duration_days": 569,
+        "calmar": 0.5090143923118352,
+        "monthly_win_pct": 0.584070796460177,
+        "profit_factor": 1.1586080006810022,
+        "trade_days": 1832,
+        "avg_hold_est_days": 5.364878243371869,
+        "ann_turnover": 49.023392962682266,
+        "psr_vs_0": 0.9927012338318918,
+        "n_records": 2355
+      }
+    }
+  ]
+}
