@@ -477,7 +477,11 @@ def _build_report(
     lines.append(f'**Code commit**: {git_sha}')
     lines.append(f'**Data**: Alpaca SIP daily, {args.start.date()} to {args.end.date()}')
     lines.append(f'**Universe**: {args.universe}')
-    lines.append(f'**Incumbent (V11)**: Sharpe {v11_sharpe_ref} full-window / +{v11_oos_ref} EXT-OOS at 5 bps, turnover 39%')
+    # NOTE: the legacy "turnover 39%" figure used a DIFFERENT definition than this
+    # runner's annualized two-sided turnover. Measured via this runner, V11's AnnTO
+    # is ~10,325% at 5 bps near_close -- comparable to all Wave-3 variants. Compare
+    # turnover ONLY runner-to-runner, never against the legacy 39%.
+    lines.append(f'**Incumbent (V11)**: Sharpe {v11_sharpe_ref} full-window / +{v11_oos_ref} EXT-OOS at 5 bps; AnnTO (this runner) ~10,325%')
     lines.append('')
 
     # Cost-tier sweep table.
