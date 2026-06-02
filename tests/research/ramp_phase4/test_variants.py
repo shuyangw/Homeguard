@@ -1414,3 +1414,364 @@ def test_v02_v05_safe_mode_on_insufficient_history():
     assert plan.get('__regime__') == 'SAFE_MODE', (
         f'Expected SAFE_MODE on short panel, got: {plan}'
     )
+
+
+# ============================================================
+# V33-core: absolute-momentum cash gate (detector-free, close-only)
+# 5 tests per spec
+# ============================================================
+
+def _v33_panel_all_positive(n=80):
+    """All universe symbols have positive 21d AND 63d trailing returns.
+
+    Panel length=80 gives >= 63 trading days needed for the gate.
+    Monotone increasing prices -> ret_21d > 0 AND ret_63d > 0 for all symbols.
+    """
+    idx = pd.date_range('2023-08-01', periods=n, freq='B')
+    return pd.DataFrame({
+        'AAA': 100 + np.arange(n) * 0.5,
+        'BBB': 50 + np.arange(n) * 0.3,
+        'CCC': 200 + np.arange(n) * 0.8,
+        'DDD': 75 + np.arange(n) * 0.2,
+        'SPY': 400 + np.arange(n) * 0.1,
+        'VIX': np.full(n, 14.0),
+    }, index=idx)
+
+
+def _v33_panel_mixed_absolute_momentum(n=80):
+    """Some symbols have negative 63d return (peaked early then declined).
+
+    AAA: peaked at ~day 20, then fell back -> negative 63d return at t=n-1.
+    BBB: monotone up -> positive on both horizons.
+    CCC: monotone up -> positive on both horizons.
+    SPY/VIX: nominal (not universe symbols).
+    """
+    idx = pd.date_range('2023-08-01', periods=n, freq='B')
+    # AAA: rises to peak around day 20, then declines so p[-1] < p[-64]
+    aaa_prices = np.concatenate([
+        np.linspace(100, 140, 20),    # rises
+        np.linspace(140, 70, n - 20), # falls to 70; p[-64] > p[-1], ret_63d < 0
+    ])
+    bbb_prices = 50 + np.arange(n) * 0.4   # monotone up
+    ccc_prices = 200 + np.arange(n) * 0.6  # monotone up
+    return pd.DataFrame({
+        'AAA': aaa_prices,
+        'BBB': bbb_prices,
+        'CCC': ccc_prices,
+        'SPY': 400 + np.arange(n) * 0.1,
+        'VIX': np.full(n, 14.0),
+    }, index=idx)
+
+
+def _v33_panel_all_negative(n=80):
+    """ALL universe symbols have negative 63d AND 21d trailing returns.
+
+    Monotone decreasing prices -> both horizons are negative.
+    """
+    idx = pd.date_range('2023-08-01', periods=n, freq='B')
+    return pd.DataFrame({
+        'AAA': np.linspace(150, 80, n),
+        'BBB': np.linspace(200, 100, n),
+        'CCC': np.linspace(90, 50, n),
+        'SPY': 400 + np.arange(n) * 0.1,
+        'VIX': np.full(n, 14.0),
+    }, index=idx)
+
+
+def _v33_panel_partial_qualify(n=80, n_positive=3):
+    """Exactly n_positive symbols pass the absolute-momentum gate (out of 15+).
+
+    n_positive symbols are monotone up; the rest are monotone down.
+    With top_n=10, only n_positive < top_n symbols qualify -> partial exposure.
+    """
+    idx = pd.date_range('2023-08-01', periods=n, freq='B')
+    data = {}
+    for i in range(n_positive):
+        data[f'POS_{i:02d}'] = 50 + np.arange(n) * (0.3 + i * 0.05)
+    for j in range(12):
+        data[f'NEG_{j:02d}'] = np.linspace(100, 50, n)
+    data['SPY'] = 400 + np.arange(n) * 0.1
+    data['VIX'] = np.full(n, 14.0)
+    return pd.DataFrame(data, index=idx)
+
+
+def _v33_short_panel(n=40):
+    """Panel with < 63 rows -> insufficient history for the 63d gate."""
+    idx = pd.date_range('2024-05-01', periods=n, freq='B')
+    return pd.DataFrame({
+        'AAA': 100 + np.arange(n) * 0.5,
+        'SPY': 400 + np.arange(n) * 0.1,
+        'VIX': np.full(n, 14.0),
+    }, index=idx)
+
+
+def test_v33_core_in_registry():
+    """V33-core must be registered and have the correct description markers."""
+    assert 'V33-core' in REGISTRY
+    spec = REGISTRY['V33-core']
+    assert isinstance(spec, VariantSpec)
+    desc = spec.description.lower()
+    assert 'absolute' in desc or 'absmom' in desc or 'cash gate' in desc
+
+
+def test_v33_core_weights_sum_le_one_with_regime_key():
+    """(Test 1) Weights (excluding __regime__) sum to <= 1.0 + eps for all cases."""
+    spec = REGISTRY['V33-core']
+    cfg = _stub_cfg()
+
+    for panel_fn, label in [
+        (_v33_panel_all_positive, 'all_positive'),
+        (_v33_panel_mixed_absolute_momentum, 'mixed'),
+        (_v33_panel_partial_qualify, 'partial'),
+    ]:
+        panel = panel_fn()
+        t = panel.index[-1].to_pydatetime()
+        plan = spec.plan_fn(t, HarnessState(cash_usd=100_000.0), panel, cfg)
+        assert '__regime__' in plan, f'{label}: missing __regime__'
+        weights = {k: v for k, v in plan.items() if k != '__regime__'}
+        gross = sum(weights.values())
+        assert gross <= 1.0 + 1e-9, (
+            f'{label}: gross {gross:.6f} > 1.0 -- overleverage'
+        )
+
+
+def test_v33_core_negative_abs_return_excluded():
+    """(Test 2) A symbol with negative 63d absolute return is excluded even if
+    its cross-sectional momentum rank would be high.
+
+    AAA has negative 63d return in _v33_panel_mixed_absolute_momentum;
+    it must not appear in V33 target weights.
+    """
+    spec = REGISTRY['V33-core']
+    panel = _v33_panel_mixed_absolute_momentum()
+    t = panel.index[-1].to_pydatetime()
+    state = HarnessState(cash_usd=100_000.0)
+    cfg = _stub_cfg()
+    plan = spec.plan_fn(t, state, panel, cfg)
+    weights = {k: v for k, v in plan.items() if k != '__regime__'}
+    assert 'AAA' not in weights, (
+        f'AAA has negative 63d return but appeared in targets: {plan}'
+    )
+
+
+def test_v33_core_all_negative_abs_momentum_fully_cash():
+    """(Test 3) When ALL universe symbols have negative absolute momentum on both
+    horizons, V33-core returns fully cash (no symbol weights, __regime__='ABSMOM').
+    """
+    spec = REGISTRY['V33-core']
+    panel = _v33_panel_all_negative()
+    t = panel.index[-1].to_pydatetime()
+    state = HarnessState(cash_usd=100_000.0)
+    cfg = _stub_cfg()
+    plan = spec.plan_fn(t, state, panel, cfg)
+    weights = {k: v for k, v in plan.items() if k != '__regime__'}
+    assert not weights, (
+        f'Expected fully cash (no symbol weights) when all abs momentum negative. Got: {plan}'
+    )
+    assert plan.get('__regime__') == 'ABSMOM', (
+        f'Expected __regime__=ABSMOM for fully-cash, got: {plan.get("__regime__")}'
+    )
+
+
+def test_v33_core_partial_qualification_gross_below_one():
+    """(Test 4) When fewer than top_n (=10) symbols pass the abs-mom gate,
+    gross weight < 1.0 (cash residual holds the rest).
+    """
+    spec = REGISTRY['V33-core']
+    # 3 positive symbols out of 15 -> top_n=10 means only 3 qualify
+    panel = _v33_panel_partial_qualify(n_positive=3)
+    t = panel.index[-1].to_pydatetime()
+    state = HarnessState(cash_usd=100_000.0)
+    cfg = _stub_cfg()
+    plan = spec.plan_fn(t, state, panel, cfg)
+    weights = {k: v for k, v in plan.items() if k != '__regime__'}
+    gross = sum(weights.values())
+    # 3 symbols qualify out of top_n=10 -> gross = 3 * (1/10) = 0.30
+    assert gross < 1.0 - 1e-6, (
+        f'Expected partial gross < 1.0 with only 3 qualifying symbols, got {gross:.4f}'
+    )
+    assert len(weights) <= 3, (
+        f'Expected at most 3 symbols in plan, got {len(weights)}: {list(weights)}'
+    )
+
+
+def test_v33_core_safe_mode_on_insufficient_history():
+    """(Test 5) V33-core returns SAFE_MODE when panel has fewer than 63 rows
+    (insufficient for the 63d absolute-return gate).
+    """
+    spec = REGISTRY['V33-core']
+    panel = _v33_short_panel()
+    t = panel.index[-1].to_pydatetime()
+    state = HarnessState(cash_usd=100_000.0)
+    cfg = _stub_cfg()
+    plan = spec.plan_fn(t, state, panel, cfg)
+    assert plan.get('__regime__') == 'SAFE_MODE', (
+        f'Expected SAFE_MODE on panel with < 63 rows, got: {plan}'
+    )
+
+
+# ============================================================
+# V33-core: absolute-momentum cash gate (detector-free, close-only)
+# 5 required tests per spec
+# ============================================================
+
+def _v33_panel_all_positive(n=80):
+    """All universe symbols have positive 21d AND 63d trailing returns.
+
+    Panel length=80 gives >= 63 trading days needed for the gate.
+    Monotone increasing prices -> ret_21d > 0 AND ret_63d > 0 for all symbols.
+    """
+    idx = pd.date_range("2023-08-01", periods=n, freq="B")
+    return pd.DataFrame({
+        "AAA": 100 + np.arange(n) * 0.5,
+        "BBB": 50 + np.arange(n) * 0.3,
+        "CCC": 200 + np.arange(n) * 0.8,
+        "DDD": 75 + np.arange(n) * 0.2,
+        "SPY": 400 + np.arange(n) * 0.1,
+        "VIX": np.full(n, 14.0),
+    }, index=idx)
+
+
+def _v33_panel_mixed_absolute_momentum(n=80):
+    """Some symbols have negative 63d return (peaked early then declined).
+
+    AAA: peaked at day 20, then fell back -> p[-1] < p[-64] -> ret_63d < 0.
+    BBB, CCC: monotone up -> positive on both horizons.
+    """
+    idx = pd.date_range("2023-08-01", periods=n, freq="B")
+    aaa_prices = np.concatenate([
+        np.linspace(100, 140, 20),
+        np.linspace(140, 70, n - 20),
+    ])
+    bbb_prices = 50 + np.arange(n) * 0.4
+    ccc_prices = 200 + np.arange(n) * 0.6
+    return pd.DataFrame({
+        "AAA": aaa_prices,
+        "BBB": bbb_prices,
+        "CCC": ccc_prices,
+        "SPY": 400 + np.arange(n) * 0.1,
+        "VIX": np.full(n, 14.0),
+    }, index=idx)
+
+
+def _v33_panel_all_negative(n=80):
+    """ALL universe symbols have negative 63d AND 21d trailing returns."""
+    idx = pd.date_range("2023-08-01", periods=n, freq="B")
+    return pd.DataFrame({
+        "AAA": np.linspace(150, 80, n),
+        "BBB": np.linspace(200, 100, n),
+        "CCC": np.linspace(90, 50, n),
+        "SPY": 400 + np.arange(n) * 0.1,
+        "VIX": np.full(n, 14.0),
+    }, index=idx)
+
+
+def _v33_panel_partial_qualify(n=80, n_positive=3):
+    """Exactly n_positive symbols pass the abs-mom gate (out of 15 total).
+
+    With top_n=10, only n_positive < top_n symbols qualify -> partial gross.
+    """
+    idx = pd.date_range("2023-08-01", periods=n, freq="B")
+    data = {}
+    for i in range(n_positive):
+        data[f"POS_{i:02d}"] = 50 + np.arange(n) * (0.3 + i * 0.05)
+    for j in range(12):
+        data[f"NEG_{j:02d}"] = np.linspace(100, 50, n)
+    data["SPY"] = 400 + np.arange(n) * 0.1
+    data["VIX"] = np.full(n, 14.0)
+    return pd.DataFrame(data, index=idx)
+
+
+def _v33_short_panel(n=40):
+    """Panel with < 63 rows -> insufficient history for the 63d gate."""
+    idx = pd.date_range("2024-05-01", periods=n, freq="B")
+    return pd.DataFrame({
+        "AAA": 100 + np.arange(n) * 0.5,
+        "SPY": 400 + np.arange(n) * 0.1,
+        "VIX": np.full(n, 14.0),
+    }, index=idx)
+
+
+def test_v33_core_in_registry():
+    """V33-core must be registered with correct description markers."""
+    assert "V33-core" in REGISTRY
+    spec = REGISTRY["V33-core"]
+    assert isinstance(spec, VariantSpec)
+    desc = spec.description.lower()
+    assert "absolute" in desc or "absmom" in desc or "cash gate" in desc
+
+
+def test_v33_core_weights_sum_le_one_with_regime_key():
+    """(Test 1) Weights (excluding __regime__) sum to <= 1.0 + eps for all panels."""
+    spec = REGISTRY["V33-core"]
+    cfg = _stub_cfg()
+    for panel_fn, label in [
+        (_v33_panel_all_positive, "all_positive"),
+        (_v33_panel_mixed_absolute_momentum, "mixed"),
+        (_v33_panel_partial_qualify, "partial"),
+    ]:
+        panel = panel_fn()
+        t = panel.index[-1].to_pydatetime()
+        plan = spec.plan_fn(t, HarnessState(cash_usd=100_000.0), panel, cfg)
+        assert "__regime__" in plan, f"{label}: missing __regime__"
+        weights = {k: v for k, v in plan.items() if k != "__regime__"}
+        gross = sum(weights.values())
+        assert gross <= 1.0 + 1e-9, (
+            f"{label}: gross {gross:.6f} > 1.0 -- overleverage"
+        )
+
+
+def test_v33_core_negative_abs_return_excluded():
+    """(Test 2) Symbol with negative 63d absolute return excluded even if
+    cross-sectional momentum rank is high.
+    """
+    spec = REGISTRY["V33-core"]
+    panel = _v33_panel_mixed_absolute_momentum()
+    t = panel.index[-1].to_pydatetime()
+    plan = spec.plan_fn(t, HarnessState(cash_usd=100_000.0), panel, _stub_cfg())
+    weights = {k: v for k, v in plan.items() if k != "__regime__"}
+    assert "AAA" not in weights, (
+        f"AAA has negative 63d return but appeared in targets: {plan}"
+    )
+
+
+def test_v33_core_all_negative_abs_momentum_fully_cash():
+    """(Test 3) All negative absolute momentum -> fully cash, __regime__=ABSMOM."""
+    spec = REGISTRY["V33-core"]
+    panel = _v33_panel_all_negative()
+    t = panel.index[-1].to_pydatetime()
+    plan = spec.plan_fn(t, HarnessState(cash_usd=100_000.0), panel, _stub_cfg())
+    weights = {k: v for k, v in plan.items() if k != "__regime__"}
+    assert not weights, (
+        f"Expected fully cash when all abs momentum negative. Got: {plan}"
+    )
+    assert plan.get("__regime__") == "ABSMOM", (
+        f"Expected __regime__=ABSMOM for fully-cash, got: {plan.get("__regime__")}"
+    )
+
+
+def test_v33_core_partial_qualification_gross_below_one():
+    """(Test 4) Fewer than top_n symbols pass gate -> gross < 1.0 (cash residual)."""
+    spec = REGISTRY["V33-core"]
+    panel = _v33_panel_partial_qualify(n_positive=3)
+    t = panel.index[-1].to_pydatetime()
+    plan = spec.plan_fn(t, HarnessState(cash_usd=100_000.0), panel, _stub_cfg())
+    weights = {k: v for k, v in plan.items() if k != "__regime__"}
+    gross = sum(weights.values())
+    assert gross < 1.0 - 1e-6, (
+        f"Expected partial gross < 1.0 with 3 qualifying symbols, got {gross:.4f}"
+    )
+    assert len(weights) <= 3, (
+        f"Expected at most 3 symbols, got {len(weights)}: {list(weights)}"
+    )
+
+
+def test_v33_core_safe_mode_on_insufficient_history():
+    """(Test 5) Panel < 63 rows -> SAFE_MODE (insufficient for 63d gate)."""
+    spec = REGISTRY["V33-core"]
+    panel = _v33_short_panel()
+    t = panel.index[-1].to_pydatetime()
+    plan = spec.plan_fn(t, HarnessState(cash_usd=100_000.0), panel, _stub_cfg())
+    assert plan.get("__regime__") == "SAFE_MODE", (
+        f"Expected SAFE_MODE on panel < 63 rows, got: {plan}"
+    )

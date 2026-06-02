@@ -1061,6 +1061,122 @@ def _variant_v02_v05(t: datetime, state, panel: pd.DataFrame, cfg) -> Dict[str, 
     return targets
 
 
+# Fixed constants for V33-core.
+# Selection signal: production RAMPSignals with SIDEWAYS params (same as V02+V05).
+# top_n: 10 (fixed, same as V02+V05).
+# Absolute-momentum horizons: 21d and 63d (both must be > 0 to qualify).
+_V33_FIXED_PARAMS = REGIME_PARAMS['SIDEWAYS'].copy()
+_V33_FIXED_TOP_N = 10
+_V33_ABS_SHORT = 21   # short absolute-return horizon (trading days)
+_V33_ABS_LONG = 63    # long absolute-return horizon (trading days)
+
+
+def _variant_v33_core(t: datetime, state, panel: pd.DataFrame, cfg) -> Dict[str, float]:
+    """V33-core: absolute-momentum cash gate, detector-free, close-only.
+
+    Selection: production RAMPSignals.calculate_momentum_scores with FIXED SIDEWAYS
+    params (_V33_FIXED_PARAMS: long_p=21, short_p=5, long_w=0.5, pen_w=2.0).
+    top_n=10 fixed. No regime detector call to alter params, top_n, or exposure.
+
+    Absolute-momentum cash gate (the point of this variant):
+      - Only BUY a symbol if ret_21d > 0 AND ret_63d > 0 (both absolute, not cross-
+        sectional). Among qualifying symbols, select top_n by momentum score and
+        equal-weight them with weight 1/top_n each (NOT 1/n_qualifying).
+      - If fewer than top_n qualify, hold the REST IN CASH (gross < 1.0).
+      - If zero qualify (broad downturn), return {'__regime__': 'ABSMOM'} -- fully cash.
+
+    This provides detector-free crash protection: gross exposure shrinks endogenously
+    when absolute price momentum turns broadly negative, with no regime-lag latency.
+
+    Turnover control: min_hold(min_hold_days=5, crash_exit=False) after selection.
+    __regime__ is labelled 'ABSMOM' when the variant is active (no detector involved).
+
+    Insufficient history (need >= 63 rows for the long abs-return gate) -> SAFE_MODE.
+    """
+    universe_cols = [c for c in panel.columns if c not in ('SPY', 'VIX')]
+    if not universe_cols:
+        return {'__regime__': 'SAFE_MODE'}
+    if t not in panel.index:
+        return {'__regime__': 'SAFE_MODE'}
+
+    prices_slice = panel.loc[:t, universe_cols]
+    # Require at least 63+1 rows for the 63d absolute-return computation.
+    if len(prices_slice) < _V33_ABS_LONG + 1:
+        return {'__regime__': 'SAFE_MODE'}
+
+    # Compute absolute returns on both horizons for the cash gate.
+    prices_arr = prices_slice.apply(pd.to_numeric, errors='coerce').values.astype(np.float64)
+    n_rows = prices_arr.shape[0]
+
+    def _abs_return(lookback: int) -> np.ndarray:
+        if n_rows < lookback + 1:
+            return np.full(len(universe_cols), np.nan)
+        p_end = prices_arr[-1, :]
+        p_start = prices_arr[-(lookback + 1), :]
+        valid = (p_start > 0) & ~np.isnan(p_start) & ~np.isnan(p_end)
+        return np.where(valid, p_end / p_start - 1.0, np.nan)
+
+    ret_21d = _abs_return(_V33_ABS_SHORT)
+    ret_63d = _abs_return(_V33_ABS_LONG)
+
+    # Absolute-momentum gate: symbol qualifies only if BOTH horizons are positive.
+    qualifying_mask = (ret_21d > 0) & (ret_63d > 0)
+    qualifying_cols = [c for c, q in zip(universe_cols, qualifying_mask) if q]
+
+    if not qualifying_cols:
+        # Broad downturn: go fully to cash, no positions.
+        return {'__regime__': 'ABSMOM'}
+
+    # Among qualifying symbols, rank by momentum score (RAMPSignals SIDEWAYS params).
+    qualifying_prices = prices_slice[qualifying_cols]
+    ramp = RAMPSignals(symbols=qualifying_cols)
+    ramp._current_params = _V33_FIXED_PARAMS.copy()
+    momentum = ramp.calculate_momentum_scores(qualifying_prices)
+
+    if momentum is None or len(momentum) == 0:
+        return {'__regime__': 'ABSMOM'}
+
+    ranked = momentum.dropna().sort_values(ascending=False)
+    # Select top_n by momentum; take min(top_n, n_qualifying) to avoid over-selection.
+    n_select = min(_V33_FIXED_TOP_N, len(ranked))
+    target_symbols = list(ranked.head(n_select).index)
+
+    if not target_symbols:
+        return {'__regime__': 'ABSMOM'}
+
+    # Equal-weight with 1/top_n each (NOT 1/n_qualifying) so gross < 1.0 when
+    # n_qualifying < top_n, implementing the partial-exposure / cash-residual logic.
+    per_weight = 1.0 / _V33_FIXED_TOP_N
+    proposed = {sym: per_weight for sym in target_symbols}
+
+    # Apply min_hold (5 days, crash_exit=False) for turnover control.
+    targets = min_hold(
+        proposed_targets=proposed,
+        state=state,
+        current_date=t,
+        min_hold_days=5,
+        crash_exit=False,
+    )
+
+    # After min_hold, re-normalize weights keeping the 1/top_n scale.
+    # min_hold may add protected symbols; re-assign per_weight to maintain
+    # equal-weighting at 1/top_n each (protected symbols also get 1/top_n,
+    # which may push gross slightly above n_select/top_n but remains <= 1.0
+    # as long as n_total_held <= top_n).
+    n_total = len([k for k in targets if k != '__regime__'])
+    if n_total > 0:
+        # Reweight all held symbols at 1/top_n each (capped at 1.0 gross).
+        targets = {sym: per_weight for sym in targets if sym != '__regime__'}
+        gross = sum(targets.values())
+        if gross > 1.0 + 1e-9:
+            # Safety cap: normalize if somehow over 1.0 (shouldn't happen normally).
+            norm_w = 1.0 / n_total
+            targets = {sym: norm_w for sym in targets}
+
+    targets['__regime__'] = 'ABSMOM'
+    return targets
+
+
 REGISTRY: Dict[str, VariantSpec] = {
     'V01': VariantSpec(
         id='V01',
@@ -1161,5 +1277,19 @@ REGISTRY: Dict[str, VariantSpec] = {
             'V31/V28/V26 is signal-specific or harness-driven.'
         ),
         plan_fn=_variant_v02_v05,
+    ),
+    'V33-core': VariantSpec(
+        id='V33-core',
+        description=(
+            'Absolute-momentum cash gate (detector-free, close-only). '
+            'Selection: RAMPSignals SIDEWAYS params (long_p=21, short_p=5, long_w=0.5, '
+            'pen_w=2.0), top_n=10 fixed; equal-weight at 1/top_n each. '
+            'Cash gate: only buy symbols where ret_21d > 0 AND ret_63d > 0 (absolute); '
+            'others excluded. Fewer than top_n qualifying -> gross < 1.0 (cash residual). '
+            'Zero qualifying -> fully cash (__regime__=ABSMOM, no symbols). '
+            'NO regime detector call. min_hold(5 days, crash_exit=False). '
+            'Attacks H6/H8 endogenously -- de-risks without detector lag.'
+        ),
+        plan_fn=_variant_v33_core,
     ),
 }
