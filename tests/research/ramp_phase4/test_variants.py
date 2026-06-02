@@ -1273,3 +1273,144 @@ def test_v26_applies_rank_buffer_and_min_hold(monkeypatch):
     assert call_order == ['rank_buffer', 'min_hold'], (
         f'Expected [rank_buffer, min_hold], got {call_order}'
     )
+
+
+# ============================================================
+# V02+V05 -- Vanilla momentum + min-hold, regime-free (CONTROL)
+#
+# Tests H2: if V02+V05 matches V11 (0.528), 5-regime apparatus is dead weight.
+#
+# Four required tests:
+#   (1) weights sum <= 1.0+eps with __regime__ key
+#   (2) selection does NOT change with detected regime (regime-free property)
+#   (3) min_hold protects position younger than 5 trading days
+#   (4) safe-mode on insufficient history
+# ============================================================
+
+def _v02_calm_panel(n=350):
+    """Panel for V02+V05 tests: calm trending market, enough history."""
+    idx = pd.date_range('2022-01-03', periods=n, freq='B')
+    spy = 400 + np.arange(n) * 0.3
+    return pd.DataFrame({
+        'STOCK_A': 100 + np.arange(n) * 0.25,
+        'STOCK_B': 110 + np.arange(n) * 0.15,
+        'STOCK_C': 90 + np.arange(n) * 0.20,
+        'SPY': spy,
+        'VIX': np.full(n, 12.0),
+    }, index=idx)
+
+
+def _v02_bear_panel(n=400):
+    """Panel engineered so the detector would fire BEAR, but momentum ordering is the same."""
+    idx = pd.date_range('2021-01-03', periods=n, freq='B')
+    spy = np.concatenate([400 + np.arange(n - 60) * 0.1, np.linspace(430, 320, 60)])
+    vix = np.concatenate([np.full(n - 60, 12.0), np.linspace(20, 40, 60)])
+    return pd.DataFrame({
+        'STOCK_A': 100 + np.arange(n) * 0.25,
+        'STOCK_B': 110 + np.arange(n) * 0.15,
+        'STOCK_C': 90 + np.arange(n) * 0.20,
+        'SPY': spy,
+        'VIX': vix,
+    }, index=idx)
+
+
+def test_v02_v05_in_registry():
+    """V02+V05 is registered with expected description hallmarks."""
+    assert 'V02+V05' in REGISTRY
+    assert isinstance(REGISTRY['V02+V05'], VariantSpec)
+    desc = REGISTRY['V02+V05'].description.lower()
+    assert 'vanilla' in desc or 'regime-free' in desc or 'fixed' in desc
+
+
+def test_v02_v05_weights_sum_lte_one_with_regime_key():
+    """(Test 1) V02+V05 plan_fn returns weights summing <= 1.0+eps with __regime__ key."""
+    spec = REGISTRY['V02+V05']
+    panel = _v02_calm_panel()
+    state = HarnessState(cash_usd=100_000.0)
+    cfg = _stub_cfg()
+    plan = spec.plan_fn(panel.index[-1].to_pydatetime(), state, panel, cfg)
+    assert '__regime__' in plan, 'V02+V05 must include __regime__ key'
+    weight_keys = [k for k in plan if k != '__regime__']
+    if weight_keys:
+        total = sum(plan[k] for k in weight_keys)
+        assert total <= 1.0 + 1e-6, f'Weights sum to {total:.6f}, expected <= 1.0'
+        assert total > 0.0
+
+
+def test_v02_v05_selection_independent_of_regime():
+    """(Test 2) V02+V05 selection does NOT change with the detected market regime.
+
+    Both panels have identical stock momentum ordering (same relative growth rates)
+    but different SPY/VIX paths that would trigger different regimes. V02+V05 must
+    produce the same set of selected symbols in both cases.
+    """
+    spec = REGISTRY['V02+V05']
+    cfg = _stub_cfg()
+
+    calm_panel = _v02_calm_panel(n=350)
+    bear_panel = _v02_bear_panel(n=400)
+
+    state_calm = HarnessState(cash_usd=100_000.0)
+    state_bear = HarnessState(cash_usd=100_000.0)
+
+    plan_calm = spec.plan_fn(calm_panel.index[-1].to_pydatetime(), state_calm, calm_panel, cfg)
+    plan_bear = spec.plan_fn(bear_panel.index[-1].to_pydatetime(), state_bear, bear_panel, cfg)
+
+    syms_calm = frozenset(k for k in plan_calm if k != '__regime__')
+    syms_bear = frozenset(k for k in plan_bear if k != '__regime__')
+
+    assert syms_calm == syms_bear, (
+        f'V02+V05 selection changed with regime: calm={syms_calm} bear={syms_bear}. '
+        f'The variant must NOT use regime to alter selection.'
+    )
+
+
+def test_v02_v05_min_hold_protects_young_position():
+    """(Test 3) min_hold protects a position that is fewer than 5 trading days old.
+
+    HELD_YOUNG has weak momentum (would not be in top_n), but was opened 3 calendar
+    days ago. After min_hold it must still appear in the returned targets.
+    """
+    spec = REGISTRY['V02+V05']
+    cfg = _stub_cfg()
+
+    n = 350
+    idx = pd.date_range('2022-01-03', periods=n, freq='B')
+    panel = pd.DataFrame({
+        'STOCK_A': 100 + np.arange(n) * 0.40,
+        'STOCK_B': 110 + np.arange(n) * 0.35,
+        'STOCK_C': 90 + np.arange(n) * 0.30,
+        'HELD_YOUNG': 80 + np.arange(n) * 0.01,  # weak momentum -> excluded by selection
+        'SPY': 400 + np.arange(n) * 0.3,
+        'VIX': np.full(n, 12.0),
+    }, index=idx)
+
+    t = panel.index[-1].to_pydatetime()
+    state = HarnessState(cash_usd=100_000.0)
+    state.positions['HELD_YOUNG'] = 1000.0
+    state.position_open_dates['HELD_YOUNG'] = t - pd.Timedelta(days=3)
+
+    plan = spec.plan_fn(t, state, panel, cfg)
+
+    assert 'HELD_YOUNG' in plan, (
+        f'min_hold must protect HELD_YOUNG (held 3 calendar days < 5 trading day threshold). '
+        f'Plan returned: {plan}'
+    )
+
+
+def test_v02_v05_safe_mode_on_insufficient_history():
+    """(Test 4) V02+V05 returns SAFE_MODE when panel has fewer than 100 rows."""
+    spec = REGISTRY['V02+V05']
+    n_short = 50
+    idx = pd.date_range('2024-04-01', periods=n_short, freq='B')
+    short_panel = pd.DataFrame({
+        'AAPL': 100 + np.arange(n_short) * 0.1,
+        'SPY': 400 + np.arange(n_short) * 0.2,
+        'VIX': np.full(n_short, 14.0),
+    }, index=idx)
+    state = HarnessState(cash_usd=100_000.0)
+    cfg = _stub_cfg()
+    plan = spec.plan_fn(short_panel.index[-1].to_pydatetime(), state, short_panel, cfg)
+    assert plan.get('__regime__') == 'SAFE_MODE', (
+        f'Expected SAFE_MODE on short panel, got: {plan}'
+    )

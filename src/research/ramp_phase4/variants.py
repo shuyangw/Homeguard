@@ -999,6 +999,68 @@ def _variant_v28(t: datetime, state, panel: pd.DataFrame, cfg) -> Dict[str, floa
     return targets
 
 
+# Fixed param set for V02: SIDEWAYS entry of REGIME_PARAMS.
+# Rationale: SIDEWAYS (long_p=21, short_p=5, long_w=0.5, pen_w=2.0) is the most
+# conservative regime param and represents a reasonable regime-agnostic baseline.
+# top_n=10 is the production default for most regimes (WEAK_BULL, BEAR, UNPREDICTABLE).
+# These values are FIXED and NOT varied across detected regimes.
+_V02_FIXED_PARAMS = REGIME_PARAMS['SIDEWAYS'].copy()   # long_p=21, short_p=5, long_w=0.5, pen_w=2.0
+_V02_FIXED_TOP_N = 10  # fixed; does NOT change with regime
+
+
+def _variant_v02_v05(t: datetime, state, panel: pd.DataFrame, cfg) -> Dict[str, float]:
+    """V02+V05: vanilla momentum + min-hold, regime-free CONTROL variant.
+
+    Selection: production RAMPSignals.calculate_momentum_scores with a SINGLE FIXED
+    param set (_V02_FIXED_PARAMS = REGIME_PARAMS['SIDEWAYS']: long_p=21, short_p=5,
+    long_w=0.5, pen_w=2.0). top_n=10 fixed. Equal-weight top_n. Exposure 1.0 always.
+
+    NO regime apparatus: the detector is NOT called to alter params, top_n, or exposure.
+    __regime__ is labelled 'VANILLA' to signal the variant is regime-free.
+
+    Filter: min_hold(min_hold_days=5, crash_exit=False) applied AFTER selection.
+    No rank_buffer (to keep the variant minimal: vanilla signal + only min-hold).
+    delta_rebalance via cfg is respected (same as V11).
+
+    Diagnostic purpose: if V02+V05 turnover lands near V11's 39%, the turnover
+    blowup observed in V31/V28/V26 is signal-specific; if V02+V05 also blows up,
+    the harness or filters are the cause.
+    """
+    # Insufficient-history path: RAMPSignals requires >= 100 rows.
+    universe_cols = [c for c in panel.columns if c not in ('SPY', 'VIX')]
+    if t not in panel.index:
+        return {'__regime__': 'SAFE_MODE'}
+    prices_slice = panel.loc[:t, universe_cols]
+    if len(prices_slice) < 100:
+        return {'__regime__': 'SAFE_MODE'}
+
+    # Compute momentum with FIXED params; do NOT run the detector.
+    ramp = RAMPSignals(symbols=universe_cols)
+    ramp._current_params = _V02_FIXED_PARAMS.copy()
+    momentum = ramp.calculate_momentum_scores(prices_slice)
+    if momentum is None or len(momentum) == 0:
+        return {'__regime__': 'SAFE_MODE'}
+
+    # Select top_n by momentum score (highest = best).
+    ranked = momentum.dropna().sort_values(ascending=False)
+    target_symbols = list(ranked.head(_V02_FIXED_TOP_N).index)
+    if not target_symbols:
+        return {'__regime__': 'VANILLA'}
+
+    proposed = {sym: 1.0 / _V02_FIXED_TOP_N for sym in target_symbols}
+
+    # Apply min_hold (V05 component): protect positions younger than 5 trading days.
+    targets = min_hold(
+        proposed_targets=proposed,
+        state=state,
+        current_date=t,
+        min_hold_days=5,
+        crash_exit=False,
+    )
+    targets['__regime__'] = 'VANILLA'
+    return targets
+
+
 REGISTRY: Dict[str, VariantSpec] = {
     'V01': VariantSpec(
         id='V01',
@@ -1085,5 +1147,19 @@ REGISTRY: Dict[str, VariantSpec] = {
             'on regime gating. Blend weights and reversal lambda are fixed (not swept).'
         ),
         plan_fn=_variant_v28,
+    ),
+    'V02+V05': VariantSpec(
+        id='V02+V05',
+        description=(
+            'Vanilla momentum + min-hold, regime-free CONTROL variant. '
+            'Uses production RAMPSignals.calculate_momentum_scores with a SINGLE FIXED '
+            'param set (SIDEWAYS: long_p=21, short_p=5, long_w=0.5, pen_w=2.0); '
+            'top_n=10 fixed; equal-weight; exposure 1.0 always. '
+            'NO regime apparatus (detector NOT called to alter selection). '
+            'min_hold(5 days, crash_exit=False) applied; no rank_buffer. '
+            'CONTROL: turnover diagnostic vs V11 (39%) isolates whether blowup in '
+            'V31/V28/V26 is signal-specific or harness-driven.'
+        ),
+        plan_fn=_variant_v02_v05,
     ),
 }
