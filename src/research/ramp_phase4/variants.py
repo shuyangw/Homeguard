@@ -494,9 +494,10 @@ def _compute_beta_residual_ranking(
     prices_matrix = panel.loc[:t, universe_cols].iloc[-needed_rows:]
     spy_matrix = spy_slice.iloc[-needed_rows:]
 
-    # Pct-change returns (drop first NaN row).
-    stock_rets = prices_matrix.pct_change().iloc[1:]  # (beta_window+return_window+1, n_syms)
-    spy_rets = spy_matrix.pct_change().iloc[1:]       # same length
+    # Pct-change returns (drop first NaN row). fill_method=None: do not forward-fill NaN
+    # gaps (consistent with engine's NaN -> forced-exit treatment).
+    stock_rets = prices_matrix.pct_change(fill_method=None).iloc[1:]  # (beta_window+return_window+1, n_syms)
+    spy_rets = spy_matrix.pct_change(fill_method=None).iloc[1:]       # same length
 
     if len(stock_rets) < beta_window + return_window:
         return None
