@@ -632,6 +632,156 @@ def _variant_v31(t: datetime, state, panel: pd.DataFrame, cfg) -> Dict[str, floa
     return targets
 
 
+_V28_LAMBDA_REV = 0.1  # Fixed 5d reversal penalty weight. NOT swept (conserves DSR budget).
+
+
+def _compute_v28_multihorizon_scores(
+    t: datetime,
+    panel: pd.DataFrame,
+    blend_21d: float = 0.5,
+    blend_63d: float = 0.3,
+    blend_126d: float = 0.2,
+    lambda_rev: float = _V28_LAMBDA_REV,
+) -> "pd.Series | None":
+    """Compute multi-horizon momentum ensemble scores (vectorized).
+
+    Score per universe symbol = blend_21d*ret_21d + blend_63d*ret_63d
+                                + blend_126d*ret_126d - lambda_rev*ret_5d
+
+    where ret_Nd is the trailing N-trading-day simple return from the close
+    panel at date t. lambda_rev=0.1 is a fixed reversal penalty (not swept).
+
+    Rationale (H2 attack): a more stable, multi-horizon signal may reduce
+    reliance on regime gating. Higher base-rate than single-window momentum
+    because the blend averages over transient signal noise.
+
+    Blend weights are fixed (0.5/0.3/0.2) and not grid-searched.
+    Requires >= 126 + 2 price points (i.e. >= 127 rows) for the longest
+    horizon return. Returns None if insufficient history.
+    """
+    universe_cols = [c for c in panel.columns if c not in ('SPY', 'VIX')]
+    if not universe_cols:
+        return None
+    if t not in panel.index:
+        return None
+
+    prices_slice = panel.loc[:t, universe_cols]
+    min_rows = 126 + 2  # need 127 price points for a 126-day return
+    if len(prices_slice) < min_rows:
+        return None
+
+    prices = prices_slice.values  # (n_rows, n_syms)
+    n_rows = prices.shape[0]
+
+    def _safe_return(lookback: int) -> np.ndarray:
+        """Trailing lookback-day return for each symbol; NaN if start price invalid."""
+        if n_rows < lookback + 1:
+            return np.full(prices.shape[1], np.nan)
+        p_end = prices[-1, :]
+        p_start = prices[-(lookback + 1), :]
+        valid = (p_start > 0) & ~np.isnan(p_start) & ~np.isnan(p_end)
+        return np.where(valid, p_end / p_start - 1.0, np.nan)
+
+    ret_5d = _safe_return(5)
+    ret_21d = _safe_return(21)
+    ret_63d = _safe_return(63)
+    ret_126d = _safe_return(126)
+
+    scores = (
+        blend_21d * ret_21d
+        + blend_63d * ret_63d
+        + blend_126d * ret_126d
+        - lambda_rev * ret_5d
+    )
+
+    result = pd.Series(scores, index=universe_cols).dropna()
+    if len(result) == 0:
+        return None
+    return result
+
+
+def _variant_v28(t: datetime, state, panel: pd.DataFrame, cfg) -> Dict[str, float]:
+    """V28: V11 structure with multi-horizon momentum ensemble ranking.
+
+    Replaces V11's raw momentum ranking with a blended multi-horizon score:
+      score = 0.5*ret_21d + 0.3*ret_63d + 0.2*ret_126d - 0.1*ret_5d
+
+    Everything else is identical to V11 (rank_buffer + min_hold + delta via cfg),
+    so the ONLY difference vs V11 is the ranking signal. This isolates the signal
+    effect for a clean vs-V11 read.
+
+    Blend weights (0.5/0.3/0.2) and reversal lambda (0.1) are FIXED and NOT
+    grid-searched, to conserve the DSR trial budget.
+
+    Rationale (H2 attack): attacks signal instability -- a more stable,
+    multi-horizon signal may reduce reliance on regime gating. Higher base-rate
+    than single-window momentum because the blend averages over transient noise.
+
+    Minimum history: >= 126 trading days; insufficient history returns SAFE_MODE.
+    """
+    scores = _compute_v28_multihorizon_scores(t, panel)
+
+    # Need regime and top_n from the detector -- same call pattern as V31.
+    spy = panel['SPY'].dropna()
+    vix = panel['VIX'].dropna()
+    if t not in spy.index or t not in vix.index:
+        return {'__regime__': 'SAFE_MODE'}
+    spy_slice = spy.loc[:t]
+    vix_slice = vix.loc[:t]
+    if len(spy_slice) < 252 or len(vix_slice) < 252:
+        return {'__regime__': 'SAFE_MODE'}
+
+    spy_df = pd.DataFrame({
+        'close': spy_slice, 'open': spy_slice, 'high': spy_slice, 'low': spy_slice,
+        'volume': 1e6,
+    })
+    vix_df = pd.DataFrame({'close': vix_slice})
+    try:
+        regime, _confidence = _DETECTOR.classify_regime(spy_df, vix_df, t)
+    except Exception:
+        return {'__regime__': 'SAFE_MODE'}
+
+    if scores is None or len(scores) == 0:
+        return {'__regime__': 'SAFE_MODE'}
+
+    top_n = REGIME_PARAMS.get(regime, {}).get('top_n', 10)
+
+    # Select top_n symbols by blended score (highest = best).
+    ranked = scores.dropna().sort_values(ascending=False)
+    if len(ranked) == 0:
+        return {'__regime__': regime}
+    target_symbols = list(ranked.head(top_n).index)
+    if not target_symbols:
+        return {'__regime__': regime}
+
+    proposed = {sym: 1.0 / top_n for sym in target_symbols}
+
+    # Build universe ranking from multi-horizon scores (same shape expected by rank_buffer).
+    ranking = pd.Series(
+        range(1, len(ranked) + 1),
+        index=ranked.index,
+    )
+
+    targets = rank_buffer(
+        proposed_targets=proposed,
+        state=state,
+        buffer_size=top_n // 2,
+        universe_ranking=ranking,
+        top_n=top_n,
+    )
+
+    targets = min_hold(
+        proposed_targets=targets,
+        state=state,
+        current_date=t,
+        min_hold_days=5,
+        crash_exit=False,
+    )
+
+    targets['__regime__'] = regime
+    return targets
+
+
 REGISTRY: Dict[str, VariantSpec] = {
     'V01': VariantSpec(
         id='V01',
@@ -696,5 +846,16 @@ REGISTRY: Dict[str, VariantSpec] = {
             'Attacks H6/H8 -- high-beta lagged winners removed from BEAR selections.'
         ),
         plan_fn=_variant_v31,
+    ),
+    'V28': VariantSpec(
+        id='V28',
+        description=(
+            'Multi-horizon momentum ensemble: '
+            'score = 0.5*ret_21d + 0.3*ret_63d + 0.2*ret_126d - 0.1*ret_5d; '
+            'V11 scaffold (rank_buffer + min_hold + delta via cfg). '
+            'Attacks H2 (signal instability) -- multi-horizon blend reduces reliance '
+            'on regime gating. Blend weights and reversal lambda are fixed (not swept).'
+        ),
+        plan_fn=_variant_v28,
     ),
 }

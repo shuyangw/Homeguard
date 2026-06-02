@@ -906,3 +906,149 @@ def test_v31_applies_rank_buffer_and_min_hold(monkeypatch):
     assert call_order == ['rank_buffer', 'min_hold'], (
         f'Expected [rank_buffer, min_hold], got {call_order}'
     )
+
+
+# ============================================================
+# V28 -- Multi-horizon momentum ensemble tests
+#
+# Three tests required by spec:
+#   (1) weights sum <= 1.0+eps with a __regime__ key
+#   (2) Symbol with stable multi-horizon momentum ranked above symbol with only 5d spike
+#   (3) safe-mode on insufficient history (< 126 trading days)
+# ============================================================
+
+def _v28_calm_panel(n=350):
+    """Panel for V28 tests: calm trending market with multiple universe names."""
+    idx = pd.date_range('2022-01-03', periods=n, freq='B')
+    spy = 400 + np.arange(n) * 0.3
+    stock_a = 100 + np.arange(n) * 0.25  # steady uptrend
+    stock_b = 110 + np.arange(n) * 0.15  # moderate uptrend
+    return pd.DataFrame({
+        'STOCK_A': stock_a,
+        'STOCK_B': stock_b,
+        'SPY': spy,
+        'VIX': np.full(n, 12.0),
+    }, index=idx)
+
+
+def _v28_horizon_advantage_panel(n=350):
+    """Panel engineered so STABLE_MOM has strong multi-horizon momentum
+    (21d + 63d + 126d all positive) while SPIKE_ONLY has only a 5d spike
+    (which the reversal penalty should punish).
+
+    V28 score = 0.5*ret_21d + 0.3*ret_63d + 0.2*ret_126d - 0.1*ret_5d
+
+    STABLE_MOM: consistent uptrend across all horizons -> high blended score.
+    SPIKE_ONLY: flat for all horizons except a spike in last 5 days -> the
+    blend of 21/63/126d returns is near zero, but 5d return is large, so
+    the reversal penalty hurts the blended score. V28 should rank STABLE_MOM above.
+    """
+    idx = pd.date_range('2022-01-03', periods=n, freq='B')
+    spy = 400 + np.arange(n) * 0.1  # gentle uptrend (market context)
+
+    # STABLE_MOM: consistent uptrend; all horizon returns strongly positive.
+    # Price grows ~30% over 126 days, ~20% over 63 days, ~10% over 21 days.
+    stable = np.ones(n) * 100.0
+    stable += np.arange(n) * 0.40  # 0.4 per day -> big horizon returns
+
+    # SPIKE_ONLY: flat for 345 days, then spikes up 10% in last 5 days.
+    # 21d/63d/126d returns will all be dominated by the spike size only.
+    # But the 5d return is ~10% and the reversal penalty (0.1 * 10%) = 1%.
+    # The blended score (0.5 * ~9% + 0.3 * ~9% + 0.2 * ~9% - 0.1 * 10%) wins for STABLE.
+    spike = np.ones(n) * 100.0
+    spike[-5:] += np.linspace(0, 10, 5)  # pure 5d spike
+
+    return pd.DataFrame({
+        'STABLE_MOM': stable,
+        'SPIKE_ONLY': spike,
+        'SPY': spy,
+        'VIX': np.full(n, 12.0),
+    }, index=idx)
+
+
+def test_v28_in_registry():
+    """V28 is registered with expected description hallmarks."""
+    assert 'V28' in REGISTRY
+    assert isinstance(REGISTRY['V28'], VariantSpec)
+    desc = REGISTRY['V28'].description.lower()
+    assert 'horizon' in desc or 'multi' in desc or 'ensemble' in desc
+
+
+def test_v28_weights_sum_lte_one_with_regime_key():
+    """(Test 1) V28 plan_fn returns weights summing <= 1.0+eps with __regime__ key."""
+    spec = REGISTRY['V28']
+    panel = _v28_calm_panel()
+    state = HarnessState(cash_usd=100_000.0)
+    cfg = _stub_cfg()
+    plan = spec.plan_fn(panel.index[-1].to_pydatetime(), state, panel, cfg)
+    assert '__regime__' in plan, 'V28 must include __regime__ key'
+    weight_keys = [k for k in plan if k != '__regime__']
+    if weight_keys:
+        total = sum(plan[k] for k in weight_keys)
+        assert total <= 1.0 + 1e-6, f'Weights sum to {total:.6f}, expected <= 1.0'
+        assert total > 0.0
+
+
+def test_v28_stable_mom_ranked_above_spike_only():
+    """(Test 2) V28 ranks STABLE_MOM above SPIKE_ONLY.
+
+    STABLE_MOM has consistent multi-horizon momentum (21d/63d/126d all positive
+    from a consistent uptrend). SPIKE_ONLY has only a 5-day spike; the
+    reversal penalty (lambda=0.1) and near-zero 21/63/126d returns should
+    keep it ranked below STABLE_MOM.
+    """
+    from src.research.ramp_phase4.variants import _compute_v28_multihorizon_scores
+    panel = _v28_horizon_advantage_panel()
+    t = panel.index[-1].to_pydatetime()
+    scores = _compute_v28_multihorizon_scores(t, panel)
+    assert scores is not None, 'V28 score computation returned None on sufficient history panel'
+    assert 'STABLE_MOM' in scores.index, 'STABLE_MOM must appear in V28 score output'
+    assert 'SPIKE_ONLY' in scores.index, 'SPIKE_ONLY must appear in V28 score output'
+    assert scores['STABLE_MOM'] > scores['SPIKE_ONLY'], (
+        f'V28 should rank STABLE_MOM ({scores["STABLE_MOM"]:.4f}) above '
+        f'SPIKE_ONLY ({scores["SPIKE_ONLY"]:.4f}); '
+        f'multi-horizon blend + reversal penalty should penalize pure 5d spike.'
+    )
+
+
+def test_v28_safe_mode_on_insufficient_history():
+    """(Test 3) V28 returns SAFE_MODE when panel has fewer than 126 trading days."""
+    spec = REGISTRY['V28']
+    n_short = 90  # fewer than 126 required trading days
+    idx = pd.date_range('2024-01-01', periods=n_short, freq='B')
+    short_panel = pd.DataFrame({
+        'AAPL': 100 + np.arange(n_short) * 0.1,
+        'SPY': 400 + np.arange(n_short) * 0.2,
+        'VIX': np.full(n_short, 14.0),
+    }, index=idx)
+    state = HarnessState(cash_usd=100_000.0)
+    cfg = _stub_cfg()
+    plan = spec.plan_fn(short_panel.index[-1].to_pydatetime(), state, short_panel, cfg)
+    assert plan.get('__regime__') == 'SAFE_MODE', (
+        f'Expected SAFE_MODE on short panel, got: {plan}'
+    )
+
+
+def test_v28_applies_rank_buffer_and_min_hold(monkeypatch):
+    """V28 must call rank_buffer then min_hold (V11 composition order)."""
+    from src.research.ramp_phase4 import variants as v_mod
+    call_order = []
+
+    def fake_rank_buffer(proposed_targets, state, buffer_size, universe_ranking, top_n):
+        call_order.append('rank_buffer')
+        return proposed_targets
+
+    def fake_min_hold(proposed_targets, state, current_date, min_hold_days, crash_exit=False):
+        call_order.append('min_hold')
+        return proposed_targets
+
+    monkeypatch.setattr(v_mod, 'rank_buffer', fake_rank_buffer, raising=False)
+    monkeypatch.setattr(v_mod, 'min_hold', fake_min_hold, raising=False)
+
+    panel = _v28_calm_panel()
+    state = HarnessState(cash_usd=100_000.0)
+    cfg = _stub_cfg()
+    REGISTRY['V28'].plan_fn(panel.index[-1].to_pydatetime(), state, panel, cfg)
+    assert call_order == ['rank_buffer', 'min_hold'], (
+        f'Expected [rank_buffer, min_hold], got {call_order}'
+    )
