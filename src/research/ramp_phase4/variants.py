@@ -670,7 +670,8 @@ def _compute_v28_multihorizon_scores(
     if len(prices_slice) < min_rows:
         return None
 
-    prices = prices_slice.values  # (n_rows, n_syms)
+    # Convert to float64 numpy array; apply(pd.to_numeric) coerces object/NA columns.
+    prices = prices_slice.apply(pd.to_numeric, errors='coerce').values.astype(np.float64)
     n_rows = prices.shape[0]
 
     def _safe_return(lookback: int) -> np.ndarray:
