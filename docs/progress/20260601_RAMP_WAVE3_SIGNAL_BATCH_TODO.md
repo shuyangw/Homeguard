@@ -103,6 +103,16 @@ is too strong to discard; but V11 stays the deployed paper incumbent until V28 c
 - **REFRAMED OPEN LEAD (untested):** keep the candidate ranking signal but impose a POSITION-COUNT
   FLOOR (~20 names) + a TURNOVER FLOOR comparable to V11 (faster loser-exit). Concentration --
   NOT a cash overlay -- is the primary bear-resilience lever; beta-dampening is a secondary layer.
+- **CHRONICLE ANALYSIS VERDICT (2026-06-03): DO NOT BUILD the hybrid now.** Full-family trade
+  analysis (`docs/reports/ramp/20260603_wave3_chronicle_insights.md`) REFINED the hypothesis: the
+  ~20-name count floor IS the real lever (14-18 name variants crater in 2022; 20+ lose moderately)
+  but is NECESSARY-not-SUFFICIENT (V33-core 20.8 names still -1.543); mechanism is DIVERSIFICATION,
+  not exit-speed; the turnover floor is NOT an independent mechanism (confounded with count). Best
+  base V02+V05 already sits at ~20 names AND is OOS-rejected -> floor rarely binds, low marginal EV.
+  Overlap: V26/V26-robust 0.77 (near-dup), V11/V02 0.44, V11/V28 0.045 + V11/V31 0.035 (orthogonal).
+- **ACTIONABLE OUTPUT (#157): a PRODUCTION monitor for live V11** -- alert if its position count
+  drops below ~18-20 names for 5+ consecutive days (it concentrates into the candidates' danger
+  zone). This -- not a new variant -- is the deployable insight from the whole chronicle exercise.
 
 **PARAMETER ROBUSTNESS GATE (new pipeline stage, 2026-06-01):** a variation-tier robustness MAP
 (NOT a search) now lives at strategy-lead Phase 6.5 + `.claude/rules/strategy-pipeline.md`. Vary

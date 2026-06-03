@@ -332,6 +332,27 @@ the deployed incumbent; no candidate graduates.** Report: `docs/reports/ramp/202
 > (~20 names) + a TURNOVER FLOOR comparable to V11 (faster loser-exit); beta-dampening is a
 > secondary layer. Concentration -- not a cash overlay -- is the primary bear-resilience lever.
 
+### Wave-3 chronicle insights (2026-06-03) -- full-family trade-level analysis
+Report: `docs/reports/ramp/20260603_wave3_chronicle_insights.md` (all 7 variants, near_close 5bps).
+- **Concentration hypothesis: REFINED, not confirmed.** A POSITION-COUNT FLOOR ~20 names is the
+  real lever (every 14-18 name variant -- V28 15.8, V31 17.5 -- lost catastrophically in 2022;
+  all 20+ name variants lost moderately) -- but **20+ is NECESSARY, not SUFFICIENT** (V33-core has
+  20.8 names yet -1.543 in 2022 because its cash gate whipsaws). The **mechanism is DIVERSIFICATION,
+  not exit-speed** -- the loser-exit table is mixed (V02+V05 isn't a faster exiter; it just holds
+  less in each loser). The "turnover floor" as an INDEPENDENT mechanism is NOT confirmed (turnover
+  vs 2022 rho=0.75 p=0.05 but confounded with count).
+- **Holdings overlap (Jaccard):** V26-robust/V26 = 0.77 (near-duplicate -- canonical vs inline
+  z-score is a tiny holdings change); V11/V02+V05 = 0.44 (V02 shares V11's core -> its graceful
+  2022); V28/V31 = 0.30; **V11/V28 = 0.045, V11/V31 = 0.035 (genuinely orthogonal picks).** The
+  candidates' big losers are UNIQUE to each variant (0 shared losers with V11 for V28/V31), so they
+  pick DIFFERENT names that happened to be bad -- not "V11's bad names in bigger size."
+- **VERDICT: do NOT build the hybrid now.** The count floor helps, but the best base (V02+V05)
+  already sits at ~20 names AND is OOS-rejected -- so a floor would rarely bind, low marginal EV; a
+  new floored variant needs a fresh walk-forward + DSR round. **The actionable output is a PRODUCTION
+  MONITORING CRITERION for live V11: flag if its position count falls below ~18-20 names for 5+
+  consecutive days -- that signals the regime apparatus is concentrating into the candidates' danger
+  zone.** That is the deployable insight from the whole chronicle exercise.
+
 **ALL FIVE proposed variants were OOS-evaluated per window; ALL FIVE REJECT** (none beats V11 in
 every window; every variant's worst window is 2022): V28 3/7 (worst -0.496), V31 5/7 (-0.745),
 V02+V05 4/7 (-0.120, the BEST worst-case -- beats V11 in the BEAR year), V26 3/7 (-0.589),
