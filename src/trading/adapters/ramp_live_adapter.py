@@ -1096,6 +1096,7 @@ class RAMPLiveAdapter(StrategyAdapter):
 
                 # Strategy-specific health check
                 from src.trading.decision_log.record import GateResult
+                block_new_entries = False  # set True if over the position cap
                 self.strategy.set_current_positions({})  # baseline before health check
                 logger.info("[RAMP] Running pre-entry portfolio health check...")
                 health_result = self.health_checker.check_before_entry(
@@ -1103,12 +1104,37 @@ class RAMPLiveAdapter(StrategyAdapter):
                     allow_existing_positions=True,
                     strategy_name=STRATEGY_NAME,
                 )
-                rec.preconditions.health_check = GateResult(
-                    passed=health_result.passed,
-                    details={"warnings_count": len(health_result.warnings)},
-                    error="; ".join(health_result.errors) if health_result.errors else None,
+                # Over the position cap should NOT abort the whole rebalance:
+                # the rebalance still needs to SELL down toward top_n. Treat an
+                # over-cap condition as "entries blocked, exits allowed" -- but
+                # ONLY when it is the sole failure. Any other error (cash,
+                # portfolio value, order fetch) is a hard abort.
+                non_cap_errors = [
+                    e for e in health_result.errors
+                    if not e.startswith("Max positions reached")
+                ]
+                over_cap_only = (
+                    not health_result.passed
+                    and getattr(health_result, 'max_positions_exceeded', False)
+                    and not non_cap_errors
                 )
-                if not health_result.passed:
+                rec.preconditions.health_check = GateResult(
+                    passed=health_result.passed or over_cap_only,
+                    details={
+                        "warnings_count": len(health_result.warnings),
+                        "sell_only_over_cap": over_cap_only,
+                    },
+                    error="; ".join(non_cap_errors) if non_cap_errors else None,
+                )
+                if over_cap_only:
+                    block_new_entries = True
+                    logger.warning(
+                        "[RAMP] Over position cap -- SELL-ONLY rebalance "
+                        "(new entries blocked) to prune toward top_n"
+                    )
+                    for err in health_result.errors:
+                        logger.warning(f"[RAMP]   - {err}")
+                elif not health_result.passed:
                     logger.error("[RAMP] Portfolio health check FAILED - BLOCKING ENTRY")
                     for err in health_result.errors:
                         logger.error(f"[RAMP]   - {err}")
@@ -1209,7 +1235,10 @@ class RAMPLiveAdapter(StrategyAdapter):
                         if self._latest_plan is not None and rec.inputs is not None:
                             rec.inputs.regime_scores = dict(getattr(self._latest_plan, "regime_scores", {}) or {})
                             rec.inputs.exposure_multiplier = float(self._latest_plan.exposure_pct)
-                self._execute_rebalance(signals, current_positions, rec=rec)
+                self._execute_rebalance(
+                    signals, current_positions, rec=rec,
+                    block_new_entries=block_new_entries
+                )
                 # F5: enrich LogicDecisions with post-execution realized state
                 if rec.logic_decisions is not None:
                     try:
@@ -1393,19 +1422,27 @@ class RAMPLiveAdapter(StrategyAdapter):
         signals: List[Signal],
         current_positions: Dict[str, float],
         *,
-        rec=None
+        rec=None,
+        block_new_entries: bool = False
     ) -> None:
         """Dispatch to the legacy or target-aware execution path.
 
         Selection is controlled by the constructor flag use_target_planner.
         Default False (legacy path, current production behavior).
+
+        block_new_entries: when True, execute SELLs/trims but skip all new
+        BUYS. Used when the portfolio is over the max_positions cap so the
+        rebalance can prune down toward top_n instead of being blocked
+        entirely (see _execute_scheduled_rebalance health-check handling).
         """
         if getattr(self, 'use_target_planner', False):
             return self._execute_rebalance_target_aware(
-                signals, current_positions, rec=rec
+                signals, current_positions, rec=rec,
+                block_new_entries=block_new_entries
             )
         return self._execute_rebalance_legacy(
-            signals, current_positions, rec=rec
+            signals, current_positions, rec=rec,
+            block_new_entries=block_new_entries
         )
 
     def _execute_rebalance_legacy(
@@ -1413,7 +1450,8 @@ class RAMPLiveAdapter(StrategyAdapter):
         signals: List[Signal],
         current_positions: Dict[str, float],
         *,
-        rec=None
+        rec=None,
+        block_new_entries: bool = False
     ) -> None:
         """Legacy execution path (pre-Phase 4 F2).
 
@@ -1553,6 +1591,13 @@ class RAMPLiveAdapter(StrategyAdapter):
             logger.info(f"[RAMP]   Initial capital: ${self.initial_capital:,.0f}")
             logger.info(f"[RAMP]   Max allocation: {self.max_capital_allocation:.0%} = ${max_total_allocation:,.0f}")
             logger.info(f"[RAMP]   Per position: {position_pct:.1%} = ${target_value_per_position:,.0f} ({current_top_n} positions)")
+
+            if block_new_entries and buy_signals:
+                logger.warning(
+                    f"[RAMP] SELL-ONLY mode (over position cap): skipping "
+                    f"{len(buy_signals)} BUY signal(s) so the portfolio prunes toward top_n"
+                )
+                buy_signals = []
 
             for signal in buy_signals:
                 symbol = signal.symbol
@@ -1700,7 +1745,8 @@ class RAMPLiveAdapter(StrategyAdapter):
         signals: List[Signal],
         current_positions: Dict[str, float],
         *,
-        rec=None
+        rec=None,
+        block_new_entries: bool = False
     ) -> None:
         """Target-aware execution path (Phase 4 F2).
 
@@ -1803,6 +1849,13 @@ class RAMPLiveAdapter(StrategyAdapter):
                 buys.append((sym, target_value, current_value, delta, rank))
 
         buys.sort(key=lambda x: x[4])  # best rank first
+
+        if block_new_entries and buys:
+            logger.warning(
+                f"[RAMP] SELL-ONLY mode (over position cap): skipping "
+                f"{len(buys)} BUY(s) so the portfolio prunes toward top_n"
+            )
+            buys = []
 
         for sym, target_value, current_value, delta, rank in buys:
             # Re-read cash before each BUY (sequential cash tracking)
