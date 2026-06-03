@@ -879,20 +879,33 @@ def _variant_v26(t: datetime, state, panel: pd.DataFrame, cfg) -> Dict[str, floa
 
 _V26_ROBUST_LAMBDA = 1.0  # Fixed; NOT swept (same as V26 inline lambda).
 
+# ============================================================
+# V26-robust CENTER PARAMETERS (a-priori, fixed before any sweep)
+# ============================================================
+_V26_ROBUST_CENTER_LAMBDA = _V26_ROBUST_LAMBDA          # 1.0
+_V26_ROBUST_CENTER_WINSOR_LO = 0.01                     # quantile winsorize lower bound
+_V26_ROBUST_CENTER_WINSOR_HI = 0.99                     # quantile winsorize upper bound
+_V26_ROBUST_CENTER_H_SHORT = 5                          # short return horizon (days)
+_V26_ROBUST_CENTER_H_LONG = 21                          # long return horizon (days)
+
 
 def _compute_v26_robust_scores(
     t: datetime,
     panel: pd.DataFrame,
-    lambda_: float = _V26_ROBUST_LAMBDA,
+    lambda_: float = _V26_ROBUST_CENTER_LAMBDA,
+    winsor_lo: float = _V26_ROBUST_CENTER_WINSOR_LO,
+    winsor_hi: float = _V26_ROBUST_CENTER_WINSOR_HI,
+    h_short: int = _V26_ROBUST_CENTER_H_SHORT,
+    h_long: int = _V26_ROBUST_CENTER_H_LONG,
 ) -> "pd.Series | None":
     """Compute cross-sectional z-score normalized momentum scores using the
     canonical toolbelt primitives (MAD-based z-score + quantile winsorize).
 
-    Score per universe symbol = z21 - lambda * z5
+    Score per universe symbol = z_long - lambda * z_short
 
     where:
-      z21 = robust_zscore_cross_sectional(winsorize(21d_returns))
-      z5  = robust_zscore_cross_sectional(winsorize(5d_returns))
+      z_long  = robust_zscore_cross_sectional(winsorize(h_long-day returns))
+      z_short = robust_zscore_cross_sectional(winsorize(h_short-day returns))
 
     Uses the canonical src.features primitives via the module-level aliases
     _CANONICAL_ZSCORE and _CANONICAL_WINSORIZE (monkeypatchable by tests).
@@ -900,10 +913,11 @@ def _compute_v26_robust_scores(
     This is the canonical A/B counterpart of _compute_v26_zscore_scores (which
     used an inline sigma-based z-score). The ONLY difference is the
     normalization method: MAD-based (robust) vs std-based (sigma) z-score,
-    and quantile winsorization (0.01/0.99) vs sigma-multiple clipping (3-sigma).
+    and quantile winsorization vs sigma-multiple clipping.
 
-    lambda=1.0 is FIXED (NOT swept). Not a new strategy -- method A/B only.
-    Returns None if there is insufficient history (< 21+2 rows).
+    Default: lambda=1.0, winsor_lo=0.01, winsor_hi=0.99, h_short=5, h_long=21.
+    Not a new strategy -- method A/B only.
+    Returns None if there is insufficient history (< h_long+2 rows).
     """
     universe_cols = [c for c in panel.columns if c not in ('SPY', 'VIX')]
     if not universe_cols:
@@ -912,7 +926,7 @@ def _compute_v26_robust_scores(
         return None
 
     prices_slice = panel.loc[:t, universe_cols]
-    min_rows = 21 + 2  # need 22 price points for a 21-day return
+    min_rows = h_long + 2  # need h_long+1 price points for the long-horizon return
     if len(prices_slice) < min_rows:
         return None
 
@@ -929,14 +943,14 @@ def _compute_v26_robust_scores(
         ret_arr = np.where(valid, p_end / p_start - 1.0, np.nan)
         return pd.Series(ret_arr, index=universe_cols)
 
-    ret_21d = _safe_return(21)
-    ret_5d = _safe_return(5)
+    ret_long = _safe_return(h_long)
+    ret_short = _safe_return(h_short)
 
-    # Canonical winsorize (quantile-based 0.01/0.99) then MAD-based z-score.
-    z21 = _CANONICAL_ZSCORE(_CANONICAL_WINSORIZE(ret_21d))
-    z5 = _CANONICAL_ZSCORE(_CANONICAL_WINSORIZE(ret_5d))
+    # Canonical winsorize (quantile-based) then MAD-based z-score.
+    z_long = _CANONICAL_ZSCORE(_CANONICAL_WINSORIZE(ret_long, lower_q=winsor_lo, upper_q=winsor_hi))
+    z_short = _CANONICAL_ZSCORE(_CANONICAL_WINSORIZE(ret_short, lower_q=winsor_lo, upper_q=winsor_hi))
 
-    scores = z21 - lambda_ * z5
+    scores = z_long - lambda_ * z_short
 
     result = scores.dropna()
     if len(result) == 0:
@@ -1021,6 +1035,104 @@ def _variant_v26_robust(t: datetime, state, panel: pd.DataFrame, cfg) -> Dict[st
 
     targets['__regime__'] = regime
     return targets
+
+
+def make_v26_robust_plan_fn(
+    lambda_: float = _V26_ROBUST_CENTER_LAMBDA,
+    winsor_lo: float = _V26_ROBUST_CENTER_WINSOR_LO,
+    winsor_hi: float = _V26_ROBUST_CENTER_WINSOR_HI,
+    h_short: int = _V26_ROBUST_CENTER_H_SHORT,
+    h_long: int = _V26_ROBUST_CENTER_H_LONG,
+) -> PlanFn:
+    """Factory: return a V26-robust plan_fn parameterized by lambda, winsor quantiles, and horizons.
+
+    Calling make_v26_robust_plan_fn() with NO arguments returns a function that is
+    byte-for-byte behaviorally identical to _variant_v26_robust (same defaults).
+
+    The V26-robust center parameters are the a-priori fixed values:
+      lambda_=1.0, winsor_lo=0.01, winsor_hi=0.99, h_short=5, h_long=21.
+
+    This factory exists for Phase 6.5 robustness sweeps: vary each tunable in a
+    +/-10%/+/-20% neighborhood around the a-priori center. The canonical toolbelt
+    primitives (_CANONICAL_ZSCORE, _CANONICAL_WINSORIZE) are used throughout;
+    no inline z-score or winsorize math is introduced.
+
+    Parameters
+    ----------
+    lambda_ : weight on the short-horizon reversal penalty (center 1.0)
+    winsor_lo : lower quantile for winsorization (center 0.01)
+    winsor_hi : upper quantile for winsorization (center 0.99)
+    h_short : short return horizon in trading days (center 5)
+    h_long : long return horizon in trading days (center 21)
+    """
+    def _plan_fn(t: datetime, state, panel: pd.DataFrame, cfg) -> dict:
+        scores = _compute_v26_robust_scores(
+            t, panel,
+            lambda_=lambda_,
+            winsor_lo=winsor_lo,
+            winsor_hi=winsor_hi,
+            h_short=h_short,
+            h_long=h_long,
+        )
+
+        spy = panel['SPY'].dropna()
+        vix = panel['VIX'].dropna()
+        if t not in spy.index or t not in vix.index:
+            return {'__regime__': 'SAFE_MODE'}
+        spy_slice = spy.loc[:t]
+        vix_slice = vix.loc[:t]
+        if len(spy_slice) < 252 or len(vix_slice) < 252:
+            return {'__regime__': 'SAFE_MODE'}
+
+        spy_df = pd.DataFrame({
+            'close': spy_slice, 'open': spy_slice, 'high': spy_slice, 'low': spy_slice,
+            'volume': 1e6,
+        })
+        vix_df = pd.DataFrame({'close': vix_slice})
+        try:
+            regime, _confidence = _DETECTOR.classify_regime(spy_df, vix_df, t)
+        except Exception:
+            return {'__regime__': 'SAFE_MODE'}
+
+        if scores is None or len(scores) == 0:
+            return {'__regime__': 'SAFE_MODE'}
+
+        top_n = REGIME_PARAMS.get(regime, {}).get('top_n', 10)
+
+        ranked = scores.dropna().sort_values(ascending=False)
+        if len(ranked) == 0:
+            return {'__regime__': regime}
+        target_symbols = list(ranked.head(top_n).index)
+        if not target_symbols:
+            return {'__regime__': regime}
+
+        proposed = {sym: 1.0 / top_n for sym in target_symbols}
+
+        ranking = pd.Series(
+            range(1, len(ranked) + 1),
+            index=ranked.index,
+        )
+
+        targets = rank_buffer(
+            proposed_targets=proposed,
+            state=state,
+            buffer_size=top_n // 2,
+            universe_ranking=ranking,
+            top_n=top_n,
+        )
+
+        targets = min_hold(
+            proposed_targets=targets,
+            state=state,
+            current_date=t,
+            min_hold_days=5,
+            crash_exit=False,
+        )
+
+        targets['__regime__'] = regime
+        return targets
+
+    return _plan_fn
 
 
 def _compute_v28_multihorizon_scores(

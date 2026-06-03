@@ -75,6 +75,12 @@ from src.research.ramp_phase4.variants import (
     _V28_CENTER_LAMBDA_REV,
     _V31_CENTER_BETA_WINDOW,
     _V31_CENTER_RESIDUAL_HORIZON,
+    _V26_ROBUST_CENTER_LAMBDA,
+    _V26_ROBUST_CENTER_WINSOR_LO,
+    _V26_ROBUST_CENTER_WINSOR_HI,
+    _V26_ROBUST_CENTER_H_SHORT,
+    _V26_ROBUST_CENTER_H_LONG,
+    make_v26_robust_plan_fn,
     make_v28_plan_fn,
     make_v31_plan_fn,
 )
@@ -84,9 +90,10 @@ logger = get_logger(__name__)
 
 DATA_SNAPSHOT_DATE = datetime(2026, 5, 16).date()
 
-# Reference center Sharpes from the family gate (near_close 5bps full window).
+# Reference center Sharpes from the full-window run (near_close 5bps).
 _V28_CENTER_SHARPE_REF = 0.811
 _V31_CENTER_SHARPE_REF = 0.769
+_V26_ROBUST_CENTER_SHARPE_REF = 0.635  # run_id=8d287db0 near_close 5bps 2017-2026
 
 # Stability threshold: neighbor must hold >= this fraction of center Sharpe.
 STABILITY_THRESHOLD = 0.9
@@ -250,6 +257,114 @@ def _build_v28_grid(budget: int = 25) -> List[Dict[str, Any]]:
     return grid
 
 
+def _build_v26_robust_grid(budget: int = 25) -> List[Dict[str, Any]]:
+    """Build the V26-robust robustness grid: exactly 25 points.
+
+    Center: lambda=1.0, winsor_lo=0.01, winsor_hi=0.99, h_short=5, h_long=21.
+
+    Structure (25 points total):
+      1  center
+      4  lambda one-at-a-time: +/-10% (+/-20%) of 1.0 -> {0.8, 0.9, 1.1, 1.2}
+      4  winsor_lo one-at-a-time: {0.005, 0.008, 0.012, 0.015}
+             (-50%, -20% approx, +20% approx, +50% -- quantile bounds need integer rounding)
+      4  winsor_hi one-at-a-time: {0.985, 0.988, 0.992, 0.995}
+             (symmetric to winsor_lo, ensuring winsor_lo < winsor_hi always)
+      4  h_short one-at-a-time: {4, 3, 6, 7}
+             (-20%, -40% approx, +20%, +40% -- integer horizons)
+      4  h_long one-at-a-time: {17, 14, 25, 28}
+             (-19%, -33% approx, +19%, +33% -- integer horizons)
+      4  combo: (lambda, h_short, h_long) perturbed together at +/-10% and +/-20%
+
+    Returns list of param dicts with keys: lambda_, winsor_lo, winsor_hi, h_short, h_long,
+    label, is_center.
+    """
+    center_lam = _V26_ROBUST_CENTER_LAMBDA         # 1.0
+    center_wlo = _V26_ROBUST_CENTER_WINSOR_LO      # 0.01
+    center_whi = _V26_ROBUST_CENTER_WINSOR_HI      # 0.99
+    center_hs = _V26_ROBUST_CENTER_H_SHORT         # 5
+    center_hl = _V26_ROBUST_CENTER_H_LONG          # 21
+
+    def _pt(label, lam, wlo, whi, hs, hl, is_center=False):
+        assert wlo < whi, f"winsor_lo must be < winsor_hi: {wlo} >= {whi}"
+        assert hs < hl, f"h_short must be < h_long: {hs} >= {hl}"
+        return {
+            'lambda_': lam,
+            'winsor_lo': wlo,
+            'winsor_hi': whi,
+            'h_short': hs,
+            'h_long': hl,
+            'label': label,
+            'is_center': is_center,
+        }
+
+    grid = []
+
+    # 1. Center point.
+    grid.append(_pt(
+        label=f"CENTER_lam{center_lam}_wlo{center_wlo}_whi{center_whi}_hs{center_hs}_hl{center_hl}",
+        lam=center_lam, wlo=center_wlo, whi=center_whi, hs=center_hs, hl=center_hl,
+        is_center=True,
+    ))
+
+    # 2. lambda one-at-a-time (4 points): -20%, -10%, +10%, +20%.
+    for new_lam, tag in [(0.8, 'm20'), (0.9, 'm10'), (1.1, 'p10'), (1.2, 'p20')]:
+        grid.append(_pt(
+            label=f"lam_{tag}_{new_lam}",
+            lam=new_lam, wlo=center_wlo, whi=center_whi, hs=center_hs, hl=center_hl,
+        ))
+
+    # 3. winsor_lo one-at-a-time (4 points): approx -50%/-20%/+20%/+50% of 0.01.
+    for new_wlo, tag in [(0.005, 'm50'), (0.008, 'm20'), (0.012, 'p20'), (0.015, 'p50')]:
+        grid.append(_pt(
+            label=f"wlo_{tag}_{new_wlo}",
+            lam=center_lam, wlo=new_wlo, whi=center_whi, hs=center_hs, hl=center_hl,
+        ))
+
+    # 4. winsor_hi one-at-a-time (4 points): symmetric, ensuring < 1.0 and > winsor_lo.
+    for new_whi, tag in [(0.985, 'm15'), (0.988, 'm12'), (0.992, 'p2'), (0.995, 'p5')]:
+        grid.append(_pt(
+            label=f"whi_{tag}_{new_whi}",
+            lam=center_lam, wlo=center_wlo, whi=new_whi, hs=center_hs, hl=center_hl,
+        ))
+
+    # 5. h_short one-at-a-time (4 points): nearest integers at -40%/-20%/+20%/+40%.
+    for new_hs, tag in [(3, 'm40'), (4, 'm20'), (6, 'p20'), (7, 'p40')]:
+        assert new_hs < center_hl
+        grid.append(_pt(
+            label=f"hs_{tag}_{new_hs}d",
+            lam=center_lam, wlo=center_wlo, whi=center_whi, hs=new_hs, hl=center_hl,
+        ))
+
+    # 6. h_long one-at-a-time (4 points): nearest integers at -33%/-19%/+19%/+33%.
+    for new_hl, tag in [(14, 'm33'), (17, 'm19'), (25, 'p19'), (28, 'p33')]:
+        assert center_hs < new_hl
+        grid.append(_pt(
+            label=f"hl_{tag}_{new_hl}d",
+            lam=center_lam, wlo=center_wlo, whi=center_whi, hs=center_hs, hl=new_hl,
+        ))
+
+    # 7. Combo perturbations: (lambda, h_short, h_long) moved together (4 points).
+    for (dlam, dhs, dhl), tag in [
+        ((-0.1, -1, -2), 'combo_m10'),   # -10% all
+        ((-0.2, -2, -4), 'combo_m20'),   # -20% all (integer approx)
+        ((+0.1, +1, +2), 'combo_p10'),   # +10% all
+        ((+0.2, +2, +4), 'combo_p20'),   # +20% all
+    ]:
+        new_lam = center_lam + dlam
+        new_hs = center_hs + dhs
+        new_hl = center_hl + dhl
+        if new_hs >= new_hl or new_hs < 1:
+            continue  # skip invalid combo (safety)
+        grid.append(_pt(
+            label=f"{tag}_lam{new_lam}_hs{new_hs}d_hl{new_hl}d",
+            lam=new_lam, wlo=center_wlo, whi=center_whi, hs=new_hs, hl=new_hl,
+        ))
+
+    assert len(grid) == 25, f"V26-robust grid size {len(grid)} != 25"
+    assert len(grid) <= budget, f"V26-robust grid size {len(grid)} exceeds budget {budget}"
+    return grid
+
+
 def _build_cfg(
     args,
     cost_bps: float = 5.0,
@@ -306,6 +421,14 @@ def _run_one_variation(
         plan_fn = make_v31_plan_fn(
             beta_window=params['beta_window'],
             residual_horizon=params['residual_horizon'],
+        )
+    elif variant_id == 'V26-robust':
+        plan_fn = make_v26_robust_plan_fn(
+            lambda_=params['lambda_'],
+            winsor_lo=params['winsor_lo'],
+            winsor_hi=params['winsor_hi'],
+            h_short=params['h_short'],
+            h_long=params['h_long'],
         )
     else:
         raise ValueError(f"Unsupported variant: {variant_id}")
@@ -487,6 +610,28 @@ def _build_md_report(
             f'residual_horizon in {{17, 19, 21, 23, 25}} '
             f'(center={_V31_CENTER_RESIDUAL_HORIZON}, approx -19%/-10%/center/+10%/+19%)'
         )
+    elif variant_id == 'V26-robust':
+        lines.append('**V26-robust grid**: 1 center + 4x5 one-at-a-time + 4 combos = 25 points')
+        lines.append(
+            f'Center: lambda={_V26_ROBUST_CENTER_LAMBDA}, '
+            f'winsor_lo={_V26_ROBUST_CENTER_WINSOR_LO}, '
+            f'winsor_hi={_V26_ROBUST_CENTER_WINSOR_HI}, '
+            f'h_short={_V26_ROBUST_CENTER_H_SHORT}d, '
+            f'h_long={_V26_ROBUST_CENTER_H_LONG}d'
+        )
+        lines.append(
+            'Perturbations: '
+            'lambda at {0.8, 0.9, 1.1, 1.2} (+/-10%/+/-20%); '
+            'winsor_lo at {0.005, 0.008, 0.012, 0.015} (approx +/-20%/+/-50%); '
+            'winsor_hi at {0.985, 0.988, 0.992, 0.995}; '
+            'h_short at {3, 4, 6, 7}d (approx +/-20%/+/-40%); '
+            'h_long at {14, 17, 25, 28}d (approx +/-19%/+/-33%); '
+            'combo: (lambda, h_short, h_long) moved together at +/-10%/+/-20%.'
+        )
+        lines.append(
+            'Canonical primitives: robust_zscore_cross_sectional (MAD-based) and '
+            'winsorize (quantile) from src.features -- used in ALL variations.'
+        )
     else:
         lines.append('**V28 grid**: 1 center + 4x6 one-at-a-time = 25 points')
         lines.append(
@@ -602,7 +747,7 @@ def _build_md_report(
 
 def _parse_args(argv=None):
     p = argparse.ArgumentParser(description='Phase 6.5 robustness runner for V28/V31.')
-    p.add_argument('--variant', required=True, choices=['V28', 'V31'])
+    p.add_argument('--variant', required=True, choices=['V28', 'V31', 'V26-robust'])
     p.add_argument(
         '--start',
         type=lambda s: datetime.strptime(s, '%Y-%m-%d'),
@@ -659,6 +804,9 @@ def main() -> int:
     if args.variant == 'V31':
         grid_full = _build_v31_grid(budget=25)
         center_sharpe_ref = _V31_CENTER_SHARPE_REF
+    elif args.variant == 'V26-robust':
+        grid_full = _build_v26_robust_grid(budget=25)
+        center_sharpe_ref = _V26_ROBUST_CENTER_SHARPE_REF
     else:
         grid_full = _build_v28_grid(budget=25)
         center_sharpe_ref = _V28_CENTER_SHARPE_REF

@@ -105,19 +105,21 @@ DATA_SNAPSHOT_DATE = datetime(2026, 5, 16).date()
 # Full-window run_ids (near_close, 5 bps, most recent clean run per variant).
 # These are the streams we slice for per-window OOS Sharpes.
 FULL_WINDOW_RUN_IDS: Dict[str, str] = {
-    'V11':      '3cb8b7be',
-    'V28':      '6a6eced1',
-    'V31':      '9b29f3f1',
-    'V02+V05':  '5612e64c',
-    'V26':      '0ca42590',
-    'V33-core': '2703750a',
+    'V11':         '3cb8b7be',
+    'V28':         '6a6eced1',
+    'V31':         '9b29f3f1',
+    'V02+V05':     '5612e64c',
+    'V26':         '0ca42590',
+    'V33-core':    '2703750a',
+    'V26-robust':  '8d287db0',
 }
 
 # 7.5 bps (1.5x cost gate) full-window run_ids.
 FULL_WINDOW_RUN_IDS_75: Dict[str, str] = {
-    'V11':      '49ebc8e1',
-    'V28':      'd2bd80a6',
-    'V31':      '5cbc40b0',
+    'V11':         '49ebc8e1',
+    'V28':         'd2bd80a6',
+    'V31':         '5cbc40b0',
+    'V26-robust':  '86079262',
 }
 
 # OOS calendar windows: (label, start_incl, end_incl)
@@ -324,7 +326,8 @@ def _compute_per_window_results(
         raw_table.append(row)
         logger.info(
             f"Window {label}: V11={v11_sr:.3f} V28={window_sharpes.get('V28', float('nan')):.3f} "
-            f"V31={window_sharpes.get('V31', float('nan')):.3f}"
+            f"V31={window_sharpes.get('V31', float('nan')):.3f} "
+            f"V26-robust={window_sharpes.get('V26-robust', float('nan')):.3f}"
         )
 
     return wf_results, raw_table
@@ -426,10 +429,9 @@ def _verdict(wf: WalkForwardResult, cost_label: str) -> str:
 
 
 def _rank_stability(wf_results: Dict[str, WalkForwardResult]) -> Dict:
-    """Compute rank stability metrics for V28 and V31."""
-    n_windows = len(list(wf_results.values())[0].windows) if wf_results else 0
+    """Compute rank stability metrics for V28, V31, and V26-robust."""
     stability: Dict = {}
-    for variant in ['V28', 'V31']:
+    for variant in ['V28', 'V31', 'V26-robust']:
         if variant not in wf_results:
             continue
         ranks = [w.rank_in_family for w in wf_results[variant].windows]
@@ -471,9 +473,10 @@ def _build_markdown_report(
     lines.append("")
     lines.append("### What binds from Section 3 (Walk-Forward), given no fitting")
     lines.append("")
-    lines.append("V28 and V31 have FIXED, a-priori parameters:")
+    lines.append("V28, V31, and V26-robust all have FIXED, a-priori parameters:")
     lines.append("- V28: blend weights 0.5/0.3/0.2 (horizons 21/63/126d) + 0.1 reversal weight")
     lines.append("- V31: 90-day beta window, 21-day residual momentum horizon")
+    lines.append("- V26-robust: lambda=1.0, winsor 0.01/0.99, horizons 21d/5d (canonical MAD z-score)")
     lines.append("")
     lines.append("**Section 3.1 (window structure)**: APPLIES. We use 7 sequential")
     lines.append("calendar-year OOS windows to assess temporal Sharpe stability.")
@@ -530,13 +533,14 @@ def _build_markdown_report(
 
     lines.append("## Section 2: Per-Window Sharpe Table (5 bps near_close)")
     lines.append("")
-    lines.append("Per-window Sharpe for all 6 family variants. V11 is the benchmark.")
+    lines.append("Per-window Sharpe for all 7 family variants. V11 is the benchmark.")
     lines.append("")
 
     # Build header
-    header_variants = ['V11', 'V28', 'V31', 'V02+V05', 'V26', 'V33-core']
-    cols = "| Window | n | " + " | ".join(header_variants) + " | V28>V11 | V31>V11 |"
-    sep_parts = ["---", "---:"] + ["---:"] * len(header_variants) + [":---:", ":---:"]
+    header_variants = ['V11', 'V28', 'V31', 'V02+V05', 'V26', 'V33-core', 'V26-robust']
+    extra_beats = [('V28', 'V28>V11'), ('V31', 'V31>V11'), ('V26-robust', 'V26r>V11')]
+    cols = "| Window | n | " + " | ".join(header_variants) + " | " + " | ".join(e[1] for e in extra_beats) + " |"
+    sep_parts = ["---", "---:"] + ["---:"] * len(header_variants) + [":---:"] * len(extra_beats)
     sep = "| " + " | ".join(sep_parts) + " |"
     lines.append(cols)
     lines.append(sep)
@@ -548,9 +552,15 @@ def _build_markdown_report(
         for v in header_variants:
             s = row.get(f'{v}_sharpe', float('nan'))
             sharpes.append(f"{s:.3f}" if isinstance(s, float) and np.isfinite(s) else 'n/a')
-        v28_beats = "Y" if row.get('V28_sharpe', 0) > row.get('V11_sharpe', 999) else "N"
-        v31_beats = "Y" if row.get('V31_sharpe', 0) > row.get('V11_sharpe', 999) else "N"
-        lines.append(f"| {win} | {n} | " + " | ".join(sharpes) + f" | {v28_beats} | {v31_beats} |")
+        beats_cells = []
+        for variant_key, _ in extra_beats:
+            beats_cells.append(
+                "Y" if row.get(f'{variant_key}_sharpe', 0) > row.get('V11_sharpe', 999) else "N"
+            )
+        lines.append(
+            f"| {win} | {n} | " + " | ".join(sharpes) +
+            " | " + " | ".join(beats_cells) + " |"
+        )
 
     lines.append("")
 
@@ -567,7 +577,7 @@ def _build_markdown_report(
     lines.append("")
 
     # Summary stats per candidate
-    for variant in ['V28', 'V31']:
+    for variant in ['V28', 'V31', 'V26-robust']:
         if variant not in wf_results:
             continue
         wf = wf_results[variant]
@@ -585,15 +595,15 @@ def _build_markdown_report(
 
     lines.append("## Section 3: Selection Rank Stability")
     lines.append("")
-    lines.append("Rank-stability of V28 and V31 across OOS windows (1 = best of 6 variants).")
-    lines.append("Ties the PBO 0.503 finding to temporal evidence: does the family ranking")
+    lines.append("Rank-stability of V28, V31, and V26-robust across OOS windows (1 = best of 7 variants).")
+    lines.append("Ties the PBO finding to temporal evidence: does the family ranking")
     lines.append("agree across time periods?")
     lines.append("")
 
     # Per-window ranks table
     lines.append("### Per-Window Family Ranking")
     lines.append("")
-    header_variants2 = ['V28', 'V31', 'V02+V05', 'V26', 'V11', 'V33-core']
+    header_variants2 = ['V28', 'V31', 'V26-robust', 'V02+V05', 'V26', 'V11', 'V33-core']
     cols2 = "| Window | " + " | ".join(f"Rank({v})" for v in header_variants2) + " |"
     sep2_parts = ["---"] + [":---:"] * len(header_variants2)
     sep2 = "| " + " | ".join(sep2_parts) + " |"
@@ -617,13 +627,13 @@ def _build_markdown_report(
         )
     lines.append("")
 
-    lines.append("### Connection to PBO 0.503")
+    lines.append("### Connection to PBO / Selection Bias")
     lines.append("")
-    lines.append("The PBO of 0.503 (family gate) means that in a majority of CSCV folds,")
-    lines.append("the IS-best variant underperforms the OOS median. The per-window rank")
-    lines.append("table above shows whether this is driven by temporal concentration.")
-    lines.append("If V28 ranks #1 in 5+ of 7 windows, the PBO concern is quantifiable:")
-    lines.append("the selection bias is real but V28's dominance is not purely IS-period artefact.")
+    lines.append("V28/V31 PBO was 0.503 at the family gate (IS-best underperforms OOS median")
+    lines.append("in majority of CSCV folds). V26-robust is a separate a-priori candidate with")
+    lines.append("its own selection trial; its rank stability here is purely informational.")
+    lines.append("If V26-robust ranks top-tier consistently, its OOS edge is time-consistent,")
+    lines.append("not period-concentrated.")
     lines.append("")
 
     lines.append("## Section 4: Slice vs Direct Run_Variant Verification")
@@ -653,29 +663,31 @@ def _build_markdown_report(
 
     lines.append("## Section 5: Cost Gate at 7.5 bps (1.5x Cost Sensitivity)")
     lines.append("")
-    lines.append("Per-window Sharpe at 7.5 bps for V28, V31, and V11.")
+    lines.append("Per-window Sharpe at 7.5 bps for V28, V31, V26-robust, and V11.")
     lines.append("")
 
     if raw_table_75:
-        lines.append("| Window | V11 (7.5bps) | V28 (7.5bps) | V31 (7.5bps) | V28>V11 | V31>V11 |")
-        lines.append("|---|---:|---:|---:|:---:|:---:|")
+        lines.append("| Window | V11 (7.5bps) | V28 (7.5bps) | V31 (7.5bps) | V26-robust (7.5bps) | V28>V11 | V31>V11 | V26r>V11 |")
+        lines.append("|---|---:|---:|---:|---:|:---:|:---:|:---:|")
         for row in raw_table_75:
             win = row['window']
             v11s = row.get('V11_sharpe', float('nan'))
             v28s = row.get('V28_sharpe', float('nan'))
             v31s = row.get('V31_sharpe', float('nan'))
-            v28b = "Y" if isinstance(v28s, float) and isinstance(v11s, float) and v28s > v11s else "N"
-            v31b = "Y" if isinstance(v31s, float) and isinstance(v11s, float) and v31s > v11s else "N"
-            v28s_str = f"{v28s:.3f}" if isinstance(v28s, float) and np.isfinite(v28s) else 'n/a'
-            v31s_str = f"{v31s:.3f}" if isinstance(v31s, float) and np.isfinite(v31s) else 'n/a'
+            v26rs = row.get('V26-robust_sharpe', float('nan'))
+            def _beats(a, b):
+                return "Y" if isinstance(a, float) and isinstance(b, float) and np.isfinite(a) and np.isfinite(b) and a > b else "N"
+            def _fmt(s):
+                return f"{s:.3f}" if isinstance(s, float) and np.isfinite(s) else 'n/a'
             lines.append(
-                f"| {win} | {v11s:.3f} | {v28s_str} | {v31s_str} | {v28b} | {v31b} |"
+                f"| {win} | {_fmt(v11s)} | {_fmt(v28s)} | {_fmt(v31s)} | {_fmt(v26rs)} "
+                f"| {_beats(v28s, v11s)} | {_beats(v31s, v11s)} | {_beats(v26rs, v11s)} |"
             )
         lines.append("")
 
     lines.append("## Section 6: Verdicts")
     lines.append("")
-    for variant in ['V28', 'V31']:
+    for variant in ['V28', 'V31', 'V26-robust']:
         if variant not in wf_results:
             continue
         wf = wf_results[variant]
@@ -712,10 +724,10 @@ def _build_markdown_report(
         if v == 'GRADUATE':
             lines.append(
                 f"**{variant} RATIONALE**: Beats V11 in all {n_total} OOS windows with no "
-                f"negative-Sharpe windows. The PBO 0.503 concern is mitigated by this consistent "
-                f"temporal dominance. PBO measures family-level selection instability; V28 showing "
-                f"top-tier rank in every year suggests the selection, while uncertain at family level, "
-                f"is time-consistent. **Recommended next step**: Propose A/B against V11 in paper."
+                f"negative-Sharpe windows. The full-window edge (+0.107 Sharpe vs V11 for "
+                f"V26-robust) is confirmed as time-consistent, not period-concentrated. "
+                f"**Combined verdict depends also on Gate 2 (robustness sweep); GRADUATE "
+                f"requires BOTH gates to pass.**"
             )
         elif v == 'HOLD':
             lines.append(
@@ -727,7 +739,10 @@ def _build_markdown_report(
         else:
             lines.append(
                 f"**{variant} RATIONALE**: OOS performance insufficient. Full-window edge was "
-                f"concentrated in specific periods; walk-forward confirms REJECT."
+                f"concentrated in specific periods; walk-forward confirms REJECT. "
+                f"Honest prior: V28 (+0.283 vs V11) and V31 (+0.241 vs V11) both rejected "
+                f"on BEAR years (2020/2022). V26-robust has a smaller edge (+0.107) and "
+                f"is susceptible to the same failure mode."
             )
         lines.append("")
 
@@ -856,7 +871,7 @@ def main(argv=None):
     # ------------------------------------------------------------------
     # Append aggregate results to registry.
     # ------------------------------------------------------------------
-    for variant in ['V28', 'V31']:
+    for variant in ['V28', 'V31', 'V26-robust']:
         if variant not in wf_results:
             continue
         wf = wf_results[variant]
@@ -940,7 +955,7 @@ def main(argv=None):
         'rank_stability': rank_stab,
         'verdicts': {
             v: _verdict(wf_results[v], '5bps')
-            for v in ['V28', 'V31']
+            for v in ['V28', 'V31', 'V26-robust']
             if v in wf_results
         },
         'pooled_oos_sharpe': {
@@ -957,7 +972,7 @@ def main(argv=None):
 
     # Final summary to console.
     logger.info("[+] Walk-forward complete")
-    for variant in ['V28', 'V31']:
+    for variant in ['V28', 'V31', 'V26-robust']:
         if variant not in wf_results:
             continue
         wf = wf_results[variant]

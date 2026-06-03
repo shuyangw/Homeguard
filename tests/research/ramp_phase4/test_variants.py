@@ -2061,3 +2061,118 @@ def test_v26_robust_safe_mode_on_insufficient_history():
     assert plan.get('__regime__') == 'SAFE_MODE', (
         f"Expected SAFE_MODE with insufficient history, got {plan}"
     )
+
+
+# ============================================================
+# make_v26_robust_plan_fn factory tests (TDD gate for Gate 2)
+# ============================================================
+
+def test_make_v26_robust_plan_fn_exists():
+    """make_v26_robust_plan_fn must be importable from variants."""
+    from src.research.ramp_phase4.variants import make_v26_robust_plan_fn
+    assert callable(make_v26_robust_plan_fn)
+
+
+def test_make_v26_robust_default_matches_registered_variant():
+    """make_v26_robust_plan_fn() with defaults must produce same selection as _variant_v26_robust.
+
+    This is the primary factory-equivalence gate. The factory-with-defaults and the
+    registered _variant_v26_robust must select identical symbols and weights on any panel
+    where history is sufficient. This guarantees the robustness sweep's center point is
+    byte-for-byte behaviorally identical to the registered V26-robust variant.
+    """
+    from src.research.ramp_phase4.variants import make_v26_robust_plan_fn
+    panel = _v26_robust_panel(n=300)
+    t = panel.index[-1].to_pydatetime()
+    state = HarnessState(cash_usd=100_000.0)
+    cfg = _stub_cfg()
+
+    factory_fn = make_v26_robust_plan_fn()
+    factory_plan = factory_fn(t, state, panel, cfg)
+    registered_plan = REGISTRY['V26-robust'].plan_fn(t, state, panel, cfg)
+
+    factory_syms = set(k for k in factory_plan if k != '__regime__')
+    registered_syms = set(k for k in registered_plan if k != '__regime__')
+    assert factory_syms == registered_syms, (
+        f"make_v26_robust_plan_fn() selected {factory_syms} "
+        f"but _variant_v26_robust selected {registered_syms}"
+    )
+    # Weights must match exactly (same float arithmetic path).
+    for sym in factory_syms:
+        assert abs(factory_plan[sym] - registered_plan[sym]) < 1e-9, (
+            f"Weight mismatch for {sym}: factory={factory_plan[sym]}, "
+            f"registered={registered_plan[sym]}"
+        )
+
+
+def test_make_v26_robust_perturbed_lambda_runs():
+    """Perturbing lambda must run without error and return a valid plan."""
+    from src.research.ramp_phase4.variants import make_v26_robust_plan_fn
+    panel = _v26_robust_panel(n=300)
+    t = panel.index[-1].to_pydatetime()
+    state = HarnessState(cash_usd=100_000.0)
+    cfg = _stub_cfg()
+
+    perturbed_fn = make_v26_robust_plan_fn(lambda_=0.8)
+    plan = perturbed_fn(t, state, panel, cfg)
+    assert '__regime__' in plan
+
+
+def test_make_v26_robust_perturbed_horizons_runs():
+    """Perturbing short/long horizons must run without error and return a valid plan."""
+    from src.research.ramp_phase4.variants import make_v26_robust_plan_fn
+    panel = _v26_robust_panel(n=300)
+    t = panel.index[-1].to_pydatetime()
+    state = HarnessState(cash_usd=100_000.0)
+    cfg = _stub_cfg()
+
+    # h_short=4, h_long=17 is a -20% perturbation on both.
+    perturbed_fn = make_v26_robust_plan_fn(h_short=4, h_long=17)
+    plan = perturbed_fn(t, state, panel, cfg)
+    assert '__regime__' in plan
+
+
+def test_make_v26_robust_perturbed_winsor_runs():
+    """Perturbing winsor quantiles must run without error and return a valid plan."""
+    from src.research.ramp_phase4.variants import make_v26_robust_plan_fn
+    panel = _v26_robust_panel(n=300)
+    t = panel.index[-1].to_pydatetime()
+    state = HarnessState(cash_usd=100_000.0)
+    cfg = _stub_cfg()
+
+    perturbed_fn = make_v26_robust_plan_fn(winsor_lo=0.02, winsor_hi=0.98)
+    plan = perturbed_fn(t, state, panel, cfg)
+    assert '__regime__' in plan
+
+
+def test_make_v26_robust_uses_canonical_primitives_via_factory(monkeypatch):
+    """Factory-returned plan_fn must call canonical toolbelt primitives, not inline math."""
+    import src.research.ramp_phase4.variants as var_mod
+    from src.features import robust_zscore_cross_sectional, winsorize
+
+    zscore_call_count = []
+    winsorize_call_count = []
+
+    def spy_zscore(series):
+        zscore_call_count.append(1)
+        return robust_zscore_cross_sectional(series)
+
+    def spy_winsorize(series, **kwargs):
+        winsorize_call_count.append(1)
+        return winsorize(series, **kwargs)
+
+    monkeypatch.setattr(var_mod, '_CANONICAL_ZSCORE', spy_zscore, raising=True)
+    monkeypatch.setattr(var_mod, '_CANONICAL_WINSORIZE', spy_winsorize, raising=True)
+
+    from src.research.ramp_phase4.variants import make_v26_robust_plan_fn
+    panel = _v26_robust_panel(n=300)
+    t = panel.index[-1].to_pydatetime()
+    state = HarnessState(cash_usd=100_000.0)
+    cfg = _stub_cfg()
+
+    factory_fn = make_v26_robust_plan_fn()
+    plan = factory_fn(t, state, panel, cfg)
+
+    assert '__regime__' in plan
+    assert len(zscore_call_count) > 0, "robust_zscore_cross_sectional was not called by factory"
+    assert len(winsorize_call_count) > 0, "winsorize was not called by factory"
