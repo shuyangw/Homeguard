@@ -97,6 +97,15 @@ Detailed overfitting thresholds and backtest integrity rules: `.claude/rules/str
 - Bias prevention, statistical gates (PSR/DSR/PBO), walk-forward purge/embargo, cost models, stopping conditions: see `docs/methodology/backtesting.md` Sections 1-5
 - Use market calendar for trading day filtering
 - Apply proper risk management
+- **Never consider a strategy "closed" -- there is ALWAYS room for improvement.** A REJECT or
+  closure is conditional on what was tested (configuration, data, implementation, mechanism), NOT a
+  universal truth. When you stop, record the UNTESTED angles as open leads, and stay willing to
+  re-open a "closed" result when a different mechanism, cleaner/expanded data, a fixed bug, or a
+  canonical implementation could change it. (Real example: a "closed" Wave-3 conclusion re-opened
+  when swapping an inline sigma z-score for the canonical `src/features` MAD primitive moved an
+  in-sample Sharpe 0.533 -> 0.635.) This is NOT a license to overfit: keep honoring the DSR/PBO
+  multi-trial penalty and the Section 5 stopping conditions. "Stay open" means new
+  angles/data/fixes/mechanisms -- it does NOT mean re-grid-searching the SAME tested configuration.
 - Operational details: [`.claude/backtesting.md`](.claude/backtesting.md)
 
 ### Existing Backtest Tools (CHECK BEFORE CREATING NEW)
