@@ -1421,7 +1421,22 @@ class RAMPLiveAdapter(StrategyAdapter):
                 had_lock = True
 
                 # Sync state with broker (detect external position changes)
-                broker_positions = {p['symbol']: int(p['quantity']) for p in self.broker.get_positions()}
+                raw_broker_positions = self.broker.get_positions() or []
+                broker_positions = {p['symbol']: int(p['quantity']) for p in raw_broker_positions}
+                # Adopt broker holdings that state isn't tracking BEFORE syncing.
+                # On a fresh boot the state `positions` dict can be empty while the
+                # broker still holds prior-session positions; sync_with_broker only
+                # reconciles already-tracked symbols, so without adoption these
+                # holdings stay invisible to get_positions -> strategy equity
+                # collapses to a flat initial_capital + lifetime_realized line and
+                # ownership accounting wrongly believes RAMP is flat.
+                adopted = self.state_manager.adopt_broker_positions(
+                    STRATEGY_NAME,
+                    self._broker_name,
+                    {p['symbol']: p for p in raw_broker_positions},
+                )
+                if adopted:
+                    logger.info(f"[RAMP] Adopted untracked broker positions: {adopted}")
                 changes = self.state_manager.sync_with_broker(self._broker_name, broker_positions)
                 if changes['removed']:
                     logger.info(f"[RAMP] Detected closed positions: {changes['removed']}")
