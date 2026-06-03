@@ -161,6 +161,19 @@ z-score / winsorize / rank / returns / realized-vol inline:
 **Paste this instruction into every implementation/backtest dispatch**, and after a
 subagent returns, grep its new code for inline z-score/winsorize/RV/returns and flag any.
 
+## Trade-level chronicling (methodology Section 12 -- required, not optional)
+
+Backtests MUST persist trade-level and holdings detail, not just daily returns + aggregate
+turnover. Daily returns alone cannot answer "WHICH names drove the loss / the turnover / the
+bear-year underperformance" -- the analysis that actually advances a strategy.
+- Persist, per run: a **per-day holdings** record (date, symbol, weight) and a **trade ledger**
+  (date, symbol, side, shares, trade_value) -- gzip + a representative cost/timing tier is fine.
+- The research engine exposes `DailyRecord.trades`; the readiness runner writes
+  `docs/reports/ramp/holdings/<variant>_*.csv.gz`. Use them; do not discard the trade list.
+- Required for the Section 12 diagnostics (top contributors/detractors, per-name attribution).
+  (Example: the 2022 bear-attribution -- which proved the Wave-3 candidates lost to CONCENTRATION
+  + slow rotation, not to a missing cash overlay -- was only possible once trades were chronicled.)
+
 ## Backtest integrity (authoritative)
 
 **`docs/methodology/backtesting.md` is the single source of truth.** When this file and the methodology disagree, the methodology wins. Read the relevant section directly; do not paraphrase from memory.

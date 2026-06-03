@@ -314,9 +314,23 @@ walk-forward** (V31 co-candidate); V11 remains the deployed paper incumbent unti
 Across 7 sequential OOS calendar-year windows, V28 beat V11 in only 3/7 (worst -0.496) and V31
 in 5/7 (worst -0.745) -- both fail the "beat V11 in every OOS window" bar. Pooled OOS Sharpes
 (V28 0.889, V31 0.910) DO exceed V11 (0.647), but the full-window edge is concentrated in
-2023-2025 up-markets; both regime-free signals lose the 2020/2022 BEAR years where V11's
-regime-cash mode protects. PBO 0.503 was prescient. **V11 remains the deployed incumbent; no
-candidate graduates.** Report: `docs/reports/ramp/20260601_wave3_walkforward.md`.
+2023-2025 up-markets; both lose the 2020/2022 BEAR years. PBO 0.503 was prescient. **V11 remains
+the deployed incumbent; no candidate graduates.** Report: `docs/reports/ramp/20260601_wave3_walkforward.md`.
+
+> **CORRECTION (2026-06-03, from trade-level attribution): the 2022 loss is a SELECTION effect,
+> NOT "regime-cash protection."** Earlier text said V11's "regime-cash mode protects" in BEAR --
+> that is WRONG. The research `_variant_v11` is V01-based and ignores `exposure_pct`; ALL variants
+> were ~100% invested through 2022 (avg gross V11 1.000, V28 1.012, V31 1.007, V26-robust 0.997).
+> The 2022 gap (V11 -16.5% vs V28 -20.0%, V31 -26.0%, V26-robust -19.3%) comes from SELECTION:
+> **V11 holds MORE names (~21.6 vs 13-15) and rotates FASTER (AnnTO ~10,325% vs 5,264-7,217%),
+> which dilutes single-name blowups and exits losers earlier.** The candidates' losses trace to
+> concentrated positions in a few names that cratered (V28: MU -48%, EPAM -49% at ~9% wt each;
+> V31: NCLH -45%; V26-robust: ECL -37%). **The H6/H8 high-beta story is WEAKENED** -- the
+> candidates' unique-vs-V11 picks are NOT systematically higher beta (~1.05 vs V11 1.06); it is
+> concentration + slow rotation, not beta. Report: `docs/reports/ramp/20260603_wave3_2022_bear_attribution.md`.
+> **Reframed hybrid lead:** keep the candidate's ranking signal but impose a POSITION-COUNT FLOOR
+> (~20 names) + a TURNOVER FLOOR comparable to V11 (faster loser-exit); beta-dampening is a
+> secondary layer. Concentration -- not a cash overlay -- is the primary bear-resilience lever.
 
 **ALL FIVE proposed variants were OOS-evaluated per window; ALL FIVE REJECT** (none beats V11 in
 every window; every variant's worst window is 2022): V28 3/7 (worst -0.496), V31 5/7 (-0.745),

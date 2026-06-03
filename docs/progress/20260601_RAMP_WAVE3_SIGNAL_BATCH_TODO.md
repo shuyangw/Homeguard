@@ -86,13 +86,23 @@ is too strong to discard; but V11 stays the deployed paper incumbent until V28 c
   ALL FIVE REJECT** (none beats V11 in every window; every worst window is 2022): V28 3/7
   (worst -0.496), V31 5/7 (-0.745), V02+V05 4/7 (-0.120 = best worst-case, beats V11 in BEAR),
   V26 3/7 (-0.589), V33-core 4/7 (-1.543, abs-mom gate whipsawed). Pooled OOS V28 0.889 /
-  V31 0.910 > V11 0.647, but the edge is concentrated in 2023-2025 up-markets; the regime-free
-  signals lose the 2020/2022 BEAR years where V11's regime-cash mode protects. PBO 0.503 was
-  prescient. The "V11 stays" verdict is robust across the WHOLE family.
+  V31 0.910 > V11 0.647, but the edge is concentrated in 2023-2025 up-markets; the candidates
+  lose the 2020/2022 BEAR years. PBO 0.503 was prescient. The "V11 stays" verdict is robust
+  across the WHOLE family.
 - Report: `docs/reports/ramp/20260601_wave3_walkforward.md`; session log
   `docs/progress/20260601_RAMP_WAVE3_WALKFORWARD.md`. 201 tests pass.
-- **OPEN LEAD (untested, the one direction the data supports):** HYBRID = V28/V31 up-market
-  signal + V11 regime-cash BEAR overlay -- keep the momentum edge, restore downside protection.
+- **CORRECTION (2026-06-03, from trade-level 2022 attribution):** the 2022 loss is a SELECTION
+  effect, NOT "regime-cash protection" (research `_variant_v11` is V01-based, ignores exposure_pct;
+  ALL variants ~100% invested through 2022 -- avg gross V11 1.000 / V28 1.012 / V31 1.007). V11
+  loses LESS (-16.5% vs V28 -20.0% / V31 -26.0% / V26-robust -19.3%) because it holds MORE names
+  (~21.6 vs 13-15) and rotates FASTER (AnnTO ~10,325% vs 5,264-7,217%) -> dilutes single-name
+  blowups + exits losers earlier. Candidate losses trace to concentrated names that cratered
+  (V28 MU -48% / EPAM -49% at ~9% wt; V31 NCLH -45%). **H6/H8 high-beta story WEAKENED** -- unique
+  picks are NOT higher beta (~1.05 vs 1.06). Report:
+  `docs/reports/ramp/20260603_wave3_2022_bear_attribution.md`.
+- **REFRAMED OPEN LEAD (untested):** keep the candidate ranking signal but impose a POSITION-COUNT
+  FLOOR (~20 names) + a TURNOVER FLOOR comparable to V11 (faster loser-exit). Concentration --
+  NOT a cash overlay -- is the primary bear-resilience lever; beta-dampening is a secondary layer.
 
 **PARAMETER ROBUSTNESS GATE (new pipeline stage, 2026-06-01):** a variation-tier robustness MAP
 (NOT a search) now lives at strategy-lead Phase 6.5 + `.claude/rules/strategy-pipeline.md`. Vary
