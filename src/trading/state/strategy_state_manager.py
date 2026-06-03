@@ -781,6 +781,92 @@ class StrategyStateManager:
 
         return changes
 
+    def adopt_broker_positions(
+        self,
+        strategy: str,
+        broker_name: str,
+        broker_positions: Dict[str, Dict],
+    ) -> List[str]:
+        """
+        Adopt broker-held positions that no strategy is tracking.
+
+        Closes the "broker has it, state doesn't" gap that ``sync_with_broker``
+        does NOT handle: sync only reconciles symbols already in the state
+        ``positions`` dict, so it cannot heal a state whose dict is empty while
+        the broker holds shares (positions opened in a prior process and held
+        across a restart). Without adoption, ``get_positions`` returns ``{}`` and
+        strategy-equity collapses to ``initial_capital + lifetime_realized`` --
+        a flat line -- while ownership accounting believes the strategy is flat.
+
+        Rules (conservative -- never disturbs existing tracking):
+          - Skip symbols already tracked by ``strategy`` (qty untouched).
+          - Skip symbols owned by ANOTHER strategy (never steal).
+          - Skip symbols whose broker quantity is 0.
+          - Adopt the rest, tagged with ``broker_name`` and using the broker's
+            ``avg_entry_price`` so realized PnL on a later exit reflects the real
+            entry. Hold-time is tracked separately via position_open_dates, so
+            entry_time is stamped to now.
+
+        Args:
+            broker_name: Broker the runner is connected to ('ibkr', 'alpaca', ...)
+            broker_positions: Dict of symbol -> position dict with at least
+                'quantity' and 'avg_entry_price'.
+
+        Returns:
+            List of adopted symbols.
+        """
+        self._load_state()
+
+        if 'strategies' not in self._state:
+            self._state['strategies'] = {}
+        if strategy not in self._state['strategies']:
+            self._state['strategies'][strategy] = {'positions': {}, 'last_execution': None}
+
+        tracked = self._state['strategies'][strategy].setdefault('positions', {})
+        adopted: List[str] = []
+
+        def _owned_by_other(sym: str) -> Optional[str]:
+            # Inline ownership check against the already-loaded state. Do NOT call
+            # self.symbol_owned_by_other here: it re-runs _load_state, which
+            # reassigns self._state and orphans the `tracked` reference, silently
+            # dropping the adopted rows.
+            for other, data in self._state.get('strategies', {}).items():
+                if other != strategy and sym in data.get('positions', {}):
+                    return other
+            return None
+
+        for symbol, info in broker_positions.items():
+            qty = int(info.get('quantity', 0) or 0)
+            if qty == 0:
+                continue
+            if symbol in tracked:
+                continue
+            owner = _owned_by_other(symbol)
+            if owner is not None:
+                logger.warning(
+                    f"[{strategy.upper()}] Not adopting {symbol}: owned by {owner}"
+                )
+                continue
+
+            entry_price = float(info.get('avg_entry_price', 0) or 0)
+            tracked[symbol] = {
+                'qty': qty,
+                'entry_price': entry_price,
+                'entry_time': tz.iso_timestamp(),
+                'order_id': None,
+                'broker': broker_name,
+            }
+            adopted.append(symbol)
+            logger.info(
+                f"[{strategy.upper()}] Adopted untracked broker position: "
+                f"{symbol} ({qty} shares @ ${entry_price:.2f}) on {broker_name}"
+            )
+
+        if adopted:
+            self._save_state()
+
+        return adopted
+
     def get_positions_by_broker(self, strategy: str) -> Dict[str, Dict]:
         """Get positions for a strategy, grouped by the broker that opened them."""
         positions = self.get_positions(strategy)
