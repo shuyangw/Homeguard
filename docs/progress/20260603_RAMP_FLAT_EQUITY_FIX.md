@@ -85,3 +85,57 @@ reloaded state and orphaned the write); fixed by inlining the ownership check.
 - Branch lineage note: `origin/main` (5afd6d5) has diverged from the deployed
   archive branch (e25e5a5 / now 9745b26); the campaign + V11 code lives only on
   the archive branch. This fix is based on the archive branch (deployed code).
+
+---
+
+## FOLLOW-UP (same day): over-cap health-check deadlock
+
+### What happened after deploy
+The adoption fix deployed to EC2 (`fb218d9` on `ramp-phase4-turnover-regime-research`).
+At the 15:55 ET rebalance, adoption ran (all 33 positions adopted, logged), state
+`positions` populated, and the equity gauge un-froze: **$98,702.94 -> $97,277.01**.
+The original flat-equity bug is FIXED.
+
+But adoption made state truthful and thereby UNMASKED a second bug (same root
+cause): RAMP holds **33 positions vs top_n=20 / max_positions=25**. The drift was
+accumulated by the original empty-state bug, which suppressed exit signals for
+names that dropped out of the top-N (state said "0 owned" so they were never sold).
+
+The portfolio health check (`portfolio_health_check.py:201`, `count >= max_positions`)
+now correctly saw 33 >= 25 and FAILED, which made the RAMP rebalance abort entirely
+-- including the SELLs that would prune the book. A deadlock: cannot rebalance down
+because there are too many positions to rebalance. (Before the adoption fix the
+check trivially passed on an empty state, so this was invisible.)
+
+### Fix (sell-only when over cap)
+- **`src/trading/utils/portfolio_health_check.py`**: added
+  `HealthCheckResult.max_positions_exceeded` structured flag (cap stays an error so
+  OMR/MP entry gating is unaffected).
+- **`src/trading/adapters/ramp_live_adapter.py`**: when an over-cap condition is the
+  SOLE health-check failure, the rebalance proceeds in SELL-ONLY mode
+  (`block_new_entries=True`) instead of aborting -- exits/trims execute, new BUYS are
+  skipped -- so the next rebalance prunes 33 -> ~20 and self-heals. Any other error
+  still hard-aborts. `block_new_entries` threaded through both target-aware and legacy
+  execution paths.
+- **`tests/trading/test_portfolio_health_check_max_positions.py`** (new): 2 tests.
+- **`tests/trading/test_ramp_live_adapter_target_execution.py`**: +1 test
+  (`test_block_new_entries_skips_buys_but_keeps_sells`).
+
+### Commits (continued)
+- `3c8ad59` feat(health-check): expose max_positions_exceeded on HealthCheckResult
+- `fe28b7f` fix(ramp): sell-only rebalance when over position cap (un-deadlock pruning)
+
+### Validation
+- 67 passed across health-check + adapter + state-manager suites. Same 2
+  pre-existing `test_ramp_decision_log.py` failures (rec=None harness issue),
+  confirmed unchanged with edits stashed.
+- Self-heals on the NEXT rebalance (next market day 3:55 PM ET): RAMP will SELL down
+  from 33 toward top_n=20 in sell-only mode, then resume normal buying once under cap.
+
+### Remaining
+- After deploy, confirm at the next 3:55 PM ET rebalance: log shows
+  `[RAMP] Over position cap -- SELL-ONLY rebalance` and `SELL-ONLY mode ... skipping
+  N BUY(s)`, position count drops toward 20, no BUYS placed that day.
+- Consider whether max_positions=25 is the right cap for V11 (rank_buffer can hold
+  ~top_n + top_n//2 ~= 30); if 30 is intended, the cap may warrant raising rather
+  than pruning to 20. Open question for the strategy owner.
