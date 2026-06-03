@@ -24,6 +24,7 @@ class HealthCheckResult:
     warnings: List[str]
     errors: List[str]
     info: Dict[str, any]
+    max_positions_exceeded: bool = False
 
 
 class PortfolioHealthChecker:
@@ -199,6 +200,7 @@ class PortfolioHealthChecker:
                     )
 
                 if strategy_position_count >= self.max_positions:
+                    info['max_positions_exceeded'] = True
                     errors.append(
                         f"Max positions reached ({strategy_position_count}/{self.max_positions})"
                     )
@@ -325,7 +327,8 @@ class PortfolioHealthChecker:
             passed=passed,
             warnings=warnings,
             errors=errors,
-            info=info
+            info=info,
+            max_positions_exceeded=bool(info.get('max_positions_exceeded', False)),
         )
 
     def check_before_exit(self) -> HealthCheckResult:
@@ -436,7 +439,8 @@ class PortfolioHealthChecker:
             passed=passed,
             warnings=warnings,
             errors=errors,
-            info=info
+            info=info,
+            max_positions_exceeded=bool(info.get('max_positions_exceeded', False)),
         )
 
     def quick_status_check(self) -> Dict:
