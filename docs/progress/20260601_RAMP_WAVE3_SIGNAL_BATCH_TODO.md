@@ -123,6 +123,22 @@ neighborhood sweep + STABLE/BRITTLE verdict + registry logging). Reports
   with a regime overlay. **Recommend NOT building the hybrid absent a new structural idea. Wave-3
   signal line CLOSED; V11 remains the deployed incumbent.**
 
+**!! RE-OPENED (2026-06-03): V26-ROBUST -- the whole family used NON-canonical inline math.**
+Audit found the Wave-3 harness imported NONE of the canonical `src/features/` toolbelt; every
+variant re-implemented z-score/winsorize/returns inline. V26 specifically used an inline SIGMA
+z-score instead of the documented-default `robust_zscore_cross_sectional` (MAD). The A/B
+(V26-robust, canonical primitives, ONLY the normalization method changed) **materially beats V11:
+Sharpe 0.635 nc (+0.107 vs 0.528), PSR 0.973, cost gate PASS (0.537 @7.5bps)** -- vs V26-inline's
+0.533 "tie". Report `docs/reports/ramp/20260603_wave3_v26-robust.md`.
+- **Implication:** the "all 5 rejected" conclusion was reached on non-canonical implementations,
+  and V26 proves the method choice can swing a result ~+0.10. So the conclusion is NOT safe as-is.
+- **V26-robust is a NEW candidate** (not promoted, not validated). Its prior reject was the inline
+  variant; it does NOT carry over. Next: run V26-robust through the SAME gate chain (walk-forward
+  across the 7 OOS windows + robustness sweep). Its +0.107 edge < V28/V31's (both rejected on the
+  every-window bar), so the prior is it also rejects -- but it MUST be tested before we re-close.
+- Also added a pipeline rule (`.claude/rules/strategy-pipeline.md` + strategy-lead) requiring
+  canonical `src/features/` primitives in all future backtests, so this gap doesn't recur.
+
 **(superseded) NEXT PHASE (was IN PROGRESS 2026-06-01):** V28 + V31 walk-forward / OOS-robustness validation.
 - V28/V31 daily-return correlation = **0.801** (<= 0.85 -> INDEPENDENT, carry BOTH). V28-V11
   0.477, V31-V11 0.565 (both genuinely different from the incumbent).

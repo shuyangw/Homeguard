@@ -229,7 +229,29 @@ same order as every Wave-3 variant. Compare turnover only runner-to-runner.
 - **Description**: V11 chain; ranking swapped to score = z(21d) - 1.0*z(5d), cross-sectional, winsorized 3 sigma. V27 bounded-penalty (lambda*max(0, z5-1.0)) folded in as an informational parameter, NOT a separate gate trial.
 - **Report**: `docs/reports/ramp/20260601_wave3_v26.md`
 - **Verdict (2026-06-01)**: TIE with V11 -- Sharpe 0.533 nc / 0.664 lag at 5 bps (+0.005 vs V11). PSR 0.947. **Cost gate FAILS at 7.5 bps (0.438).** V27 had zero effect. Not a clear advance.
-- **Status**: research; not advancing.
+- **!! CAVEAT (2026-06-03):** this used an INLINE sigma z-score + 3-sigma winsorize, NOT the
+  canonical `src/features/` toolbelt. The canonical-method A/B (V26-robust, below) materially
+  changes the result -- so this 0.533 "tie" was a method artifact, not the signal's true value.
+- **Status**: research; superseded by V26-robust as the canonical-method representative.
+
+### V26-robust -- V26 with the CANONICAL toolbelt z-score (method A/B)
+- **Code**: `src/research/ramp_phase4/variants.py::_variant_v26_robust`
+- **Description**: identical to V26 (V11 chain; score = z(21d) - 1.0*z(5d)) EXCEPT the
+  normalization uses the canonical `src/features` primitives -- `robust_zscore_cross_sectional`
+  (MAD-based) + `winsorize` (quantile clip) -- instead of V26's inline sigma z-score + 3-sigma clip.
+  A clean method A/B: the ONLY change is the normalization primitive.
+- **Report**: `docs/reports/ramp/20260603_wave3_v26-robust.md`
+- **Verdict (2026-06-03): MATERIALLY BEATS V11 in-sample.** Sharpe **0.635** nc / 0.611 lag at
+  5 bps (**+0.107 vs V11 0.528**, +0.102 vs V26-inline 0.533); PSR 0.973; **cost gate PASS
+  (0.537 at 7.5 bps)**; lag-stable (-3.8%). The robust/MAD method (less outlier-distorted) yields
+  a meaningfully better normalized signal -- the inline sigma version was masking it.
+- **DISCIPLINE / status**: this is a method A/B of one a-priori variant -- NOT promoted, NOT yet
+  validated. V26's prior walk-forward REJECT was on the inline variant and does NOT carry over.
+  **V26-robust is a NEW candidate that needs its own walk-forward + robustness gate** before any
+  conclusion. Its edge (+0.107) is smaller than V28/V31 (which both rejected on the every-OOS-window
+  bar), so the prior is it also rejects -- but it has not been tested. **Broader implication: the
+  whole Wave-3 family was run on NON-canonical inline math; V26 proves that can swing a result
+  ~+0.10, so the "all rejected" conclusion was reached on non-canonical implementations.**
 
 ### V28 -- multi-horizon momentum ensemble
 - **Code**: `src/research/ramp_phase4/variants.py::_variant_v28`

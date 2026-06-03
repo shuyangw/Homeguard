@@ -73,6 +73,17 @@ don't read this file, so embed it; then verify the return against it):
 After return: read the report, query the registry for the `run_id`s, update the canonical
 glossary + TODO + tracked twin + session log, THEN mark `[x]`.
 
+## Canonical data-processing primitives (paste into every backtest/impl dispatch)
+
+Stateless data math lives in `src/features/` (audited, 100% covered). Strategy/backtest code
+MUST use it instead of re-implementing inline: normalizers (`log_returns`, `zscore_rolling`,
+`robust_zscore_cross_sectional`, `robust_zscore_rolling`, `winsorize`, `rank_transform`) and
+volatility (`close_to_close_rv`, `parkinson_rv`, `garman_klass_rv`, `yang_zhang_rv`).
+**Default for new code is robust (MAD) z-score**; sigma `zscore_rolling` is legacy-only.
+Inlining these is a defect (duplicates audited math, risks MAD-vs-std / min_periods / NaN
+divergence). If a primitive is missing, ADD it to `src/features/` with tests -- don't inline.
+After a dispatch returns, grep its new code for inline z-score/winsorize/RV/returns and flag any.
+
 # SECTION 1: SESSION RECOVERY (READ THIS FIRST ON EVERY START)
 
 Every session — whether fresh or resumed — begins with the same recovery sequence:

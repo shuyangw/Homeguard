@@ -141,6 +141,26 @@ cheap confirmation it is robustly dead.
 variation's Sharpe, the STABLE/BRITTLE classification + the >= 0.9 ratio, the worst neighbor, and
 the trial-count decision. Update the canonical glossary with the stability verdict.
 
+## Canonical data-processing primitives (do NOT re-implement inline)
+
+Stateless data-processing math lives in `src/features/` (the canonical toolbelt --
+100% covered, audited). Strategy/backtest code MUST use these instead of re-implementing
+z-score / winsorize / rank / returns / realized-vol inline:
+- **Normalizers:** `log_transform`, `log_returns`, `zscore_rolling`,
+  `robust_zscore_cross_sectional`, `robust_zscore_rolling`, `winsorize`, `rank_transform`
+- **Volatility:** `close_to_close_rv`, `parkinson_rv`, `garman_klass_rv`, `yang_zhang_rv`
+- **Default for NEW code: robust (MAD-based) z-score** (`robust_zscore_*`). Sigma-based
+  `zscore_rolling` is for legacy migration ONLY.
+- Re-implementing these inline is a defect: it duplicates audited math and risks subtle
+  divergence (MAD vs std, `min_periods`, NaN handling), and it bypasses the canonical home.
+  (Example: the Wave-3 V26 z-score variant rolled its own sigma z-score + sigma winsorize
+  instead of `robust_zscore_cross_sectional` + `winsorize`, so the canonical method was
+  never actually tested.)
+- If a needed primitive is missing, ADD it to `src/features/` (with tests) -- do not inline.
+
+**Paste this instruction into every implementation/backtest dispatch**, and after a
+subagent returns, grep its new code for inline z-score/winsorize/RV/returns and flag any.
+
 ## Backtest integrity (authoritative)
 
 **`docs/methodology/backtesting.md` is the single source of truth.** When this file and the methodology disagree, the methodology wins. Read the relevant section directly; do not paraphrase from memory.
