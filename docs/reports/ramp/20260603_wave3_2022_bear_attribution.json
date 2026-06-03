@@ -1,0 +1,90 @@
+{
+  "report": "20260603_wave3_2022_bear_attribution",
+  "generated_at": "2026-06-03",
+  "git_sha": "96a22768",
+  "methodology": {
+    "attribution_window": "2022-01-01 to 2022-12-31",
+    "cost_tier": "5bps near_close",
+    "universe": "sp500-2025",
+    "beta_window": "2020-01-01 to 2021-12-31 (trailing OLS vs SPY)",
+    "contribution_method": "sum(weight_T * return_T) per symbol, approximate"
+  },
+  "2022_calendar_returns": {
+    "V11": -0.1646,
+    "V28": -0.2002,
+    "V31": -0.2601,
+    "V26-robust": -0.193
+  },
+  "registry_run_ids": {
+    "V11_near_close_5bps": "f2c26375",
+    "V28_near_close_5bps": "105f8a9e",
+    "V31_near_close_5bps": "54f15a27",
+    "V26-robust_near_close_5bps": "344930b2"
+  },
+  "exposure_check": {
+    "V11": {
+      "avg_gross": 1.0004,
+      "avg_positions": 21.6,
+      "min_gross": 0.675
+    },
+    "V28": {
+      "avg_gross": 1.0117,
+      "avg_positions": 13.5,
+      "min_gross": 0.733
+    },
+    "V31": {
+      "avg_gross": 1.0069,
+      "avg_positions": 15.4,
+      "min_gross": 0.738
+    },
+    "V26-robust": {
+      "avg_gross": 0.9972,
+      "avg_positions": 20.9,
+      "min_gross": 0.733
+    }
+  },
+  "verdict_exposure": "SELECTION_EFFECT -- all variants ~100% invested in 2022; gap is purely which names were held",
+  "beta_analysis": {
+    "V11_avg_beta": 1.061,
+    "V28_avg_beta_all": 1.138,
+    "V28_avg_beta_unique": 1.06,
+    "V31_avg_beta_all": 1.094,
+    "V31_avg_beta_unique": 1.037,
+    "V26_robust_avg_beta_all": 1.069,
+    "V26_robust_avg_beta_unique": 1.057
+  },
+  "verdict_h6_h8": "PARTIAL -- beta modestly elevated in candidates (esp V28 +7.7pts) but unique picks are NOT higher beta; dominant mechanism is concentration + slow rotation",
+  "unique_name_stats": {
+    "V28": {
+      "n_unique": 13,
+      "n_negative": 3,
+      "n_positive": 10,
+      "avg_return_unique": 0.141
+    },
+    "V31": {
+      "n_unique": 32,
+      "n_negative": 16,
+      "n_positive": 16,
+      "avg_return_unique": 0.007
+    },
+    "V26-robust": {
+      "n_unique": 36,
+      "n_negative": 21,
+      "n_positive": 15,
+      "avg_return_unique": -0.021
+    }
+  },
+  "root_cause_per_variant": {
+    "V28": "Concentration (13.5 names) amplifies MU (-48%) and EPAM (-49%) each at ~9% weight; unique names are mostly winners; slower rotation vs V11",
+    "V31": "Beta-residual signal picks energy correctly but is slow to rotate; NCLH (-45%) at 9% weight; unique names near flat; worst 2022 gap (-9.5%)",
+    "V26-robust": "Most similar to V11 (20.9 names); unique names slightly negative; ECL/AOS unique detractors; smallest gap (-2.8%)"
+  },
+  "hybrid_implication": "Concentration constraint (position count floor = V11-equivalent 20+ names) plus turnover floor may be more effective than beta-dampening alone; H6/H8 BEAR protection adds another layer but is not the primary 2022 lever",
+  "tests": {
+    "file": "tests/research/ramp_phase4/test_chronicles.py",
+    "n_tests": 12,
+    "suite_before": 219,
+    "suite_after": 231,
+    "all_pass": true
+  }
+}

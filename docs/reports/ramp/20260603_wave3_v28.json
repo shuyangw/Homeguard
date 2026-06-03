@@ -1,0 +1,30 @@
+{
+  "variant_id": "V28",
+  "git_sha": "96a227686586d5ad53197b525fa7999c4a145649",
+  "window_start": "2017-01-01",
+  "window_end": "2026-05-16",
+  "universe": "config\\universes\\sp500-2025.csv",
+  "generated_at": "2026-06-03T14:03:35.351259",
+  "sub_runs": [
+    {
+      "cost_bps": 5.0,
+      "timing_mode": "near_close",
+      "run_id": "105f8a9e-f84d-409f-a6e9-762918f43990",
+      "reused_from_registry": false,
+      "metrics": {
+        "sharpe": 0.8111895699562488,
+        "cagr": 0.20033077124404652,
+        "max_dd": -0.4199935027952439,
+        "max_dd_duration_days": 544,
+        "calmar": 0.4769854055140282,
+        "monthly_win_pct": 0.5398230088495575,
+        "profit_factor": 1.158692111073743,
+        "trade_days": 1842,
+        "avg_hold_est_days": 5.007714369354388,
+        "ann_turnover": 52.64207505035468,
+        "psr_vs_0": 0.9927915077885698,
+        "n_records": 2355
+      }
+    }
+  ]
+}
