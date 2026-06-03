@@ -233,6 +233,42 @@ class TestTargetAwareExecution:
             f"min_buy_idx={min_buy_idx}"
         )
 
+    def test_block_new_entries_skips_buys_but_keeps_sells(self):
+        """Over position cap -> sell-only: exits/trims execute, NEW entries skipped.
+
+        Heals the deadlock where being over max_positions blocks the whole
+        rebalance: the rebalance must still SELL down toward top_n. With
+        block_new_entries=True, all exits fire but no BUY orders are placed.
+        """
+        old_syms = [f"OLD{i}" for i in range(5)]
+        new_syms = [f"NEW{i}" for i in range(3)]
+        old_positions = [_pos(s, 100) for s in old_syms]
+        current_positions = _current_positions_from_broker_positions(old_positions)
+
+        adapter = _make_adapter(
+            symbols=old_syms + new_syms, positions=old_positions, cash=PORTFOLIO_VALUE
+        )
+        captured = _capture_orders(adapter)
+
+        plan = _plan_for(
+            targets_dict={s: 0.05 for s in new_syms},
+            exits_dict={s: "dropped_from_top_n" for s in old_syms},
+            top_n=5,
+        )
+        adapter._latest_plan = plan
+
+        adapter._execute_rebalance_target_aware(
+            signals=[],
+            current_positions=current_positions,
+            block_new_entries=True,
+        )
+
+        sells = [o for o in captured if o["side"] == OrderSide.SELL]
+        buys = [o for o in captured if o["side"] == OrderSide.BUY]
+
+        assert len(sells) == 5, f"Expected 5 SELLs in sell-only mode, got {len(sells)}"
+        assert len(buys) == 0, f"Expected 0 BUYs in sell-only mode, got {len(buys)}"
+
     def test_hold_overweight_position_is_trimmed(self):
         """Held at $12k, target 10% of $100k = $10k -> SELL ~20 shares ($2k @ $100)."""
         # 120 shares at $100 = $12k held; target weight 0.10 -> $10k
