@@ -245,13 +245,18 @@ same order as every Wave-3 variant. Compare turnover only runner-to-runner.
   5 bps (**+0.107 vs V11 0.528**, +0.102 vs V26-inline 0.533); PSR 0.973; **cost gate PASS
   (0.537 at 7.5 bps)**; lag-stable (-3.8%). The robust/MAD method (less outlier-distorted) yields
   a meaningfully better normalized signal -- the inline sigma version was masking it.
-- **DISCIPLINE / status**: this is a method A/B of one a-priori variant -- NOT promoted, NOT yet
-  validated. V26's prior walk-forward REJECT was on the inline variant and does NOT carry over.
-  **V26-robust is a NEW candidate that needs its own walk-forward + robustness gate** before any
-  conclusion. Its edge (+0.107) is smaller than V28/V31 (which both rejected on the every-OOS-window
-  bar), so the prior is it also rejects -- but it has not been tested. **Broader implication: the
-  whole Wave-3 family was run on NON-canonical inline math; V26 proves that can swing a result
-  ~+0.10, so the "all rejected" conclusion was reached on non-canonical implementations.**
+- **GATE CHAIN VERDICT (2026-06-03): REJECT on BOTH gates** (same chain that rejected V28/V31).
+  Report `docs/reports/ramp/20260603_v26robust_gatechain.md`.
+  - **Gate 1 (walk-forward):** beats V11 in only **4/7** OOS windows; **worst -0.461 (2022 BEAR)**;
+    pooled OOS 0.742. Fails the every-window bar -- loses the same BEAR years (2022, 2019, 2021) as
+    V28/V31. The sigma->MAD normalization swap does NOT fix the BEAR-year selection fragility.
+  - **Gate 2 (robustness):** BRITTLE -- min(neighbor)/center 0.741 (< 0.90; worst lam=0.8 -> 0.470);
+    7/24 neighbors below the bar, 6 beat the center = lumpy surface / arbitrary center.
+- **Status**: research; **REJECT.** The +0.107 in-sample edge was real but did NOT survive OOS or
+  the neighborhood -- same pattern as V28/V31. **This RE-CLOSES Wave-3 on the canonical method too:
+  the canonical primitives changed the in-sample number (0.533->0.635) but NOT the ultimate verdict.
+  The V26/V28/V31 signal class shares a BEAR-year fragility that normalization/blending doesn't fix.**
+  The earlier "non-canonical math" caveat is now resolved -- it did not change the bottom line.
 
 ### V28 -- multi-horizon momentum ensemble
 - **Code**: `src/research/ramp_phase4/variants.py::_variant_v28`

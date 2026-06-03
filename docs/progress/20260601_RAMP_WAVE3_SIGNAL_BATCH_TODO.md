@@ -138,6 +138,14 @@ Sharpe 0.635 nc (+0.107 vs 0.528), PSR 0.973, cost gate PASS (0.537 @7.5bps)** -
   every-window bar), so the prior is it also rejects -- but it MUST be tested before we re-close.
 - Also added a pipeline rule (`.claude/rules/strategy-pipeline.md` + strategy-lead) requiring
   canonical `src/features/` primitives in all future backtests, so this gap doesn't recur.
+- **RE-CLOSED (2026-06-03): V26-robust gate chain = REJECT on BOTH gates** (same chain as V28/V31).
+  Report `docs/reports/ramp/20260603_v26robust_gatechain.md`. Gate 1 walk-forward: 4/7 windows,
+  worst -0.461 (2022 BEAR) -- loses the same BEAR years as V28/V31. Gate 2 robustness: BRITTLE
+  (min/center 0.741). So the canonical primitives changed the IN-SAMPLE number (0.533->0.635) but
+  NOT the verdict. **The "non-canonical math" caveat is resolved -- it did not change the bottom
+  line. All three signal candidates (V28/V31/V26-robust) share a BEAR-year fragility that
+  normalization/blending doesn't fix. Wave-3 signal line CLOSED (now on the canonical method too);
+  V11 remains the deployed incumbent.**
 
 **(superseded) NEXT PHASE (was IN PROGRESS 2026-06-01):** V28 + V31 walk-forward / OOS-robustness validation.
 - V28/V31 daily-return correlation = **0.801** (<= 0.85 -> INDEPENDENT, carry BOTH). V28-V11
