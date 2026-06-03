@@ -1,0 +1,429 @@
+{
+  "variant_id": "V26-robust",
+  "git_sha": "833e57ee451126ea21329bc0e35edc9241740e97",
+  "window_start": "2017-01-01",
+  "window_end": "2026-05-16",
+  "universe": "config\\universes\\sp500-2025.csv",
+  "generated_at": "2026-06-03T12:57:13.128628",
+  "budget": 25,
+  "n_variations": 25,
+  "center_sharpe_measured": 0.6350078883109728,
+  "center_sharpe_ref": 0.635,
+  "stability_threshold": 0.9,
+  "verdict": "BRITTLE",
+  "min_ratio": 0.7408092014611325,
+  "worst_neighbor_sharpe": 0.47041968666117173,
+  "worst_neighbor_label": "lam_m20_0.8",
+  "red_flag_count": 6,
+  "red_flag_labels": [
+    "lam_p10_1.1",
+    "lam_p20_1.2",
+    "wlo_m50_0.005",
+    "wlo_m20_0.008",
+    "whi_p2_0.992",
+    "hs_m40_3d"
+  ],
+  "trial_count_treatment": "phase=robustness_sensitivity; none promoted; no selection-trial added to project count",
+  "variations": [
+    {
+      "label": "CENTER_lam1.0_wlo0.01_whi0.99_hs5_hl21",
+      "is_center": true,
+      "params": {
+        "lambda_": 1.0,
+        "winsor_lo": 0.01,
+        "winsor_hi": 0.99,
+        "h_short": 5,
+        "h_long": 21
+      },
+      "sharpe": 0.6350078883109728,
+      "cagr": 0.13375760007429327,
+      "max_dd": -0.41636240606233055,
+      "run_id": "0b483b42-947e-43f9-beb0-f3cf53799270",
+      "ratio_to_center": 1.0
+    },
+    {
+      "label": "lam_m20_0.8",
+      "is_center": false,
+      "params": {
+        "lambda_": 0.8,
+        "winsor_lo": 0.01,
+        "winsor_hi": 0.99,
+        "h_short": 5,
+        "h_long": 21
+      },
+      "sharpe": 0.47041968666117173,
+      "cagr": 0.08737325182961664,
+      "max_dd": -0.4135047484463733,
+      "run_id": "20fbeca8-35db-4fa1-9bfb-91a62e3a0820",
+      "ratio_to_center": 0.7408092014611325
+    },
+    {
+      "label": "lam_m10_0.9",
+      "is_center": false,
+      "params": {
+        "lambda_": 0.9,
+        "winsor_lo": 0.01,
+        "winsor_hi": 0.99,
+        "h_short": 5,
+        "h_long": 21
+      },
+      "sharpe": 0.5651191530945903,
+      "cagr": 0.1130534852809697,
+      "max_dd": -0.42298249251625364,
+      "run_id": "b0ef165f-22aa-492b-84e5-bff9c69adc8f",
+      "ratio_to_center": 0.8899403668791009
+    },
+    {
+      "label": "lam_p10_1.1",
+      "is_center": false,
+      "params": {
+        "lambda_": 1.1,
+        "winsor_lo": 0.01,
+        "winsor_hi": 0.99,
+        "h_short": 5,
+        "h_long": 21
+      },
+      "sharpe": 0.6659011884977891,
+      "cagr": 0.14487069323829416,
+      "max_dd": -0.43263866977571785,
+      "run_id": "55ad536c-faf6-4505-b751-a9a12a4693c2",
+      "ratio_to_center": 1.0486502620762523
+    },
+    {
+      "label": "lam_p20_1.2",
+      "is_center": false,
+      "params": {
+        "lambda_": 1.2,
+        "winsor_lo": 0.01,
+        "winsor_hi": 0.99,
+        "h_short": 5,
+        "h_long": 21
+      },
+      "sharpe": 0.676324541310459,
+      "cagr": 0.1470661197252101,
+      "max_dd": -0.43866738146369694,
+      "run_id": "162e66bc-9c2a-4c5f-8cd1-606416012df2",
+      "ratio_to_center": 1.0650647870050598
+    },
+    {
+      "label": "wlo_m50_0.005",
+      "is_center": false,
+      "params": {
+        "lambda_": 1.0,
+        "winsor_lo": 0.005,
+        "winsor_hi": 0.99,
+        "h_short": 5,
+        "h_long": 21
+      },
+      "sharpe": 0.715265804776302,
+      "cagr": 0.1569825798205442,
+      "max_dd": -0.38612994263578126,
+      "run_id": "fa323245-17f5-4dde-a473-3fe9e37f3883",
+      "ratio_to_center": 1.126388849560284
+    },
+    {
+      "label": "wlo_m20_0.008",
+      "is_center": false,
+      "params": {
+        "lambda_": 1.0,
+        "winsor_lo": 0.008,
+        "winsor_hi": 0.99,
+        "h_short": 5,
+        "h_long": 21
+      },
+      "sharpe": 0.645797668464546,
+      "cagr": 0.13761720748528128,
+      "max_dd": -0.41773445677590204,
+      "run_id": "f3a733fc-5e7f-4943-b4d3-3d49e69d7189",
+      "ratio_to_center": 1.0169915686910165
+    },
+    {
+      "label": "wlo_p20_0.012",
+      "is_center": false,
+      "params": {
+        "lambda_": 1.0,
+        "winsor_lo": 0.012,
+        "winsor_hi": 0.99,
+        "h_short": 5,
+        "h_long": 21
+      },
+      "sharpe": 0.5974895729845944,
+      "cagr": 0.12362212000118045,
+      "max_dd": -0.4198689452812968,
+      "run_id": "a231875f-f243-4450-bd1c-187ab0d454d7",
+      "ratio_to_center": 0.9409167728196707
+    },
+    {
+      "label": "wlo_p50_0.015",
+      "is_center": false,
+      "params": {
+        "lambda_": 1.0,
+        "winsor_lo": 0.015,
+        "winsor_hi": 0.99,
+        "h_short": 5,
+        "h_long": 21
+      },
+      "sharpe": 0.5699522257949649,
+      "cagr": 0.11604394777099869,
+      "max_dd": -0.4402304534206754,
+      "run_id": "1577c91c-7e9d-4194-8e43-e9e0b3094bfa",
+      "ratio_to_center": 0.897551410441457
+    },
+    {
+      "label": "whi_m15_0.985",
+      "is_center": false,
+      "params": {
+        "lambda_": 1.0,
+        "winsor_lo": 0.01,
+        "winsor_hi": 0.985,
+        "h_short": 5,
+        "h_long": 21
+      },
+      "sharpe": 0.6386541014991709,
+      "cagr": 0.13447056078557384,
+      "max_dd": -0.416153455086009,
+      "run_id": "7f88872e-cc5f-471a-b2c3-e862f2364738",
+      "ratio_to_center": 1.0057419966827443
+    },
+    {
+      "label": "whi_m12_0.988",
+      "is_center": false,
+      "params": {
+        "lambda_": 1.0,
+        "winsor_lo": 0.01,
+        "winsor_hi": 0.988,
+        "h_short": 5,
+        "h_long": 21
+      },
+      "sharpe": 0.629644383126818,
+      "cagr": 0.13209926679837203,
+      "max_dd": -0.42272404411515097,
+      "run_id": "7355849a-ab9d-4c92-8b33-2b4a8ff6b363",
+      "ratio_to_center": 0.9915536400682818
+    },
+    {
+      "label": "whi_p2_0.992",
+      "is_center": false,
+      "params": {
+        "lambda_": 1.0,
+        "winsor_lo": 0.01,
+        "winsor_hi": 0.992,
+        "h_short": 5,
+        "h_long": 21
+      },
+      "sharpe": 0.6524871035275629,
+      "cagr": 0.13906424792527816,
+      "max_dd": -0.41197657478505584,
+      "run_id": "b52d6dac-13b5-40b5-b86f-c189ea48268a",
+      "ratio_to_center": 1.0275259812332131
+    },
+    {
+      "label": "whi_p5_0.995",
+      "is_center": false,
+      "params": {
+        "lambda_": 1.0,
+        "winsor_lo": 0.01,
+        "winsor_hi": 0.995,
+        "h_short": 5,
+        "h_long": 21
+      },
+      "sharpe": 0.5903616679479661,
+      "cagr": 0.1226203336571634,
+      "max_dd": -0.42929524057757,
+      "run_id": "c8169324-d156-49b8-8953-f004aa0da7f3",
+      "ratio_to_center": 0.9296918649597267
+    },
+    {
+      "label": "hs_m40_3d",
+      "is_center": false,
+      "params": {
+        "lambda_": 1.0,
+        "winsor_lo": 0.01,
+        "winsor_hi": 0.99,
+        "h_short": 3,
+        "h_long": 21
+      },
+      "sharpe": 0.6549466426472834,
+      "cagr": 0.1380473938400406,
+      "max_dd": -0.41825804119400556,
+      "run_id": "584ebc88-4a34-4f58-81c3-f60e3473bd75",
+      "ratio_to_center": 1.031399223070039
+    },
+    {
+      "label": "hs_m20_4d",
+      "is_center": false,
+      "params": {
+        "lambda_": 1.0,
+        "winsor_lo": 0.01,
+        "winsor_hi": 0.99,
+        "h_short": 4,
+        "h_long": 21
+      },
+      "sharpe": 0.5066538143467826,
+      "cagr": 0.09859943443436414,
+      "max_dd": -0.4539764870329529,
+      "run_id": "518c55ee-911d-4d79-836e-775aeafb2b65",
+      "ratio_to_center": 0.797870111022411
+    },
+    {
+      "label": "hs_p20_6d",
+      "is_center": false,
+      "params": {
+        "lambda_": 1.0,
+        "winsor_lo": 0.01,
+        "winsor_hi": 0.99,
+        "h_short": 6,
+        "h_long": 21
+      },
+      "sharpe": 0.6246332025644941,
+      "cagr": 0.13158079441644377,
+      "max_dd": -0.4382138126229186,
+      "run_id": "a1f51909-3f6b-4e23-bbc0-c568134216e9",
+      "ratio_to_center": 0.983662115168248
+    },
+    {
+      "label": "hs_p40_7d",
+      "is_center": false,
+      "params": {
+        "lambda_": 1.0,
+        "winsor_lo": 0.01,
+        "winsor_hi": 0.99,
+        "h_short": 7,
+        "h_long": 21
+      },
+      "sharpe": 0.6220359134103113,
+      "cagr": 0.1316018484713979,
+      "max_dd": -0.4635935447859416,
+      "run_id": "73b245fe-7830-41bb-b1ae-4be6b4044163",
+      "ratio_to_center": 0.9795719468380699
+    },
+    {
+      "label": "hl_m33_14d",
+      "is_center": false,
+      "params": {
+        "lambda_": 1.0,
+        "winsor_lo": 0.01,
+        "winsor_hi": 0.99,
+        "h_short": 5,
+        "h_long": 14
+      },
+      "sharpe": 0.5740262521635761,
+      "cagr": 0.11854975441721693,
+      "max_dd": -0.4377023366726262,
+      "run_id": "2845949c-beed-44de-9121-80ff881808b1",
+      "ratio_to_center": 0.9039671202989322
+    },
+    {
+      "label": "hl_m19_17d",
+      "is_center": false,
+      "params": {
+        "lambda_": 1.0,
+        "winsor_lo": 0.01,
+        "winsor_hi": 0.99,
+        "h_short": 5,
+        "h_long": 17
+      },
+      "sharpe": 0.5707995284025472,
+      "cagr": 0.11670393155108805,
+      "max_dd": -0.39981854333291894,
+      "run_id": "da18accf-de8f-4435-9919-1ec7cc017ecb",
+      "ratio_to_center": 0.8988857286809298
+    },
+    {
+      "label": "hl_p19_25d",
+      "is_center": false,
+      "params": {
+        "lambda_": 1.0,
+        "winsor_lo": 0.01,
+        "winsor_hi": 0.99,
+        "h_short": 5,
+        "h_long": 25
+      },
+      "sharpe": 0.5018976196857403,
+      "cagr": 0.09766909097723886,
+      "max_dd": -0.45539114084979837,
+      "run_id": "fb94c118-d452-44ba-9769-6fcca36665a7",
+      "ratio_to_center": 0.7903801337345807
+    },
+    {
+      "label": "hl_p33_28d",
+      "is_center": false,
+      "params": {
+        "lambda_": 1.0,
+        "winsor_lo": 0.01,
+        "winsor_hi": 0.99,
+        "h_short": 5,
+        "h_long": 28
+      },
+      "sharpe": 0.49642255141333225,
+      "cagr": 0.09702727632715757,
+      "max_dd": -0.48315873666443154,
+      "run_id": "f93a15c9-1dea-49d6-955f-0d648ba1cea8",
+      "ratio_to_center": 0.7817580860825886
+    },
+    {
+      "label": "combo_m10_lam0.9_hs4d_hl19d",
+      "is_center": false,
+      "params": {
+        "lambda_": 0.9,
+        "winsor_lo": 0.01,
+        "winsor_hi": 0.99,
+        "h_short": 4,
+        "h_long": 19
+      },
+      "sharpe": 0.597490315963642,
+      "cagr": 0.12105669231808824,
+      "max_dd": -0.4039623687198489,
+      "run_id": "09fd8a35-241b-44e3-99b7-305d26eb59e5",
+      "ratio_to_center": 0.9409179428508802
+    },
+    {
+      "label": "combo_m20_lam0.8_hs3d_hl17d",
+      "is_center": false,
+      "params": {
+        "lambda_": 0.8,
+        "winsor_lo": 0.01,
+        "winsor_hi": 0.99,
+        "h_short": 3,
+        "h_long": 17
+      },
+      "sharpe": 0.49000926300285236,
+      "cagr": 0.09211792582819167,
+      "max_dd": -0.3786092015860162,
+      "run_id": "ae47842e-a5f5-4493-8d81-e286841cd20f",
+      "ratio_to_center": 0.7716585447563568
+    },
+    {
+      "label": "combo_p10_lam1.1_hs6d_hl23d",
+      "is_center": false,
+      "params": {
+        "lambda_": 1.1,
+        "winsor_lo": 0.01,
+        "winsor_hi": 0.99,
+        "h_short": 6,
+        "h_long": 23
+      },
+      "sharpe": 0.6246288311583114,
+      "cagr": 0.13212342340196326,
+      "max_dd": -0.46910382457374605,
+      "run_id": "ca116c3b-15ce-4da5-b2a7-eceecfa7e3b6",
+      "ratio_to_center": 0.9836552311495402
+    },
+    {
+      "label": "combo_p20_lam1.2_hs7d_hl25d",
+      "is_center": false,
+      "params": {
+        "lambda_": 1.2,
+        "winsor_lo": 0.01,
+        "winsor_hi": 0.99,
+        "h_short": 7,
+        "h_long": 25
+      },
+      "sharpe": 0.5958393221172937,
+      "cagr": 0.12849717933217142,
+      "max_dd": -0.4816090390495024,
+      "run_id": "7f34d9b6-9617-486c-8cac-0834ffbfcdc6",
+      "ratio_to_center": 0.9383179848397448
+    }
+  ]
+}
