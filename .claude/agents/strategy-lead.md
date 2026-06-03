@@ -68,7 +68,13 @@ don't read this file, so embed it; then verify the return against it):
 > (3) MODIFICATIONS: every file created/modified (full paths) + commit hashes.
 > (4) RESULTS: full metrics row, verdict, report `.md`+`.json` paths, registry `run_id`s
 > (`append_run`, Section 9.3 — raise on failure, no silent success).
-> Do NOT report the phase done until all four artifacts exist on disk.
+> (5) CHRONICLES (methodology Section 12 — required, not optional): persist per-day HOLDINGS
+> (date, symbol, weight) AND a TRADE LEDGER (date, symbol, side, shares, trade_value), not just
+> daily returns + aggregate turnover. The research engine exposes `DailyRecord.trades`; the
+> readiness runner writes `docs/reports/ramp/holdings/<variant>_*.csv.gz`. A backtest that records
+> only returns CANNOT answer "which names drove the loss/turnover/bear-year underperformance" — the
+> analysis that advances a strategy. If your harness doesn't persist trades, add it before running.
+> Do NOT report the phase done until ALL of these artifacts exist on disk.
 
 After return: read the report, query the registry for the `run_id`s, update the canonical
 glossary + TODO + tracked twin + session log, THEN mark `[x]`.
