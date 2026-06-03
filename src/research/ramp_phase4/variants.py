@@ -14,6 +14,7 @@ from typing import Callable, Dict
 import numpy as np
 import pandas as pd
 
+from src.features import robust_zscore_cross_sectional, winsorize
 from src.research.ramp_phase4.engine import (
     _engine_pre_variant_update,
     _engine_pre_variant_update_soft_bear,
@@ -25,6 +26,11 @@ from src.strategies.advanced.market_regime_detector import (
 )
 from src.strategies.advanced.ramp_strategy import RAMPSignals, REGIME_PARAMS
 from src.strategies.advanced.ramp_target_planner import compute_plan
+
+# Module-level aliases for the canonical toolbelt primitives used by V26-robust.
+# Named as module attributes so tests can monkeypatch them to verify call-through.
+_CANONICAL_ZSCORE = robust_zscore_cross_sectional
+_CANONICAL_WINSORIZE = winsorize
 
 
 PlanFn = Callable[[datetime, object, pd.DataFrame, object], Dict[str, float]]
@@ -871,6 +877,152 @@ def _variant_v26(t: datetime, state, panel: pd.DataFrame, cfg) -> Dict[str, floa
     return targets
 
 
+_V26_ROBUST_LAMBDA = 1.0  # Fixed; NOT swept (same as V26 inline lambda).
+
+
+def _compute_v26_robust_scores(
+    t: datetime,
+    panel: pd.DataFrame,
+    lambda_: float = _V26_ROBUST_LAMBDA,
+) -> "pd.Series | None":
+    """Compute cross-sectional z-score normalized momentum scores using the
+    canonical toolbelt primitives (MAD-based z-score + quantile winsorize).
+
+    Score per universe symbol = z21 - lambda * z5
+
+    where:
+      z21 = robust_zscore_cross_sectional(winsorize(21d_returns))
+      z5  = robust_zscore_cross_sectional(winsorize(5d_returns))
+
+    Uses the canonical src.features primitives via the module-level aliases
+    _CANONICAL_ZSCORE and _CANONICAL_WINSORIZE (monkeypatchable by tests).
+
+    This is the canonical A/B counterpart of _compute_v26_zscore_scores (which
+    used an inline sigma-based z-score). The ONLY difference is the
+    normalization method: MAD-based (robust) vs std-based (sigma) z-score,
+    and quantile winsorization (0.01/0.99) vs sigma-multiple clipping (3-sigma).
+
+    lambda=1.0 is FIXED (NOT swept). Not a new strategy -- method A/B only.
+    Returns None if there is insufficient history (< 21+2 rows).
+    """
+    universe_cols = [c for c in panel.columns if c not in ('SPY', 'VIX')]
+    if not universe_cols:
+        return None
+    if t not in panel.index:
+        return None
+
+    prices_slice = panel.loc[:t, universe_cols]
+    min_rows = 21 + 2  # need 22 price points for a 21-day return
+    if len(prices_slice) < min_rows:
+        return None
+
+    prices = prices_slice.apply(pd.to_numeric, errors='coerce').values.astype(np.float64)
+    n_rows = prices.shape[0]
+
+    def _safe_return(lookback: int) -> pd.Series:
+        """Trailing lookback-day return for each symbol; NaN if start price invalid."""
+        if n_rows < lookback + 1:
+            return pd.Series(np.full(prices.shape[1], np.nan), index=universe_cols)
+        p_end = prices[-1, :]
+        p_start = prices[-(lookback + 1), :]
+        valid = (p_start > 0) & ~np.isnan(p_start) & ~np.isnan(p_end)
+        ret_arr = np.where(valid, p_end / p_start - 1.0, np.nan)
+        return pd.Series(ret_arr, index=universe_cols)
+
+    ret_21d = _safe_return(21)
+    ret_5d = _safe_return(5)
+
+    # Canonical winsorize (quantile-based 0.01/0.99) then MAD-based z-score.
+    z21 = _CANONICAL_ZSCORE(_CANONICAL_WINSORIZE(ret_21d))
+    z5 = _CANONICAL_ZSCORE(_CANONICAL_WINSORIZE(ret_5d))
+
+    scores = z21 - lambda_ * z5
+
+    result = scores.dropna()
+    if len(result) == 0:
+        return None
+    return result
+
+
+def _variant_v26_robust(t: datetime, state, panel: pd.DataFrame, cfg) -> Dict[str, float]:
+    """V26-robust: V11 structure with canonical MAD-based z-score normalized momentum.
+
+    Method A/B vs V26 (inline sigma z-score): the ONLY change is the normalization
+    method. Swaps V26's inline sigma-based cross-sectional z-score + 3-sigma clip for
+    the canonical toolbelt primitives:
+      - winsorize (quantile 0.01/0.99) via src.features.winsorize
+      - robust_zscore_cross_sectional (MAD-based) via src.features
+
+    Score: z(21d_return) - lambda * z(5d_return), lambda=1.0 FIXED (not swept).
+
+    Everything else is identical to V26/V11 (rank_buffer + min_hold + delta via cfg)
+    so this is a clean normalization method A/B, not a new strategy.
+
+    This answers: did the inline sigma z-score mask a materially different result
+    than the canonical robust one? It is a single a-priori variant (one trial).
+
+    Minimum history: >= 21 trading days; insufficient history returns SAFE_MODE.
+    """
+    scores = _compute_v26_robust_scores(t, panel)
+
+    spy = panel['SPY'].dropna()
+    vix = panel['VIX'].dropna()
+    if t not in spy.index or t not in vix.index:
+        return {'__regime__': 'SAFE_MODE'}
+    spy_slice = spy.loc[:t]
+    vix_slice = vix.loc[:t]
+    if len(spy_slice) < 252 or len(vix_slice) < 252:
+        return {'__regime__': 'SAFE_MODE'}
+
+    spy_df = pd.DataFrame({
+        'close': spy_slice, 'open': spy_slice, 'high': spy_slice, 'low': spy_slice,
+        'volume': 1e6,
+    })
+    vix_df = pd.DataFrame({'close': vix_slice})
+    try:
+        regime, _confidence = _DETECTOR.classify_regime(spy_df, vix_df, t)
+    except Exception:
+        return {'__regime__': 'SAFE_MODE'}
+
+    if scores is None or len(scores) == 0:
+        return {'__regime__': 'SAFE_MODE'}
+
+    top_n = REGIME_PARAMS.get(regime, {}).get('top_n', 10)
+
+    ranked = scores.dropna().sort_values(ascending=False)
+    if len(ranked) == 0:
+        return {'__regime__': regime}
+    target_symbols = list(ranked.head(top_n).index)
+    if not target_symbols:
+        return {'__regime__': regime}
+
+    proposed = {sym: 1.0 / top_n for sym in target_symbols}
+
+    ranking = pd.Series(
+        range(1, len(ranked) + 1),
+        index=ranked.index,
+    )
+
+    targets = rank_buffer(
+        proposed_targets=proposed,
+        state=state,
+        buffer_size=top_n // 2,
+        universe_ranking=ranking,
+        top_n=top_n,
+    )
+
+    targets = min_hold(
+        proposed_targets=targets,
+        state=state,
+        current_date=t,
+        min_hold_days=5,
+        crash_exit=False,
+    )
+
+    targets['__regime__'] = regime
+    return targets
+
+
 def _compute_v28_multihorizon_scores(
     t: datetime,
     panel: pd.DataFrame,
@@ -1465,6 +1617,19 @@ REGISTRY: Dict[str, VariantSpec] = {
             'penalty term: z-scoring makes the 21d and 5d terms comparable across regimes.'
         ),
         plan_fn=_variant_v26,
+    ),
+    'V26-robust': VariantSpec(
+        id='V26-robust',
+        description=(
+            'V26 A/B: ONLY normalization method swapped from inline sigma to canonical '
+            'MAD-based (robust) toolbelt primitives. '
+            'score = robust_z(winsorize(21d_return)) - lambda * robust_z(winsorize(5d_return)); '
+            'winsorize=quantile(0.01/0.99), robust_z=MAD-based cross-sectional z-score. '
+            'V11 scaffold (rank_buffer + min_hold + delta via cfg). '
+            'lambda=1.0 fixed (not swept). '
+            'Method A/B only -- NOT a new strategy. Not a search; single a-priori trial.'
+        ),
+        plan_fn=_variant_v26_robust,
     ),
     'V28': VariantSpec(
         id='V28',

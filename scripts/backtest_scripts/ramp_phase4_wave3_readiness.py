@@ -131,7 +131,7 @@ def _build_cfg(
     cost_bps: float,
     timing_mode: str,
 ) -> HarnessConfig:
-    delta_pct = DELTA_REBALANCE_PCT_V31 if variant_id in ('V31', 'V11', 'V28', 'V26', 'V02+V05', 'V33-core') else 0.0
+    delta_pct = DELTA_REBALANCE_PCT_V31 if variant_id in ('V31', 'V11', 'V28', 'V26', 'V26-robust', 'V02+V05', 'V33-core') else 0.0
     return HarnessConfig(
         start_date=args.start,
         end_date=args.end,

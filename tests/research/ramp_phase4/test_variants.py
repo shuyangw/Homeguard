@@ -1912,3 +1912,152 @@ def test_make_v28_weights_renormalized():
     plan = fn(t, state, panel, cfg)
     # Must not crash; __regime__ sentinel present.
     assert "__regime__" in plan
+
+
+# ============================================================
+# V26-robust tests: canonical toolbelt primitives A/B
+# ============================================================
+
+def _v26_robust_panel(n=300):
+    """Panel with 5 universe symbols + SPY/VIX for V26-robust tests.
+
+    One symbol (OUTLIER) has an extreme 21d return to verify MAD-based
+    winsorization behaves differently from sigma-based clipping.
+    """
+    idx = pd.date_range('2023-01-02', periods=n, freq='B')
+    base = np.arange(n, dtype=float)
+    panel = pd.DataFrame({
+        'AAA': 100 + base * 0.05,
+        'BBB': 110 + base * 0.04,
+        'CCC': 90 + base * 0.06,
+        'DDD': 95 + base * 0.03,
+        # OUTLIER: inject a large spike in last 22 rows to create extreme 21d return.
+        'OUTLIER': np.concatenate([
+            100 + base[:-22] * 0.05,
+            np.linspace(100, 250, 22),  # +150% in 21 days -- extreme outlier
+        ]),
+        'SPY': 400 + base * 0.1,
+        'VIX': np.full(n, 12.0),
+    }, index=idx)
+    return panel
+
+
+def test_v26_robust_in_registry():
+    """V26-robust must be registered in REGISTRY with correct id/description."""
+    assert 'V26-robust' in REGISTRY
+    spec = REGISTRY['V26-robust']
+    assert isinstance(spec, VariantSpec)
+    assert spec.id == 'V26-robust'
+    assert 'robust' in spec.description.lower() or 'mad' in spec.description.lower()
+
+
+def test_v26_robust_uses_canonical_primitives(monkeypatch):
+    """V26-robust must call the canonical toolbelt via module-level aliases.
+
+    Verifies that the variant routes through _CANONICAL_ZSCORE and
+    _CANONICAL_WINSORIZE (module-level names that map to the toolbelt imports),
+    not an inline reimplementation.
+    """
+    import src.research.ramp_phase4.variants as var_mod
+    from src.features import robust_zscore_cross_sectional, winsorize
+
+    zscore_call_count = []
+    winsorize_call_count = []
+
+    def spy_zscore(series):
+        zscore_call_count.append(1)
+        return robust_zscore_cross_sectional(series)
+
+    def spy_winsorize(series, **kwargs):
+        winsorize_call_count.append(1)
+        return winsorize(series, **kwargs)
+
+    monkeypatch.setattr(var_mod, '_CANONICAL_ZSCORE', spy_zscore, raising=True)
+    monkeypatch.setattr(var_mod, '_CANONICAL_WINSORIZE', spy_winsorize, raising=True)
+
+    panel = _v26_robust_panel(n=300)
+    t = panel.index[-1].to_pydatetime()
+    state = HarnessState(cash_usd=100_000.0)
+    cfg = _stub_cfg()
+
+    plan = REGISTRY['V26-robust'].plan_fn(t, state, panel, cfg)
+
+    assert '__regime__' in plan
+    assert len(zscore_call_count) > 0, "robust_zscore_cross_sectional was not called"
+    assert len(winsorize_call_count) > 0, "winsorize was not called"
+
+
+def test_v26_robust_weights_sum_leq_one_with_regime():
+    """Non-regime weights must sum <= 1.0 + epsilon; __regime__ must be present."""
+    panel = _v26_robust_panel(n=300)
+    t = panel.index[-1].to_pydatetime()
+    state = HarnessState(cash_usd=100_000.0)
+    cfg = _stub_cfg()
+
+    plan = REGISTRY['V26-robust'].plan_fn(t, state, panel, cfg)
+
+    assert '__regime__' in plan
+    body_weights = {k: v for k, v in plan.items() if k != '__regime__'}
+    total = sum(body_weights.values())
+    assert total <= 1.0 + 1e-6, f"Weights sum {total} exceeds 1.0 + eps"
+
+
+def test_v26_robust_mad_less_distorted_than_std_on_outlier():
+    """On a cross-section with an extreme outlier, MAD-based z-scores preserve
+    spread among normal symbols; std-based z-scores collapse them.
+
+    Property: std-based z-score pulls the mean/std toward the outlier,
+    shrinking the scores of all other symbols. MAD-based z-score is robust
+    to the outlier so non-outlier spread is preserved.
+
+    Concretely: 4 normal symbols (1-3% returns) + 1 outlier (150% return).
+    MAD spread among the 4 normal symbols must exceed 2x the std-based spread.
+    """
+    import src.features as feat_mod
+
+    n_syms = 5
+    normal_rets = np.array([0.03, 0.02, 0.01, -0.01])
+    outlier_ret = np.array([1.50])  # 150% -- extreme outlier
+    cross_section_rets = np.concatenate([normal_rets, outlier_ret])
+    series = pd.Series(cross_section_rets, index=[f'S{i}' for i in range(n_syms)])
+
+    # MAD-based z-scores (canonical primitive)
+    mad_scores = feat_mod.robust_zscore_cross_sectional(series)
+    mad_normal = mad_scores.iloc[:4].dropna()
+
+    # Std-based z-scores (legacy / inline approach)
+    finite = cross_section_rets[~np.isnan(cross_section_rets)]
+    mu = np.mean(finite)
+    sigma = np.std(finite, ddof=1)
+    std_scores_arr = (cross_section_rets - mu) / sigma if sigma > 0 else np.zeros_like(cross_section_rets)
+    std_normal = pd.Series(std_scores_arr[:4])
+
+    mad_spread = float(mad_normal.max() - mad_normal.min())
+    std_spread = float(std_normal.max() - std_normal.min())
+
+    # MAD-based spread among normal symbols must be materially larger
+    assert mad_spread > std_spread * 2.0, (
+        f"Expected MAD spread ({mad_spread:.4f}) > 2x std spread ({std_spread:.4f})"
+    )
+
+
+def test_v26_robust_safe_mode_on_insufficient_history():
+    """V26-robust must return SAFE_MODE when panel has < 252 rows (detector warmup)."""
+    n_short = 100  # insufficient for 252-row SPY/VIX detector requirement
+    idx = pd.date_range('2024-01-02', periods=n_short, freq='B')
+    panel = pd.DataFrame({
+        'AAA': 100 + np.arange(n_short) * 0.05,
+        'BBB': 110 + np.arange(n_short) * 0.04,
+        'SPY': 400 + np.arange(n_short) * 0.1,
+        'VIX': np.full(n_short, 12.0),
+    }, index=idx)
+
+    t = panel.index[-1].to_pydatetime()
+    state = HarnessState(cash_usd=100_000.0)
+    cfg = _stub_cfg()
+
+    plan = REGISTRY['V26-robust'].plan_fn(t, state, panel, cfg)
+
+    assert plan.get('__regime__') == 'SAFE_MODE', (
+        f"Expected SAFE_MODE with insufficient history, got {plan}"
+    )
