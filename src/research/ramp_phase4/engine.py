@@ -55,6 +55,7 @@ class DailyRecord:
     cost_usd: float
     portfolio_value: float
     daily_return: float
+    trades: List[Dict] = field(default_factory=list)
 
 
 class VariantLike(Protocol):
@@ -155,15 +156,16 @@ def run_variant(cfg: HarnessConfig, variant_spec: VariantLike) -> List[DailyReco
                         f'Variant {variant_spec.id} would overleverage at {ts.date()}: '
                         f'sum(weights)={weight_sum:.4f} (mode=one_day_lag)'
                     )
-                trades = compute_trades(
+                day_trades = compute_trades(
                     state, targets_to_execute, prices, cur_value,
                     cfg.min_trade_value_usd,
                     delta_rebalance_pct=cfg.delta_rebalance_pct,
                 )
-                cost = flat_bps_cost(trades, cfg.cost_bps_per_side)
-                turnover = sum(abs(t['trade_value_usd']) for t in trades)
-                apply_trades(state, trades, cost_usd=cost, current_date=ts)
+                cost = flat_bps_cost(day_trades, cfg.cost_bps_per_side)
+                turnover = sum(abs(t['trade_value_usd']) for t in day_trades)
+                apply_trades(state, day_trades, cost_usd=cost, current_date=ts)
             else:
+                day_trades = []
                 cost = 0.0
                 turnover = 0.0
 
@@ -193,6 +195,7 @@ def run_variant(cfg: HarnessConfig, variant_spec: VariantLike) -> List[DailyReco
                 realized_weights=_current_weights(state, prices, post_value),
                 turnover_usd=turnover, cost_usd=cost,
                 portfolio_value=post_value, daily_return=daily_ret,
+                trades=list(day_trades),
             ))
             prev_value = post_value
             continue
@@ -217,6 +220,7 @@ def run_variant(cfg: HarnessConfig, variant_spec: VariantLike) -> List[DailyReco
                 realized_weights=_current_weights(state, prices, post_value),
                 turnover_usd=0.0, cost_usd=0.0,
                 portfolio_value=post_value, daily_return=daily_ret,
+                trades=[],
             ))
             prev_value = post_value
             continue
@@ -228,14 +232,14 @@ def run_variant(cfg: HarnessConfig, variant_spec: VariantLike) -> List[DailyReco
                 f'sum(weights)={weight_sum:.4f}'
             )
 
-        trades = compute_trades(
+        day_trades = compute_trades(
             state, target_weights, prices, cur_value,
             cfg.min_trade_value_usd,
             delta_rebalance_pct=cfg.delta_rebalance_pct,
         )
-        cost = flat_bps_cost(trades, cfg.cost_bps_per_side)
-        turnover = sum(abs(t['trade_value_usd']) for t in trades)
-        apply_trades(state, trades, cost_usd=cost, current_date=ts)
+        cost = flat_bps_cost(day_trades, cfg.cost_bps_per_side)
+        turnover = sum(abs(t['trade_value_usd']) for t in day_trades)
+        apply_trades(state, day_trades, cost_usd=cost, current_date=ts)
 
         post_value = _portfolio_value(state, prices)
         daily_ret = (post_value / prev_value) - 1.0 if prev_value > 0 else 0.0
@@ -249,6 +253,7 @@ def run_variant(cfg: HarnessConfig, variant_spec: VariantLike) -> List[DailyReco
             cost_usd=cost,
             portfolio_value=post_value,
             daily_return=daily_ret,
+            trades=list(day_trades),
         ))
         state.last_target_symbols = list(target_weights.keys())
         prev_value = post_value

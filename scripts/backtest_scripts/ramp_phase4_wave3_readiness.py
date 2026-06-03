@@ -25,6 +25,7 @@ complete). Per-variant PSR (vs SR=0) IS reported as a single-variant gate.
 from __future__ import annotations
 
 import argparse
+import gzip
 import json
 import os
 import subprocess
@@ -121,6 +122,20 @@ def _parse_args(argv=None):
         '--db-path',
         type=Path,
         default=DEFAULT_DB_PATH,
+    )
+    p.add_argument(
+        '--no-chronicles',
+        action='store_true',
+        help='Skip writing holdings/trade-ledger CSVs (faster re-runs when not needed).',
+    )
+    p.add_argument(
+        '--chronicles-filter',
+        type=lambda s: s.split(','),
+        default=['near_close:5.0'],
+        help=(
+            'Comma-separated list of <timing>:<cost_bps> combos to chronicle. '
+            'Default: near_close:5.0. Use "all" to chronicle every sub-run.'
+        ),
     )
     return p.parse_args(argv)
 
@@ -315,6 +330,17 @@ def _records_from_return_stream(
     return records
 
 
+def _should_chronicle(args, timing_mode: str, cost_bps: float) -> bool:
+    """Return True if this sub-run should have holdings/trades CSVs written."""
+    if getattr(args, 'no_chronicles', False):
+        return False
+    filters = getattr(args, 'chronicles_filter', ['near_close:5.0'])
+    if filters == ['all']:
+        return True
+    key = f'{timing_mode}:{cost_bps:.1f}'
+    return key in filters
+
+
 def _run_or_reuse(
     args,
     variant_id: str,
@@ -431,6 +457,10 @@ def _run_or_reuse(
     )
     logger.info(f'[+] Registry write OK run_id={run_id[:8]}')
 
+    # Section 12 chronicle: write holdings + trade ledger (default-on for near_close 5bps).
+    if _should_chronicle(args, timing_mode, cost_bps):
+        _write_chronicles(records, args.output_dir, variant_id, timing_mode, cost_bps)
+
     return SubRunResult(
         variant_id=variant_id,
         cost_bps=cost_bps,
@@ -449,6 +479,74 @@ def _atomic_write(path: Path, content: str) -> None:
     tmp_path = path.with_suffix(path.suffix + '.tmp')
     tmp_path.write_text(content, encoding='utf-8')
     os.replace(tmp_path, path)
+
+
+def _write_chronicles(
+    records: List,
+    output_dir: Path,
+    variant_id: str,
+    timing_mode: str,
+    cost_bps: float,
+) -> None:
+    """Write per-day holdings and trade-ledger CSVs (gzip) for a completed sub-run.
+
+    Scope: one file pair per (variant, timing_mode, cost_bps).  Written to:
+      <output_dir>/holdings/<variant>_<timing>_<cost>bps_holdings.csv.gz
+      <output_dir>/holdings/<variant>_<timing>_<cost>bps_trades.csv.gz
+
+    Holdings schema  : date (YYYY-MM-DD), symbol, realized_weight
+    Trade-ledger schema: date (YYYY-MM-DD), symbol, side, delta_shares, trade_value_usd
+
+    The files are written atomically (.tmp gzip -> os.replace) so a crash mid-write
+    never leaves a corrupted artifact.  If records is empty or contains no trade data
+    (e.g. a registry-resumed run), the files are still created but with zero rows so
+    downstream readers have a stable schema.
+    """
+    tag = f'{variant_id}_{timing_mode}_{cost_bps:.1f}bps'
+    holdings_dir = output_dir / 'holdings'
+    holdings_dir.mkdir(parents=True, exist_ok=True)
+
+    holdings_path = holdings_dir / f'{tag}_holdings.csv.gz'
+    trades_path = holdings_dir / f'{tag}_trades.csv.gz'
+
+    # Build holdings rows.
+    h_rows = []
+    for rec in records:
+        date_str = rec.date.strftime('%Y-%m-%d')
+        for sym, w in rec.realized_weights.items():
+            h_rows.append({'date': date_str, 'symbol': sym, 'realized_weight': w})
+
+    # Build trade-ledger rows.
+    t_rows = []
+    for rec in records:
+        date_str = rec.date.strftime('%Y-%m-%d')
+        for tr in rec.trades:
+            t_rows.append({
+                'date': date_str,
+                'symbol': tr['symbol'],
+                'side': tr['side'],
+                'delta_shares': tr['delta_shares'],
+                'trade_value_usd': tr['trade_value_usd'],
+            })
+
+    holdings_df = pd.DataFrame(h_rows, columns=['date', 'symbol', 'realized_weight'])
+    trades_df = pd.DataFrame(
+        t_rows, columns=['date', 'symbol', 'side', 'delta_shares', 'trade_value_usd']
+    )
+
+    def _atomic_gz_write(path: Path, df: pd.DataFrame) -> None:
+        tmp_path = path.with_suffix('.tmp.gz')
+        csv_bytes = df.to_csv(index=False).encode('utf-8')
+        with gzip.open(tmp_path, 'wb') as fh:
+            fh.write(csv_bytes)
+        os.replace(tmp_path, path)
+
+    _atomic_gz_write(holdings_path, holdings_df)
+    _atomic_gz_write(trades_path, trades_df)
+    logger.info(
+        f'[+] Chronicles: {holdings_path.name} ({len(holdings_df)} rows), '
+        f'{trades_path.name} ({len(trades_df)} rows)'
+    )
 
 
 def _build_report(
