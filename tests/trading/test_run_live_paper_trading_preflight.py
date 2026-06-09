@@ -65,8 +65,47 @@ def test_force_start_bypasses_mismatch_without_mutating_state(mgr, tmp_path):
 def test_preflight_blocks_on_state_broker_qty_zero(mgr):
     mgr.add_position('omr', 'TQQQ', 100, 52.30, order_id='x', broker='alpaca')
     broker = _fake_broker({})
-    rc = preflight_reconcile('omr', broker, 'alpaca', mgr, force_start=False)
+    rc = preflight_reconcile('omr', broker, 'alpaca', mgr, force_start=False, retry_delay=0)
     assert rc == 1
+
+
+def test_preflight_retries_transient_empty_then_passes(mgr):
+    """A freshly-connected IBKR session can report 0 positions until the async
+    account download (accountDownloadEnd) completes. Preflight must retry the
+    broker query before trusting a 0, or a cold-start race trips a false
+    mismatch and crash-loops the runner.
+    """
+    mgr.add_position('omr', 'TQQQ', 100, 52.30, order_id='x', broker='ibkr')
+    broker = Mock()
+    broker.get_stock_positions.side_effect = [
+        [],  # attempt 1: portfolio() not populated yet
+        [],  # attempt 2: still warming
+        [{'symbol': 'TQQQ', 'quantity': 100}],  # attempt 3: populated
+    ]
+    rc = preflight_reconcile('omr', broker, 'ibkr', mgr, force_start=False, retry_delay=0)
+    assert rc == 0
+    assert broker.get_stock_positions.call_count == 3
+
+
+def test_preflight_blocks_after_retries_when_persistently_empty(mgr):
+    """If the broker is genuinely flat after all retries, the real mismatch
+    still blocks (the retry must not mask a true position loss)."""
+    mgr.add_position('omr', 'TQQQ', 100, 52.30, order_id='x', broker='ibkr')
+    broker = _fake_broker({})  # always empty
+    rc = preflight_reconcile('omr', broker, 'ibkr', mgr, force_start=False, retry_delay=0)
+    assert rc == 1
+    assert broker.get_stock_positions.call_count >= 2  # retried before blocking
+
+
+def test_preflight_no_retry_when_positions_on_other_broker(mgr):
+    """An empty result from THIS broker is expected when state positions are on
+    another broker; no retry -- block immediately on the cross-broker tag."""
+    mgr.add_position('omr', 'TQQQ', 100, 52.30, order_id='x', broker='alpaca')
+    broker = Mock()
+    broker.get_stock_positions.return_value = []
+    rc = preflight_reconcile('omr', broker, 'ibkr', mgr, force_start=False, retry_delay=0)
+    assert rc == 1
+    assert broker.get_stock_positions.call_count == 1  # no retry for cross-broker
 
 
 def test_broker_unreachable_blocks_without_force(mgr):
