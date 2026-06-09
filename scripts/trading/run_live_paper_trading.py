@@ -1135,6 +1135,9 @@ def preflight_reconcile(
     broker_name: str,
     state_manager,
     force_start: bool,
+    *,
+    max_attempts: int = 4,
+    retry_delay: float = 3.0,
 ) -> int:
     """
     Pre-flight reconciliation check.
@@ -1143,6 +1146,14 @@ def preflight_reconcile(
     Never mutates position data; may trigger a one-shot v1->v2 schema
     migration on first load. On mismatch + force_start, logs WARNING
     and returns 0.
+
+    A freshly-connected IBKR session can report 0 positions until its async
+    account download (accountDownloadEnd) completes -- ``ib.portfolio()`` is
+    empty until then. If state expects positions ON THIS broker but the broker
+    reports an empty book, retry up to ``max_attempts`` (``retry_delay`` apart)
+    before trusting the 0, so a cold-start race does not trip a false mismatch
+    and crash-loop the runner. An empty book is NOT retried when all tracked
+    positions are tagged for a different broker (that 0 is expected).
     """
     state_positions = state_manager.get_positions(strategy)
 
@@ -1155,18 +1166,38 @@ def preflight_reconcile(
         f"[Reconcile] {strategy} has {len(state_positions)} tracked positions"
     )
 
-    try:
-        broker_positions = {
-            p['symbol']: p['quantity']
-            for p in broker.get_stock_positions()
-        }
-    except Exception as e:
-        logger.error(f"[Reconcile] Cannot query broker positions: {e}")
-        if not force_start:
-            logger.error("Cannot verify positions. Use --force-start to skip.")
-            return 1
-        logger.warning("--force-start: proceeding despite broker error")
-        return 0
+    expects_positions_on_this_broker = any(
+        pos.get('broker') == broker_name and pos.get('qty', 0) > 0
+        for pos in state_positions.values()
+    )
+
+    broker_positions = {}
+    for attempt in range(1, max_attempts + 1):
+        try:
+            broker_positions = {
+                p['symbol']: p['quantity']
+                for p in broker.get_stock_positions()
+            }
+        except Exception as e:
+            logger.error(f"[Reconcile] Cannot query broker positions: {e}")
+            if not force_start:
+                logger.error("Cannot verify positions. Use --force-start to skip.")
+                return 1
+            logger.warning("--force-start: proceeding despite broker error")
+            return 0
+
+        # An empty book is only suspect when it CONTRADICTS this-broker state.
+        # A populated book, or an empty book when our positions live elsewhere,
+        # needs no retry.
+        if broker_positions or not expects_positions_on_this_broker:
+            break
+        if attempt < max_attempts:
+            logger.warning(
+                f"[Reconcile] broker reported 0 positions but state expects holdings "
+                f"on {broker_name} (attempt {attempt}/{max_attempts}); retrying in "
+                f"{retry_delay}s for async account download to complete"
+            )
+            time.sleep(retry_delay)
 
     mismatches = []
     for symbol, pos_info in state_positions.items():
