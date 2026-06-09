@@ -51,8 +51,41 @@ metrics. Path on EC2: `/etc/systemd/system/homeguard-multi.service.d/override.co
 - True end-to-end proof: after deploy, REMOVE the force-start override and restart;
   preflight must pass on its own (clean start, no loop).
 
+## ACTUAL ROOT CAUSE (found after 4 failed timing fixes)
+The timing fixes (sleep -> accountDownloadEnd -> portfolio poll -> reqPositions
+fallback) ALL failed clean-start validation. A definitive read diagnostic
+(clientId=97, after-hours) settled it:
+- `portfolio()` AND `positions()` both reliably return the SAME 20 symbols.
+- State has 21 ibkr-tagged symbols; 20 match the broker exactly.
+- The ONLY mismatch is **`WELL`**: state says open on ibkr (qty>0), broker holds 0.
+
+So it was NOT a read/timing problem -- the read is correct. `WELL` is a genuine
+**stale state entry**. Root cause: `_execute_rebalance_target_aware` (the
+deployed exit path, use_target_planner=True) sold via `execute_order` but never
+called `remove_position` or `log_exit` (the legacy path does). Every full exit
+left a phantom, swept only by the NEXT rebalance's `sync_with_broker`. WELL was
+sold 6/8; the 6/9 boot crash-looped at preflight before the 6/9 rebalance could
+sweep it -> WELL lingered and blocked preflight.
+
+Secondary: the missing `log_exit` means target-aware exits were NOT written to
+the trade log, so `compute_lifetime_realized_pnl` (which feeds the equity gauge)
+has been understating realized PnL for every target-aware exit.
+
+### Fix (root cause)
+- **`src/trading/adapters/ramp_live_adapter.py`**: target-aware exit loop now
+  calls `log_exit` + `remove_position` on a filled exit (mirrors legacy). Commit
+  `f7ea22f`. TDD: `test_target_aware_exit_removes_position_from_state`.
+- **One-time reconcile**: remove the existing stale `WELL` entry from state
+  (backed up) during the deploy stop-window.
+- The earlier timing improvements (poll `portfolio()` `23abaaa`, reqPositions
+  fallback `876bd44`) are harmless and retained as robustness, but were NOT the cure.
+
 ## Known Issues / Remaining Work
 - Drop the `--force-start` override after deploy + smoke test (see path above).
+- **Why was WELL's exit not removed for 6 days?** The target-aware path never
+  removed exits from state; relied on next-rebalance sync. Now fixed at source.
+  Audit whether other target-aware exits (6/4-6/8 pruning) left trade-log gaps
+  that understated realized PnL.
 - **Operational gap**: ~1000 silent restarts with no alert. Add a systemd
   StartLimitIntervalSec/Burst cap and/or an alert so a crash-loop pages instead of
   spinning. (Deferred -- flagged to user.)
