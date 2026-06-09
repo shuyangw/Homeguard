@@ -29,6 +29,12 @@ from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
+# After (re)connect, poll ib.portfolio() until it populates from the account-
+# update stream before returning. accountDownloadEnd is unreliable after-hours;
+# portfolio() fills within ~10-15s. 40 x 0.5s = 20s cap (returns early on data).
+POLL_PORTFOLIO_MAX_STEPS = 40
+POLL_PORTFOLIO_STEP_SECONDS = 0.5
+
 
 class IBKRConnectionManager:
     """
@@ -214,35 +220,23 @@ class IBKRConnectionManager:
         # startup reconciliation and Grafana metric attribution. Must run
         # on every (re)connect; IB clears subscriptions on disconnect.
         #
-        # Wait for the account download to COMPLETE (accountDownloadEnd) rather
-        # than a fixed sleep. ib.portfolio() stays empty until that event fires;
-        # a blind sleep(1.0) is enough on a warm gateway but RACES on a cold
-        # start (data farms still warming) -- portfolio() comes back empty and
-        # the startup reconciler reads a false zero, trips a position mismatch,
-        # and the runner crash-loops. reqAccountUpdatesAsync subscribes AND
-        # awaits the download end; it is a coroutine (safe to await here),
-        # unlike the sync reqAccountUpdates wrapper which calls
-        # run_until_complete and raises "event loop already running".
+        # Send the subscription, then POLL ib.portfolio() until it populates.
+        #
+        # A blind sleep(1.0) was enough on a warm gateway but RACED on a cold
+        # start (data farms still warming) -- portfolio() came back empty and
+        # the startup reconciler read a false zero, tripped a position mismatch,
+        # and the runner crash-looped. Awaiting accountDownloadEnd is NOT a
+        # reliable fix either: after-hours that event frequently does not fire
+        # within any reasonable timeout, yet ib.portfolio() DOES fill from the
+        # account-update stream within ~10-15s (verified 2026-06-09). So we
+        # poll the cache directly and return as soon as data arrives. Bounded
+        # so a genuinely-flat account does not hang startup.
         for acct in self._ib.managedAccounts() or []:
-            try:
-                await asyncio.wait_for(
-                    self._ib.reqAccountUpdatesAsync(acct),
-                    timeout=10.0,
-                )
-            except asyncio.TimeoutError:
-                logger.warning(
-                    f"[IBKR] Account download for {acct} did not complete "
-                    f"within 10s; portfolio() may be briefly incomplete"
-                )
-            except Exception as e:
-                # Fall back to the low-level request + short settle so the
-                # subscription is at least active for later callers.
-                logger.warning(
-                    f"[IBKR] reqAccountUpdatesAsync({acct}) failed ({e}); "
-                    f"falling back to low-level request"
-                )
-                self._ib.client.reqAccountUpdates(True, acct)
-                await asyncio.sleep(1.0)
+            self._ib.client.reqAccountUpdates(True, acct)
+        for _ in range(POLL_PORTFOLIO_MAX_STEPS):
+            if self._ib.portfolio():
+                break
+            await asyncio.sleep(POLL_PORTFOLIO_STEP_SECONDS)
 
         self._connected.set()
         self._reconnect_count = 0
