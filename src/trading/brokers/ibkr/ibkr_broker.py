@@ -293,6 +293,23 @@ class IBKRBroker(
         """
         try:
             positions = self._conn.ib.portfolio()
+            if not positions:
+                # portfolio() (reqAccountUpdates stream) can lag empty right
+                # after a (re)connect, especially after-hours -- which tripped
+                # the startup reconciler into a false-zero crash-loop. reqPositions
+                # is an independent source that returns bare contract+qty even
+                # when portfolio() is still empty (verified 2026-06-09). Fall back
+                # to it so callers never read a false-empty book. _translate_stock_position
+                # accepts Position (bare) as well as PortfolioItem; market_value/
+                # unrealized_pnl come back None for bare Positions, which is fine
+                # for the reconciler (it only needs symbol + qty).
+                try:
+                    self._conn.run_sync(
+                        self._conn.ib.reqPositionsAsync(), timeout=15.0
+                    )
+                except Exception as e:
+                    logger.warning(f"[IBKR] reqPositions fallback failed: {e}")
+                positions = self._conn.ib.positions() or self._conn.ib.portfolio()
             result = []
             for pos in positions:
                 if pos.contract.secType != 'STK':
