@@ -269,6 +269,37 @@ class TestTargetAwareExecution:
         assert len(sells) == 5, f"Expected 5 SELLs in sell-only mode, got {len(sells)}"
         assert len(buys) == 0, f"Expected 0 BUYs in sell-only mode, got {len(buys)}"
 
+    def test_target_aware_exit_removes_position_from_state(self):
+        """A full exit MUST call state_manager.remove_position, else the closed
+        position lingers in state as a phantom and trips the startup reconciler
+        (root cause of the 2026-06-09 preflight crash-loop: WELL was sold via
+        this path but never removed from state)."""
+        syms = [f"OLD{i}" for i in range(3)]
+        positions = [_pos(s, 100) for s in syms]
+        current_positions = _current_positions_from_broker_positions(positions)
+
+        adapter = _make_adapter(symbols=syms, positions=positions)
+        _capture_orders(adapter)
+
+        plan = _plan_for(
+            targets_dict={},
+            exits_dict={s: "dropped_from_top_n" for s in syms},
+            top_n=5,
+        )
+        adapter._latest_plan = plan
+
+        adapter._execute_rebalance_target_aware(
+            signals=[],
+            current_positions=current_positions,
+        )
+
+        removed = {
+            c.args[1] for c in adapter.state_manager.remove_position.call_args_list
+        }
+        assert removed == set(syms), (
+            f"Expected remove_position for exited {syms}, got {removed}"
+        )
+
     def test_hold_overweight_position_is_trimmed(self):
         """Held at $12k, target 10% of $100k = $10k -> SELL ~20 shares ($2k @ $100)."""
         # 120 shares at $100 = $12k held; target weight 0.10 -> $10k
