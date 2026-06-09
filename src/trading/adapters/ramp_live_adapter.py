@@ -2190,12 +2190,46 @@ class RAMPLiveAdapter(StrategyAdapter):
                 continue
             try:
                 logger.info(f"[RAMP] EXIT {sym}: SELL {qty} ({reason})")
-                self.execution_engine.execute_order(
+                order = self.execution_engine.execute_order(
                     symbol=sym,
                     quantity=qty,
                     side=OrderSide.SELL,
                     order_type=OrderType.MARKET,
                 )
+                # On a filled exit, persist the exit to the trade log (realized
+                # PnL) AND drop the position from state. WITHOUT this, the closed
+                # position lingers in state as a phantom -- which trips the
+                # startup reconciler into a crash-loop (2026-06-09: WELL sold here
+                # but never removed). Mirrors the legacy path; previously this
+                # path relied solely on the next rebalance's sync_with_broker,
+                # which never runs if preflight crashes first.
+                if order:
+                    _inner = (order.get('order') if isinstance(order, dict) else None) or {}
+                    actual_fill_price = (
+                        float(_inner.get('filled_avg_price') or 0)
+                        or float(pos.get('current_price', 0) or 0)
+                    )
+                    actual_order_id = _inner.get('order_id')
+                    try:
+                        position_info = self.state_manager.get_positions(
+                            STRATEGY_NAME
+                        ).get(sym, {})
+                        trade_logger = get_trade_log_writer()
+                        trade_logger.log_exit(
+                            strategy=STRATEGY_NAME,
+                            symbol=sym,
+                            qty=qty,
+                            exit_price=actual_fill_price,
+                            order_id=actual_order_id,
+                            entry_price=position_info.get(
+                                'entry_price', float(pos.get('avg_entry_price', 0) or 0)
+                            ),
+                            entry_time=position_info.get('entry_time'),
+                            account_snapshot=self.broker.get_account(),
+                        )
+                    except Exception as log_err:
+                        logger.error(f"[RAMP] Trade logging failed (non-blocking): {log_err}")
+                    self.state_manager.remove_position(STRATEGY_NAME, sym)
             except Exception as e:
                 logger.error(f"[RAMP] Error exiting {sym}: {e}")
 
