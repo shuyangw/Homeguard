@@ -214,17 +214,35 @@ class IBKRConnectionManager:
         # startup reconciliation and Grafana metric attribution. Must run
         # on every (re)connect; IB clears subscriptions on disconnect.
         #
-        # Use the low-level client.reqAccountUpdates rather than
-        # ib.reqAccountUpdates: the latter is a sync wrapper that calls
-        # run_until_complete, which raises "event loop already running"
-        # when invoked from within this coroutine. The client method
-        # only sends the wire request -- the portfolio is populated
-        # asynchronously via ib_async's event handlers.
+        # Wait for the account download to COMPLETE (accountDownloadEnd) rather
+        # than a fixed sleep. ib.portfolio() stays empty until that event fires;
+        # a blind sleep(1.0) is enough on a warm gateway but RACES on a cold
+        # start (data farms still warming) -- portfolio() comes back empty and
+        # the startup reconciler reads a false zero, trips a position mismatch,
+        # and the runner crash-loops. reqAccountUpdatesAsync subscribes AND
+        # awaits the download end; it is a coroutine (safe to await here),
+        # unlike the sync reqAccountUpdates wrapper which calls
+        # run_until_complete and raises "event loop already running".
         for acct in self._ib.managedAccounts() or []:
-            self._ib.client.reqAccountUpdates(True, acct)
-        # Wait briefly for the portfolio snapshot so callers right after
-        # start() see populated data.
-        await asyncio.sleep(1.0)
+            try:
+                await asyncio.wait_for(
+                    self._ib.reqAccountUpdatesAsync(acct),
+                    timeout=10.0,
+                )
+            except asyncio.TimeoutError:
+                logger.warning(
+                    f"[IBKR] Account download for {acct} did not complete "
+                    f"within 10s; portfolio() may be briefly incomplete"
+                )
+            except Exception as e:
+                # Fall back to the low-level request + short settle so the
+                # subscription is at least active for later callers.
+                logger.warning(
+                    f"[IBKR] reqAccountUpdatesAsync({acct}) failed ({e}); "
+                    f"falling back to low-level request"
+                )
+                self._ib.client.reqAccountUpdates(True, acct)
+                await asyncio.sleep(1.0)
 
         self._connected.set()
         self._reconnect_count = 0
