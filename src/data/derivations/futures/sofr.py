@@ -12,6 +12,7 @@ from pathlib import Path
 import polars as pl
 
 from src.settings import get_local_storage_dir
+from src.data.futures.paths import per_contract_1min_dir
 
 SR1_LISTING_DATE = date(2018, 5, 7)
 
@@ -48,8 +49,7 @@ def derive_sofr(d: date) -> float:
 
     front = sr1_front_month_symbol(d)
     pcm = (
-        _storage_root()
-        / "futures_per_contract_1min"
+        per_contract_1min_dir()
         / f"year={d.year}"
         / f"month={d.month}"
         / "data.parquet"

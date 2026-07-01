@@ -13,6 +13,7 @@ from pathlib import Path
 import polars as pl
 
 from src.settings import get_local_storage_dir
+from src.data.futures.paths import continuous_1min_dir
 
 MICRO_YIELD_LISTING_DATE = date(2022, 8, 15)
 
@@ -50,8 +51,7 @@ def get_treasury_yield(tenor: str, d: date) -> float:
 
     sym = TENOR_TO_SYMBOL[tenor]
     path = (
-        _storage_root()
-        / "futures_1min"
+        continuous_1min_dir()
         / f"symbol={sym}"
         / f"year={d.year}"
         / f"month={d.month}"

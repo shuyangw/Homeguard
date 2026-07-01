@@ -8,6 +8,8 @@ import pytest
 from src.data.futures.paths import per_contract_1min_dir
 from src.data.carry_calculator import CarryCalculator
 from src.data.continuous_contract_loader import ContinuousContractDataLoader
+from src.data.futures_definitions_loader import FuturesDefinitionsLoader
+from src.data.derivations.futures.open_interest import aggregate_open_interest
 
 
 def _data_present() -> bool:
@@ -32,3 +34,21 @@ def test_carry_history_nonempty_for_gc_january():
 def test_roll_dates_detected_for_gc_2024():
     rolls = ContinuousContractDataLoader().detect_roll_dates("GC", date(2024, 1, 1), date(2024, 12, 31))
     assert len(rolls) >= 4, f"GC should roll several times in 2024, got {len(rolls)}"
+
+
+def test_definition_lookup_for_known_contract():
+    # GCG4 (Feb 2024 gold) is active in the 2024-01 definitions partition
+    d = FuturesDefinitionsLoader().get_definition("GCG4", "GC", date(2024, 1, 15))
+    assert d.expiration.year == 2024
+    assert d.tick_size > 0
+
+
+def test_aggregate_oi_positive_for_gc():
+    # NOTE: brief specified 2024-01-15, but that is MLK Day -- CME does not
+    # publish an end-of-session OI stat (stat_type 9) for the holiday itself
+    # (verified: no row has timestamp date OR ts_ref date == 2024-01-15 in
+    # the statistics partition), so the assertion would fail on real data
+    # regardless of path correctness. 2024-01-16 is the next session with a
+    # published OI stat and confirms the statistics path repoint works.
+    oi = aggregate_open_interest("GC", date(2024, 1, 16))
+    assert oi > 0, "aggregate OI zero -> statistics path still broken"

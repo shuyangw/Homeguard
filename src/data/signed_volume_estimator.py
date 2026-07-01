@@ -15,6 +15,7 @@ from pathlib import Path
 import polars as pl
 
 from src.settings import get_local_storage_dir
+from src.data.futures.paths import continuous_1min_dir
 
 
 def _storage_root() -> Path:
@@ -31,7 +32,7 @@ def estimate_signed_volume_from_bars(symbol: str, d: date) -> pl.DataFrame:
     Returns an empty DataFrame if no data file exists for the requested
     (symbol, date).
     """
-    sym_dir = _storage_root() / "futures_1min" / f"symbol={symbol}"
+    sym_dir = continuous_1min_dir() / f"symbol={symbol}"
     f = sym_dir / f"year={d.year}" / f"month={d.month}" / "data.parquet"
     if not f.exists():
         return pl.DataFrame()

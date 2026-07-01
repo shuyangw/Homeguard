@@ -25,6 +25,7 @@ from pathlib import Path
 import polars as pl
 
 from src.settings import get_local_storage_dir
+from src.data.futures.paths import statistics_dir
 
 STAT_TYPE_OPEN_INTEREST = 9
 _MONTH_CODES = "FGHJKMNQUVXZ"
@@ -60,8 +61,7 @@ def aggregate_open_interest(symbol_root: str, d: date) -> int:
         FileNotFoundError: If the partition for the date is missing.
     """
     path = (
-        _storage_root()
-        / "futures_statistics"
+        statistics_dir()
         / f"year={d.year}"
         / f"month={d.month}"
         / "data.parquet"
