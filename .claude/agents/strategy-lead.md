@@ -201,7 +201,7 @@ The strategy spec declares its required data frequency. Mismatches between strat
 | Agent | Can write? | Model | Pipeline role |
 |-------|-----------|-------|---------------|
 | **code-explorer** | No | Haiku | Strategy #1: map infra patterns |
-| **code-architect** | No | Opus | Strategy #1: design blueprint → becomes a skill |
+| **code-architect** | No | Opus | Strategy #1: design blueprint → becomes a skill. Also **Phase 6.5**: diagnose marginal backtests and design structural improvements |
 | **code-reviewer** | No | Opus | Every strategy: backtest integrity review |
 | **backtest-driver** | Yes | Haiku | Runs backtests, writes reports to `docs/reports/<strategy>/` |
 | **backtest-optimizer** | Yes | Haiku | Parameter optimization, writes chronicles to `output/optimization/<strategy>/` |
@@ -364,9 +364,56 @@ Read the backtest report and check:
 - Results clearly not viable → `[-]` skip, record reason, move to next strategy
 - Results suspicious → investigate before proceeding, note concerns
 - Results promising → proceed to Phase 7
-- Results marginal → proceed to Phase 7 with conservative expectations noted
+- Results marginal but the signal looks real → proceed to **Phase 6.5 (design improvements)**, NOT straight to Phase 7 (the optimizer can only tune, not restructure)
 
 Write validation notes to TODO.md. Update: `[x]` Validate.
+
+### Phase 6.5: Design improvements (CONDITIONAL -- fires only when Phase 6 is MARGINAL, or Phase 8 fails but the signal looks real)
+
+**Why this phase exists:** the optimizer (Phase 7) can only TUNE existing parameters. When a
+strategy is marginal-but-promising, the fix is almost always STRUCTURAL -- a new feature, a
+regime overlay, lower turnover, MAE/MFE-derived stops -- which optimization cannot invent. This
+phase generates those structural hypotheses using the strongest design model. Without it, a
+marginal strategy is either blindly parameter-swept or archived.
+
+**Agent: code-architect** (read-only, Opus) -- the same design agent as Phase 2, dispatched with
+an improvement-focused prompt (NOT the greenfield-blueprint prompt).
+
+**Prompt must include:**
+- The backtest report (`docs/reports/<strategy>/`) AND the Section 12 diagnostics: regime
+  breakdown, trade-level metrics, MAE/MFE distributions, cost drag at REALIZED turnover.
+- The strategy implementation (`src/strategies/advanced/<name>.py`) and spec.
+- "Consult docs/methodology/backtesting.md Sections 5, 11, 12 before proceeding."
+- "Diagnose WHY this strategy is marginal FROM THE REPORT + DIAGNOSTICS -- cite the specific
+  metric, not intuition. Then propose 2-3 CONCRETE, TESTABLE improvements, each with: (a) the
+  weakness it addresses (cite the metric), (b) an economic rationale, (c) STRUCTURAL (new code
+  -> Phase 3) or PARAMETRIC (new tunable -> Phase 7), (d) the expected mechanism of improvement.
+  RANK them. Do NOT propose parameter ranges for existing parameters -- that is the optimizer's
+  job. Do NOT propose more than 3."
+
+Expected shape of a good diagnosis: ">70% of returns from one regime -> add a regime filter
+(STRUCTURAL)"; "cost drag exceeds gross at realized turnover -> weekly rebalance (STRUCTURAL)";
+"winners' MAE p75 breaches the stop -> widen the stop to the MAE-derived level (PARAMETRIC, only
+with Section 11.6 backing)".
+
+**On completion (orchestrator does these):**
+- Write the improvement plan to `docs/agent-learnings/<strategy>/06b_improvements_round<N>.md`.
+- Route the TOP-ranked improvement: STRUCTURAL -> re-enter Phase 3 (implement) -> 4 -> 5 -> 6;
+  PARAMETRIC -> add the new tunable to the Phase 7 parameter set.
+- Increment the project-wide cumulative trial count (Section 9.4) -- see the guardrails.
+- Update TODO.md with the round number and the chosen improvement.
+
+**Guardrails (NON-NEGOTIABLE -- this loop is a researcher-degrees-of-freedom risk):**
+1. **Bounded: max 2 improvement rounds per strategy.** After 2 rounds that still do not clear
+   Phase 6/8, mark `[-]` NOT VIABLE -- the edge is not structurally there.
+2. **Every improvement round increments the project-wide trial count** feeding DSR (Section 9.4,
+   `output/experiments.duckdb`). Design iteration informed by seeing the results inflates the
+   effective trial count exactly like a parameter sweep does; the DSR that gates viability MUST
+   be penalized for it, or this loop silently manufactures false edges.
+3. **Each improvement is a pre-committed, falsifiable hypothesis** -- written to the round doc
+   BEFORE the re-backtest, never a post-hoc rationalization of whatever the next run shows.
+4. **Re-entry re-runs ALL integrity gates** (Section 2) and Phase 6 validation from scratch. An
+   improvement gets no pass on lookahead / cost / regime checks.
 
 ### Phase 7: Parameter optimization
 **Agent: backtest-optimizer** (self-writing)
@@ -401,7 +448,7 @@ Write validation notes to TODO.md. Update: `[x]` Validate.
 - Read validation report
 - Check: does 1.5x cost Sharpe stay above 0.5? Parameters stable at +/-10%? Regime robust?
 - Record final verdict in TODO.md with full reasoning
-- Verdict options: VIABLE (proceed to live paper trading) / MARGINAL (needs more work) / NOT VIABLE (archive)
+- Verdict options: VIABLE (proceed to live paper trading) / MARGINAL (-> Phase 6.5 for a structural improvement round, if any of the 2 rounds remain; else NOT VIABLE) / NOT VIABLE (archive)
 - Update TODO.md: `[x]` Final validation
 - Move to next strategy
 
