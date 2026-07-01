@@ -7,9 +7,14 @@ rolls within a lookahead window.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, timedelta
+from pathlib import Path
 
 from src.data.continuous_contract_loader import ContinuousContractDataLoader
+from src.data.futures.roll_calendar import RollCalendar, NoActiveContractError
+from src.utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 @dataclass(frozen=True)
@@ -24,8 +29,9 @@ class RollEvent:
 class FuturesRollManager:
     """Manages roll dates and active contract identification."""
 
-    def __init__(self) -> None:
+    def __init__(self, cache_dir: Path | None = None) -> None:
         self._loader = ContinuousContractDataLoader()
+        self._calendar = RollCalendar(cache_dir=cache_dir)
 
     def get_active_contract(self, root: str, d: date) -> str:
         """Return the active contract symbol for `root` on date `d`."""
@@ -40,13 +46,28 @@ class FuturesRollManager:
         today: date | None = None,
         lookahead_days: int = 14,
     ) -> list[RollEvent]:
-        """Predict rolls within lookahead_days.
+        """Return real roll events within [today, today + lookahead_days] for each root.
 
-        v1: returns empty list. True upcoming-roll prediction requires expiration
-        date lookup from futures_definitions and rule-based timing (volume
-        crossover heuristics or fixed-day-before-expiration). Out of scope here;
-        caller should consult the roll calendar manually for now.
+        Reads the built RollCalendar for each root and converts calendar
+        RollEvents (from_symbol/to_symbol) into roll_detector RollEvents
+        (root/from_contract/to_contract).
         """
         if today is None:
             today = date.today()
-        return []
+        horizon = today + timedelta(days=lookahead_days)
+        out: list[RollEvent] = []
+        for root in roots:
+            try:
+                events = self._calendar.roll_events(root)
+            except NoActiveContractError as e:
+                logger.debug(f"no roll calendar for {root}, skipping upcoming-rolls: {e}")
+                continue
+            for ev in events:
+                if today <= ev.roll_date <= horizon:
+                    out.append(RollEvent(
+                        root=root,
+                        roll_date=ev.roll_date,
+                        from_contract=ev.from_symbol,
+                        to_contract=ev.to_symbol,
+                    ))
+        return out

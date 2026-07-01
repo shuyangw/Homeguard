@@ -10,6 +10,7 @@ from src.data.futures.roll_calendar import (
     RollCalendar,
     RollEvent,
 )
+from src.data.roll_detector import FuturesRollManager
 
 
 def _day(n): return date(2024, 1, n)
@@ -85,3 +86,25 @@ def test_roll_calendar_roundtrip(tmp_path):
     assert cal.get_nth_by_cycle("GC", date(2024, 1, 15), 1).raw_symbol == "GCH4"
     assert cal.get_nth_by_oi("GC", date(2024, 1, 15), 1).raw_symbol == "GCJ4"
     assert cal.days_to_expiry("GC", date(2024, 1, 16)) == 42
+
+
+def test_upcoming_rolls_from_calendar(tmp_path, monkeypatch):
+    df = pl.DataFrame({
+        "date": [date(2024, 1, 24), date(2024, 1, 25), date(2024, 1, 26)],
+        "front_symbol": ["GCG4", "GCJ4", "GCJ4"],
+        "front_expiration": [date(2024, 2, 27)] * 3,
+        "front_activation": [date(2022, 3, 30)] * 3,
+        "next_cycle_symbol": ["GCH4", "GCK4", "GCK4"],
+        "next_oi_symbol": ["GCJ4", "GCM4", "GCM4"],
+        "dte_front": [34, 33, 32],
+        "roll_trigger": ["hold", "oi_crossover", "hold"],
+    })
+    df.write_parquet(tmp_path / "GC.parquet")
+    monkeypatch.setattr(
+        "src.data.roll_detector.roll_calendar_dir", lambda: tmp_path, raising=False,
+    )
+    mgr = FuturesRollManager(cache_dir=tmp_path)
+    rolls = mgr.get_upcoming_rolls(["GC"], today=date(2024, 1, 20), lookahead_days=14)
+    assert len(rolls) == 1
+    assert rolls[0].to_contract == "GCJ4"
+    assert rolls[0].roll_date == date(2024, 1, 25)
