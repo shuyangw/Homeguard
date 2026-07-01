@@ -91,8 +91,8 @@ SPECS: dict[str, ContractSpec] = {
     "KE": _s("KE", 50.0, 0.25, 12.5, "USD", "HKNUZ", "physical", 2),
     "ZL": _s("ZL", 600.0, 0.01, 6.0, "USD", "FHKNQUVZ", "physical", 2),
     "ZM": _s("ZM", 100.0, 0.1, 10.0, "USD", "FHKNQUVZ", "physical", 2),
-    "LE": _s("LE", 400.0, 0.00025, 10.0, "USD", "GJMQVZ", "physical", 2),
-    "HE": _s("HE", 400.0, 0.00025, 10.0, "USD", "GJKMNQVZ", "physical", 2),
+    "LE": _s("LE", 40000.0, 0.00025, 10.0, "USD", "GJMQVZ", "physical", 2),
+    "HE": _s("HE", 40000.0, 0.00025, 10.0, "USD", "GJKMNQVZ", "physical", 2),
     # Crypto -- cash settled (financial)
     "BTC": _s("BTC", 5.0, 5.0, 25.0, "USD", ALL, "financial", 0),
     "MBT": _s("MBT", 0.1, 5.0, 0.5, "USD", ALL, "financial", 0),

@@ -1,0 +1,271 @@
+# RAMP Variants Reference
+
+Canonical glossary of every named RAMP variant. Each entry links to code, spec, readiness report, and production status.
+
+## V01 -- baseline (fresh portfolio every rebalance)
+- **Code**: `src/research/ramp_phase4/variants.py::_variant_v01`
+- **Description**: Production REGIME_PARAMS; fresh portfolio every rebalance; ignores crash exposure.
+- **Status**: research baseline.
+
+## V03 -- V01 + planner-correct crash exposure
+- **Code**: `src/research/ramp_phase4/variants.py::_variant_v03`
+- **Description**: Same selection as V01 but honors planner's `exposure_pct` (1.0 normally, 0.5 in crash regimes).
+- **Spec**: `docs/superpowers/specs/2026-05-19-ramp-phase4-phaseB-harness.md`
+- **Report**: `docs/reports/ramp/20260522_phase4_v01_vs_v03_parity.md` (V03 worse than V01 net; turnover-control needed before V03 viable)
+- **Status**: archived; V03's crash-halving cuts gross more than it cuts turnover-cost.
+
+## V04 -- V01 + rank_buffer
+- **Code**: `src/research/ramp_phase4/variants.py::_variant_v04`
+- **Description**: Keeps currently-held names within `top_n + (top_n // 2)` rank buffer.
+- **Status**: research; subsumed by V11.
+
+## V05 -- V01 + min_hold
+- **Code**: `src/research/ramp_phase4/variants.py::_variant_v05`
+- **Description**: Protects positions younger than 5 trading days from forced exit.
+- **Status**: research; subsumed by V11.
+
+## V06 -- V01 + delta_rebalance_pct threshold
+- **Code**: `src/research/ramp_phase4/variants.py::_variant_v06` (uses `_variant_v01` plan_fn + `cfg.delta_rebalance_pct=0.02`)
+- **Description**: Skips trades smaller than 2% of NAV; full exits bypass the floor.
+- **Status**: research; subsumed by V11.
+
+## V11 -- combined turnover-lite
+- **Code**: `src/research/ramp_phase4/variants.py::_variant_v11`
+- **Description**: V01 base + rank_buffer (5-name buffer for top_n=10) + min_hold (5 trading days) + delta_threshold (2% via cfg).
+- **Spec**: `docs/superpowers/specs/2026-05-22-ramp-phase4-phaseC-wave1-design.md`
+- **Plan**: `docs/superpowers/plans/2026-05-22-ramp-phase4-phaseC-wave1.md`
+- **Readiness report**: `docs/reports/ramp/20260523_phase4_v11_readiness.md` (PARTIAL: passes PBO + lag-robustness, fails PSR + DSR; deployed to production paper)
+- **Status**: production paper (since 2026-05-23); Phase D paper validation in progress.
+
+## V12 -- V11 + per-regime position override
+- **Code**: `src/research/ramp_phase4/variants.py::_variant_v12`
+- **Description**: V11 base. On detector-BEAR days, returns cash (no equity exposure). On UNPREDICTABLE/SIDEWAYS days, defers to V11. Optional symmetric debouncing via `cfg.min_regime_days` (default 0, off).
+- **Spec**: `docs/superpowers/specs/2026-05-23-v12-bear-to-cash-design.md` (rev4 + rev4-followup)
+- **Plan**: `docs/superpowers/plans/2026-05-23-v12-bear-to-cash.md`
+- **Readiness report**: `docs/reports/ramp/20260524_phase4_v12_readiness.md`
+- **Readiness verdict (2026-05-24)**: **Tier 3 (diagnostic value)**. Structural gates PASS (PBO 0.39, lag-degradation, cost robustness). PSR (0.79) and DSR (0.54) FAIL on absolute significance. V12 near_close at 5 bps Sharpe = 0.268, materially below V11's 0.528 -- BEAR-to-cash hurts in near_close, helps in lag (V12 lag at 5 bps = 0.665, beats V11's 0.580). Detector-onset alignment shows mean -3.42 gap days between BEAR onset and SPY trough.
+- **Decision**: V12 NOT deployed to production paper. Per spec Tier 3 rule, escalate to WS-3 (regime detector improvement) as the higher-leverage path.
+- **Sensitivity findings (NOT gate-influencing)**: V12-up-cash (UNPREDICTABLE='cash') at Sharpe 0.586 beats V12 default and slightly beats V11. Motivated the **V12c readiness gate (Experiment 6, 2026-05-24)**; see V12c section below for the formal verdict.
+- **Status**: research; deployment deferred pending WS-3 + V12 re-run.
+
+## V12c -- V12 + UNPREDICTABLE also to cash
+
+- **Code**: `src/research/ramp_phase4/variants.py::_variant_v12` (same code as V12; differs only in `cfg.regime_positions[UNPREDICTABLE]='cash'`)
+- **Description**: V11 base. On detector-BEAR AND detector-UNPREDICTABLE days, returns cash. SIDEWAYS/STRONG_BULL/WEAK_BULL: V11 logic.
+- **Discovery context**: V12 readiness sensitivity (2026-05-24) showed V12-up-cash Sharpe 0.586 vs V12 default 0.268 (+0.32). Pre-readiness analysis: AMBIGUOUS (53.6% of attribution in top-3 events; COVID-dominant per E2 hand-inspection).
+- **Readiness report**: `docs/reports/ramp/20260526_phase4_v12c_readiness.md`
+- **Readiness verdict (2026-05-24)**: **TIER 4 -- BLOCKED**. PBO across the 7-variant set {V01,V04,V05,V06,V11,V12,V12c} = 0.7085 (>= 0.50 threshold, elevated overfitting risk) is the binding structural failure. PSR (0.9645) just clears the 0.95 floor, but DSR (0.8337, n_trials=23) fails. Gate 4 (lag-degradation) and Gate 5 (cost floor + V11 no-regress) both PASS. V12c Sharpe @ 5 bps near_close = 0.586; @ 5 bps one_day_lag = 0.850; @ 7.5 bps one_day_lag = 0.776 (>= 0.9 * V11 = 0.478).
+- **COVID-excluded subgroup**: Sharpe(V12c @ 5 bps near_close) = 0.5863 (full) vs 0.5714 (ex-COVID 2020-02-24 .. 2020-04-30) -- delta -0.0149 (2.5% magnitude). V12c's measured edge is NOT concentrated in COVID; the COVID-event story from E2 was about UNPREDICTABLE attribution specifically, but V12c's gross alpha is broadly distributed across the 2017-2026 window.
+- **Honesty discipline**: V12c was discovered from V12's sensitivity grid; DSR n_trials_project=23 (V12 used 22, V12c is trial #23). E2 hand-inspection returned AMBIGUOUS, COVID-event-dominant for UNPREDICTABLE attribution; this report's COVID-excluded panel shows the OVERALL V12c edge is not COVID-fragile, but the PBO failure remains the binding gate. Detector-onset alignment: 59 BEAR/UNPREDICTABLE onsets, mean gap_days -4.05 -- the detector fires ~4 trading days AFTER the SPY drawdown trough on average; V12c is still cashing around the recovery, not the crash.
+- **Status**: research; **deployment BLOCKED** (PBO structural fail). Recommend WS-3 (regime detector improvement) before any further V12-family iteration -- the detector-lag tax is the binding constraint underneath both V12 and V12c.
+
+## V12b -- reserved
+
+- **V12b** candidate: V12 with `min_regime_days > 0`. V12 readiness sensitivity (2026-05-24) at 5 bps near_close: deb-2=0.130 (worse than V12 default's 0.268), deb-3=0.315 (+0.05), deb-5=0.437 (+0.17). V12-deb-5 modestly beats V12 default but still under-performs V11 (0.528). Combined with the detector-lag finding (mean -3.42 gap_days), the lesson is "no debouncing value can recover what the detector misses." NOT motivated as a separate spec; deferred until WS-3 (detector improvement) lands.
+
+## V13-bear-invert -- V11 + BEAR onset goes to SPY 100%
+
+- **Code**: `src/research/ramp_phase4/variants.py::_variant_v13_bear_invert`
+- **Description**: V11 base. On detector-BEAR days, returns 100% SPY (single-name). Tests the BEAR-as-buy hypothesis discovered from V12's onset-alignment panel (mean gap_days = -3.42).
+- **Discovery context**: V12 readiness panel showed detector fires ~3.4 trading days AFTER the SPY drawdown trough across 59 events 2017-2026. V13 inverts the sign of V12's BEAR consumption.
+- **Readiness report**: `docs/reports/ramp/20260525_phase4_v13_readiness.md`
+- **Readiness verdict (2026-05-24)**: **TIER 4 -- BEAR-as-buy is spurious on this sample.** V13 @ 5bps near_close Sharpe = 0.400 vs V11's 0.528 (-0.128); V13 @ 5bps one_day_lag = 0.381 vs V11's 0.580 (-0.199). Gate 3 (PBO=0.629 across 7 variants) FAIL, Gate 5b (no-regress vs V11 @ 7.5bps lag: V13=0.308 vs 0.9*V11=0.478) FAIL, Gate 1 PSR (0.883) FAIL, Gate 2 DSR (0.707, n=23) FAIL. Gate 4 (lag-degradation, nc-lag=+0.019) and Gate 5a (cost-floor, 0.308>0.30) PASS. Detector-onset alignment: 59 BEAR onsets, mean gap_days -3.42 (matches V12 panel), mean SPY return during BEAR window = +0.18% -- positive but tiny, too small to overcome turnover cost relative to V11 holding momentum names that recover into the trough.
+- **Honesty discipline**: V13 was discovered from EXT-OOS inspection of V12's panel. DSR n_trials_project incremented (22 -> 23) to reflect V13's introduction. **NOT OOS in the strict sense**; forward OOS validation required before any deploy regardless of verdict.
+- **Status**: research; **NOT deployed**. Continue WS-3c roadmap (E3 produced WS-3c verdict; V13 spurious confirms BEAR-as-buy at single-asset SPY is not the lever).
+
+## V14 factorial (a/b/c) -- soft-score BEAR consumer
+
+The V14 factorial tests three actions for the same Schmitt-trigger BEAR_score consumer.
+- **Spec**: `docs/superpowers/specs/2026-05-24-v14-soft-bear-factorial-design.md`
+- **Open-questions resolution**: `docs/superpowers/specs/2026-05-24-v14-soft-bear-factorial-design-open-questions.md`
+- **Plan**: `docs/superpowers/plans/2026-05-24-v14-soft-bear-factorial.md`
+- **Pre-registered tau constants**: `config/research/v14_tau_constants.json` (G1_BEAR median; tau_in=0.5556, tau_out=0.4556)
+- **Readiness report**: `docs/reports/ramp/20260526_phase4_v14_factorial_readiness.md`
+
+### V14a-soft-bear-cash
+- **Code**: `src/research/ramp_phase4/variants.py::_variant_v14a_soft_bear_cash`
+- **Action when in_bear_soft_mode**: returns `PLAN_CASH_BEAR_SOFT` (sentinel; engine treats as zero exposure).
+- **Readiness verdict (2026-05-24)**: **TIER 4**. Sharpe @ 5 bps near_close = 0.6146 (delta vs V11 +0.0867, below +0.10 TIER 1 lift). Gate PBO 0.9528 is the binding structural failure; DSR 0.8175 also fails (n_trials=36).
+- **Status**: research; deployment BLOCKED.
+
+### V14b-soft-bear-spy
+- **Code**: `src/research/ramp_phase4/variants.py::_variant_v14b_soft_bear_spy`
+- **Action when in_bear_soft_mode**: returns `{SPY: 1.0, __regime__: BEAR_SOFT_SPY}` (single-name 100%).
+- **Readiness verdict (2026-05-24)**: **TIER 4**. Sharpe @ 5 bps near_close = 0.6035 (delta vs V11 +0.0757). Same structural failures (PBO 0.9528, DSR 0.8075).
+- **Status**: research; deployment BLOCKED.
+
+### V14c-soft-bear-dampen
+- **Code**: `src/research/ramp_phase4/variants.py::_variant_v14c_soft_bear_dampen`
+- **Action when in_bear_soft_mode**: V11 weights * cfg.soft_bear_dampen_factor (default 0.5).
+- **Readiness verdict (2026-05-24)**: **TIER 4**. Sharpe @ 5 bps near_close = 0.6131 (delta vs V11 +0.0852). Same structural failures (PBO 0.9528, DSR 0.8153).
+- **Status**: research; deployment BLOCKED.
+
+### Shared infrastructure
+- **State machine**: `engine.py::_engine_pre_variant_update_soft_bear` (Schmitt trigger; `>= tau_in` enters, strict `< tau_out` exits; NaN no transition).
+- **State field**: `HarnessState.in_bear_soft_mode: bool`.
+- **Tau pre-registration**: `scripts/diagnostics/compute_tau_in_from_g1.py` -> `config/research/v14_tau_constants.json`. G1 labeler pinned at commit `9c48245`.
+- **Plan sentinel**: `src/research/ramp_phase4/plans.py::_SentinelPlan` + `PLAN_CASH_BEAR_SOFT`.
+- **Detector freshness**: `MarketRegimeDetector.last_classification_timestamp` field; each V14 variant asserts on it (assertion propagates -- bare except removed in commit `9078633`).
+- **Honesty discipline**: DSR n_trials_project = 36 (audited count: V11+pre-V11 cohort 22 + V12+sensitivity 5 + V12c 1 + V13 1 + V14a/b/c 3 + V14a tau sens 2 + V14c dampen sens 2). Gate PBO over 8-variant set {V01, V11, V12, V12c-cfg, V13-bear-invert, V14a/b/c}; diagnostic PBO over 4 orthogonal {V01, V11, V12, V14a-soft-bear-cash}. NOT strict OOS -- tau derived from G1 median on the same 2017-2026 window (independent of E3's lead-time sweep -- no in-sample optimization on the gate window).
+
+### Joint diagnosis
+
+The V14 family's TIER 4 verdict combined with V12 (Tier 3) and V12c/V13 (Tier 4) closes the entire BEAR-consumer line: argmax (V12, V12c, V13) and soft-score (V14a/b/c) both fail. E3's soft-score lead (24 trading days at tau=0.3) is real but insufficient to overcome the multi-trial penalty + variant-family correlation (PBO 0.95). Detector lag (~3.4 days post-trough mean) is the binding constraint.
+
+### V14d+ reserved
+- **V14d** candidate: BEAR_score + UNPREDICTABLE_score joint Schmitt trigger. Requires E3-equivalent analysis on UNPREDICTABLE_score (lead-time, drawdown correlation) before spec. Deferred.
+
+## V13+ -- reserved
+- **V13** (claimed): see V13-bear-invert above. Variant code preserved for diagnostic continuity even though TIER 4.
+- **V14** (claimed): see V14 factorial above. All three V14a/b/c variant codes preserved for diagnostic continuity even though TIER 4.
+- **V15** candidate: per-regime strategy routing (RAMP for bull, OMR for sideways, etc.). Requires per-regime adapter layer; Phase 4 harness has no such abstraction.
+
+## V20+ -- WS-3d new-detector family (CLOSED 2026-06-02, TIER 4)
+
+**Closure verdict (2026-06-02)**: WS-3d officially HALTED after three failed
+Gate 1 retraining attempts. V20+ family closed at TIER 4 without any variant
+reaching readiness. The detector class `MarketRegimeDetectorV1` and the
+training pipeline (`scripts/diagnostics/train_detector_v1.py`) REMAIN in the
+codebase for diagnostic continuity; they are not deleted, just no longer
+active research targets. Closure session log:
+`docs/progress/20260524_RAMP_REGIME_DETECTOR_CAMPAIGN_CLOSURE.md`.
+
+**Three failed Gate 1 attempts**:
+- Round 1 (commit `f3c11c9`, G1_BEAR confirmation target, argmax-at-0.5):
+  H5 lag 21d vs v0 14d (-50% reduction). BLOCKED.
+- Round 2 (commit `146e5d2`, Amendment 6, Schmitt-tau-0.30 binding metric):
+  H5 lag 19.5d vs v0 2.0d (-875% reduction). BLOCKED. Surprise finding:
+  v0's rule-based `score_BEAR` is a fraction-of-criteria-met that fires on
+  day 1-2 of every drawdown at tau = 0.30; LightGBM's smooth posterior cannot
+  outpace this.
+- Round 3 (commit `e3c030d`, G1_BEAR.shift(-10) leading target):
+  H5 lag 11.0d at Schmitt-tau-0.30, 4/5 G4 events fired (missed
+  2025_dec_drawdown). Pre-registered round-3 criteria (<= 5d median AND
+  >= 5/5 events) both FAIL.
+
+**Root finding**: v0's rule-based score at Schmitt-tau-0.30 is essentially a
+1-2 day SMA-crossing alarm. Supervised ML models trained on G1_BEAR (a
+confirmation label) or G1_BEAR.shift(-10) (a leading target with worse class
+balance) produce smooth posteriors that take days to weeks to cross
+tau = 0.30. The V14a-level lag at tau_in = 0.5556 (the original "lag-
+structural finding" from V12/E8) is real but tau-specific, not a fundamental
+detector defect detector replacement can address with the same input class.
+
+The V20+ block is reserved for variants consuming the WS-3d replacement detector (`MarketRegimeDetectorV1`), trained via LightGBM on leading indicators (VIX/VIX3M, HY OAS, NYSE breadth, CBOE SKEW). Spec at `docs/superpowers/specs/2026-05-25-ws3d-detector-replacement-design.md`.
+
+**Trial-chain reset**: V20+ family starts at `n_trials_project = 1` (fresh chain), separate from the v0-detector family's 36-trial chain. The reset is justified on three independent grounds: new inputs (4 leading indicators absent from v0), new scoring (LightGBM probability vs hand-tuned threshold formula), new architecture (tree-based classifier vs rule-based scoring). The v0 family's chain is preserved in the experiment registry; the two families have separate n_trials counters.
+
+**E8 lag-structural verdict drove this**: V12 gap_days = -3.42 + diagnostic H5 = 14d SMA lag + E8 exit-to-low lag = -8d all converge on structural detector lag. Consumer-layer fixes (V12/V12c/V13 on argmax; V14a/b/c on soft scores) cannot recover days the detector itself missed. WS-3d replaces the detector, not the consumer pattern.
+
+### V20-rd-bear-cash (BLOCKED at WS-3d Gate 1; detector replacement halted before V20 variant readiness was tested)
+- **Code (planned, NOT implemented)**: `src/research/ramp_phase4/variants.py::_variant_v20_rd_bear_cash`
+- **Detector**: `src/strategies/advanced/market_regime_detector_v1.py::MarketRegimeDetectorV1` (class lives in codebase for diagnostic continuity)
+- **Action when in_bear_soft_mode**: returns `PLAN_CASH_BEAR_SOFT` (same sentinel as V14a; consumption pattern mirrors V14a for direct A/B comparison vs v0 family).
+- **Tau**: never pre-registered. Gate 1 BLOCKED before Gate 2 (tau registration).
+- **Status**: BLOCKED at WS-3d Gate 1; detector replacement halted before V20 variant readiness was tested. Variant code never landed.
+
+### V20b-rd-bear-spy (reserved; spec'd only if V20 primary passes)
+- Mirrors V14b. Only spec'd if V20-rd-bear-cash IS readiness + forward OOS pass. V14 factorial showed action convergence; the deferred V20b/c spec'ing checks whether the new detector breaks that convergence.
+
+### V20c-rd-bear-dampen (reserved; same gating as V20b)
+- Mirrors V14c. Same conditional spec rule.
+
+### V21 / V22 (open slots)
+- Reserved for future WS-3d-family variants (e.g., V20 with min-persistence overlay if Schmitt-trigger flickers persist, or a non-Schmitt consumer pattern on the new detector). No specific candidate yet.
+
+### V20+ family infrastructure
+- **New detector**: LightGBM classifier on G1_BEAR labels with purged combinatorial cross-validation. Input set: VIX/VIX3M ratio, HY OAS (FRED BAMLH0A0HYM2), NYSE breadth, CBOE SKEW, plus retained SPY/VIX for backwards-compat features.
+- **Validation gates** (sequential): Gate 0 data, Gate 1 diagnostic rerun (**H5 lag reduction >= 30%** required), Gate 2 tau registration, Gate 3 IS readiness, Gate 4 forward OOS (1+ month, Sharpe > 0), Gate 5 OMR audit (deployment-time only), Gate 6 deployment decision.
+- **Forward OOS mandatory**: no deployment recommendation without forward OOS regardless of IS verdicts. Minimum 21 trading days, ideally aligned with V11 A7 5-session standard.
+- **Backwards-compat**: V11-V14 consumers NOT migrated. v0 detector remains for existing variant family continuity. New detector is `MarketRegimeDetectorV1`; coexists with `MarketRegimeDetector`.
+
+### Joint diagnosis (cross-family)
+
+The v0-detector family closed exhaustively across all measured consumption
+axes: argmax (V12/V12c/V13) and soft-score (V14a/b/c). E8's lag-structural
+finding (consistent across V12, diagnostic, and E8 measurements) made WS-3d
+the evidence-driven track. The V20+ family was set up to test whether a
+structurally faster detector unlocks the +0.10 TIER 1 lift bar that the v0
+family could not clear despite a real +0.08 average soft-score Sharpe
+improvement.
+
+**Closure (2026-06-02)**: WS-3d was HALTED at Gate 1 after three failed
+retraining attempts (rounds 1-3 above). The lag-structural finding under
+Amendment 6's binding metric (Schmitt-tau-0.30) was reframed: v0 fires fast
+at tau = 0.30 (median 2.0d, 5/5 G4 events), and LightGBM on leading
+indicators -- even with a leading target G1_BEAR.shift(-10) -- cannot outpace
+v0's rule-based SMA-crossing criteria. The original "v0 is structurally
+late" finding from V12 (gap_days = -3.42) and E8 (exit-to-low = -8d) was
+tau-specific to V14a's tau_in = 0.5556, NOT a fundamental detector defect.
+
+The regime-aware-RAMP research line is closed under the current detector
+paradigm. The campaign produced 9 documented experiments + 3 WS-3d Gate 1
+rounds of permanent evidence about detector limits (see
+`docs/progress/20260524_RAMP_REGIME_DETECTOR_CAMPAIGN_CLOSURE.md`).
+`MarketRegimeDetectorV1` and the training pipeline remain in the codebase
+for diagnostic continuity; v0 detector and V11-V14 variants are unchanged.
+V11 paper validation continues independently. Future detector improvement
+would need to abandon the supervised classifier paradigm at the consumer
+threshold v0 already dominates (HMM with persistence in transition matrix,
+hand-crafted threshold ensemble on leading indicators, or a structurally
+different ground-truth labeler that fires before drawdowns).
+
+## Wave-3 signal-construction family (2026-06-01)
+
+After the regime-detector campaign closed (timing capped at +0.08 Sharpe), this
+family attacked **signal construction / stock selection** instead -- the lens the
+root-cause investigation (H2/H6/H8) pointed at but the campaign never tested. Each
+variant (except V02+V05) is "V11 with ONLY the ranking metric swapped." All run on
+clean split-adjusted SIP data via `scripts/backtest_scripts/ramp_phase4_wave3_readiness.py`.
+Family gate report: `docs/reports/ramp/20260601_wave3_family_gate.md`. Session log:
+`docs/progress/20260601_RAMP_WAVE3_SIGNAL_PROBE.md`.
+
+**Turnover note:** the legacy "V11 turnover 39%" figure used a different definition;
+measured through this runner, V11's annualized two-sided turnover is ~10,325% -- the
+same order as every Wave-3 variant. Compare turnover only runner-to-runner.
+
+### V26 -- z-score normalized score
+- **Code**: `src/research/ramp_phase4/variants.py::_variant_v26`
+- **Description**: V11 chain; ranking swapped to score = z(21d) - 1.0*z(5d), cross-sectional, winsorized 3 sigma. V27 bounded-penalty (lambda*max(0, z5-1.0)) folded in as an informational parameter, NOT a separate gate trial.
+- **Report**: `docs/reports/ramp/20260601_wave3_v26.md`
+- **Verdict (2026-06-01)**: TIE with V11 -- Sharpe 0.533 nc / 0.664 lag at 5 bps (+0.005 vs V11). PSR 0.947. **Cost gate FAILS at 7.5 bps (0.438).** V27 had zero effect. Not a clear advance.
+- **Status**: research; not advancing.
+
+### V28 -- multi-horizon momentum ensemble
+- **Code**: `src/research/ramp_phase4/variants.py::_variant_v28`
+- **Description**: V11 chain; ranking swapped to 0.5*ret_21d + 0.3*ret_63d + 0.2*ret_126d - 0.1*ret_5d (fixed weights, no grid search).
+- **Report**: `docs/reports/ramp/20260601_wave3_v28.md`
+- **Verdict (2026-06-01)**: **BEATS V11 -- TOP CANDIDATE.** Sharpe 0.811 nc / 0.851 lag at 5 bps (**+0.283** vs V11 0.528); PSR 0.993; max DD -42.0%; LOWEST turnover in family (5,264%, ~half of V11); cost gate PASS (0.766 at 7.5 bps). Beats V11 in all three sub-windows. Family DSR passes at n_trials <= 12 (Wave-3 reset), fails at >= 36. Family **PBO = 0.503** (binding -- selection time-period-unstable).
+- **Walk-forward verdict (2026-06-01): REJECT.** Report `docs/reports/ramp/20260601_wave3_walkforward.md`. Beats V11 in only **3/7** sequential OOS calendar-year windows (worst -0.496 in 2022 BEAR). Pooled OOS Sharpe 0.889 > V11 0.647, but the full-window edge is period-concentrated in 2023-2025 up-markets; being regime-free, V28 has no BEAR downside protection. Mean family rank 3.7/6, top-2 in only 14% of windows -- confirms the PBO 0.503 selection-instability finding.
+- **Status**: research; **REJECT on OOS robustness.** NOT graduating. V11 remains the deployed paper incumbent. (Lead worth noting: V28 signal + V11's regime-cash BEAR overlay -- a hybrid that pairs the better up-market signal with downside protection -- is an untested follow-up hypothesis.)
+
+### V31 -- beta-residual momentum
+- **Code**: `src/research/ramp_phase4/variants.py::_variant_v31`
+- **Description**: V11 chain; ranking swapped to residual 21d return after removing trailing 90d SPY beta. Directly attacks H6/H8 (BEAR high-beta lagged-winner losers, e.g. SMCI/ENPH/MU).
+- **Report**: `docs/reports/ramp/20260601_wave3_v31.md` (NOTE: an earlier in-session number of 0.307 was WRONG -- it ran on a corrupt legacy cache + an object-dtype `pct_change` bug; both fixed, re-run clean at the family gate).
+- **Verdict (2026-06-01)**: **BEATS V11 -- strong co-candidate.** Sharpe 0.769 (+0.241); **LOWEST max DD in family (-33.5%)**; PSR 0.990; cost gate PASS (0.702 at 7.5 bps). Beats V11 in all sub-windows.
+- **Status**: research; co-candidate for the V28 walk-forward (check V28/V31 correlation; if > 0.85 pick one via OOS Sharpe).
+
+### V33-core -- absolute-momentum cash gate (detector-free)
+- **Code**: `src/research/ramp_phase4/variants.py::_variant_v33_core`
+- **Description**: Regime-free; buy only names with ret_21d>0 AND ret_63d>0, top_n among survivors, cash residual when fewer qualify, + min_hold(5). Endogenous crash protection. Liquidity screen (volume / G0.3) deferred -- rejected on the close-only core.
+- **Report**: `docs/reports/ramp/20260601_wave3_v33-core.md`
+- **Verdict (2026-06-01)**: NOT ADVANCING. Sharpe 0.479 (-0.049 vs V11); **cost gate FAILS at 7.5 bps (0.372).** Cuts max DD (-52.4% vs V11 -66.2%) but halves CAGR doing it -- net-negative Sharpe trade. An asymmetric faster-re-entry gate might recover it.
+- **Status**: research; not advancing as-is.
+
+### V02+V05 -- vanilla momentum + min-hold (REGIME-FREE)
+- **Code**: `src/research/ramp_phase4/variants.py::_variant_v02_v05`
+- **Description**: RAMPSignals SIDEWAYS params (21/5), fixed top_n=10, NO regime switching, NO rank_buffer (minimal control), + min_hold(5). The H2 diagnostic: can the regime apparatus be dropped entirely?
+- **Report**: `docs/reports/ramp/20260601_wave3_v02+v05.md`
+- **Verdict (2026-06-01)**: **BEATS V11 -- Sharpe 0.683 (+0.155)**, most sub-window-consistent (graceful, not tail-driven). PSR 0.980; cost gate PASS (0.598). Family DSR FAILS at all n_trials (kurtosis 25.5). **Direct support for H2: regime-free beats regime-aware.**
+- **Status**: research; HOLD secondary -- valued as mechanism confirmation (H2) and to inform V28's parameter design more than as a standalone deployment candidate.
+
+### Wave-3 family verdict (2026-06-01)
+Three variants beat V11 materially (V28 +0.283, V31 +0.241, V02+V05 +0.155) and pass
+the 1.5x cost gate that **V11 itself fails** (0.452 at 7.5 bps). PSR clears for all three.
+The binding gate is **PBO = 0.503** (family selection is time-period-unstable), which
+makes a purged/embargoed walk-forward MANDATORY before any graduation. **V28 = HOLD ->
+walk-forward** (V31 co-candidate); null option (ship V11) rejected; V11 remains the
+deployed paper incumbent until V28 clears the walk-forward. Next gate: methodology
+Section 3 walk-forward, >= 3 rolling windows, purge 21d / embargo 2%, OOS/IS >= 0.70,
+every OOS sub-window must beat V11.

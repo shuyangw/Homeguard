@@ -33,3 +33,12 @@ def test_all_53_roots_present():
 def test_unknown_root_raises():
     with pytest.raises(KeyError):
         get_spec("XYZ")
+
+
+def test_tick_value_arithmetic_consistency():
+    # tick_value must equal multiplier * tick_size for every root (guards data-entry errors)
+    for root, s in SPECS.items():
+        assert s.tick_value == pytest.approx(s.multiplier * s.tick_size, abs=1e-6), (
+            f"{root}: multiplier {s.multiplier} * tick_size {s.tick_size} "
+            f"= {s.multiplier * s.tick_size}, but tick_value = {s.tick_value}"
+        )
