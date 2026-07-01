@@ -57,7 +57,7 @@ class TestFutures:
         assert triple == pytest.approx(3 * single)
 
     def test_unknown_raises(self) -> None:
-        with pytest.raises(ValueError, match="Unknown contract"):
+        with pytest.raises(KeyError, match="Unknown contract"):
             futures_round_trip_usd("XYZ")  # type: ignore[arg-type]
 
 
