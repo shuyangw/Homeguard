@@ -9,7 +9,7 @@ from src.data.carry_calculator import CarryCalculator
 
 
 def _write_pcm_fixture(root: Path, year: int, month: int, rows: list[dict]) -> None:
-    d = root / "futures_per_contract_1min" / f"year={year}" / f"month={month}"
+    d = root / "futures" / "databento" / "per_contract_1min" / f"year={year}" / f"month={month}"
     d.mkdir(parents=True, exist_ok=True)
     df = pl.DataFrame(rows).with_columns(
         pl.col("timestamp").cast(pl.Datetime("us", "UTC")),
@@ -37,7 +37,7 @@ def test_find_front_second_close(tmp_path, monkeypatch):
     ]
     _write_pcm_fixture(tmp_path, 2024, 6, rows)
     monkeypatch.setattr(
-        "src.data.carry_calculator._storage_root",
+        "src.data.futures.paths.get_local_storage_dir",
         lambda: tmp_path,
     )
     front_sym, front_c, second_sym, second_c = CarryCalculator()._find_front_second_close(
@@ -64,7 +64,7 @@ def test_compute_commodity(tmp_path, monkeypatch):
     ]
     _write_pcm_fixture(tmp_path, 2024, 6, rows)
     monkeypatch.setattr(
-        "src.data.carry_calculator._storage_root",
+        "src.data.futures.paths.get_local_storage_dir",
         lambda: tmp_path,
     )
     carry = CarryCalculator().compute("GC", "commodity", date(2024, 6, 3))
@@ -84,7 +84,7 @@ def test_compute_equity_index(tmp_path, monkeypatch):
     ]
     _write_pcm_fixture(tmp_path, 2024, 6, rows)
     monkeypatch.setattr(
-        "src.data.carry_calculator._storage_root",
+        "src.data.futures.paths.get_local_storage_dir",
         lambda: tmp_path,
     )
     carry = CarryCalculator().compute("ES", "equity_index", date(2024, 6, 3))
@@ -104,7 +104,7 @@ def test_compute_bond_micro_yield(tmp_path, monkeypatch):
     ]
     _write_pcm_fixture(tmp_path, 2024, 6, rows)
     monkeypatch.setattr(
-        "src.data.carry_calculator._storage_root",
+        "src.data.futures.paths.get_local_storage_dir",
         lambda: tmp_path,
     )
     # Stub SOFR derivation
@@ -129,7 +129,7 @@ def test_compute_bond_standard_returns_zero(tmp_path, monkeypatch):
     ]
     _write_pcm_fixture(tmp_path, 2024, 6, rows)
     monkeypatch.setattr(
-        "src.data.carry_calculator._storage_root",
+        "src.data.futures.paths.get_local_storage_dir",
         lambda: tmp_path,
     )
     carry = CarryCalculator().compute("ZN", "bond", date(2024, 6, 3))
@@ -151,7 +151,7 @@ def test_compute_history(tmp_path, monkeypatch):
         ])
     _write_pcm_fixture(tmp_path, 2024, 6, rows)
     monkeypatch.setattr(
-        "src.data.carry_calculator._storage_root",
+        "src.data.futures.paths.get_local_storage_dir",
         lambda: tmp_path,
     )
     hist = CarryCalculator().compute_history(

@@ -16,7 +16,7 @@ def test_class_importable():
 
 def _write_pcm_fixture(root: Path, year: int, month: int, rows: list[dict]) -> None:
     """Write a per-contract fixture parquet."""
-    d = root / "futures_per_contract_1min" / f"year={year}" / f"month={month}"
+    d = root / "futures" / "databento" / "per_contract_1min" / f"year={year}" / f"month={month}"
     d.mkdir(parents=True, exist_ok=True)
     df = pl.DataFrame(rows).with_columns(
         pl.col("timestamp").cast(pl.Datetime("us", "UTC")),
@@ -41,7 +41,7 @@ def test_active_contract_picks_highest_volume_outright(tmp_path, monkeypatch):
     ]
     _write_pcm_fixture(tmp_path, 2024, 6, rows)
     monkeypatch.setattr(
-        "src.data.continuous_contract_loader._storage_root",
+        "src.data.futures.paths.get_local_storage_dir",
         lambda: tmp_path,
     )
     loader = ContinuousContractDataLoader()
@@ -69,7 +69,7 @@ def test_detect_roll_dates(tmp_path, monkeypatch):
         })
     _write_pcm_fixture(tmp_path, 2024, 6, rows)
     monkeypatch.setattr(
-        "src.data.continuous_contract_loader._storage_root",
+        "src.data.futures.paths.get_local_storage_dir",
         lambda: tmp_path,
     )
     rolls = ContinuousContractDataLoader().detect_roll_dates(
@@ -80,7 +80,7 @@ def test_detect_roll_dates(tmp_path, monkeypatch):
 
 def test_load_raw_passthrough(tmp_path, monkeypatch):
     # Write minimal continuous .v.0 data
-    d = tmp_path / "futures_1min" / "symbol=ES" / "year=2024" / "month=6"
+    d = tmp_path / "futures" / "databento" / "1min" / "symbol=ES" / "year=2024" / "month=6"
     d.mkdir(parents=True)
     pl.DataFrame({
         "timestamp": [
@@ -98,7 +98,7 @@ def test_load_raw_passthrough(tmp_path, monkeypatch):
     ).write_parquet(d / "data.parquet")
 
     monkeypatch.setattr(
-        "src.data.continuous_contract_loader._storage_root",
+        "src.data.futures.paths.get_local_storage_dir",
         lambda: tmp_path,
     )
     df = ContinuousContractDataLoader().load("ES", method="raw")
@@ -108,7 +108,7 @@ def test_load_raw_passthrough(tmp_path, monkeypatch):
 
 def test_load_ratio_adjusted(tmp_path, monkeypatch):
     # Synthetic .v.0: 3 days. Roll on day 2 with a discontinuity 100 -> 110.
-    d = tmp_path / "futures_1min" / "symbol=ZZ" / "year=2024" / "month=1"
+    d = tmp_path / "futures" / "databento" / "1min" / "symbol=ZZ" / "year=2024" / "month=1"
     d.mkdir(parents=True)
     pl.DataFrame({
         "timestamp": [
@@ -137,7 +137,7 @@ def test_load_ratio_adjusted(tmp_path, monkeypatch):
     ]
     _write_pcm_fixture(tmp_path, 2024, 1, rows)
     monkeypatch.setattr(
-        "src.data.continuous_contract_loader._storage_root",
+        "src.data.futures.paths.get_local_storage_dir",
         lambda: tmp_path,
     )
     df = ContinuousContractDataLoader().load("ZZ", method="ratio_adjusted")
@@ -146,7 +146,7 @@ def test_load_ratio_adjusted(tmp_path, monkeypatch):
 
 
 def test_load_panama_adjusted(tmp_path, monkeypatch):
-    d = tmp_path / "futures_1min" / "symbol=YY" / "year=2024" / "month=1"
+    d = tmp_path / "futures" / "databento" / "1min" / "symbol=YY" / "year=2024" / "month=1"
     d.mkdir(parents=True)
     pl.DataFrame({
         "timestamp": [
@@ -173,7 +173,7 @@ def test_load_panama_adjusted(tmp_path, monkeypatch):
     ]
     _write_pcm_fixture(tmp_path, 2024, 1, rows)
     monkeypatch.setattr(
-        "src.data.continuous_contract_loader._storage_root",
+        "src.data.futures.paths.get_local_storage_dir",
         lambda: tmp_path,
     )
     df = ContinuousContractDataLoader().load("YY", method="panama_adjusted")
@@ -182,7 +182,7 @@ def test_load_panama_adjusted(tmp_path, monkeypatch):
 
 
 def test_aggregate_to_daily(tmp_path, monkeypatch):
-    d = tmp_path / "futures_1min" / "symbol=XX" / "year=2024" / "month=1"
+    d = tmp_path / "futures" / "databento" / "1min" / "symbol=XX" / "year=2024" / "month=1"
     d.mkdir(parents=True)
     # 3 minutes on day 1, 2 minutes on day 2
     pl.DataFrame({
@@ -203,7 +203,7 @@ def test_aggregate_to_daily(tmp_path, monkeypatch):
         pl.col("volume").cast(pl.UInt64),
     ).write_parquet(d / "data.parquet")
     monkeypatch.setattr(
-        "src.data.continuous_contract_loader._storage_root",
+        "src.data.futures.paths.get_local_storage_dir",
         lambda: tmp_path,
     )
     daily = ContinuousContractDataLoader().aggregate_to_daily("XX", method="raw")

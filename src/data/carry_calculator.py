@@ -12,6 +12,7 @@ from pathlib import Path
 import polars as pl
 
 from src.data.derivations.futures.sofr import derive_sofr
+from src.data.futures.paths import per_contract_1min_dir
 from src.settings import get_local_storage_dir
 
 
@@ -62,7 +63,7 @@ class CarryCalculator:
         Raises ValueError if fewer than 2 outright contracts have data on d.
         """
         pcm = (
-            _storage_root() / "futures_per_contract_1min"
+            per_contract_1min_dir()
             / f"year={d.year}" / f"month={d.month}" / "data.parquet"
         )
         if not pcm.exists():

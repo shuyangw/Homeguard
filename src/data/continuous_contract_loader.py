@@ -17,6 +17,7 @@ from pathlib import Path
 
 import polars as pl
 
+from src.data.futures.paths import continuous_1min_dir, per_contract_1min_dir
 from src.settings import get_local_storage_dir
 
 
@@ -48,7 +49,7 @@ class ContinuousContractDataLoader:
         """Return DataFrame with columns [date, active] for each trading day
         in [start, end] where `active` is the highest-volume outright contract
         of `root` on that day."""
-        pcm_root = _storage_root() / "futures_per_contract_1min"
+        pcm_root = per_contract_1min_dir()
         if not pcm_root.exists():
             return pl.DataFrame(schema={"date": pl.Date, "active": pl.String})
 
@@ -115,7 +116,7 @@ class ContinuousContractDataLoader:
         if method not in ("raw", "ratio_adjusted", "panama_adjusted"):
             raise ValueError(f"unknown method: {method}")
 
-        sym_dir = _storage_root() / "futures_1min" / f"symbol={root}"
+        sym_dir = continuous_1min_dir() / f"symbol={root}"
         files = sorted(sym_dir.rglob("data.parquet"))
         if not files:
             return pl.DataFrame()
