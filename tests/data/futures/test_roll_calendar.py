@@ -1,5 +1,6 @@
 from datetime import date
 
+import polars as pl
 import pytest
 
 from src.data.futures.roll_calendar import (
@@ -64,3 +65,23 @@ def test_missing_root_lookup_raises(tmp_path):
     cal = RollCalendar(cache_dir=tmp_path)   # empty cache
     with pytest.raises(NoActiveContractError):
         cal.get_front("GC", date(2024, 1, 15))
+
+
+def test_roll_calendar_roundtrip(tmp_path):
+    # Hand-write a 2-row calendar and confirm the lookup API reads it back.
+    df = pl.DataFrame({
+        "date": [date(2024, 1, 15), date(2024, 1, 16)],
+        "front_symbol": ["GCG4", "GCG4"],
+        "front_expiration": [date(2024, 2, 27), date(2024, 2, 27)],
+        "front_activation": [date(2022, 3, 30), date(2022, 3, 30)],
+        "next_cycle_symbol": ["GCH4", "GCH4"],
+        "next_oi_symbol": ["GCJ4", "GCJ4"],
+        "dte_front": [43, 42],
+        "roll_trigger": ["oi_crossover", "oi_crossover"],
+    })
+    df.write_parquet(tmp_path / "GC.parquet")
+    cal = RollCalendar(cache_dir=tmp_path)
+    assert cal.get_front("GC", date(2024, 1, 15)).raw_symbol == "GCG4"
+    assert cal.get_nth_by_cycle("GC", date(2024, 1, 15), 1).raw_symbol == "GCH4"
+    assert cal.get_nth_by_oi("GC", date(2024, 1, 15), 1).raw_symbol == "GCJ4"
+    assert cal.days_to_expiry("GC", date(2024, 1, 16)) == 42
