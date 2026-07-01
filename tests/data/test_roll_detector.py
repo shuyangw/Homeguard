@@ -9,7 +9,7 @@ from src.data.roll_detector import FuturesRollManager
 
 
 def _write_pcm_fixture(root: Path, year: int, month: int, rows: list[dict]) -> None:
-    d = root / "futures_per_contract_1min" / f"year={year}" / f"month={month}"
+    d = root / "futures" / "databento" / "per_contract_1min" / f"year={year}" / f"month={month}"
     d.mkdir(parents=True, exist_ok=True)
     df = pl.DataFrame(rows).with_columns(
         pl.col("timestamp").cast(pl.Datetime("us", "UTC")),
@@ -28,9 +28,9 @@ def test_get_active_contract(tmp_path, monkeypatch):
          "volume": 50_000, "symbol": "ESU4"},
     ]
     _write_pcm_fixture(tmp_path, 2024, 6, rows)
-    # The loader's _storage_root, which the wrapper calls into, must be patched.
+    # The loader reads via src.data.futures.paths -> get_local_storage_dir, must be patched.
     monkeypatch.setattr(
-        "src.data.continuous_contract_loader._storage_root",
+        "src.data.futures.paths.get_local_storage_dir",
         lambda: tmp_path,
     )
     mgr = FuturesRollManager()

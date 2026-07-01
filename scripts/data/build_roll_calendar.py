@@ -37,11 +37,39 @@ def _daterange(start: date, end: date):
 
 
 def _cycle_order_key(sym: str, root: str) -> tuple[int, int]:
-    """Sort key (year, month) for a raw contract symbol, for cycle ordering."""
+    """Sort key (year, month) for a raw contract symbol, for cycle ordering.
+
+    Robust to single- vs two-digit year encodings (e.g. GCG4 and GCG24 both
+    decode to 2024).
+    """
     suffix = sym[len(root):]
     month = _MONTH_CODES.index(suffix[0])
-    year = int(suffix[1:])
+    yd = suffix[1:]
+    if len(yd) == 1:
+        base = (date.today().year // 10) * 10
+        year = base + int(yd)
+        if year < date.today().year - 5:
+            year += 10
+    else:
+        base = (date.today().year // 100) * 100
+        year = base + int(yd)
     return (year, month)
+
+
+def _next_by_cycle(day_oi: dict[str, int], current_front: str, root: str, next_oi_fallback: str) -> str:
+    """Next contract after current_front in the root's LIQUID cycle order.
+
+    Off-cycle outrights (month code not in spec.cycle_months) are excluded.
+    Falls back to next_oi_fallback if current_front is not in the in-cycle set.
+    """
+    spec = get_spec(root)
+    in_cycle = [s for s in day_oi if len(s) > len(root) and s[len(root)] in spec.cycle_months]
+    by_cycle = sorted(in_cycle, key=lambda s: _cycle_order_key(s, root))
+    try:
+        fi = by_cycle.index(current_front)
+    except ValueError:
+        return next_oi_fallback
+    return by_cycle[fi + 1] if fi + 1 < len(by_cycle) else next_oi_fallback
 
 
 def build_root(root: str, start: date, end: date) -> pl.DataFrame:
@@ -87,13 +115,8 @@ def build_root(root: str, start: date, end: date) -> pl.DataFrame:
         # next-by-oi: 2nd highest OI outright
         ranked = sorted(day_oi, key=day_oi.get, reverse=True)
         next_oi = ranked[1] if len(ranked) > 1 else ranked[0]
-        # next-by-cycle: next expiry after front in cycle order among present contracts
-        by_cycle = sorted(day_oi, key=lambda s: _cycle_order_key(s, root))
-        try:
-            fi = by_cycle.index(current_front)
-            next_cycle = by_cycle[fi + 1] if fi + 1 < len(by_cycle) else next_oi
-        except ValueError:
-            next_cycle = next_oi
+        # next-by-cycle: next expiry after front in the liquid cycle, among present contracts
+        next_cycle = _next_by_cycle(day_oi, current_front, root, next_oi)
         exp = expirations.get(current_front)
         if exp is None:
             try:

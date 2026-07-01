@@ -12,7 +12,7 @@ from src.trading.brokers.interfaces.base import OrderSide
 
 
 def _write_pcm_fixture(root: Path, year: int, month: int, rows: list[dict]) -> None:
-    d = root / "futures_per_contract_1min" / f"year={year}" / f"month={month}"
+    d = root / "futures" / "databento" / "per_contract_1min" / f"year={year}" / f"month={month}"
     d.mkdir(parents=True, exist_ok=True)
     df = pl.DataFrame(rows).with_columns(
         pl.col("timestamp").cast(pl.Datetime("us", "UTC")),
@@ -33,7 +33,7 @@ def test_resolve_active_contract_returns_volume_leader(tmp_path, monkeypatch):
     ]
     _write_pcm_fixture(tmp_path, 2024, 6, rows)
     monkeypatch.setattr(
-        "src.data.continuous_contract_loader._storage_root",
+        "src.data.futures.paths.get_local_storage_dir",
         lambda: tmp_path,
     )
     res = FuturesSymbolResolver().resolve_active_contract("ES", date(2024, 6, 3))
@@ -54,7 +54,7 @@ def test_resolve_for_order_accepts_continuous_intent(tmp_path, monkeypatch):
     ]
     _write_pcm_fixture(tmp_path, 2024, 6, rows)
     monkeypatch.setattr(
-        "src.data.continuous_contract_loader._storage_root",
+        "src.data.futures.paths.get_local_storage_dir",
         lambda: tmp_path,
     )
     order = FuturesSymbolResolver().resolve_for_order(
@@ -123,7 +123,7 @@ def test_resolve_for_order_populates_expiration_when_loader_provided(
     }]).write_parquet(defs_dir / "data.parquet")
 
     monkeypatch.setattr(
-        "src.data.continuous_contract_loader._storage_root", lambda: tmp_path,
+        "src.data.futures.paths.get_local_storage_dir", lambda: tmp_path,
     )
 
     loader = FuturesDefinitionsLoader(storage_root=tmp_path)
@@ -146,7 +146,7 @@ def test_resolve_for_order_expiration_is_none_without_loader(
     ]
     _write_pcm_fixture(tmp_path, 2024, 6, rows)
     monkeypatch.setattr(
-        "src.data.continuous_contract_loader._storage_root", lambda: tmp_path,
+        "src.data.futures.paths.get_local_storage_dir", lambda: tmp_path,
     )
     order = FuturesSymbolResolver().resolve_for_order(
         strategy_intent="ES.v.0", side=OrderSide.BUY, quantity=1,
@@ -167,7 +167,7 @@ def test_resolve_for_order_caches_intra_session(tmp_path, monkeypatch):
     ]
     _write_pcm_fixture(tmp_path, 2024, 6, rows)
     monkeypatch.setattr(
-        "src.data.continuous_contract_loader._storage_root",
+        "src.data.futures.paths.get_local_storage_dir",
         lambda: tmp_path,
     )
     resolver = FuturesSymbolResolver()

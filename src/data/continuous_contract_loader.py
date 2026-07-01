@@ -18,12 +18,6 @@ from pathlib import Path
 import polars as pl
 
 from src.data.futures.paths import continuous_1min_dir, per_contract_1min_dir
-from src.settings import get_local_storage_dir
-
-
-def _storage_root() -> Path:
-    return get_local_storage_dir()
-
 
 # CME month codes: F=Jan G=Feb H=Mar J=Apr K=May M=Jun N=Jul Q=Aug U=Sep V=Oct X=Nov Z=Dec
 _MONTH_CODES = "FGHJKMNQUVXZ"
