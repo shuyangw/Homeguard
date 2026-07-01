@@ -10,6 +10,7 @@ from pathlib import Path
 import polars as pl
 
 from src.data.derivations.futures import sofr as sofr_module, yields as yields_module
+from src.data.futures.paths import continuous_1min_dir, definitions_dir, per_contract_1min_dir
 from src.data.validation.core.base import BaseCheck
 from src.data.validation.core.result import Severity, ValidationResult
 from src.settings import get_local_storage_dir
@@ -31,7 +32,7 @@ def _result(name: str, severity: Severity, passed: bool,
 
 
 def _load_continuous(symbol: str) -> pl.DataFrame:
-    sym_dir = _storage_root() / "futures_1min" / f"symbol={symbol}"
+    sym_dir = continuous_1min_dir() / f"symbol={symbol}"
     files = list(sym_dir.rglob("data.parquet"))
     if not files:
         return pl.DataFrame()
@@ -46,9 +47,8 @@ class DefinitionsCompletenessCheck(BaseCheck):
 
     def run(self) -> ValidationResult:
         t0 = time.time()
-        root = _storage_root()
-        pcm = root / "futures_per_contract_1min"
-        defs = root / "futures_definitions"
+        pcm = per_contract_1min_dir()
+        defs = definitions_dir()
         if not pcm.exists() or not defs.exists():
             return _result(
                 self.name, Severity.CRITICAL, False,

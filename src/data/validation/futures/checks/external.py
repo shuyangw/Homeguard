@@ -8,6 +8,7 @@ from pathlib import Path
 
 import polars as pl
 
+from src.data.futures.paths import continuous_1min_dir
 from src.data.validation.core.base import BaseCheck
 from src.data.validation.core.result import Severity, ValidationResult
 from src.data.validation.futures.expectations import KNOWN_EVENTS
@@ -67,7 +68,7 @@ class YfinanceCrossCheck(BaseCheck):
                 t0,
             )
         # Compare against our ES continuous; sample every 20th day
-        es_dir = _storage_root() / "futures_1min" / "symbol=ES"
+        es_dir = continuous_1min_dir() / "symbol=ES"
         diffs: list[float] = []
         for date_idx in yf_data.index[::20]:
             date_obj = date_idx.date() if hasattr(date_idx, "date") else date_idx
@@ -138,10 +139,9 @@ class KnownEventsCheck(BaseCheck):
 
     def run(self) -> ValidationResult:
         t0 = time.time()
-        root = _storage_root()
         issues: list[tuple[str, str, str]] = []
         for d, (sym, desc) in KNOWN_EVENTS.items():
-            month_dir = root / "futures_1min" / f"symbol={sym}" / f"year={d.year}" / f"month={d.month}"
+            month_dir = continuous_1min_dir() / f"symbol={sym}" / f"year={d.year}" / f"month={d.month}"
             f = month_dir / "data.parquet"
             if not f.exists():
                 issues.append((str(d), sym, "month partition missing"))
@@ -181,9 +181,8 @@ class ZnVs10YCorrelationCheck(BaseCheck):
 
     def run(self) -> ValidationResult:
         t0 = time.time()
-        root = _storage_root()
-        zn_dir = root / "futures_1min" / "symbol=ZN"
-        y10_dir = root / "futures_1min" / "symbol=10Y"
+        zn_dir = continuous_1min_dir() / "symbol=ZN"
+        y10_dir = continuous_1min_dir() / "symbol=10Y"
         if not zn_dir.exists() or not y10_dir.exists():
             return _result(
                 self.name, Severity.WARNING, False,

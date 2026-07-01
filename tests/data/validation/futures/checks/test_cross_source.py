@@ -14,7 +14,7 @@ from src.data.validation.futures.checks.cross_source import (
 
 def test_definitions_completeness_pass(tmp_path: Path, monkeypatch):
     # per-contract has ESH4; definitions also has ESH4
-    pcm = tmp_path / "futures_per_contract_1min" / "year=2024" / "month=3"
+    pcm = tmp_path / "futures" / "databento" / "per_contract_1min" / "year=2024" / "month=3"
     pcm.mkdir(parents=True)
     pl.DataFrame({
         "timestamp": [datetime(2024, 3, 15, tzinfo=timezone.utc)],
@@ -25,7 +25,7 @@ def test_definitions_completeness_pass(tmp_path: Path, monkeypatch):
         pl.col("volume").cast(pl.UInt64),
     ).write_parquet(pcm / "data.parquet")
 
-    defs = tmp_path / "futures_definitions" / "year=2024" / "month=3"
+    defs = tmp_path / "futures" / "definitions" / "year=2024" / "month=3"
     defs.mkdir(parents=True)
     pl.DataFrame({
         "timestamp": [datetime(2024, 3, 1, tzinfo=timezone.utc)],
@@ -37,7 +37,7 @@ def test_definitions_completeness_pass(tmp_path: Path, monkeypatch):
     ).write_parquet(defs / "data.parquet")
 
     monkeypatch.setattr(
-        "src.data.validation.futures.checks.cross_source._storage_root",
+        "src.data.futures.paths.get_local_storage_dir",
         lambda: tmp_path,
     )
     r = DefinitionsCompletenessCheck().run()
@@ -45,7 +45,7 @@ def test_definitions_completeness_pass(tmp_path: Path, monkeypatch):
 
 
 def test_definitions_completeness_critical_when_missing(tmp_path: Path, monkeypatch):
-    pcm = tmp_path / "futures_per_contract_1min" / "year=2024" / "month=3"
+    pcm = tmp_path / "futures" / "databento" / "per_contract_1min" / "year=2024" / "month=3"
     pcm.mkdir(parents=True)
     pl.DataFrame({
         "timestamp": [datetime(2024, 3, 15, tzinfo=timezone.utc)],
@@ -56,7 +56,7 @@ def test_definitions_completeness_critical_when_missing(tmp_path: Path, monkeypa
         pl.col("volume").cast(pl.UInt64),
     ).write_parquet(pcm / "data.parquet")
 
-    defs = tmp_path / "futures_definitions" / "year=2024" / "month=3"
+    defs = tmp_path / "futures" / "definitions" / "year=2024" / "month=3"
     defs.mkdir(parents=True)
     pl.DataFrame({
         "timestamp": [datetime(2024, 3, 1, tzinfo=timezone.utc)],
@@ -68,7 +68,7 @@ def test_definitions_completeness_critical_when_missing(tmp_path: Path, monkeypa
     ).write_parquet(defs / "data.parquet")
 
     monkeypatch.setattr(
-        "src.data.validation.futures.checks.cross_source._storage_root",
+        "src.data.futures.paths.get_local_storage_dir",
         lambda: tmp_path,
     )
     r = DefinitionsCompletenessCheck().run()

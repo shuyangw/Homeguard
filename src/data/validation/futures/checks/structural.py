@@ -9,6 +9,7 @@ from pathlib import Path
 
 import polars as pl
 
+from src.data.futures.paths import continuous_1min_dir
 from src.data.validation.core.base import BaseCheck
 from src.data.validation.core.result import Severity, ValidationResult
 from src.data.validation.futures.expectations import EXPECTED_SCHEMAS
@@ -112,7 +113,7 @@ class FileCountPerSymbolCheck(BaseCheck):
     def run(self) -> ValidationResult:
         from src.data.validation.futures.expectations import LISTING_DATES
         t0 = time.time()
-        root = _storage_root() / "futures_1min"
+        root = continuous_1min_dir()
         if not root.exists():
             return _now_result(
                 self.name, self.layer, Severity.CRITICAL, False,

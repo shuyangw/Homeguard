@@ -10,6 +10,7 @@ from pathlib import Path
 import polars as pl
 
 from src.data.derivations.futures import sofr as sofr_module, yields as yields_module
+from src.data.futures.paths import continuous_1min_dir
 from src.data.validation.core.base import BaseCheck
 from src.data.validation.core.result import Severity, ValidationResult
 from src.data.validation.futures.expectations import (
@@ -36,7 +37,7 @@ def _now_result(name: str, severity: Severity, passed: bool,
 
 
 def _load_continuous(symbol: str) -> pl.DataFrame:
-    sym_dir = _storage_root() / "futures_1min" / f"symbol={symbol}"
+    sym_dir = continuous_1min_dir() / f"symbol={symbol}"
     files = list(sym_dir.rglob("data.parquet"))
     if not files:
         return pl.DataFrame()

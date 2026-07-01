@@ -17,7 +17,10 @@ from src.data.validation.futures.checks.statistical import (
 
 
 def _write_es_month(root: Path, year: int, month: int, n_bars_per_day: int):
-    es_dir = root / "futures_1min" / "symbol=ES" / f"year={year}" / f"month={month}"
+    es_dir = (
+        root / "futures" / "databento" / "1min" / "symbol=ES"
+        / f"year={year}" / f"month={month}"
+    )
     es_dir.mkdir(parents=True, exist_ok=True)
     rows = []
     for day in range(1, 6):  # 5 trading days
@@ -38,7 +41,7 @@ def _write_es_month(root: Path, year: int, month: int, n_bars_per_day: int):
 def test_density_check_pass(tmp_path: Path, monkeypatch):
     _write_es_month(tmp_path, 2024, 6, n_bars_per_day=900)
     monkeypatch.setattr(
-        "src.data.validation.futures.checks.statistical._storage_root",
+        "src.data.futures.paths.get_local_storage_dir",
         lambda: tmp_path,
     )
     result = DensityCheck(symbol="ES").run()
@@ -50,7 +53,7 @@ def test_density_check_critical_when_far_below(tmp_path: Path, monkeypatch):
     _write_es_month(tmp_path, 2024, 6, n_bars_per_day=7)
     # Use ES symbol but expectations.EXPECTED_DENSITY says ES is (800, 1000)
     monkeypatch.setattr(
-        "src.data.validation.futures.checks.statistical._storage_root",
+        "src.data.futures.paths.get_local_storage_dir",
         lambda: tmp_path,
     )
     result = DensityCheck(symbol="ES").run()
@@ -61,7 +64,7 @@ def test_density_check_critical_when_far_below(tmp_path: Path, monkeypatch):
 def test_ohlcv_invariants_pass(tmp_path: Path, monkeypatch):
     _write_es_month(tmp_path, 2024, 6, n_bars_per_day=10)
     monkeypatch.setattr(
-        "src.data.validation.futures.checks.statistical._storage_root",
+        "src.data.futures.paths.get_local_storage_dir",
         lambda: tmp_path,
     )
     r = OhlcvInvariantsCheck(symbol="ES").run()
@@ -69,7 +72,7 @@ def test_ohlcv_invariants_pass(tmp_path: Path, monkeypatch):
 
 
 def test_ohlcv_invariants_fail_on_low_above_high(tmp_path: Path, monkeypatch):
-    es_dir = tmp_path / "futures_1min" / "symbol=ES" / "year=2024" / "month=6"
+    es_dir = tmp_path / "futures" / "databento" / "1min" / "symbol=ES" / "year=2024" / "month=6"
     es_dir.mkdir(parents=True)
     df = pl.DataFrame({
         "timestamp": [datetime(2024, 6, 17, 13, 0, tzinfo=timezone.utc)],
@@ -81,7 +84,7 @@ def test_ohlcv_invariants_fail_on_low_above_high(tmp_path: Path, monkeypatch):
     )
     df.write_parquet(es_dir / "data.parquet")
     monkeypatch.setattr(
-        "src.data.validation.futures.checks.statistical._storage_root",
+        "src.data.futures.paths.get_local_storage_dir",
         lambda: tmp_path,
     )
     r = OhlcvInvariantsCheck(symbol="ES").run()
@@ -90,7 +93,7 @@ def test_ohlcv_invariants_fail_on_low_above_high(tmp_path: Path, monkeypatch):
 
 
 def test_date_floor_check_pass(tmp_path: Path, monkeypatch):
-    es_dir = tmp_path / "futures_1min" / "symbol=ES" / "year=2010" / "month=6"
+    es_dir = tmp_path / "futures" / "databento" / "1min" / "symbol=ES" / "year=2010" / "month=6"
     es_dir.mkdir(parents=True)
     df = pl.DataFrame({
         "timestamp": [datetime(2010, 6, 6, 13, 0, tzinfo=timezone.utc)],
@@ -102,7 +105,7 @@ def test_date_floor_check_pass(tmp_path: Path, monkeypatch):
     )
     df.write_parquet(es_dir / "data.parquet")
     monkeypatch.setattr(
-        "src.data.validation.futures.checks.statistical._storage_root",
+        "src.data.futures.paths.get_local_storage_dir",
         lambda: tmp_path,
     )
     r = DateFloorCheck().run()
