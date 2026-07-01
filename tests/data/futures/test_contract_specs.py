@@ -42,3 +42,15 @@ def test_tick_value_arithmetic_consistency():
             f"{root}: multiplier {s.multiplier} * tick_size {s.tick_size} "
             f"= {s.multiplier * s.tick_size}, but tick_value = {s.tick_value}"
         )
+
+
+def test_margin_fields_present_and_ordered():
+    from src.data.futures.contract_specs import SPECS
+    for root, s in SPECS.items():
+        assert s.initial_margin > 0, f"{root} initial_margin not positive"
+        assert 0 < s.maintenance_margin <= s.initial_margin, f"{root} maintenance>{root} initial"
+
+
+def test_micro_margin_below_full():
+    from src.data.futures.contract_specs import get_spec
+    assert get_spec("MES").initial_margin < get_spec("ES").initial_margin
