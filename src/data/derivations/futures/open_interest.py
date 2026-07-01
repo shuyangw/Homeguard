@@ -95,3 +95,47 @@ def aggregate_open_interest(symbol_root: str, d: date) -> int:
         .agg(pl.col("quantity").last().alias("oi"))
     )
     return int(latest["oi"].sum())
+
+
+def per_contract_open_interest(symbol_root: str, d: date) -> dict[str, int]:
+    """Return {contract_symbol: end-of-day OI} for each outright of `root` on `d`.
+
+    Unlike aggregate_open_interest (which sums), this preserves per-contract OI
+    so the roll calendar can detect the front-to-back OI crossover.
+
+    Raises:
+        FileNotFoundError: If the statistics partition for the date is missing.
+    """
+    path = (
+        statistics_dir()
+        / f"year={d.year}"
+        / f"month={d.month}"
+        / "data.parquet"
+    )
+    if not path.exists():
+        raise FileNotFoundError(f"futures_statistics partition not found: {path}")
+
+    df = (
+        pl.scan_parquet(path)
+        .filter(pl.col("stat_type") == STAT_TYPE_OPEN_INTEREST)
+        .filter(pl.col("timestamp").dt.date() == d)
+        .select("symbol", "timestamp", "quantity")
+        .collect()
+    )
+    if df.is_empty():
+        return {}
+
+    df = df.filter(
+        pl.col("symbol").map_elements(
+            lambda s: _is_outright(s, symbol_root), return_dtype=pl.Boolean,
+        )
+    )
+    if df.is_empty():
+        return {}
+
+    latest = (
+        df.sort("timestamp")
+        .group_by("symbol")
+        .agg(pl.col("quantity").last().alias("oi"))
+    )
+    return {row["symbol"]: int(row["oi"]) for row in latest.iter_rows(named=True)}

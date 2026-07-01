@@ -9,7 +9,10 @@ from src.data.futures.paths import per_contract_1min_dir
 from src.data.carry_calculator import CarryCalculator
 from src.data.continuous_contract_loader import ContinuousContractDataLoader
 from src.data.futures_definitions_loader import FuturesDefinitionsLoader
-from src.data.derivations.futures.open_interest import aggregate_open_interest
+from src.data.derivations.futures.open_interest import (
+    aggregate_open_interest,
+    per_contract_open_interest,
+)
 
 
 def _data_present() -> bool:
@@ -52,6 +55,16 @@ def test_aggregate_oi_positive_for_gc():
     # published OI stat and confirms the statistics path repoint works.
     oi = aggregate_open_interest("GC", date(2024, 1, 16))
     assert oi > 0, "aggregate OI zero -> statistics path still broken"
+
+
+def test_per_contract_oi_ranks_gc_front():
+    # 2024-01-16: 2024-01-15 is MLK Day, no published OI stat
+    oi = per_contract_open_interest("GC", date(2024, 1, 16))
+    assert oi, "no per-contract OI returned"
+    # front (most-liquid) should be a real GC contract with positive OI
+    top = max(oi, key=oi.get)
+    assert top.startswith("GC") and "-" not in top
+    assert oi[top] > 0
 
 
 def test_compute_history_raises_when_dataset_dir_missing(monkeypatch, tmp_path):
