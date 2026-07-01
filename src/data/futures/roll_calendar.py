@@ -146,7 +146,9 @@ class RollCalendar:
     """Lookup API over cached per-root roll calendars.
 
     Cache schema (futures/roll_calendar/{root}.parquet): one row per date with
-    [date, front_symbol, next_cycle_symbol, next_oi_symbol, dte_front].
+    [date, front_symbol, front_expiration, front_activation, next_cycle_symbol,
+    next_oi_symbol, dte_front]. The roll_trigger column is optional (used by
+    roll_events() with default "oi_crossover" if absent).
     """
 
     def __init__(self, cache_dir: Path | None = None) -> None:
