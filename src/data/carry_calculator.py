@@ -14,7 +14,9 @@ import polars as pl
 from src.data.derivations.futures.sofr import derive_sofr
 from src.data.futures.paths import per_contract_1min_dir
 from src.settings import get_local_storage_dir
+from src.utils.logger import get_logger
 
+logger = get_logger(__name__)
 
 _MONTH_CODES = "FGHJKMNQUVXZ"
 
@@ -145,14 +147,21 @@ class CarryCalculator:
         Skips dates where the underlying data lookup fails (weekends, holidays,
         missing data). Returns DataFrame with columns [date, carry].
         """
+        pcm_dir = per_contract_1min_dir()
+        if not pcm_dir.exists():
+            raise FileNotFoundError(
+                f"per-contract futures store missing: {pcm_dir} "
+                f"-- carry cannot be computed"
+            )
+
         records: list[dict] = []
         d = start
         while d <= end:
             try:
                 c = self.compute(root, asset_class, d)
                 records.append({"date": d, "carry": c})
-            except (ValueError, FileNotFoundError, NotImplementedError):
-                pass  # skip dates with no data
+            except (ValueError, FileNotFoundError, NotImplementedError) as e:
+                logger.debug(f"skip {root} carry on {d}: {e}")
             d += timedelta(days=1)
         if not records:
             return pl.DataFrame(schema={"date": pl.Date, "carry": pl.Float64})

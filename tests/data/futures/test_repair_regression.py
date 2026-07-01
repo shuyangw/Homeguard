@@ -52,3 +52,13 @@ def test_aggregate_oi_positive_for_gc():
     # published OI stat and confirms the statistics path repoint works.
     oi = aggregate_open_interest("GC", date(2024, 1, 16))
     assert oi > 0, "aggregate OI zero -> statistics path still broken"
+
+
+def test_compute_history_raises_when_dataset_dir_missing(monkeypatch, tmp_path):
+    # Point the per-contract dir at an empty tmp dir -> whole dataset missing.
+    monkeypatch.setattr(
+        "src.data.carry_calculator.per_contract_1min_dir",
+        lambda: tmp_path / "does_not_exist",
+    )
+    with pytest.raises(FileNotFoundError):
+        CarryCalculator().compute_history("GC", "commodity", date(2024, 1, 8), date(2024, 1, 20))

@@ -5,15 +5,11 @@ import polars as pl
 import pytest
 
 from src.data.continuous_contract_loader import ContinuousContractDataLoader
-from src.settings import get_local_storage_dir
 
 
 def _local_data_available() -> bool:
-    root = get_local_storage_dir()
-    return (
-        (root / "futures_1min" / "symbol=ES").exists()
-        and (root / "futures_per_contract_1min").exists()
-    )
+    from src.data.futures.paths import continuous_1min_dir, per_contract_1min_dir
+    return (continuous_1min_dir() / "symbol=ES").exists() and per_contract_1min_dir().exists()
 
 
 @pytest.mark.skipif(not _local_data_available(), reason="local futures store not present")
