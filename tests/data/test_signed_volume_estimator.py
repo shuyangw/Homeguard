@@ -10,7 +10,7 @@ from src.data.signed_volume_estimator import estimate_signed_volume_from_bars
 def test_signed_volume_tick_rule(tmp_path, monkeypatch):
     """Up bars (close > prior close) -> positive signed volume.
     Down bars -> negative. First bar of the day: no prior -> 0."""
-    d = tmp_path / "futures_1min" / "symbol=ES" / "year=2024" / "month=6"
+    d = tmp_path / "futures" / "databento" / "1min" / "symbol=ES" / "year=2024" / "month=6"
     d.mkdir(parents=True)
     pl.DataFrame({
         "timestamp": [
@@ -30,7 +30,7 @@ def test_signed_volume_tick_rule(tmp_path, monkeypatch):
     ).write_parquet(d / "data.parquet")
 
     monkeypatch.setattr(
-        "src.data.signed_volume_estimator._storage_root",
+        "src.data.futures.paths.get_local_storage_dir",
         lambda: tmp_path,
     )
     df = estimate_signed_volume_from_bars("ES", date(2024, 6, 3))
@@ -48,7 +48,7 @@ def test_signed_volume_tick_rule(tmp_path, monkeypatch):
 def test_signed_volume_missing_data_returns_empty(tmp_path, monkeypatch):
     """If no data file for the date, return empty DataFrame."""
     monkeypatch.setattr(
-        "src.data.signed_volume_estimator._storage_root",
+        "src.data.futures.paths.get_local_storage_dir",
         lambda: tmp_path,
     )
     df = estimate_signed_volume_from_bars("ES", date(2024, 6, 3))
@@ -58,7 +58,7 @@ def test_signed_volume_missing_data_returns_empty(tmp_path, monkeypatch):
 def test_signed_volume_aggregate_matches_input_volume(tmp_path, monkeypatch):
     """The sum of |signed_volume| should equal the total minute-bar volume
     for non-first-bar rows. Verifies no doubling or missing rows."""
-    d = tmp_path / "futures_1min" / "symbol=NQ" / "year=2024" / "month=3"
+    d = tmp_path / "futures" / "databento" / "1min" / "symbol=NQ" / "year=2024" / "month=3"
     d.mkdir(parents=True)
     pl.DataFrame({
         "timestamp": [
@@ -77,7 +77,7 @@ def test_signed_volume_aggregate_matches_input_volume(tmp_path, monkeypatch):
     ).write_parquet(d / "data.parquet")
 
     monkeypatch.setattr(
-        "src.data.signed_volume_estimator._storage_root",
+        "src.data.futures.paths.get_local_storage_dir",
         lambda: tmp_path,
     )
     df = estimate_signed_volume_from_bars("NQ", date(2024, 3, 4))

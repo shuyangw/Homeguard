@@ -29,7 +29,7 @@ def test_outright_regex():
 
 def test_aggregate_oi_simple(tmp_path: Path, monkeypatch):
     storage = tmp_path / "storage"
-    path = storage / "futures_statistics" / "year=2024" / "month=6" / "data.parquet"
+    path = storage / "futures" / "databento" / "statistics" / "year=2024" / "month=6" / "data.parquet"
     _write_stats(path, [
         {"timestamp": datetime(2024, 6, 15, 21, 0, tzinfo=timezone.utc),
          "symbol": "ESM4", "stat_type": STAT_TYPE_OPEN_INTEREST, "quantity": 1000},
@@ -40,7 +40,7 @@ def test_aggregate_oi_simple(tmp_path: Path, monkeypatch):
     ])
 
     monkeypatch.setattr(
-        "src.data.derivations.futures.open_interest._storage_root",
+        "src.data.futures.paths.get_local_storage_dir",
         lambda: storage,
     )
     assert aggregate_open_interest("ES", date(2024, 6, 15)) == 1700
@@ -48,7 +48,7 @@ def test_aggregate_oi_simple(tmp_path: Path, monkeypatch):
 
 def test_excludes_spreads(tmp_path: Path, monkeypatch):
     storage = tmp_path / "storage"
-    path = storage / "futures_statistics" / "year=2024" / "month=6" / "data.parquet"
+    path = storage / "futures" / "databento" / "statistics" / "year=2024" / "month=6" / "data.parquet"
     _write_stats(path, [
         {"timestamp": datetime(2024, 6, 15, 21, 0, tzinfo=timezone.utc),
          "symbol": "ESM4", "stat_type": STAT_TYPE_OPEN_INTEREST, "quantity": 1000},
@@ -56,7 +56,7 @@ def test_excludes_spreads(tmp_path: Path, monkeypatch):
          "symbol": "ESM4-ESU4", "stat_type": STAT_TYPE_OPEN_INTEREST, "quantity": 9999},
     ])
     monkeypatch.setattr(
-        "src.data.derivations.futures.open_interest._storage_root",
+        "src.data.futures.paths.get_local_storage_dir",
         lambda: storage,
     )
     assert aggregate_open_interest("ES", date(2024, 6, 15)) == 1000
@@ -64,7 +64,7 @@ def test_excludes_spreads(tmp_path: Path, monkeypatch):
 
 def test_excludes_other_roots(tmp_path: Path, monkeypatch):
     storage = tmp_path / "storage"
-    path = storage / "futures_statistics" / "year=2024" / "month=6" / "data.parquet"
+    path = storage / "futures" / "databento" / "statistics" / "year=2024" / "month=6" / "data.parquet"
     _write_stats(path, [
         {"timestamp": datetime(2024, 6, 15, 21, 0, tzinfo=timezone.utc),
          "symbol": "ESM4", "stat_type": STAT_TYPE_OPEN_INTEREST, "quantity": 1000},
@@ -72,7 +72,7 @@ def test_excludes_other_roots(tmp_path: Path, monkeypatch):
          "symbol": "CLM4", "stat_type": STAT_TYPE_OPEN_INTEREST, "quantity": 500},
     ])
     monkeypatch.setattr(
-        "src.data.derivations.futures.open_interest._storage_root",
+        "src.data.futures.paths.get_local_storage_dir",
         lambda: storage,
     )
     assert aggregate_open_interest("ES", date(2024, 6, 15)) == 1000
@@ -80,7 +80,7 @@ def test_excludes_other_roots(tmp_path: Path, monkeypatch):
 
 def test_excludes_other_stat_types(tmp_path: Path, monkeypatch):
     storage = tmp_path / "storage"
-    path = storage / "futures_statistics" / "year=2024" / "month=6" / "data.parquet"
+    path = storage / "futures" / "databento" / "statistics" / "year=2024" / "month=6" / "data.parquet"
     _write_stats(path, [
         {"timestamp": datetime(2024, 6, 15, 21, 0, tzinfo=timezone.utc),
          "symbol": "ESM4", "stat_type": STAT_TYPE_OPEN_INTEREST, "quantity": 1000},
@@ -90,7 +90,7 @@ def test_excludes_other_stat_types(tmp_path: Path, monkeypatch):
          "symbol": "ESM4", "stat_type": 6, "quantity": 88888},  # volume
     ])
     monkeypatch.setattr(
-        "src.data.derivations.futures.open_interest._storage_root",
+        "src.data.futures.paths.get_local_storage_dir",
         lambda: storage,
     )
     assert aggregate_open_interest("ES", date(2024, 6, 15)) == 1000
@@ -98,7 +98,7 @@ def test_excludes_other_stat_types(tmp_path: Path, monkeypatch):
 
 def test_takes_latest_snapshot_per_contract(tmp_path: Path, monkeypatch):
     storage = tmp_path / "storage"
-    path = storage / "futures_statistics" / "year=2024" / "month=6" / "data.parquet"
+    path = storage / "futures" / "databento" / "statistics" / "year=2024" / "month=6" / "data.parquet"
     _write_stats(path, [
         {"timestamp": datetime(2024, 6, 15, 14, 0, tzinfo=timezone.utc),
          "symbol": "ESM4", "stat_type": STAT_TYPE_OPEN_INTEREST, "quantity": 900},
@@ -106,7 +106,7 @@ def test_takes_latest_snapshot_per_contract(tmp_path: Path, monkeypatch):
          "symbol": "ESM4", "stat_type": STAT_TYPE_OPEN_INTEREST, "quantity": 1000},
     ])
     monkeypatch.setattr(
-        "src.data.derivations.futures.open_interest._storage_root",
+        "src.data.futures.paths.get_local_storage_dir",
         lambda: storage,
     )
     assert aggregate_open_interest("ES", date(2024, 6, 15)) == 1000
@@ -114,7 +114,7 @@ def test_takes_latest_snapshot_per_contract(tmp_path: Path, monkeypatch):
 
 def test_excludes_other_dates(tmp_path: Path, monkeypatch):
     storage = tmp_path / "storage"
-    path = storage / "futures_statistics" / "year=2024" / "month=6" / "data.parquet"
+    path = storage / "futures" / "databento" / "statistics" / "year=2024" / "month=6" / "data.parquet"
     _write_stats(path, [
         {"timestamp": datetime(2024, 6, 14, 21, 0, tzinfo=timezone.utc),
          "symbol": "ESM4", "stat_type": STAT_TYPE_OPEN_INTEREST, "quantity": 500},
@@ -122,7 +122,7 @@ def test_excludes_other_dates(tmp_path: Path, monkeypatch):
          "symbol": "ESM4", "stat_type": STAT_TYPE_OPEN_INTEREST, "quantity": 1000},
     ])
     monkeypatch.setattr(
-        "src.data.derivations.futures.open_interest._storage_root",
+        "src.data.futures.paths.get_local_storage_dir",
         lambda: storage,
     )
     assert aggregate_open_interest("ES", date(2024, 6, 15)) == 1000
@@ -130,7 +130,7 @@ def test_excludes_other_dates(tmp_path: Path, monkeypatch):
 
 def test_missing_partition_raises(tmp_path: Path, monkeypatch):
     monkeypatch.setattr(
-        "src.data.derivations.futures.open_interest._storage_root",
+        "src.data.futures.paths.get_local_storage_dir",
         lambda: tmp_path,
     )
     with pytest.raises(FileNotFoundError, match="futures_statistics partition"):
@@ -139,13 +139,13 @@ def test_missing_partition_raises(tmp_path: Path, monkeypatch):
 
 def test_no_rows_returns_zero(tmp_path: Path, monkeypatch):
     storage = tmp_path / "storage"
-    path = storage / "futures_statistics" / "year=2024" / "month=6" / "data.parquet"
+    path = storage / "futures" / "databento" / "statistics" / "year=2024" / "month=6" / "data.parquet"
     _write_stats(path, [
         {"timestamp": datetime(2024, 6, 15, 21, 0, tzinfo=timezone.utc),
          "symbol": "CLM4", "stat_type": STAT_TYPE_OPEN_INTEREST, "quantity": 500},
     ])
     monkeypatch.setattr(
-        "src.data.derivations.futures.open_interest._storage_root",
+        "src.data.futures.paths.get_local_storage_dir",
         lambda: storage,
     )
     assert aggregate_open_interest("ES", date(2024, 6, 15)) == 0

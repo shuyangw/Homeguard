@@ -113,9 +113,9 @@ def test_date_floor_check_pass(tmp_path: Path, monkeypatch):
 
 
 def test_sofr_derivation_check_skips_when_data_missing(tmp_path: Path, monkeypatch):
-    # Patch sofr_module's _storage_root to return empty dir, so all derives fail
+    # Patch paths.get_local_storage_dir to return empty dir, so all derives fail
     monkeypatch.setattr(
-        "src.data.derivations.futures.sofr._storage_root",
+        "src.data.futures.paths.get_local_storage_dir",
         lambda: tmp_path,
     )
     r = SofrDerivationSanityCheck().run()

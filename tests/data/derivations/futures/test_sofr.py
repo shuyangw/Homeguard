@@ -27,7 +27,7 @@ def test_derive_sofr_synthetic(tmp_path: Path, monkeypatch):
     # SR1F4 close = 95.50 -> implied SOFR = 4.50
     from datetime import datetime
     storage = tmp_path / "storage"
-    pcm_dir = storage / "futures_per_contract_1min" / "year=2024" / "month=1"
+    pcm_dir = storage / "futures" / "databento" / "per_contract_1min" / "year=2024" / "month=1"
     pcm_dir.mkdir(parents=True)
 
     df = pl.DataFrame({
@@ -38,7 +38,7 @@ def test_derive_sofr_synthetic(tmp_path: Path, monkeypatch):
     df.write_parquet(pcm_dir / "data.parquet")
 
     monkeypatch.setattr(
-        "src.data.derivations.futures.sofr._storage_root",
+        "src.data.futures.paths.get_local_storage_dir",
         lambda: storage,
     )
 
@@ -48,7 +48,7 @@ def test_derive_sofr_synthetic(tmp_path: Path, monkeypatch):
 
 def test_derive_sofr_pre_listing_raises(monkeypatch, tmp_path: Path):
     monkeypatch.setattr(
-        "src.data.derivations.futures.sofr._storage_root",
+        "src.data.futures.paths.get_local_storage_dir",
         lambda: tmp_path,
     )
     with pytest.raises(ValueError, match="SR1.*listing"):
@@ -57,7 +57,7 @@ def test_derive_sofr_pre_listing_raises(monkeypatch, tmp_path: Path):
 
 def test_derive_sofr_missing_data_raises(monkeypatch, tmp_path: Path):
     monkeypatch.setattr(
-        "src.data.derivations.futures.sofr._storage_root",
+        "src.data.futures.paths.get_local_storage_dir",
         lambda: tmp_path,
     )
     with pytest.raises(ValueError, match="no SR1"):

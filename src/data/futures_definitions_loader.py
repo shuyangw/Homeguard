@@ -21,7 +21,6 @@ from pathlib import Path
 import polars as pl
 
 from src.settings import get_local_storage_dir
-from src.data.futures.paths import definitions_dir
 
 _MONTH_CODES = "FGHJKMNQUVXZ"
 
@@ -89,7 +88,9 @@ class FuturesDefinitionsLoader:
         if key in self._partition_cache:
             return self._partition_cache[key]
         path = (
-            definitions_dir()
+            self._root
+            / "futures"
+            / "definitions"
             / f"year={year}"
             / f"month={month}"
             / "data.parquet"

@@ -20,7 +20,7 @@ def test_tenor_mapping():
 def test_get_treasury_yield_synthetic(tmp_path: Path, monkeypatch):
     storage = tmp_path / "storage"
     out = (
-        storage / "futures_1min" / "symbol=10Y"
+        storage / "futures" / "databento" / "1min" / "symbol=10Y"
         / "year=2024" / "month=6" / "data.parquet"
     )
     out.parent.mkdir(parents=True)
@@ -40,7 +40,7 @@ def test_get_treasury_yield_synthetic(tmp_path: Path, monkeypatch):
     df.write_parquet(out)
 
     monkeypatch.setattr(
-        "src.data.derivations.futures.yields._storage_root",
+        "src.data.futures.paths.get_local_storage_dir",
         lambda: storage,
     )
 
@@ -50,7 +50,7 @@ def test_get_treasury_yield_synthetic(tmp_path: Path, monkeypatch):
 
 def test_pre_listing_raises(monkeypatch, tmp_path: Path):
     monkeypatch.setattr(
-        "src.data.derivations.futures.yields._storage_root",
+        "src.data.futures.paths.get_local_storage_dir",
         lambda: tmp_path,
     )
     with pytest.raises(ValueError, match="Micro Yield.*listing"):
@@ -59,7 +59,7 @@ def test_pre_listing_raises(monkeypatch, tmp_path: Path):
 
 def test_unknown_tenor_raises(monkeypatch, tmp_path: Path):
     monkeypatch.setattr(
-        "src.data.derivations.futures.yields._storage_root",
+        "src.data.futures.paths.get_local_storage_dir",
         lambda: tmp_path,
     )
     with pytest.raises(KeyError):
@@ -68,7 +68,7 @@ def test_unknown_tenor_raises(monkeypatch, tmp_path: Path):
 
 def test_missing_data_raises(monkeypatch, tmp_path: Path):
     monkeypatch.setattr(
-        "src.data.derivations.futures.yields._storage_root",
+        "src.data.futures.paths.get_local_storage_dir",
         lambda: tmp_path,
     )
     with pytest.raises(ValueError, match="no .* data"):

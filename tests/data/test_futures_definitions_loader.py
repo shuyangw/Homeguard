@@ -52,7 +52,7 @@ def test_parse_invalid_symbol_raises():
 
 
 def test_get_definition_returns_correct_fields(tmp_path: Path):
-    path = tmp_path / "futures_definitions" / "year=2024" / "month=6" / "data.parquet"
+    path = tmp_path / "futures" / "definitions" / "year=2024" / "month=6" / "data.parquet"
     _write_definitions(path, [
         _make_def_row("ESM4", date(2024, 6, 21), date(2019, 6, 1)),
     ])
@@ -69,7 +69,7 @@ def test_get_definition_returns_correct_fields(tmp_path: Path):
 
 def test_filters_to_futures_only(tmp_path: Path):
     """Options on futures (instrument_class != 'F') must be excluded."""
-    path = tmp_path / "futures_definitions" / "year=2024" / "month=6" / "data.parquet"
+    path = tmp_path / "futures" / "definitions" / "year=2024" / "month=6" / "data.parquet"
     _write_definitions(path, [
         _make_def_row("ESM4", date(2024, 6, 21), date(2019, 6, 1),
                       instrument_class="C"),  # Call option, NOT a future
@@ -81,7 +81,7 @@ def test_filters_to_futures_only(tmp_path: Path):
 
 def test_takes_latest_row_for_symbol(tmp_path: Path):
     """When multiple definition snapshots exist for a symbol, use the latest."""
-    path = tmp_path / "futures_definitions" / "year=2024" / "month=6" / "data.parquet"
+    path = tmp_path / "futures" / "definitions" / "year=2024" / "month=6" / "data.parquet"
     _write_definitions(path, [
         _make_def_row("ESM4", date(2024, 6, 14), date(2019, 6, 1),
                       timestamp=datetime(2024, 6, 1, tzinfo=timezone.utc)),
@@ -100,7 +100,7 @@ def test_missing_partition_raises(tmp_path: Path):
 
 
 def test_missing_symbol_raises(tmp_path: Path):
-    path = tmp_path / "futures_definitions" / "year=2024" / "month=6" / "data.parquet"
+    path = tmp_path / "futures" / "definitions" / "year=2024" / "month=6" / "data.parquet"
     _write_definitions(path, [
         _make_def_row("CLM4", date(2024, 5, 20), date(2019, 5, 1)),
     ])
@@ -110,7 +110,7 @@ def test_missing_symbol_raises(tmp_path: Path):
 
 
 def test_get_expiration_convenience(tmp_path: Path):
-    path = tmp_path / "futures_definitions" / "year=2024" / "month=6" / "data.parquet"
+    path = tmp_path / "futures" / "definitions" / "year=2024" / "month=6" / "data.parquet"
     _write_definitions(path, [
         _make_def_row("ESM4", date(2024, 6, 21), date(2019, 6, 1)),
     ])
@@ -120,7 +120,7 @@ def test_get_expiration_convenience(tmp_path: Path):
 
 def test_partition_cache_avoids_reread(tmp_path: Path):
     """Two calls into the same partition shouldn't both touch disk."""
-    path = tmp_path / "futures_definitions" / "year=2024" / "month=6" / "data.parquet"
+    path = tmp_path / "futures" / "definitions" / "year=2024" / "month=6" / "data.parquet"
     _write_definitions(path, [
         _make_def_row("ESM4", date(2024, 6, 21), date(2019, 6, 1)),
         _make_def_row("ESU4", date(2024, 9, 20), date(2019, 9, 1)),

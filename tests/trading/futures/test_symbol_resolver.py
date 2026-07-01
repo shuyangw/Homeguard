@@ -110,7 +110,7 @@ def test_resolve_for_order_populates_expiration_when_loader_provided(
     ]
     _write_pcm_fixture(tmp_path, 2024, 6, rows)
     # Definitions fixture
-    defs_dir = (tmp_path / "futures_definitions" / "year=2024" / "month=6")
+    defs_dir = (tmp_path / "futures" / "definitions" / "year=2024" / "month=6")
     defs_dir.mkdir(parents=True, exist_ok=True)
     pl.DataFrame([{
         "symbol": "ESM4",
