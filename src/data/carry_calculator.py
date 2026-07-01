@@ -1,19 +1,17 @@
 """Per-asset-class carry calculator.
 
 Front-month and second-month identified by volume ranking from
-futures_per_contract_1min/ on the target date. Outright contracts only
-(spreads filtered via month-code regex).
+futures/databento/per_contract_1min/ on the target date. Outright contracts
+only (spreads filtered via month-code regex).
 """
 from __future__ import annotations
 
 from datetime import date, timedelta
-from pathlib import Path
 
 import polars as pl
 
 from src.data.derivations.futures.sofr import derive_sofr
 from src.data.futures.paths import per_contract_1min_dir
-from src.settings import get_local_storage_dir
 from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -36,10 +34,6 @@ DURATION_BY_ROOT: dict[str, float] = {
 
 # Micro Yield roots: close IS yield in % directly.
 MICRO_YIELD_ROOTS = {"2YY", "5YY", "10Y", "30Y"}
-
-
-def _storage_root() -> Path:
-    return get_local_storage_dir()
 
 
 def _is_outright(symbol: str, root: str) -> bool:

@@ -88,7 +88,7 @@ def test_roll_calendar_roundtrip(tmp_path):
     assert cal.days_to_expiry("GC", date(2024, 1, 16)) == 42
 
 
-def test_upcoming_rolls_from_calendar(tmp_path, monkeypatch):
+def test_upcoming_rolls_from_calendar(tmp_path):
     df = pl.DataFrame({
         "date": [date(2024, 1, 24), date(2024, 1, 25), date(2024, 1, 26)],
         "front_symbol": ["GCG4", "GCJ4", "GCJ4"],
@@ -100,11 +100,45 @@ def test_upcoming_rolls_from_calendar(tmp_path, monkeypatch):
         "roll_trigger": ["hold", "oi_crossover", "hold"],
     })
     df.write_parquet(tmp_path / "GC.parquet")
-    monkeypatch.setattr(
-        "src.data.roll_detector.roll_calendar_dir", lambda: tmp_path, raising=False,
-    )
     mgr = FuturesRollManager(cache_dir=tmp_path)
     rolls = mgr.get_upcoming_rolls(["GC"], today=date(2024, 1, 20), lookahead_days=14)
     assert len(rolls) == 1
     assert rolls[0].to_contract == "GCJ4"
     assert rolls[0].roll_date == date(2024, 1, 25)
+
+
+def test_builder_fnd_clamp_engages(monkeypatch):
+    # GC is physical, fnd_offset_days=3. Force GCG4->GCJ4 OI crossover to complete
+    # on 2024-02-27 (AFTER the FND cutoff for GCG4 expiring 2024-02-27, whose cutoff
+    # is ~2024-02-22), so apply_fnd_clamp MUST pull the roll earlier and relabel the
+    # trigger "fnd_clamp". This proves the builder (build_root) actually wires the
+    # clamp using the roll-date expiration resolution from FIX 1.
+    import scripts.data.build_roll_calendar as brc
+
+    def fake_oi(root, d):
+        if d.weekday() >= 5:
+            return {}
+        if d <= date(2024, 2, 25):
+            return {"GCG4": 100, "GCJ4": 10}
+        return {"GCG4": 10, "GCJ4": 100}
+
+    class _Def:
+        activation = date(2022, 1, 1)
+
+    def fake_get_definition(self, sym, root, d):
+        exp = date(2024, 2, 27) if sym == "GCG4" else date(2024, 4, 26)
+        return type("_D", (), {"activation": _Def.activation, "expiration": exp})()
+
+    monkeypatch.setattr(brc, "per_contract_open_interest", fake_oi)
+    monkeypatch.setattr(
+        brc.FuturesDefinitionsLoader, "get_definition", fake_get_definition,
+    )
+    monkeypatch.setattr(
+        brc.FuturesDefinitionsLoader,
+        "get_expiration",
+        lambda self, sym, root, d: fake_get_definition(self, sym, root, d).expiration,
+    )
+
+    df = brc.build_root("GC", date(2024, 2, 20), date(2024, 3, 1))
+    triggers = set(df["roll_trigger"].to_list())
+    assert "fnd_clamp" in triggers, f"clamp did not engage; triggers={triggers}"

@@ -5,7 +5,6 @@ from __future__ import annotations
 import random
 import time
 from datetime import date, datetime, timedelta, timezone
-from pathlib import Path
 
 import polars as pl
 
@@ -13,11 +12,6 @@ from src.data.derivations.futures import sofr as sofr_module, yields as yields_m
 from src.data.futures.paths import continuous_1min_dir, definitions_dir, per_contract_1min_dir
 from src.data.validation.core.base import BaseCheck
 from src.data.validation.core.result import Severity, ValidationResult
-from src.settings import get_local_storage_dir
-
-
-def _storage_root() -> Path:
-    return get_local_storage_dir()
 
 
 def _result(name: str, severity: Severity, passed: bool,

@@ -1,7 +1,7 @@
 """Continuous futures contract loader with 3 adjustment methods.
 
-Reads raw .v.0 continuous bars from futures_1min/ and per-contract bars
-from futures_per_contract_1min/. Provides:
+Reads raw .v.0 continuous bars from futures/databento/1min/ and per-contract
+bars from futures/databento/per_contract_1min/. Provides:
 - load(symbol, method) -> pl.DataFrame for raw | ratio_adjusted | panama_adjusted
 - detect_roll_dates(symbol) -> list[date]
 - aggregate_to_daily(symbol, method) -> pl.DataFrame

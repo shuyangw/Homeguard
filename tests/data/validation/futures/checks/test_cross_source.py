@@ -78,7 +78,7 @@ def test_definitions_completeness_critical_when_missing(tmp_path: Path, monkeypa
 
 def test_sofr_vs_2y_skips_when_no_data(tmp_path: Path, monkeypatch):
     monkeypatch.setattr(
-        "src.data.validation.futures.checks.cross_source._storage_root",
+        "src.data.futures.paths.get_local_storage_dir",
         lambda: tmp_path,
     )
     r = SofrVs2YCheck().run()

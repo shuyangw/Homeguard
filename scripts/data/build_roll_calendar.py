@@ -20,7 +20,7 @@ import polars as pl
 from src.data.derivations.futures.open_interest import per_contract_open_interest
 from src.data.futures.contract_specs import SPECS, get_spec
 from src.data.futures.paths import roll_calendar_dir
-from src.data.futures.roll_calendar import apply_fnd_clamp, detect_rolls
+from src.data.futures.roll_calendar import _front_by_oi, apply_fnd_clamp, detect_rolls
 from src.data.futures_definitions_loader import FuturesDefinitionsLoader
 from src.utils.logger import get_logger
 
@@ -63,15 +63,15 @@ def build_root(root: str, start: date, end: date) -> pl.DataFrame:
 
     rolls = detect_rolls(root, oi_by_day)
 
-    # expirations for the front symbols involved (for FND clamp + dte)
+    # from_symbol expirations, resolved at each roll's OWN date (the outgoing
+    # contract is definitely active there) -- for the FND clamp.
     expirations: dict[str, date] = {}
     for ev in rolls:
-        for sym in (ev.from_symbol, ev.to_symbol):
-            if sym not in expirations:
-                try:
-                    expirations[sym] = defs.get_expiration(sym, root, start)
-                except (LookupError, FileNotFoundError, ValueError):
-                    pass
+        if ev.from_symbol not in expirations:
+            try:
+                expirations[ev.from_symbol] = defs.get_expiration(ev.from_symbol, root, ev.roll_date)
+            except (LookupError, FileNotFoundError, ValueError):
+                pass
     rolls = apply_fnd_clamp(root, rolls, expirations)
 
     # front contract per day by walking rolls
@@ -80,7 +80,7 @@ def build_root(root: str, start: date, end: date) -> pl.DataFrame:
     current_front = None
     for d in sorted(oi_by_day):
         if current_front is None:
-            current_front = max(oi_by_day[d], key=oi_by_day[d].get)
+            current_front = _front_by_oi(oi_by_day[d])
         if d in roll_map:
             current_front = roll_map[d].to_symbol
         day_oi = oi_by_day[d]
