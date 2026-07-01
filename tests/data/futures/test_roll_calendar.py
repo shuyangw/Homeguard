@@ -1,5 +1,14 @@
 from datetime import date
-from src.data.futures.roll_calendar import detect_rolls, RollEvent
+
+import pytest
+
+from src.data.futures.roll_calendar import (
+    apply_fnd_clamp,
+    detect_rolls,
+    NoActiveContractError,
+    RollCalendar,
+    RollEvent,
+)
 
 
 def _day(n): return date(2024, 1, n)
@@ -32,3 +41,26 @@ def test_single_day_oi_blip_does_not_roll():
     }
     rolls = detect_rolls("GC", oi, hysteresis=2)
     assert rolls == []
+
+
+def test_fnd_clamp_pulls_physical_roll_earlier():
+    # A physical root whose OI-roll lands AFTER the FND cutoff must be clamped earlier.
+    rolls = [RollEvent(date(2024, 1, 28), "GCF4", "GCG4", "oi_crossover")]
+    expirations = {"GCF4": date(2024, 1, 29)}   # last-trade; FND well before
+    # GC fnd_offset_days=3 -> cutoff = expiration - 3 business days = ~2024-01-24
+    clamped = apply_fnd_clamp("GC", rolls, expirations)
+    assert clamped[0].roll_date <= date(2024, 1, 25)
+    assert clamped[0].trigger == "fnd_clamp"
+
+
+def test_fnd_clamp_noop_for_financial_root():
+    rolls = [RollEvent(date(2024, 3, 15), "ESH4", "ESM4", "oi_crossover")]
+    expirations = {"ESH4": date(2024, 3, 15)}
+    clamped = apply_fnd_clamp("ES", rolls, expirations)
+    assert clamped == rolls   # financial -> untouched
+
+
+def test_missing_root_lookup_raises(tmp_path):
+    cal = RollCalendar(cache_dir=tmp_path)   # empty cache
+    with pytest.raises(NoActiveContractError):
+        cal.get_front("GC", date(2024, 1, 15))
