@@ -49,3 +49,37 @@ def test_report_interpolates_actual_capital_and_count(tmp_path):
     for stale in ("extreme skew", "far outside", "not four digits", "DONE_WITH_CONCERNS"):
         assert stale not in text, f"stale tail-stats prose resurfaced: {stale!r}"
     assert "Note: tail statistics" in text
+
+
+def test_config_to_kwargs_reads_strategy_name_and_params():
+    cfg = {"strategy": {"name": "FuturesCarry", "universe": ["ES"],
+                        "params": {"carry_scalar": 25.0}},
+           "dates": {"start": "2010-06-07", "end": "2026-02-20"},
+           "backtest": {"initial_capital": 10_000_000, "vol_target_per_instrument": 0.20}}
+    kw = wf._config_to_kwargs(cfg)
+    assert kw["strategy_name"] == "FuturesCarry"
+    assert kw["strategy_params"] == {"carry_scalar": 25.0}
+
+
+def test_config_to_kwargs_defaults_strategy_name():
+    cfg = {"strategy": {"universe": ["ES"]}, "dates": {"start": "2010-06-07", "end": "2026-02-20"},
+           "backtest": {}}
+    kw = wf._config_to_kwargs(cfg)
+    assert kw["strategy_name"] == "CarverMomentum"
+    assert kw["strategy_params"] == {}
+
+
+def test_report_title_reflects_strategy(tmp_path):
+    result = {
+        "oos_sharpe": 0.3, "psr": 1.0, "dsr": 1.0, "pbo": 0.25,
+        "oos_sharpe_1_5x_cost": 0.2, "n_windows": 2, "n_oos_days": 500,
+        "window_sharpes": [0.3, 0.4], "trial_count": 1, "skew": -0.2, "kurtosis_pearson": 5.0,
+        "universe": ["ES"], "window_universes": [["ES"], ["ES"]],
+        "window_start": __import__("datetime").date(2013, 6, 7),
+        "window_end": __import__("datetime").date(2026, 2, 20),
+        "capital": 10_000_000, "vol_target": 0.20, "strategy_name": "FuturesCarry",
+    }
+    out = tmp_path / "CARRY.md"
+    wf._write_readiness_report(result, 36, 12, 12, "2010-06-07", "2026-02-20",
+                               report_path=str(out))
+    assert "FuturesCarry" in out.read_text()
