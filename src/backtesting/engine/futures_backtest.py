@@ -11,7 +11,9 @@ abstractions.
 from __future__ import annotations
 
 from datetime import date, datetime
-from typing import Any, Dict
+from typing import Any, Dict, Protocol, runtime_checkable
+
+import pandas as pd
 
 from src.backtesting.data.futures_backtest_loader import load_daily_panel
 from src.backtesting.costs.futures import futures_round_trip_usd
@@ -19,12 +21,18 @@ from src.backtesting.engine.futures_portfolio_simulator import FuturesPortfolioS
 from src.backtesting.margin.futures_margin import MarginModel
 from src.backtesting.reporting.standard_report import StandardReportGenerator
 from src.features.volatility import close_to_close_rv
-from src.strategies.advanced.carver_momentum_strategy import CarverMomentumStrategy
+from src.strategies.registry import get_strategy_class
 from src.utils import logger
 
 _DEFAULT_INITIAL_CAPITAL = 100_000.0
 _DEFAULT_VOL_TARGET = 0.20
 _DEFAULT_REBALANCE = "weekly"
+
+
+@runtime_checkable
+class SupportsForecastPanel(Protocol):
+    def forecast_panel(self, close_panel: pd.DataFrame) -> pd.DataFrame:
+        ...
 
 
 def _as_date(value: Any) -> date:
@@ -52,10 +60,20 @@ def run_futures_backtest(config: Dict[str, Any]) -> Dict[str, Any]:
     rebalance = backtest_cfg.get("rebalance", _DEFAULT_REBALANCE)
     cost_mult = float(backtest_cfg.get("cost_mult", 1.0))
 
+    strategy_name = strategy_cfg.get("name", "CarverMomentum")
+    strategy_params = strategy_cfg.get("params", {})
+    strategy_cls = get_strategy_class(strategy_name)   # raises ValueError on unknown name
+    strategy = strategy_cls(universe, **strategy_params)
+    if not isinstance(strategy, SupportsForecastPanel):
+        raise ValueError(
+            f"Strategy '{strategy_name}' does not implement forecast_panel(close_panel); "
+            f"it cannot be used on the futures forecast path."
+        )
+
     panel = load_daily_panel(universe, start, end)
     close = panel.xs("close", axis=1, level=1)
 
-    forecasts = CarverMomentumStrategy(universe).forecast_panel(close)
+    forecasts = strategy.forecast_panel(close)
 
     returns = close.pct_change(fill_method=None)
     daily_vol = returns.apply(lambda col: close_to_close_rv(col, 25, annualization_factor=1), axis=0)
@@ -71,7 +89,7 @@ def run_futures_backtest(config: Dict[str, Any]) -> Dict[str, Any]:
     res = sim.run_sized(close, forecasts, daily_vol, vol_target)
 
     report = StandardReportGenerator().generate_report(
-        res.equity_curve, "CarverMomentum", universe,
+        res.equity_curve, strategy_name, universe,
         str(start), str(end), capital,
     )
 
@@ -80,7 +98,7 @@ def run_futures_backtest(config: Dict[str, Any]) -> Dict[str, Any]:
         from src.experiments import append_run
 
         run_id = append_run(
-            strategy_name="CarverMomentum",
+            strategy_name=strategy_name,
             agent_name="futures-harness",
             metrics=report["overall_metrics"],
             asset_class="futures",
