@@ -42,7 +42,7 @@ def load_daily_panel(roots: list[str], start: date, end: date) -> pd.DataFrame:
     if not frames:
         raise FileNotFoundError(f"no continuous daily data for roots {roots} in {start}..{end}")
     close = pd.DataFrame(frames).sort_index()
-    ret = close.pct_change()
+    ret = close.pct_change(fill_method=None)
     panel = pd.concat({r: pd.DataFrame({"close": close[r], "ret": ret[r]}) for r in close.columns}, axis=1)
     panel.columns = pd.MultiIndex.from_tuples([(r, f) for r in close.columns for f in ("close", "ret")])
     return panel

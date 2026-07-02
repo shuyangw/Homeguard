@@ -57,7 +57,7 @@ def run_futures_backtest(config: Dict[str, Any]) -> Dict[str, Any]:
 
     forecasts = CarverMomentumStrategy(universe).forecast_panel(close)
 
-    returns = close.pct_change()
+    returns = close.pct_change(fill_method=None)
     daily_vol = returns.apply(lambda col: close_to_close_rv(col, 25, annualization_factor=1), axis=0)
 
     margin_model = MarginModel()

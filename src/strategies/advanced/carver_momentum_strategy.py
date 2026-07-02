@@ -31,7 +31,7 @@ class CarverMomentumStrategy(MultiSymbolStrategy):
             if root not in close_panel.columns:
                 continue
             close = close_panel[root].astype(float)
-            rets = close.pct_change()
+            rets = close.pct_change(fill_method=None)
             daily_ret_std = close_to_close_rv(rets, 25, annualization_factor=1)  # daily stdev (no annualization)
             price_vol = (close * daily_ret_std).replace(0, np.nan)
             out[root] = combined_forecast(close, price_vol, self.speeds, self.forecast_cap)
