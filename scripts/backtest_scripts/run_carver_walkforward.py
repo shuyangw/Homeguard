@@ -285,7 +285,7 @@ def walk_forward_carver(
         from src.experiments import append_run
 
         run_id = append_run(
-            strategy_name="CarverMomentum",
+            strategy_name=strategy_name,
             agent_name="futures-harness-walkforward",
             metrics={
                 k: v for k, v in result.items()
