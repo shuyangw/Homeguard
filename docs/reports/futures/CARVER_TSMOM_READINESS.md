@@ -48,39 +48,39 @@ its forecast/price/vol are unavailable).
 
 | Metric | Value |
 |---|---|
-| OOS Sharpe (1x cost) | -0.4514 |
-| OOS Sharpe (1.5x cost) | 0.2407 |
-| PSR (vs benchmark 0) | 0.0001 |
-| DSR (n_trials=1) | 0.0001 |
-| PBO (windows-as-columns CSCV) | 0.42773892773892774 |
+| OOS Sharpe (1x cost) | 0.1088 |
+| OOS Sharpe (1.5x cost) | 0.0798 |
+| PSR (vs benchmark 0) | 1.0000 |
+| DSR (n_trials=1) | 1.0000 |
+| PBO (windows-as-columns CSCV) | 0.4376845376845377 |
 | n_windows | 12 |
 | n_oos_days | 3634 |
-| skew | -30.5253 |
-| kurtosis (Pearson) | 1332.4115 |
+| skew | -0.3866 |
+| kurtosis (Pearson) | 8.7257 |
 | window_start | 2013-06-07 |
 | window_end | 2025-02-01 |
-| registry run_id | e7597f3e-7865-4462-b74b-ce2fda02ba51 |
+| registry run_id | 0c66085a-70e8-4525-8c3f-fd1142839ee7 |
 
 ## Per-window OOS Sharpe
 
 | Window | OOS Sharpe | Roots with data |
 |---|---|---|
-| 1 | 0.1284 | ['6E', '6J', 'SIL', 'ZC', 'ZN'] |
-| 2 | 1.8846 | ['6E', '6J', 'MGC', 'SIL', 'ZC', 'ZN'] |
-| 3 | -1.0514 | ['6E', '6J', 'MGC', 'SIL', 'ZC', 'ZN'] |
-| 4 | -0.8135 | ['6E', '6J', 'MGC', 'SIL', 'ZC', 'ZN'] |
-| 5 | 0.2691 | ['6E', '6J', 'MGC', 'SIL', 'ZC', 'ZN'] |
-| 6 | 0.9431 | ['6E', '6J', 'M2K', 'MES', 'MGC', 'MNQ', 'MYM', 'SIL', 'ZC', 'ZN'] |
-| 7 | -1.4900 | ['6E', '6J', 'M2K', 'MES', 'MGC', 'MNQ', 'MYM', 'SIL', 'ZC', 'ZN'] |
-| 8 | 1.5219 | ['6E', '6J', 'M2K', 'MES', 'MGC', 'MNQ', 'MYM', 'SIL', 'ZC', 'ZN'] |
-| 9 | 1.1969 | ['6E', '6J', 'M2K', 'MCL', 'MES', 'MGC', 'MNQ', 'MYM', 'SIL', 'ZC', 'ZN'] |
-| 10 | -1.0228 | ['6E', '6J', 'M2K', 'MCL', 'MES', 'MGC', 'MNQ', 'MYM', 'SIL', 'ZC', 'ZN'] |
-| 11 | 0.8674 | ['6E', '6J', 'M2K', 'MCL', 'MES', 'MGC', 'MNG', 'MNQ', 'MYM', 'SIL', 'ZC', 'ZN'] |
-| 12 | 0.4665 | ['6E', '6J', 'M2K', 'MCL', 'MES', 'MGC', 'MNG', 'MNQ', 'MYM', 'SIL', 'ZC', 'ZN'] |
+| 1 | -0.0402 | ['6E', '6J', 'SIL', 'ZC', 'ZN'] |
+| 2 | 1.5714 | ['6E', '6J', 'MGC', 'SIL', 'ZC', 'ZN'] |
+| 3 | -1.2795 | ['6E', '6J', 'MGC', 'SIL', 'ZC', 'ZN'] |
+| 4 | -1.3026 | ['6E', '6J', 'MGC', 'SIL', 'ZC', 'ZN'] |
+| 5 | -1.0037 | ['6E', '6J', 'MGC', 'SIL', 'ZC', 'ZN'] |
+| 6 | 0.0351 | ['6E', '6J', 'M2K', 'MES', 'MGC', 'MNQ', 'MYM', 'SIL', 'ZC', 'ZN'] |
+| 7 | 0.1857 | ['6E', '6J', 'M2K', 'MES', 'MGC', 'MNQ', 'MYM', 'SIL', 'ZC', 'ZN'] |
+| 8 | 1.4230 | ['6E', '6J', 'M2K', 'MES', 'MGC', 'MNQ', 'MYM', 'SIL', 'ZC', 'ZN'] |
+| 9 | 1.1022 | ['6E', '6J', 'M2K', 'MCL', 'MES', 'MGC', 'MNQ', 'MYM', 'SIL', 'ZC', 'ZN'] |
+| 10 | -0.9768 | ['6E', '6J', 'M2K', 'MCL', 'MES', 'MGC', 'MNQ', 'MYM', 'SIL', 'ZC', 'ZN'] |
+| 11 | 0.8185 | ['6E', '6J', 'M2K', 'MCL', 'MES', 'MGC', 'MNG', 'MNQ', 'MYM', 'SIL', 'ZC', 'ZN'] |
+| 12 | 0.4037 | ['6E', '6J', 'M2K', 'MCL', 'MES', 'MGC', 'MNG', 'MNQ', 'MYM', 'SIL', 'ZC', 'ZN'] |
 
 ## Verdict
 
-REJECT -- OOS Sharpe is non-positive; no edge to deflate or gate.
+WEAK -- does not clear the combined gate: PBO not comfortably acceptable (pbo=0.4376845376845377)
 
 ## Notes on PBO interpretation
 
@@ -93,22 +93,22 @@ given only one configuration was ever run.
 
 ## Concern: extreme skew/kurtosis in the stitched OOS series
 
-The stitched OOS return series has skew -30.5 and Pearson kurtosis 1332.4.
-Both are far outside what is plausible for a 20%-vol-targeted, 5-12-instrument
-diversified daily futures portfolio (a well-behaved vol-targeted series would
-typically show single- to low-double-digit kurtosis, not four digits). This
-points to one or a small number of extreme-outlier days dominating the tail
-statistics -- plausible sources include a data artifact on a newly-listed
-micro contract's first tradable day within a window, or a boundary effect in
-the per-window OOS return-slicing (`_oos_returns` in
-`scripts/backtest_scripts/run_carver_walkforward.py`) at an IS/OOS seam. This
-was NOT root-caused within this run (would require a further per-day
-diagnostic pass across all 12 windows, not performed here to bound run time)
--- flagged per the acceptance-run protocol as a DONE_WITH_CONCERNS finding.
-The directional conclusion (OOS Sharpe -0.4514, PBO 0.428 indicating
-near-coin-flip overfitting risk) is still a legitimate REJECT signal
-independent of the exact tail shape, but the PSR/DSR values ARE sensitive to
-skew/kurtosis (see the PSR formula in `docs/methodology/backtesting.md`
-Section 2.2) and should be treated with caution until the outlier day(s) are
-identified and the sensitivity of PSR/DSR to excluding them is checked in a
-follow-up.
+The stitched OOS return series has skew -0.4 and Pearson
+kurtosis 8.7. Both are far outside what is
+plausible for a 20%-vol-targeted, 5-12-instrument diversified daily futures
+portfolio (a well-behaved vol-targeted series would typically show single- to
+low-double-digit kurtosis, not four digits). This points to one or a small
+number of extreme-outlier days dominating the tail statistics -- plausible
+sources include a data artifact on a newly-listed micro contract's first
+tradable day within a window, or a boundary effect in the per-window OOS
+return-slicing (`_oos_returns` in this script) at an IS/OOS seam. This was
+NOT root-caused within this run (would require a further per-day diagnostic
+pass across all 12 windows, not performed here to bound run time) -- flagged
+per the acceptance-run protocol as a DONE_WITH_CONCERNS finding. The
+directional conclusion (OOS Sharpe 0.1088, PBO
+0.438 indicating near-coin-flip overfitting risk) is still a
+legitimate REJECT signal independent of the exact tail shape, but the PSR/DSR
+values ARE sensitive to skew/kurtosis (see the PSR formula in
+`docs/methodology/backtesting.md` Section 2.2) and should be treated with
+caution until the outlier day(s) are identified and the sensitivity of
+PSR/DSR to excluding them is checked in a follow-up.
