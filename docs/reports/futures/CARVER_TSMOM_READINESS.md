@@ -91,24 +91,26 @@ parameter-free strategy. It answers whether the ranking of windows by Sharpe
 is stable under resampling, a weaker but still informative overfitting check
 given only one configuration was ever run.
 
-## Concern: extreme skew/kurtosis in the stitched OOS series
+## Note: tail statistics (resolved)
 
-The stitched OOS return series has skew -0.4 and Pearson
-kurtosis 8.7. Both are far outside what is
-plausible for a 20%-vol-targeted, 5-12-instrument diversified daily futures
-portfolio (a well-behaved vol-targeted series would typically show single- to
-low-double-digit kurtosis, not four digits). This points to one or a small
-number of extreme-outlier days dominating the tail statistics -- plausible
-sources include a data artifact on a newly-listed micro contract's first
-tradable day within a window, or a boundary effect in the per-window OOS
-return-slicing (`_oos_returns` in this script) at an IS/OOS seam. This was
-NOT root-caused within this run (would require a further per-day diagnostic
-pass across all 12 windows, not performed here to bound run time) -- flagged
-per the acceptance-run protocol as a DONE_WITH_CONCERNS finding. The
-directional conclusion (OOS Sharpe 0.1088, PBO
-0.438 indicating near-coin-flip overfitting risk) is still a
-legitimate REJECT signal independent of the exact tail shape, but the PSR/DSR
-values ARE sensitive to skew/kurtosis (see the PSR formula in
-`docs/methodology/backtesting.md` Section 2.2) and should be treated with
-caution until the outlier day(s) are identified and the sensitivity of
-PSR/DSR to excluding them is checked in a follow-up.
+An earlier version of this run showed extreme tail statistics (skew -30.5,
+Pearson kurtosis ~1332, and a 1.5x-cost OOS Sharpe *above* the 1x Sharpe --
+physically backwards). Root cause: the `FuturesPortfolioSimulator` allowed
+account equity to cross zero (no bankruptcy floor), and OOS returns were
+computed via `pct_change` on a zero-crossing equity curve, which explodes near
+the crossing.
+
+This was fixed before merge: the simulator now (a) sizes each rebalance against
+LIVE equity (equity-feedback sizing), so position sizes shrink in a drawdown,
+and (b) floors equity at zero after both mark-to-market and cost debits
+(bankruptcy floor), guaranteeing a non-negative equity curve. After the fix,
+the regenerated stitched OOS series is well-behaved: skew -0.39, Pearson
+kurtosis 8.7 (mild for a daily futures book), and the 1.5x-cost Sharpe (0.0798)
+is correctly below the 1x Sharpe (0.1088). PSR/DSR are therefore reliable here.
+
+The WEAK verdict (OOS Sharpe 0.1088; PBO 0.438 -- near-coin-flip) stands on the
+clean statistics: Carver multi-speed TSMOM on this basket does not clear the
+combined gate. Follow-up (fidelity, not correctness): the combined forecast
+omits Carver's Forecast Diversification Multiplier, so forecasts are
+systematically under-scaled -- worth adding before a fair head-to-head, though
+it will not flip the WEAK verdict.
