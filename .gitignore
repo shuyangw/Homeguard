@@ -114,6 +114,8 @@ data/
 !src/data/
 !tests/data/
 !scripts/data/
+!src/backtesting/data/
+!tests/backtesting/data/
 equities_*/
 *.parquet
 *.csv
