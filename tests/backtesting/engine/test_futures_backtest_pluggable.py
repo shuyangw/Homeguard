@@ -1,8 +1,17 @@
 import pandas as pd
 import pytest
 
+from src.data.futures.paths import continuous_1min_dir
 from src.backtesting.engine.futures_backtest import run_futures_backtest
 from src.strategies.registry import register_strategy
+
+
+def _data_present():
+    return (continuous_1min_dir() / "symbol=ES").exists()
+
+
+# Mirror the e2e guard: skip (not error) on a machine/CI without the futures store.
+pytestmark = pytest.mark.skipif(not _data_present(), reason="futures store not present")
 
 _SLICE = {
     "strategy": {"universe": ["6E", "GC"]},
