@@ -27,6 +27,16 @@ class _NoForecast:
         self.universe = list(universe)
 
 
+class _ParamForecast:
+    """Stub whose constant forecast equals params['level'] -> equity is flat iff level == 0."""
+    def __init__(self, universe, **params):
+        self.universe = list(universe)
+        self.level = float(params.get("level", 0.0))
+
+    def forecast_panel(self, close_panel: pd.DataFrame) -> pd.DataFrame:
+        return pd.DataFrame(self.level, index=close_panel.index, columns=close_panel.columns)
+
+
 def test_unknown_strategy_name_raises_fast():
     cfg = {**_SLICE, "strategy": {"name": "NoSuchStrategy", "universe": ["6E", "GC"]}}
     with pytest.raises(ValueError):
@@ -56,3 +66,21 @@ def test_default_name_runs_carver_backward_compat():
     eq = res["equity_curve"]
     assert eq and all(isinstance(v, float) for v in eq)
     assert any(abs(v - 100000) > 1e-6 for v in eq), "Carver produced no trades (unexpected)"
+
+
+def test_strategy_params_flow_to_constructor():
+    # params.level=10 -> non-zero constant forecast -> positions -> equity moves.
+    # At 1M capital the sizing is comfortably above the integer-contract floor, so a
+    # non-flat curve proves params reached the strategy constructor (level=0 would be flat).
+    register_strategy("ParamForecastStub", _ParamForecast)
+    cfg = {
+        "strategy": {"name": "ParamForecastStub", "universe": ["6E", "GC"],
+                     "params": {"level": 10.0}},
+        "dates": {"start": "2022-01-03", "end": "2022-06-30"},
+        "backtest": {"initial_capital": 1_000_000, "vol_target_per_instrument": 0.20,
+                     "rebalance": "weekly", "cost_mult": 1.0},
+    }
+    res = run_futures_backtest(cfg)
+    eq = res["equity_curve"]
+    assert eq and any(abs(v - 1_000_000) > 1e-6 for v in eq), \
+        "params.level did not reach the strategy constructor (equity flat)"
