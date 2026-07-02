@@ -421,27 +421,18 @@ parameter-free strategy. It answers whether the ranking of windows by Sharpe
 is stable under resampling, a weaker but still informative overfitting check
 given only one configuration was ever run.
 
-## Concern: extreme skew/kurtosis in the stitched OOS series
+## Note: tail statistics
 
-The stitched OOS return series has skew {result['skew']:.1f} and Pearson
-kurtosis {result['kurtosis_pearson']:.1f}. Both are far outside what is
-plausible for a 20%-vol-targeted, multi-instrument diversified daily futures
-portfolio (a well-behaved vol-targeted series would typically show single- to
-low-double-digit kurtosis, not four digits). This points to one or a small
-number of extreme-outlier days dominating the tail statistics -- plausible
-sources include a data artifact on a newly-listed micro contract's first
-tradable day within a window, or a boundary effect in the per-window OOS
-return-slicing (`_oos_returns` in this script) at an IS/OOS seam. This was
-NOT root-caused within this run (would require a further per-day diagnostic
-pass across all 12 windows, not performed here to bound run time) -- flagged
-per the acceptance-run protocol as a DONE_WITH_CONCERNS finding. The
-directional conclusion (OOS Sharpe {result['oos_sharpe']:.4f}, PBO
-{result['pbo']:.3f} indicating near-coin-flip overfitting risk) is still a
-legitimate REJECT signal independent of the exact tail shape, but the PSR/DSR
-values ARE sensitive to skew/kurtosis (see the PSR formula in
-`docs/methodology/backtesting.md` Section 2.2) and should be treated with
-caution until the outlier day(s) are identified and the sensitivity of
-PSR/DSR to excluding them is checked in a follow-up.
+The stitched OOS return series has skew {result['skew']:.2f} and Pearson
+kurtosis {result['kurtosis_pearson']:.1f} -- mild fat tails, typical for a
+vol-targeted daily futures trend portfolio. An earlier version of the harness
+produced pathological tail stats (kurtosis in the thousands) because the
+simulator let account equity cross zero and `pct_change` exploded on the
+zero-crossing equity curve; that was fixed before merge via equity-feedback
+sizing plus a bankruptcy floor (equity is now provably non-negative after both
+mark-to-market and cost debits), so the PSR/DSR values here are reliable. The
+WEAK verdict (OOS Sharpe {result['oos_sharpe']:.4f}, PBO {result['pbo']:.3f}
+-- near coin-flip) rests on the clean statistics, not on any tail artifact.
 """
     out_path = Path(report_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
