@@ -38,3 +38,8 @@ def definitions_dir() -> Path:
 def roll_calendar_dir() -> Path:
     """Cached per-root roll calendar artifacts (built in Phase 1)."""
     return _futures_root() / "roll_calendar"
+
+
+def carry_dir() -> Path:
+    """Carry-based signal and computation artifacts."""
+    return _futures_root() / "carry"
