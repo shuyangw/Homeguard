@@ -1,0 +1,56 @@
+# Broad-basket Carver multi-speed TSMOM (parameter-free) over ~33 full-size roots.
+# Usage (single pass): python -m src.backtest_runner --config config/backtesting/carver_tsmom_broad.yaml
+# Usage (walk-forward): python scripts/backtest_scripts/run_carver_walkforward.py \
+#     --config config/backtesting/carver_tsmom_broad.yaml \
+#     --report docs/reports/futures/CARVER_TSMOM_BROAD_READINESS.md
+#
+# asset_class: futures is detected on the raw YAML dict in src/backtest_runner.py
+# and routed to src.backtesting.engine.futures_backtest.run_futures_backtest.
+
+asset_class: futures
+
+strategy:
+  universe:
+    - ES
+    - NQ
+    - YM
+    - ZT
+    - ZF
+    - ZN
+    - TN
+    - ZB
+    - UB
+    - 6E
+    - 6J
+    - 6B
+    - 6A
+    - 6C
+    - 6S
+    - 6M
+    - 6N
+    - CL
+    - BZ
+    - NG
+    - HO
+    - RB
+    - GC
+    - SI
+    - HG
+    - PL
+    - ZC
+    - ZW
+    - ZS
+    - ZL
+    - ZM
+    - LE
+    - HE
+
+dates:
+  start: "2010-06-07"
+  end: "2026-02-20"
+
+backtest:
+  initial_capital: 10000000
+  vol_target_per_instrument: 0.20
+  rebalance: weekly
+  cost_mult: 1.0
