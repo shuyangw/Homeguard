@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from src.data.futures.contract_specs import get_spec
+
 
 @dataclass(frozen=True)
 class ContractSpec:
@@ -44,3 +46,28 @@ class FuturesPositionSizer:
         if n < 0:
             n = 0
         return min(n, contract_specs.max_contracts)
+
+
+def size_from_forecast(forecast: float, capital: float, vol_target: float,
+                       root: str, price: float, daily_vol: float,
+                       div_mult: float = 1.0) -> int:
+    """Carver-style forecast -> signed integer contracts.
+
+    contracts = (forecast/10) * capital * vol_target * div_mult
+                / (multiplier * price * daily_vol_annualized)
+    daily_vol is the daily return stdev; annualized via sqrt(252).
+    Hard-capped by contract_specs max_contracts.
+    """
+    spec = get_spec(root)
+    ann_vol = daily_vol * (252 ** 0.5)
+    denom = spec.multiplier * price * ann_vol
+    if denom <= 0 or vol_target <= 0:
+        return 0
+    raw = (forecast / 10.0) * capital * vol_target * div_mult / denom
+    n = int(round(raw))
+    cap = spec.max_contracts
+    if n > cap:
+        n = cap
+    elif n < -cap:
+        n = -cap
+    return n

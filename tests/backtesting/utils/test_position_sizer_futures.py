@@ -77,3 +77,27 @@ def test_size_position_never_negative():
         underlying_price=5300.0,
     )
     assert n == 0
+
+
+def test_zero_forecast_zero_contracts():
+    from src.backtesting.utils.position_sizer_futures import size_from_forecast
+    assert size_from_forecast(0.0, 25000, 0.20, "MES", price=5000, daily_vol=0.01) == 0
+
+
+def test_positive_forecast_positive_contracts():
+    from src.backtesting.utils.position_sizer_futures import size_from_forecast
+    n = size_from_forecast(10.0, 100000, 0.20, "MES", price=5000, daily_vol=0.008)
+    assert n > 0
+
+
+def test_negative_forecast_negative_contracts():
+    from src.backtesting.utils.position_sizer_futures import size_from_forecast
+    n = size_from_forecast(-10.0, 100000, 0.20, "MES", price=5000, daily_vol=0.008)
+    assert n < 0
+
+
+def test_capped_by_max_contracts():
+    from src.backtesting.utils.position_sizer_futures import size_from_forecast
+    from src.data.futures.contract_specs import get_spec
+    n = size_from_forecast(20.0, 10_000_000, 0.50, "MES", price=5000, daily_vol=0.001)
+    assert abs(n) <= get_spec("MES").max_contracts

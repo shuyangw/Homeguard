@@ -30,6 +30,7 @@ class ContractSpec:
     fnd_offset_days: int     # business-day cushion before expiration; 0 for financial
     initial_margin: float    # approximate CME/IBKR overnight scan-range margin, USD (early 2026)
     maintenance_margin: float  # approximate, ~0.9 x initial_margin
+    max_contracts: int = 100  # position size limit for vol-targeted sizing
 
 
 def _s(root, mult, tick, tick_val, ccy, cycle, settle, fnd, initial_margin):
