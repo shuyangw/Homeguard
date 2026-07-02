@@ -22,6 +22,21 @@ from src.data.futures.paths import continuous_1min_dir, per_contract_1min_dir
 # CME month codes: F=Jan G=Feb H=Mar J=Apr K=May M=Jun N=Jul Q=Aug U=Sep V=Oct X=Nov Z=Dec
 _MONTH_CODES = "FGHJKMNQUVXZ"
 
+# Process-wide cache of the per-(root, calendar year) DAILY (date, symbol,
+# vol) table -- NOT the raw per-contract minute bars. `_active_contract_per_day`
+# is called once per (root, window) by every `load_daily_panel`/walk-forward
+# window; a multi-window walk-forward's windows overlap heavily (e.g. Carver
+# walk-forward's rolling train segment), so without caching the SAME
+# per-contract minute-bar years get re-read and re-scanned from disk
+# repeatedly. Caching is done at YEAR granularity (not "full history per
+# root") deliberately: caching full multi-decade history per root would hold
+# the raw multi-GB minute-bar data for every root in memory simultaneously
+# (observed: >40GB resident for a 12-root universe) -- caching small
+# per-year DAILY aggregates instead bounds memory to O(roots x years) tiny
+# tables, while the large raw per-file minute data is transient (freed right
+# after each file's groupby-aggregate).
+_YEAR_DAILY_VOLUME_CACHE: dict[tuple[str, str, int], pl.DataFrame] = {}
+
 
 def _is_outright(symbol: str, root: str) -> bool:
     """True if `symbol` is an outright contract of `root` (not a spread)."""
@@ -36,44 +51,98 @@ def _is_outright(symbol: str, root: str) -> bool:
     return suffix[0] in _MONTH_CODES and suffix[1:].isdigit()
 
 
+def _outright_filter_expr(root: str) -> pl.Expr:
+    """Vectorized polars equivalent of `_is_outright(symbol, root)`.
+
+    The previous implementation used `.map_elements(...)` (a row-by-row
+    Python callback) to filter the `symbol` column, which is extremely slow
+    and memory-heavy on the multi-year per-contract minute-bar files (tens of
+    millions of rows). This is the same predicate expressed with native
+    (vectorized) polars string expressions.
+    """
+    symbol = pl.col("symbol")
+    suffix = symbol.str.slice(len(root))
+    return (
+        symbol.str.starts_with(root)
+        & ~symbol.str.contains("-", literal=True)
+        & ~symbol.str.contains(" ", literal=True)
+        & (suffix.str.len_chars() >= 2)
+        & suffix.str.slice(0, 1).is_in(list(_MONTH_CODES))
+        & suffix.str.slice(1).str.contains(r"^\d+$")
+    )
+
+
 class ContinuousContractDataLoader:
+    def _year_daily_symbol_volume(self, root: str, year: int) -> pl.DataFrame:
+        """Daily (date, symbol, vol) table for `root` restricted to `year`.
+
+        Cached per (per_contract_1min_dir(), root, year) -- the cache key
+        includes the storage dir (not root alone) so it does not go stale
+        across a monkeypatched `get_local_storage_dir` (e.g. between unit
+        tests that each point at a different tmp_path). Reads and filters
+        the raw per-contract minute files for this ONE year, aggregates to
+        daily volume, and discards the (large) raw minute data -- only the
+        small daily aggregate is retained in the cache.
+        """
+        pcm_root = per_contract_1min_dir()
+        cache_key = (str(pcm_root), root, year)
+        if cache_key in _YEAR_DAILY_VOLUME_CACHE:
+            return _YEAR_DAILY_VOLUME_CACHE[cache_key]
+
+        empty = pl.DataFrame(schema={"date": pl.Date, "symbol": pl.String, "vol": pl.UInt64})
+        year_dir = pcm_root / f"year={year}"
+        if not year_dir.exists():
+            _YEAR_DAILY_VOLUME_CACHE[cache_key] = empty
+            return empty
+
+        files: list[Path] = sorted(year_dir.rglob("data.parquet"))
+        if not files:
+            _YEAR_DAILY_VOLUME_CACHE[cache_key] = empty
+            return empty
+
+        df = pl.concat([pl.read_parquet(f) for f in files])
+        df = df.filter(_outright_filter_expr(root))
+        if df.is_empty():
+            _YEAR_DAILY_VOLUME_CACHE[cache_key] = empty
+            return empty
+
+        daily = df.group_by([
+            pl.col("timestamp").dt.date().alias("date"),
+            pl.col("symbol"),
+        ]).agg(pl.col("volume").sum().alias("vol"))
+        _YEAR_DAILY_VOLUME_CACHE[cache_key] = daily
+        return daily
+
     def _active_contract_per_day(
         self, root: str, start: date, end: date
     ) -> pl.DataFrame:
         """Return DataFrame with columns [date, active] for each trading day
         in [start, end] where `active` is the highest-volume outright contract
         of `root` on that day."""
-        pcm_root = per_contract_1min_dir()
-        if not pcm_root.exists():
-            return pl.DataFrame(schema={"date": pl.Date, "active": pl.String})
+        empty = pl.DataFrame(schema={"date": pl.Date, "active": pl.String})
+        parts = [
+            self._year_daily_symbol_volume(root, y)
+            for y in range(start.year, end.year + 1)
+        ]
+        parts = [p for p in parts if not p.is_empty()]
+        if not parts:
+            return empty
 
-        all_files: list[Path] = []
-        for y in range(start.year, end.year + 1):
-            for m in range(1, 13):
-                f = pcm_root / f"year={y}" / f"month={m}" / "data.parquet"
-                if f.exists():
-                    all_files.append(f)
-        if not all_files:
-            return pl.DataFrame(schema={"date": pl.Date, "active": pl.String})
+        daily = pl.concat(parts) if len(parts) > 1 else parts[0]
+        daily = daily.filter((pl.col("date") >= start) & (pl.col("date") <= end))
+        if daily.is_empty():
+            return empty
 
-        df = pl.concat([pl.read_parquet(f) for f in all_files])
-        df = df.filter(pl.col("symbol").map_elements(
-            lambda s: _is_outright(s, root), return_dtype=pl.Boolean,
-        ))
-        df = df.filter(
-            (pl.col("timestamp").dt.date() >= start)
-            & (pl.col("timestamp").dt.date() <= end)
-        )
-        if df.is_empty():
-            return pl.DataFrame(schema={"date": pl.Date, "active": pl.String})
-
-        # Daily total volume per (date, symbol); pick the symbol with max volume per date
-        daily = df.group_by([
-            pl.col("timestamp").dt.date().alias("date"),
-            pl.col("symbol"),
-        ]).agg(pl.col("volume").sum().alias("vol"))
-        # For each date, take row with max vol
-        ranked = daily.sort(["date", "vol"], descending=[False, True])
+        # For each date, take the symbol with max vol. "symbol" is a
+        # deterministic tie-break: on roll days two outright contracts can
+        # carry near-equal volume, and without a full sort key `.first()`
+        # after a tied sort is order-dependent on the (multi-threaded,
+        # non-stable) parquet read/concat order -- observed to flip which
+        # contract "wins" a tie between process runs, producing a different
+        # roll-date list each time and an intermittent KeyError downstream
+        # in `load()`. Sorting on the full (date, vol, symbol) key makes the
+        # choice reproducible.
+        ranked = daily.sort(["date", "vol", "symbol"], descending=[False, True, False])
         active = ranked.group_by("date").agg(pl.col("symbol").first().alias("active")).sort("date")
         return active
 

@@ -11,13 +11,28 @@ from datetime import date
 import pandas as pd
 
 from src.data.continuous_contract_loader import ContinuousContractDataLoader
+from src.utils import logger
 
 
 def load_daily_panel(roots: list[str], start: date, end: date) -> pd.DataFrame:
+    """Load a ratio-adjusted daily close/return panel for `roots` in [start, end].
+
+    A root is silently EXCLUDED from the returned panel (not fatal) if it has
+    no data in this window (e.g. a micro contract that had not yet been
+    listed -- CME Micro E-mini S&P/Nasdaq/Russell/Dow launched 2019-05) or if
+    `ContinuousContractDataLoader` raises while building it (e.g. a
+    roll-calendar data-quality issue for one specific root/window). Each
+    exclusion is logged as a WARNING. Raises only if NO requested root
+    produced usable data for the window.
+    """
     loader = ContinuousContractDataLoader()
     frames = {}
     for root in roots:
-        d = loader.aggregate_to_daily(root, method="ratio_adjusted", start=start, end=end)
+        try:
+            d = loader.aggregate_to_daily(root, method="ratio_adjusted", start=start, end=end)
+        except Exception as e:
+            logger.warning(f"[load_daily_panel] skipping {root} in {start}..{end}: {type(e).__name__}: {e}")
+            continue
         if d.is_empty():
             continue
         pdf = d.select(["timestamp", "close"]).to_pandas()
