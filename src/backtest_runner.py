@@ -1186,6 +1186,32 @@ Available strategies:
     if args.config:
         from src.settings import load_config, BacktestMode
 
+        # Futures configs don't fit the equity/crypto BacktestConfig pydantic
+        # schema (no `symbols` block, different backtest knobs). Detect
+        # `asset_class: futures` on the raw YAML dict BEFORE pydantic
+        # validation and route to the futures orchestration helper. All
+        # other asset classes are untouched below.
+        try:
+            import yaml as _yaml
+            with open(args.config, 'r', encoding='utf-8') as f:
+                raw_config = _yaml.safe_load(f) or {}
+        except FileNotFoundError as e:
+            logger.error(f"Config file not found: {e}")
+            sys.exit(1)
+
+        if raw_config.get('asset_class') == 'futures':
+            from src.backtesting.engine.futures_backtest import run_futures_backtest
+
+            logger.info(f"Running config-driven futures backtest: {args.config}")
+            result = run_futures_backtest(raw_config)
+            logger.success(
+                f"Futures backtest complete: n_days={result['n_days']}, "
+                f"sharpe_ratio={result['metrics'].get('sharpe_ratio')}"
+            )
+            if result.get('run_id'):
+                logger.info(f"[registry] appended run_id={result['run_id']}")
+            return
+
         try:
             config = load_config(args.config)
 

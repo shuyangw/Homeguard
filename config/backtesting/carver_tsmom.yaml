@@ -1,0 +1,22 @@
+# Carver multi-speed TSMOM (parameter-free) over a small futures basket.
+# Usage: python -m src.backtest_runner --config config/backtesting/carver_tsmom.yaml
+#
+# NOTE: this is a futures-asset-class config -- it does NOT go through the
+# equity/crypto BacktestConfig pydantic schema. `asset_class: futures` is
+# detected on the raw YAML dict in src/backtest_runner.py and routed to
+# src.backtesting.engine.futures_backtest.run_futures_backtest directly.
+
+asset_class: futures
+
+strategy:
+  universe: ["MES", "MGC", "6E"]
+
+dates:
+  start: "2022-01-01"
+  end: "2023-12-31"
+
+backtest:
+  initial_capital: 25000
+  vol_target_per_instrument: 0.20
+  rebalance: weekly
+  cost_mult: 1.0
