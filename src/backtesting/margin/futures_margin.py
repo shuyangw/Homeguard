@@ -12,12 +12,14 @@ import math
 
 from src.data.futures.contract_specs import get_spec
 
-# Inter-commodity offset credits are opt-in: pass `offset_matrix` explicitly.
-# With no matrix, requirement() is pure gross scan-range margin (no netting).
-# Example credits (fraction, applied only when the two roots are held
-# OPPOSITE-signed) for a caller who wants to enable them:
-#   {("ES", "NQ"): 0.75, ("ZN", "ZB"): 0.70}
-DEFAULT_OFFSETS: dict[tuple[str, str], float] = {}
+# Inter-commodity offset credits are ON by default (SPAN applies these
+# inter-commodity credits automatically). These are the shipped defaults
+# (fraction, applied only when the two roots are held OPPOSITE-signed).
+# Pass an explicit `offset_matrix` (including `{}`) to override.
+DEFAULT_OFFSETS: dict[tuple[str, str], float] = {
+    ("ES", "NQ"): 0.75,
+    ("ZN", "ZB"): 0.70,
+}
 
 
 class MarginModel:
