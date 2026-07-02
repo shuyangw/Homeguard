@@ -393,7 +393,7 @@ its forecast/price/vol are unavailable).
 | OOS Sharpe (1.5x cost) | {result['oos_sharpe_1_5x_cost']:.4f} |
 | PSR (vs benchmark 0) | {result['psr']:.4f} |
 | DSR (n_trials={result['trial_count']}) | {result['dsr']:.4f} |
-| PBO (windows-as-columns CSCV) | {result['pbo']} |
+| PBO (windows-as-columns CSCV) | {result['pbo']:.4f} |
 | n_windows | {result['n_windows']} |
 | n_oos_days | {result['n_oos_days']} |
 | skew | {result['skew']:.4f} |

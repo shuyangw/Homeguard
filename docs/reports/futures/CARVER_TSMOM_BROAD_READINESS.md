@@ -52,7 +52,7 @@ its forecast/price/vol are unavailable).
 | OOS Sharpe (1.5x cost) | 0.0645 |
 | PSR (vs benchmark 0) | 1.0000 |
 | DSR (n_trials=1) | 1.0000 |
-| PBO (windows-as-columns CSCV) | 0.34933954933954936 |
+| PBO (windows-as-columns CSCV) | 0.3493 |
 | n_windows | 13 |
 | n_oos_days | 3964 |
 | skew | -0.5653 |
