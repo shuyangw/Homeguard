@@ -57,6 +57,7 @@ _STRATEGY_REGISTRY: Dict[str, Tuple[str, str]] = {
     "DSTSStrategy": ("src.strategies.advanced.dsts_strategy", "DSTSStrategy"),
     "FRSStrategy": ("src.strategies.advanced.frs_strategy", "FRSStrategy"),
     "EVRStrategy": ("src.strategies.advanced.evr_strategy", "EVRStrategy"),
+    "CarverMomentum": ("src.strategies.advanced.carver_momentum_strategy", "CarverMomentumStrategy"),
 }
 
 # Display name -> class name mapping for user-friendly config files
@@ -139,6 +140,9 @@ _DISPLAY_NAME_MAP: Dict[str, str] = {
     "VSA": "EVRStrategy",
     "VSA Strategy": "EVRStrategy",
     "Absorption": "EVRStrategy",
+    "Carver": "CarverMomentum",
+    "Carver TSMOM": "CarverMomentum",
+    "Carver Momentum": "CarverMomentum",
 }
 
 # Cache for loaded strategy classes
