@@ -13,7 +13,6 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Any, Dict
 
-import numpy as np
 import pandas as pd
 
 from src.backtesting.data.futures_backtest_loader import load_daily_panel
@@ -21,7 +20,6 @@ from src.backtesting.costs.futures import futures_round_trip_usd
 from src.backtesting.engine.futures_portfolio_simulator import FuturesPortfolioSimulator
 from src.backtesting.margin.futures_margin import MarginModel
 from src.backtesting.reporting.standard_report import StandardReportGenerator
-from src.backtesting.utils.position_sizer_futures import size_from_forecast
 from src.features.volatility import close_to_close_rv
 from src.strategies.advanced.carver_momentum_strategy import CarverMomentumStrategy
 from src.utils import logger
@@ -35,41 +33,6 @@ def _as_date(value: Any) -> date:
     if isinstance(value, date):
         return value
     return datetime.strptime(str(value), "%Y-%m-%d").date()
-
-
-def _build_target_contracts(
-    close: pd.DataFrame,
-    forecasts: pd.DataFrame,
-    universe: list[str],
-    capital: float,
-    vol_target: float,
-    margin_model: MarginModel,
-) -> pd.DataFrame:
-    returns = close.pct_change()
-    daily_vol = returns.apply(lambda col: close_to_close_rv(col, 25, annualization_factor=1), axis=0)
-
-    rows: dict[date, dict[str, int]] = {}
-    for d in close.index:
-        row: dict[str, int] = {}
-        for root in universe:
-            if root not in close.columns:
-                row[root] = 0
-                continue
-            forecast = forecasts.loc[d, root] if d in forecasts.index else np.nan
-            price = close.loc[d, root]
-            vol = daily_vol.loc[d, root]
-            if pd.isna(forecast) or pd.isna(price) or pd.isna(vol):
-                row[root] = 0
-                continue
-            row[root] = size_from_forecast(
-                float(forecast), capital, vol_target, root,
-                price=float(price), daily_vol=float(vol),
-            )
-        rows[d] = margin_model.check_and_scale(row, equity=capital)
-
-    target = pd.DataFrame.from_dict(rows, orient="index")[universe]
-    target.index.name = close.index.name
-    return target
 
 
 def run_futures_backtest(config: Dict[str, Any]) -> Dict[str, Any]:
@@ -96,11 +59,10 @@ def run_futures_backtest(config: Dict[str, Any]) -> Dict[str, Any]:
 
     forecasts = CarverMomentumStrategy(universe).forecast_panel(close)
 
-    margin_model = MarginModel()
-    target_contracts = _build_target_contracts(
-        close, forecasts, universe, capital, vol_target, margin_model,
-    )
+    returns = close.pct_change()
+    daily_vol = returns.apply(lambda col: close_to_close_rv(col, 25, annualization_factor=1), axis=0)
 
+    margin_model = MarginModel()
     sim = FuturesPortfolioSimulator(
         initial_capital=capital,
         cost_fn=futures_round_trip_usd,
@@ -108,7 +70,7 @@ def run_futures_backtest(config: Dict[str, Any]) -> Dict[str, Any]:
         rebalance=rebalance,
         cost_mult=cost_mult,
     )
-    res = sim.run(close, target_contracts)
+    res = sim.run_sized(close, forecasts, daily_vol, vol_target)
 
     report = StandardReportGenerator().generate_report(
         res.equity_curve, "CarverMomentum", universe,

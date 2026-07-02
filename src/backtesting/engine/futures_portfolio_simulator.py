@@ -9,10 +9,17 @@ Cost convention: `cost_fn(root, regular_hours, n_contracts)` returns the
 TOTAL cost for `n_contracts` (matching `futures_round_trip_usd`, which
 already scales by n_contracts). The simulator does NOT multiply by
 n_contracts again.
+
+Bankruptcy floor: if MTM drives cash <= 0, the broker force-liquidates all
+positions, cash floors at 0.0, and the account stays flat (equity == 0.0)
+for the rest of the series. This caps the account's loss at 100% and keeps
+the equity curve well-defined (no negative equity, no divide-by-zero blowups
+in downstream pct_change statistics).
 """
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Callable
 
 import pandas as pd
 
@@ -24,6 +31,10 @@ class FuturesBacktestResult:
     equity_curve: pd.Series
     trades: pd.DataFrame
     margin_utilization: pd.Series
+
+
+# target_provider(d, equity_now, current) -> dict[root, int] desired contracts
+TargetProvider = Callable[[object, float, dict], dict]
 
 
 class FuturesPortfolioSimulator:
@@ -46,7 +57,7 @@ class FuturesPortfolioSimulator:
             return d.month != prev_d.month
         return True
 
-    def run(self, close_panel: pd.DataFrame, target_contracts: pd.DataFrame) -> FuturesBacktestResult:
+    def _simulate(self, close_panel: pd.DataFrame, target_provider: TargetProvider) -> FuturesBacktestResult:
         roots = list(close_panel.columns)
         dates = list(close_panel.index)
         cash = self.initial_capital
@@ -54,9 +65,18 @@ class FuturesPortfolioSimulator:
         equity, util, trade_rows = [], [], []
         prev_close = None
         prev_d = None
+        blown = False
 
         for d in dates:
             row_close = close_panel.loc[d]
+
+            if blown:
+                util.append(self.margin.utilization(current, cash))
+                equity.append(cash)
+                prev_close = row_close
+                prev_d = d
+                continue
+
             # 1. MTM on existing positions
             if prev_close is not None:
                 pnl = 0.0
@@ -65,11 +85,22 @@ class FuturesPortfolioSimulator:
                         pnl += current[r] * get_spec(r).multiplier * (row_close[r] - prev_close[r])
                 cash += pnl
 
-            # 2. Rebalance
+            # 2. Bankruptcy floor -- force-liquidate, flatten, floor cash at 0
+            if cash <= 0:
+                cash = 0.0
+                current = {r: 0 for r in roots}
+                blown = True
+                util.append(self.margin.utilization(current, cash))
+                equity.append(cash)
+                prev_close = row_close
+                prev_d = d
+                continue
+
+            # 3. Rebalance
             if self._is_rebalance(d, prev_d):
-                tgt = target_contracts.loc[d]
+                tgt = target_provider(d, cash, current)
                 for r in roots:
-                    want = int(tgt[r]) if pd.notna(tgt[r]) else 0
+                    want = int(tgt.get(r, 0)) if tgt.get(r) is not None and pd.notna(tgt.get(r)) else 0
                     diff = want - current[r]
                     if diff != 0:
                         c = self.cost_fn(r, regular_hours=True, n_contracts=abs(diff)) * self.cost_mult
@@ -77,7 +108,7 @@ class FuturesPortfolioSimulator:
                         trade_rows.append({"date": d, "root": r, "contracts": diff, "cost": c})
                         current[r] = want
 
-            # 3. Margin utilization
+            # 4. Margin utilization
             util.append(self.margin.utilization(current, cash))
             equity.append(cash)
             prev_close = row_close
@@ -88,3 +119,33 @@ class FuturesPortfolioSimulator:
         trades = pd.DataFrame(trade_rows) if trade_rows else pd.DataFrame(
             columns=["date", "root", "contracts", "cost"])
         return FuturesBacktestResult(equity_curve=eq, trades=trades, margin_utilization=um)
+
+    def run(self, close_panel: pd.DataFrame, target_contracts: pd.DataFrame) -> FuturesBacktestResult:
+        def provider(d, equity_now, current):
+            return target_contracts.loc[d].to_dict()
+
+        return self._simulate(close_panel, provider)
+
+    def run_sized(self, close_panel: pd.DataFrame, forecast_panel: pd.DataFrame,
+                  daily_vol_panel: pd.DataFrame, vol_target: float,
+                  div_mult: float = 1.0) -> FuturesBacktestResult:
+        from src.backtesting.utils.position_sizer_futures import size_from_forecast
+
+        roots = list(close_panel.columns)
+
+        def provider(d, equity_now, current):
+            row: dict[str, int] = {}
+            for r in roots:
+                forecast = forecast_panel.loc[d, r] if d in forecast_panel.index else float("nan")
+                price = close_panel.loc[d, r]
+                vol = daily_vol_panel.loc[d, r] if d in daily_vol_panel.index else float("nan")
+                if pd.isna(forecast) or pd.isna(price) or pd.isna(vol):
+                    row[r] = 0
+                    continue
+                row[r] = size_from_forecast(
+                    float(forecast), equity_now, vol_target, r,
+                    price=float(price), daily_vol=float(vol), div_mult=div_mult,
+                )
+            return self.margin.check_and_scale(row, equity=equity_now)
+
+        return self._simulate(close_panel, provider)
