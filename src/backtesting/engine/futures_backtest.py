@@ -22,6 +22,7 @@ from src.backtesting.engine.futures_portfolio_simulator import FuturesPortfolioS
 from src.backtesting.margin.futures_margin import MarginModel
 from src.backtesting.reporting.standard_report import StandardReportGenerator
 from src.backtesting.utils.position_sizer_futures import size_from_forecast
+from src.features.volatility import close_to_close_rv
 from src.strategies.advanced.carver_momentum_strategy import CarverMomentumStrategy
 from src.utils import logger
 
@@ -44,7 +45,8 @@ def _build_target_contracts(
     vol_target: float,
     margin_model: MarginModel,
 ) -> pd.DataFrame:
-    daily_vol = close.pct_change().rolling(25).std()
+    returns = close.pct_change()
+    daily_vol = returns.apply(lambda col: close_to_close_rv(col, 25, annualization_factor=1), axis=0)
 
     rows: dict[date, dict[str, int]] = {}
     for d in close.index:
