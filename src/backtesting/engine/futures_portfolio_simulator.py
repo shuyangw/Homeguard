@@ -23,7 +23,15 @@ from typing import Callable
 
 import pandas as pd
 
+from src.backtesting.utils.position_sizer_futures import size_from_forecast
 from src.data.futures.contract_specs import get_spec
+
+
+def _floor(current: dict) -> tuple[float, bool]:
+    """Force-liquidate all positions and floor cash at 0.0. Returns (cash, blown)."""
+    for r in current:
+        current[r] = 0
+    return 0.0, True
 
 
 @dataclass
@@ -87,9 +95,7 @@ class FuturesPortfolioSimulator:
 
             # 2. Bankruptcy floor -- force-liquidate, flatten, floor cash at 0
             if cash <= 0:
-                cash = 0.0
-                current = {r: 0 for r in roots}
-                blown = True
+                cash, blown = _floor(current)
                 util.append(self.margin.utilization(current, cash))
                 equity.append(cash)
                 prev_close = row_close
@@ -100,13 +106,18 @@ class FuturesPortfolioSimulator:
             if self._is_rebalance(d, prev_d):
                 tgt = target_provider(d, cash, current)
                 for r in roots:
-                    want = int(tgt.get(r, 0)) if tgt.get(r) is not None and pd.notna(tgt.get(r)) else 0
+                    val = tgt.get(r)
+                    want = int(val) if val is not None and pd.notna(val) else 0
                     diff = want - current[r]
                     if diff != 0:
                         c = self.cost_fn(r, regular_hours=True, n_contracts=abs(diff)) * self.cost_mult
                         cash -= c
                         trade_rows.append({"date": d, "root": r, "contracts": diff, "cost": c})
                         current[r] = want
+
+            # 3b. Bankruptcy floor -- catch cost-driven negative equity the same day
+            if not blown and cash <= 0:
+                cash, blown = _floor(current)
 
             # 4. Margin utilization
             util.append(self.margin.utilization(current, cash))
@@ -129,8 +140,6 @@ class FuturesPortfolioSimulator:
     def run_sized(self, close_panel: pd.DataFrame, forecast_panel: pd.DataFrame,
                   daily_vol_panel: pd.DataFrame, vol_target: float,
                   div_mult: float = 1.0) -> FuturesBacktestResult:
-        from src.backtesting.utils.position_sizer_futures import size_from_forecast
-
         roots = list(close_panel.columns)
 
         def provider(d, equity_now, current):

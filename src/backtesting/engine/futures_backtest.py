@@ -13,8 +13,6 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Any, Dict
 
-import pandas as pd
-
 from src.backtesting.data.futures_backtest_loader import load_daily_panel
 from src.backtesting.costs.futures import futures_round_trip_usd
 from src.backtesting.engine.futures_portfolio_simulator import FuturesPortfolioSimulator

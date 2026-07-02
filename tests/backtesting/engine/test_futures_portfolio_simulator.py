@@ -54,6 +54,29 @@ def test_bankruptcy_floor_flattens_and_stays_at_zero():
     assert res.trades.loc[res.trades["date"] == dates[1], "contracts"].empty  # no rebalance trade on blow-up day
 
 
+def test_bankruptcy_floor_catches_cost_driven_negative_equity_same_day():
+    # Tiny account, flat price (no MTM movement), but the rebalance cost on
+    # day1 exceeds remaining cash -- equity must floor at 0.0 the SAME day,
+    # not go negative.
+    dates = pd.date_range("2024-01-02", periods=3, freq="B")
+    close = pd.DataFrame({"MES": [5000.0, 5000.0, 5000.0]}, index=dates)
+    targets = pd.DataFrame({"MES": [1, 1, 1]}, index=dates)
+
+    def cost(root, regular_hours=True, n_contracts=1):
+        return 50.0 * n_contracts  # exceeds the tiny initial_capital below
+
+    sim = FuturesPortfolioSimulator(initial_capital=10.0, cost_fn=cost,
+                                    margin_model=MarginModel(), rebalance="daily")
+    res = sim.run(close, targets)
+
+    assert (res.equity_curve >= 0).all()
+    assert res.equity_curve.iloc[0] == 0.0  # cost debit crossed zero on day1
+    assert res.equity_curve.iloc[1] == 0.0
+    assert res.equity_curve.iloc[2] == 0.0
+    # only day1's rebalance trade is recorded -- no further trading once blown
+    assert res.trades.loc[res.trades["date"] == dates[1], "contracts"].empty
+
+
 def test_run_sized_scales_contracts_with_live_equity():
     # Day1 sizes against initial_capital (25,000) at a high price (1,000).
     # Day2's price crater to 600 costs the day1 position ~12,000 in MTM, so the
