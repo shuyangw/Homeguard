@@ -19,6 +19,7 @@ Section 2 statistical gate) futures result.
 from __future__ import annotations
 
 from datetime import date, datetime
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence
 
 import numpy as np
@@ -50,6 +51,20 @@ def _as_date(value: Any) -> date:
     if isinstance(value, date):
         return value
     return datetime.strptime(str(value), "%Y-%m-%d").date()
+
+
+def _config_to_kwargs(config: Dict[str, Any]) -> Dict[str, Any]:
+    """Extract walk_forward_carver kwargs from a futures backtest YAML dict."""
+    strat = config.get("strategy", {})
+    dates = config.get("dates", {})
+    bt = config.get("backtest", {})
+    return {
+        "universe": list(strat["universe"]),
+        "capital": float(bt.get("initial_capital", _DEFAULT_CAPITAL)),
+        "vol_target": float(bt.get("vol_target_per_instrument", _DEFAULT_VOL_TARGET)),
+        "start": str(dates["start"]),
+        "end": str(dates["end"]),
+    }
 
 
 def _add_months(d: date, months: int) -> date:
@@ -248,6 +263,8 @@ def walk_forward_carver(
         "skew": skew,
         "kurtosis_pearson": kurt,
         "universe": universe,
+        "capital": capital,
+        "vol_target": vol_target,
         "window_universes": window_universes,
         "window_start": windows[0][1],
         "window_end": windows[-1][2],
@@ -315,7 +332,8 @@ def _verdict(result: Dict[str, Any]) -> str:
 
 
 def _write_readiness_report(result: Dict[str, Any], train_months: int, test_months: int,
-                             step_months: int, start: str, end: str) -> str:
+                             step_months: int, start: str, end: str,
+                             report_path: str = _REPORT_PATH) -> str:
     verdict = _verdict(result)
     window_rows = "\n".join(
         f"| {i + 1} | {s:.4f} | {result['window_universes'][i]} |"
@@ -346,17 +364,17 @@ With `n_trials=1`, `expected_max_sharpe` returns 0.0 (no deflation term), so
 DSR reduces to PSR against a benchmark Sharpe of 0 -- this is the correct,
 honest behavior for a non-selected, parameter-free strategy, not a bug.
 
-Requested universe: {result['universe']}. Initial capital: ${_DEFAULT_CAPITAL:,.0f}.
-Vol target per instrument: {_DEFAULT_VOL_TARGET:.2f}. Rebalance: weekly.
+Requested universe ({len(result['universe'])} roots): {result['universe']}.
+Initial capital: ${result['capital']:,.0f}. Vol target per instrument:
+{result['vol_target']:.2f}. Rebalance: weekly.
 Data frequency: daily (aggregated from Databento 1-min continuous contracts).
 
-**Per-window data-availability filtering.** Micro futures contracts phase in
-over time (e.g. CME Micro E-mini S&P 500/Nasdaq/Russell/Dow launched 2019-05,
-Micro Crude/Micro Nat Gas later still), so a fixed 12-instrument universe
-cannot have full history back to 2010 for every root. `load_daily_panel`
-(`src/backtesting/data/futures_backtest_loader.py`) gracefully excludes any
-root with no usable data for a window's [train_start, test_end] range
-(logged as a WARNING, never silently). One isolated data-quality issue was
+**Per-window data-availability filtering.** Instruments phase in over time
+(micro contracts launched 2019+, SOFR 2018, some roots later), so a fixed
+universe cannot have full history back to {start} for every root.
+`load_daily_panel` (`src/backtesting/data/futures_backtest_loader.py`)
+gracefully excludes any root with no usable data for a window's
+[train_start, test_end] range (logged as a WARNING, never silently). One isolated data-quality issue was
 also handled the same way: `ContinuousContractDataLoader.load` previously
 raised a nondeterministic `KeyError` for SIL on windows spanning 2017-02-26,
 traced to an unstable tie-break in the per-day active-contract ranking
@@ -382,7 +400,7 @@ its forecast/price/vol are unavailable).
 | kurtosis (Pearson) | {result['kurtosis_pearson']:.4f} |
 | window_start | {result['window_start']} |
 | window_end | {result['window_end']} |
-| registry run_id | {result['run_id']} |
+| registry run_id | {result.get('run_id')} |
 
 ## Per-window OOS Sharpe
 
@@ -407,7 +425,7 @@ given only one configuration was ever run.
 
 The stitched OOS return series has skew {result['skew']:.1f} and Pearson
 kurtosis {result['kurtosis_pearson']:.1f}. Both are far outside what is
-plausible for a 20%-vol-targeted, 5-12-instrument diversified daily futures
+plausible for a 20%-vol-targeted, multi-instrument diversified daily futures
 portfolio (a well-behaved vol-targeted series would typically show single- to
 low-double-digit kurtosis, not four digits). This points to one or a small
 number of extreme-outlier days dominating the tail statistics -- plausible
@@ -425,24 +443,38 @@ values ARE sensitive to skew/kurtosis (see the PSR formula in
 caution until the outlier day(s) are identified and the sensitivity of
 PSR/DSR to excluding them is checked in a follow-up.
 """
-    from pathlib import Path
-
-    out_path = Path(_REPORT_PATH)
+    out_path = Path(report_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(content, encoding="utf-8")
     return str(out_path)
 
 
 def main() -> None:
-    universe = list(_DEFAULT_UNIVERSE)
+    import argparse
+    import yaml
+
+    parser = argparse.ArgumentParser(description="Carver TSMOM walk-forward + gate")
+    parser.add_argument("--config", default=None,
+                        help="Futures backtest YAML; drives universe/capital/vol-target/dates")
+    parser.add_argument("--report", default=_REPORT_PATH,
+                        help="Output readiness-report path (defaults to the baseline path)")
+    args = parser.parse_args()
+
+    if args.config is not None:
+        cfg = yaml.safe_load(Path(args.config).read_text())
+        kw = _config_to_kwargs(cfg)
+    else:
+        kw = {"universe": list(_DEFAULT_UNIVERSE), "capital": _DEFAULT_CAPITAL,
+              "vol_target": _DEFAULT_VOL_TARGET, "start": "2010-06-07", "end": "2025-02-01"}
+
     result = walk_forward_carver(
         train_months=36, test_months=12, step_months=12,
-        start="2010-06-07", end="2025-02-01",
-        universe=universe,
+        start=kw["start"], end=kw["end"],
+        universe=kw["universe"], capital=kw["capital"], vol_target=kw["vol_target"],
     )
     report_path = _write_readiness_report(
         result, train_months=36, test_months=12, step_months=12,
-        start="2010-06-07", end="2025-02-01",
+        start=kw["start"], end=kw["end"], report_path=args.report,
     )
     logger.info(
         f"[walk_forward_carver] wrote {report_path}; "
