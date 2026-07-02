@@ -5,6 +5,7 @@ Trading). NEVER expose to optimization. Forecast scalars are Table 19 constants.
 """
 from __future__ import annotations
 
+import numpy as np
 import pandas as pd
 
 FORECAST_SCALARS: dict[tuple[int, int], float] = {
@@ -17,7 +18,7 @@ FORECAST_SCALARS: dict[tuple[int, int], float] = {
 def ewmac_forecast(prices: pd.Series, n_fast: int, n_slow: int,
                    daily_price_vol: pd.Series, cap: float = 20.0) -> pd.Series:
     raw = prices.ewm(span=n_fast).mean() - prices.ewm(span=n_slow).mean()
-    normalized = raw / daily_price_vol.replace(0, pd.NA)
+    normalized = raw / daily_price_vol.replace(0, np.nan)
     scalar = FORECAST_SCALARS[(n_fast, n_slow)]
     return (normalized * scalar).clip(-cap, cap)
 

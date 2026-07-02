@@ -26,3 +26,12 @@ def test_combined_averages_and_caps():
     vol = prices * 0.01
     c = combined_forecast(prices, vol, [(4, 16), (16, 64), (64, 256)])
     assert c.dropna().abs().max() <= 20.0 + 1e-9
+
+
+def test_zero_vol_keeps_float_dtype_no_crash():
+    prices = pd.Series(np.linspace(100, 200, 100))
+    vol = prices * 0.01
+    vol.iloc[50] = 0.0  # a zero-vol day
+    f = ewmac_forecast(prices, 4, 16, vol)
+    assert str(f.dtype) == "float64", f"expected float64, got {f.dtype}"
+    assert not np.isinf(f.dropna()).any()
