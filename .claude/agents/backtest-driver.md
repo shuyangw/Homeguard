@@ -64,6 +64,7 @@ You are an autonomous backtest execution agent. Run backtests, validate results,
 
 Every backtest report must include all applicable diagnostics:
 
+- **12.0 Trade log persistence** (ALWAYS, EVERY asset class -- equity, crypto, futures): the run MUST persist the simulated-trade log (fills/position changes), not just aggregate metrics. Equity/crypto: `backtest_runner` -> `TradeLogger` (`output.save_trades`, default True). Futures: `run_futures_backtest(..., log_trades=True)` -> `output/backtests/futures/<strategy>/<start>_to_<end>/{trades,equity,margin_utilization}.csv`. A backtest that returns only metrics/equity and discards its fills is INCOMPLETE. If you build or run a new engine/asset-class path, wiring trade-log persistence is part of the task, not optional.
 - **12.1 Trade-level metrics** (always): win rate, profit factor, expectancy ($), avg winner / loser, longest losing streak, largest win/loss, win rate by holding-period bucket (<1d, 1-5d, 5-20d, >20d).
 - **12.2 Capacity curve** (live-bound strategies): re-evaluate the trade log at $50K / $250K / $1M / $5M / $25M with the square-root market impact model from Section 4.1; report Sharpe / CAGR / max DD / avg impact bps at each scale.
 - **12.3 Regime transitions** (5+ year backtests): label every day via `MarketRegimeDetector`; compute Sharpe and DD separately for ±10-day transition windows vs stable periods; report `transition_pct_of_total_dd` and `transition_pct_of_total_pnl`.

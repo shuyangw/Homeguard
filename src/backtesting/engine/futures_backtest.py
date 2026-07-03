@@ -41,12 +41,15 @@ def _as_date(value: Any) -> date:
     return datetime.strptime(str(value), "%Y-%m-%d").date()
 
 
-def run_futures_backtest(config: Dict[str, Any], register: bool = True) -> Dict[str, Any]:
+def run_futures_backtest(config: Dict[str, Any], register: bool = True,
+                         log_trades: bool = False) -> Dict[str, Any]:
     """Run a config-driven Carver TSMOM futures backtest end-to-end.
 
     Returns a dict with `n_days`, `metrics` (StandardReportGenerator's
-    `overall_metrics`), `equity_curve` (list of floats), and `run_id`
-    (None if the registry append failed -- logged, not raised).
+    `overall_metrics`), `equity_curve` (list of floats), `run_id`
+    (None if the registry append failed -- logged, not raised), and
+    `trade_log_dir` (None unless `log_trades`, else the directory holding the
+    persisted fills/equity/margin CSVs).
     """
     strategy_cfg = config.get("strategy", {})
     dates_cfg = config.get("dates", {})
@@ -111,9 +114,33 @@ def run_futures_backtest(config: Dict[str, Any], register: bool = True) -> Dict[
         except Exception as e:
             logger.error(f"[futures_backtest] registry append_run failed (non-fatal): {e}")
 
+    trade_log_dir = _write_trade_log(res, strategy_name, start, end) if log_trades else None
+
     return {
         "n_days": len(res.equity_curve),
         "metrics": report["overall_metrics"],
         "equity_curve": res.equity_curve.tolist(),
         "run_id": run_id,
+        "trade_log_dir": trade_log_dir,
     }
+
+
+def _write_trade_log(res, strategy_name: str, start, end) -> str:
+    """Persist the simulated fills, equity curve, and margin utilization.
+
+    Writes to output/backtests/futures/<strategy>/<start>_to_<end>/. `trades`
+    holds one row per position change (date, root, contracts, cost) -- the
+    futures sim is a daily forecast-rebalance, so MAE/MFE/hit_stop/hit_target
+    (Section 11.6 exit-based fields) do not apply to a continuous rebalance and
+    are intentionally absent.
+    """
+    from pathlib import Path
+
+    out = Path("output") / "backtests" / "futures" / strategy_name / f"{start}_to_{end}"
+    out.mkdir(parents=True, exist_ok=True)
+    res.trades.to_csv(out / "trades.csv", index=False)
+    res.equity_curve.rename("equity").to_frame().to_csv(out / "equity.csv", index_label="date")
+    res.margin_utilization.rename("margin_utilization").to_frame().to_csv(
+        out / "margin_utilization.csv", index_label="date")
+    logger.info(f"[futures_backtest] wrote trade log ({len(res.trades)} fills) to {out}")
+    return str(out)

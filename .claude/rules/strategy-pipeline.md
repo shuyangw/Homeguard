@@ -62,6 +62,10 @@ Inline magic-number thresholds ("Sharpe > 3.0 REJECT", "CAGR > 20% INVESTIGATE")
 
 Sharpe, PSR, DSR (using project-wide cumulative trial count), PBO, CAGR, Max DD, Max DD duration, Calmar, win rate (monthly), profit factor, trade count, avg hold time, regime robustness, cost sensitivity (1.5x), IS/OOS Sharpe ratio, backtest window, data frequency. Append to the experiment registry per methodology Section 9.3.
 
+## Trade logging -- MANDATORY for every backtest, EVERY asset class
+
+Every backtest run MUST persist a simulated-trade log (the fills/position changes), not just aggregate metrics -- equity, crypto, AND futures. This is methodology Section 12 and is non-negotiable. The equity/crypto path does this via `backtest_runner` -> `TradeLogger` (gated on `output.save_trades`, default True); the futures path does it via `run_futures_backtest(..., log_trades=True)` writing `output/backtests/futures/<strategy>/<start>_to_<end>/{trades,equity,margin_utilization}.csv`. When adding a NEW backtest engine or asset-class path, wiring trade-log persistence is a REQUIRED part of the task -- a run that produces only metrics/equity and discards its fills is incomplete and must be rejected in review. Validation-harness internals (e.g. per-window walk-forward runs) may suppress logging, but the primary/representative backtest for a strategy MUST produce one.
+
 ## Homeguard file structure
 
 - Strategy specs: `docs/strategies/production/<n>.md`

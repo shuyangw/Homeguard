@@ -1203,10 +1203,14 @@ Available strategies:
             from src.backtesting.engine.futures_backtest import run_futures_backtest
 
             logger.info(f"Running config-driven futures backtest: {args.config}")
-            result = run_futures_backtest(raw_config)
+            # Trade logging is on by default for every asset class (methodology
+            # Section 12); respect an explicit output.save_trades: false opt-out.
+            save_trades = raw_config.get('output', {}).get('save_trades', True)
+            result = run_futures_backtest(raw_config, log_trades=save_trades)
             logger.success(
                 f"Futures backtest complete: n_days={result['n_days']}, "
-                f"sharpe_ratio={result['metrics'].get('sharpe_ratio')}"
+                f"sharpe_ratio={result['metrics'].get('sharpe_ratio')}, "
+                f"trade_log={result.get('trade_log_dir')}"
             )
             if result.get('run_id'):
                 logger.info(f"[registry] appended run_id={result['run_id']}")
