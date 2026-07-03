@@ -435,15 +435,16 @@ given only one configuration was ever run.
 ## Note: tail statistics
 
 The stitched OOS return series has skew {result['skew']:.2f} and Pearson
-kurtosis {result['kurtosis_pearson']:.1f} -- mild fat tails, typical for a
-vol-targeted daily futures trend portfolio. An earlier version of the harness
-produced pathological tail stats (kurtosis in the thousands) because the
-simulator let account equity cross zero and `pct_change` exploded on the
-zero-crossing equity curve; that was fixed before merge via equity-feedback
-sizing plus a bankruptcy floor (equity is now provably non-negative after both
-mark-to-market and cost debits), so the PSR/DSR values here are reliable. The
-WEAK verdict (OOS Sharpe {result['oos_sharpe']:.4f}, PBO {result['pbo']:.3f}
--- near coin-flip) rests on the clean statistics, not on any tail artifact.
+kurtosis {result['kurtosis_pearson']:.1f} -- fat-tailed but finite, far from
+the pathological tail stats (kurtosis in the thousands) an earlier version of
+the harness produced when the simulator let account equity cross zero and
+`pct_change` exploded on the zero-crossing equity curve; that was fixed before
+merge via equity-feedback sizing plus a bankruptcy floor (equity is now
+provably non-negative after both mark-to-market and cost debits), so the
+PSR/DSR values here are reliable. Elevated kurtosis reflects a few large days
+concentrating the performance and should be weighed alongside PBO when judging
+robustness. The WEAK verdict (OOS Sharpe {result['oos_sharpe']:.4f}, PBO
+{result['pbo']:.3f}) rests on the clean statistics, not on any tail artifact.
 """
     out_path = Path(report_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
