@@ -41,7 +41,7 @@ def _as_date(value: Any) -> date:
     return datetime.strptime(str(value), "%Y-%m-%d").date()
 
 
-def run_futures_backtest(config: Dict[str, Any]) -> Dict[str, Any]:
+def run_futures_backtest(config: Dict[str, Any], register: bool = True) -> Dict[str, Any]:
     """Run a config-driven Carver TSMOM futures backtest end-to-end.
 
     Returns a dict with `n_days`, `metrics` (StandardReportGenerator's
@@ -94,21 +94,22 @@ def run_futures_backtest(config: Dict[str, Any]) -> Dict[str, Any]:
     )
 
     run_id = None
-    try:
-        from src.experiments import append_run
+    if register:
+        try:
+            from src.experiments import append_run
 
-        run_id = append_run(
-            strategy_name=strategy_name,
-            agent_name="futures-harness",
-            metrics=report["overall_metrics"],
-            asset_class="futures",
-            data_frequency="daily",
-            params=config,
-            window_start=start,
-            window_end=end,
-        )
-    except Exception as e:
-        logger.error(f"[futures_backtest] registry append_run failed (non-fatal): {e}")
+            run_id = append_run(
+                strategy_name=strategy_name,
+                agent_name="futures-harness",
+                metrics=report["overall_metrics"],
+                asset_class="futures",
+                data_frequency="daily",
+                params=config,
+                window_start=start,
+                window_end=end,
+            )
+        except Exception as e:
+            logger.error(f"[futures_backtest] registry append_run failed (non-fatal): {e}")
 
     return {
         "n_days": len(res.equity_curve),
