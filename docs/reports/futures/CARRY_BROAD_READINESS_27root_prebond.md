@@ -47,40 +47,40 @@ its forecast/price/vol are unavailable).
 
 | Metric | Value |
 |---|---|
-| OOS Sharpe (1x cost) | 0.8520 |
-| OOS Sharpe (1.5x cost) | 0.8225 |
+| OOS Sharpe (1x cost) | 0.8818 |
+| OOS Sharpe (1.5x cost) | 0.8719 |
 | PSR (vs benchmark 0) | 1.0000 |
 | DSR (n_trials=1) | 1.0000 |
-| PBO (windows-as-columns CSCV) | 0.3306 |
+| PBO (windows-as-columns CSCV) | 0.6319 |
 | n_windows | 13 |
-| n_oos_days | 3964 |
-| skew | 1.2512 |
-| kurtosis (Pearson) | 20.9626 |
+| n_oos_days | 3340 |
+| skew | 1.8512 |
+| kurtosis (Pearson) | 33.4752 |
 | window_start | 2013-06-07 |
 | window_end | 2026-02-20 |
-| registry run_id | 96cc92a5-a91b-449b-9935-2743ab00a312 |
+| registry run_id | 2b9a02bc-b7cf-499c-809d-ba40f06eb186 |
 
 ## Per-window OOS Sharpe
 
 | Window | OOS Sharpe | Roots with data |
 |---|---|---|
-| 1 | 0.0544 | ['6A', '6B', '6C', '6E', '6J', '6M', '6N', '6S', 'BZ', 'CL', 'ES', 'GC', 'HE', 'HG', 'HO', 'LE', 'NG', 'NQ', 'PL', 'RB', 'SI', 'TN', 'UB', 'YM', 'ZB', 'ZC', 'ZF', 'ZL', 'ZM', 'ZN', 'ZS', 'ZT', 'ZW'] |
-| 2 | 1.5196 | ['6A', '6B', '6C', '6E', '6J', '6M', '6N', '6S', 'BZ', 'CL', 'ES', 'GC', 'HE', 'HG', 'HO', 'LE', 'NG', 'NQ', 'PL', 'RB', 'SI', 'TN', 'UB', 'YM', 'ZB', 'ZC', 'ZF', 'ZL', 'ZM', 'ZN', 'ZS', 'ZT', 'ZW'] |
-| 3 | 0.9462 | ['6A', '6B', '6C', '6E', '6J', '6M', '6N', '6S', 'BZ', 'CL', 'ES', 'GC', 'HE', 'HG', 'HO', 'LE', 'NG', 'NQ', 'PL', 'RB', 'SI', 'TN', 'UB', 'YM', 'ZB', 'ZC', 'ZF', 'ZL', 'ZM', 'ZN', 'ZS', 'ZT', 'ZW'] |
-| 4 | 0.6915 | ['6A', '6B', '6C', '6E', '6J', '6M', '6N', '6S', 'BZ', 'CL', 'ES', 'GC', 'HE', 'HG', 'HO', 'LE', 'NG', 'NQ', 'PL', 'RB', 'SI', 'TN', 'UB', 'YM', 'ZB', 'ZC', 'ZF', 'ZL', 'ZM', 'ZN', 'ZS', 'ZT', 'ZW'] |
-| 5 | -0.1582 | ['6A', '6B', '6C', '6E', '6J', '6M', '6N', '6S', 'BZ', 'CL', 'ES', 'GC', 'HE', 'HG', 'HO', 'LE', 'NG', 'NQ', 'PL', 'RB', 'SI', 'TN', 'UB', 'YM', 'ZB', 'ZC', 'ZF', 'ZL', 'ZM', 'ZN', 'ZS', 'ZT', 'ZW'] |
-| 6 | 1.7284 | ['6A', '6B', '6C', '6E', '6J', '6M', '6N', '6S', 'BZ', 'CL', 'ES', 'GC', 'HE', 'HG', 'HO', 'LE', 'NG', 'NQ', 'PL', 'RB', 'SI', 'TN', 'UB', 'YM', 'ZB', 'ZC', 'ZF', 'ZL', 'ZM', 'ZN', 'ZS', 'ZT', 'ZW'] |
-| 7 | 2.5359 | ['6A', '6B', '6C', '6E', '6J', '6M', '6N', '6S', 'BZ', 'CL', 'ES', 'GC', 'HE', 'HG', 'HO', 'LE', 'NG', 'NQ', 'PL', 'RB', 'SI', 'TN', 'UB', 'YM', 'ZB', 'ZC', 'ZF', 'ZL', 'ZM', 'ZN', 'ZS', 'ZT', 'ZW'] |
-| 8 | 1.4244 | ['6A', '6B', '6C', '6E', '6J', '6M', '6N', '6S', 'BZ', 'CL', 'ES', 'GC', 'HE', 'HG', 'HO', 'LE', 'NG', 'NQ', 'PL', 'RB', 'SI', 'TN', 'UB', 'YM', 'ZB', 'ZC', 'ZF', 'ZL', 'ZM', 'ZN', 'ZS', 'ZT', 'ZW'] |
-| 9 | -1.1160 | ['6A', '6B', '6C', '6E', '6J', '6M', '6N', '6S', 'BZ', 'CL', 'ES', 'GC', 'HE', 'HG', 'HO', 'LE', 'NG', 'NQ', 'PL', 'RB', 'SI', 'TN', 'UB', 'YM', 'ZB', 'ZC', 'ZF', 'ZL', 'ZM', 'ZN', 'ZS', 'ZT', 'ZW'] |
-| 10 | 1.0523 | ['6A', '6B', '6C', '6E', '6J', '6M', '6N', '6S', 'BZ', 'CL', 'ES', 'GC', 'HE', 'HG', 'HO', 'LE', 'NG', 'NQ', 'PL', 'RB', 'SI', 'TN', 'UB', 'YM', 'ZB', 'ZC', 'ZF', 'ZL', 'ZM', 'ZN', 'ZS', 'ZT', 'ZW'] |
-| 11 | 1.8874 | ['6A', '6B', '6C', '6E', '6J', '6M', '6N', '6S', 'BZ', 'CL', 'ES', 'GC', 'HE', 'HG', 'HO', 'LE', 'NG', 'NQ', 'PL', 'RB', 'SI', 'TN', 'UB', 'YM', 'ZB', 'ZC', 'ZF', 'ZL', 'ZM', 'ZN', 'ZS', 'ZT', 'ZW'] |
-| 12 | 1.0765 | ['6A', '6B', '6C', '6E', '6J', '6M', '6N', '6S', 'BZ', 'CL', 'ES', 'GC', 'HE', 'HG', 'HO', 'LE', 'NG', 'NQ', 'PL', 'RB', 'SI', 'TN', 'UB', 'YM', 'ZB', 'ZC', 'ZF', 'ZL', 'ZM', 'ZN', 'ZS', 'ZT', 'ZW'] |
-| 13 | 0.9599 | ['6A', '6B', '6C', '6E', '6J', '6M', '6N', '6S', 'BZ', 'CL', 'ES', 'GC', 'HE', 'HG', 'HO', 'LE', 'NG', 'NQ', 'PL', 'RB', 'SI', 'TN', 'UB', 'YM', 'ZB', 'ZC', 'ZF', 'ZL', 'ZM', 'ZN', 'ZS', 'ZT', 'ZW'] |
+| 1 | 0.7284 | ['6A', '6B', '6C', '6E', '6J', '6M', '6N', '6S', 'CL', 'ES', 'GC', 'HE', 'HG', 'HO', 'NG', 'NQ', 'PL', 'RB', 'SI', 'UB', 'YM', 'ZB', 'ZC', 'ZF', 'ZL', 'ZM', 'ZN', 'ZS', 'ZT', 'ZW'] |
+| 2 | 1.5220 | ['6A', '6B', '6C', '6E', '6J', '6M', '6N', '6S', 'CL', 'ES', 'GC', 'HE', 'HG', 'HO', 'NG', 'NQ', 'PL', 'RB', 'SI', 'TN', 'UB', 'YM', 'ZB', 'ZC', 'ZF', 'ZL', 'ZM', 'ZN', 'ZS', 'ZT', 'ZW'] |
+| 3 | 0.4406 | ['6A', '6B', '6C', '6E', '6J', '6M', '6N', '6S', 'CL', 'ES', 'GC', 'HE', 'HG', 'HO', 'NG', 'NQ', 'PL', 'RB', 'SI', 'TN', 'UB', 'YM', 'ZB', 'ZC', 'ZF', 'ZL', 'ZM', 'ZN', 'ZS', 'ZT', 'ZW'] |
+| 4 | 1.3650 | ['6A', '6B', '6C', '6E', '6J', '6M', '6N', '6S', 'CL', 'ES', 'GC', 'HE', 'HG', 'HO', 'NG', 'NQ', 'PL', 'RB', 'SI', 'TN', 'UB', 'YM', 'ZB', 'ZC', 'ZF', 'ZL', 'ZM', 'ZN', 'ZS', 'ZT', 'ZW'] |
+| 5 | 0.8368 | ['6A', '6B', '6C', '6E', '6J', '6M', '6N', '6S', 'CL', 'ES', 'GC', 'HE', 'HG', 'HO', 'LE', 'NG', 'NQ', 'PL', 'RB', 'SI', 'TN', 'UB', 'YM', 'ZB', 'ZC', 'ZF', 'ZL', 'ZM', 'ZN', 'ZS', 'ZT', 'ZW'] |
+| 6 | 1.2779 | ['6A', '6B', '6C', '6E', '6J', '6M', '6N', '6S', 'CL', 'ES', 'GC', 'HE', 'HG', 'HO', 'LE', 'NG', 'NQ', 'PL', 'RB', 'SI', 'TN', 'UB', 'YM', 'ZB', 'ZC', 'ZF', 'ZL', 'ZM', 'ZN', 'ZS', 'ZT', 'ZW'] |
+| 7 | 2.4184 | ['6A', '6B', '6C', '6E', '6J', '6M', '6N', '6S', 'BZ', 'CL', 'ES', 'GC', 'HE', 'HG', 'HO', 'LE', 'NG', 'NQ', 'PL', 'RB', 'SI', 'TN', 'UB', 'YM', 'ZB', 'ZC', 'ZF', 'ZL', 'ZM', 'ZN', 'ZS', 'ZT', 'ZW'] |
+| 8 | 1.7860 | ['6A', '6B', '6C', '6E', '6J', '6M', '6N', '6S', 'BZ', 'CL', 'ES', 'GC', 'HE', 'HG', 'HO', 'LE', 'NG', 'NQ', 'PL', 'RB', 'SI', 'TN', 'UB', 'YM', 'ZB', 'ZC', 'ZF', 'ZL', 'ZM', 'ZN', 'ZS', 'ZT', 'ZW'] |
+| 9 | -0.5698 | ['6A', '6B', '6C', '6E', '6J', '6M', '6N', '6S', 'BZ', 'CL', 'ES', 'GC', 'HE', 'HG', 'HO', 'LE', 'NG', 'NQ', 'PL', 'RB', 'SI', 'TN', 'UB', 'YM', 'ZB', 'ZC', 'ZF', 'ZL', 'ZM', 'ZN', 'ZS', 'ZT', 'ZW'] |
+| 10 | 1.2478 | ['6A', '6B', '6C', '6E', '6J', '6M', '6N', '6S', 'BZ', 'CL', 'ES', 'GC', 'HE', 'HG', 'HO', 'LE', 'NG', 'NQ', 'PL', 'RB', 'SI', 'TN', 'UB', 'YM', 'ZB', 'ZC', 'ZF', 'ZL', 'ZM', 'ZN', 'ZS', 'ZT', 'ZW'] |
+| 11 | nan | ['6A', '6B', '6C', '6E', '6J', '6M', '6N', '6S', 'BZ', 'CL', 'ES', 'GC', 'HE', 'HG', 'HO', 'LE', 'NG', 'NQ', 'PL', 'RB', 'SI', 'TN', 'UB', 'YM', 'ZB', 'ZC', 'ZF', 'ZL', 'ZM', 'ZN', 'ZS', 'ZT', 'ZW'] |
+| 12 | nan | ['6A', '6B', '6C', '6E', '6J', '6M', '6N', '6S', 'BZ', 'CL', 'ES', 'GC', 'HE', 'HG', 'HO', 'LE', 'NG', 'NQ', 'PL', 'RB', 'SI', 'TN', 'UB', 'YM', 'ZB', 'ZC', 'ZF', 'ZL', 'ZM', 'ZN', 'ZS', 'ZT', 'ZW'] |
+| 13 | 0.8711 | ['6A', '6B', '6C', '6E', '6J', '6M', '6N', '6S', 'BZ', 'CL', 'ES', 'GC', 'HE', 'HG', 'HO', 'LE', 'NG', 'NQ', 'PL', 'RB', 'SI', 'TN', 'UB', 'YM', 'ZB', 'ZC', 'ZF', 'ZL', 'ZM', 'ZN', 'ZS', 'ZT', 'ZW'] |
 
 ## Verdict
 
-WEAK -- does not clear the combined gate: PBO not comfortably acceptable (pbo=0.3306138306138306)
+WEAK -- does not clear the combined gate: PBO not comfortably acceptable (pbo=0.6319347319347319)
 
 ## Notes on PBO interpretation
 
@@ -93,8 +93,8 @@ given only one configuration was ever run.
 
 ## Note: tail statistics
 
-The stitched OOS return series has skew 1.25 and Pearson
-kurtosis 21.0 -- fat-tailed but finite, far from
+The stitched OOS return series has skew 1.85 and Pearson
+kurtosis 33.5 -- fat-tailed but finite, far from
 the pathological tail stats (kurtosis in the thousands) an earlier version of
 the harness produced when the simulator let account equity cross zero and
 `pct_change` exploded on the zero-crossing equity curve; that was fixed before
@@ -102,5 +102,5 @@ merge via equity-feedback sizing plus a bankruptcy floor (equity is now
 provably non-negative after both mark-to-market and cost debits), so the
 PSR/DSR values here are reliable. Elevated kurtosis reflects a few large days
 concentrating the performance and should be weighed alongside PBO when judging
-robustness. The WEAK verdict (OOS Sharpe 0.8520, PBO
-0.331) rests on the clean statistics, not on any tail artifact.
+robustness. The WEAK verdict (OOS Sharpe 0.8818, PBO
+0.632) rests on the clean statistics, not on any tail artifact.
