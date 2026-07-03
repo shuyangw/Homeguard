@@ -66,6 +66,10 @@ Sharpe, PSR, DSR (using project-wide cumulative trial count), PBO, CAGR, Max DD,
 
 Every backtest run MUST persist a simulated-trade log (the fills/position changes), not just aggregate metrics -- equity, crypto, AND futures. This is methodology Section 12 and is non-negotiable. The equity/crypto path does this via `backtest_runner` -> `TradeLogger` (gated on `output.save_trades`, default True); the futures path does it via `run_futures_backtest(..., log_trades=True)` writing `output/backtests/futures/<strategy>/<start>_to_<end>/{trades,equity,margin_utilization}.csv`. When adding a NEW backtest engine or asset-class path, wiring trade-log persistence is a REQUIRED part of the task -- a run that produces only metrics/equity and discards its fills is incomplete and must be rejected in review. Validation-harness internals (e.g. per-window walk-forward runs) may suppress logging, but the primary/representative backtest for a strategy MUST produce one.
 
+## Run-status logging -- MANDATORY for every long/background run
+
+Any long-running or backgrounded run (walk-forward, cache build, multi-hour backtest) MUST be wrapped in `RunStatus` (`src/utils/run_status.py`). It writes a JSON status file under `output/run_status/<name>_<ts>.json` with a background heartbeat, so a killed run leaves a stale `RUNNING` sentinel plus its last `heartbeat_at` -- telling us it died and roughly when. NEVER rely on the process's own stdout log to explain a death: a `SIGKILL`'d process cannot self-log, and a shell-level `echo "exit $?"` dies with the shell (this is exactly why the 2026-07-03 carry re-baseline kill left no captured reason). When launching such a run, also: (a) prefer a completion sentinel/`--json` output you can check afterward, and (b) do NOT switch git branches or mutate the working tree while it runs (parallel workers re-import code from disk on spawn). After any run that was killed, read its `output/run_status/` file for the last-alive time BEFORE guessing the cause.
+
 ## Homeguard file structure
 
 - Strategy specs: `docs/strategies/production/<n>.md`

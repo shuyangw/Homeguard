@@ -488,18 +488,28 @@ def main() -> None:
               "vol_target": _DEFAULT_VOL_TARGET, "start": "2010-06-07", "end": "2025-02-01",
               "strategy_name": "CarverMomentum", "strategy_params": {}}
 
-    result = walk_forward_carver(
-        train_months=args.train_months, test_months=args.test_months, step_months=args.step_months,
-        start=kw["start"], end=kw["end"], universe=kw["universe"],
-        capital=kw["capital"], vol_target=kw["vol_target"],
-        strategy_name=kw.get("strategy_name", "CarverMomentum"),
-        strategy_params=kw.get("strategy_params", {}),
-        max_workers=args.jobs,
-    )
-    report_path = _write_readiness_report(
-        result, train_months=args.train_months, test_months=args.test_months,
-        step_months=args.step_months, start=kw["start"], end=kw["end"], report_path=args.report,
-    )
+    # Run-status logging survives a SIGKILL: if this run is killed, the status
+    # file is frozen at RUNNING with the last heartbeat, so a stale RUNNING file
+    # tells us it died (and roughly when) instead of leaving us to guess.
+    from src.utils.run_status import RunStatus
+
+    _meta = {"strategy": kw.get("strategy_name", "CarverMomentum"),
+             "config": args.config, "jobs": args.jobs,
+             "start": kw["start"], "end": kw["end"], "n_roots": len(kw["universe"])}
+    with RunStatus("carver_walkforward", meta=_meta) as st:
+        result = walk_forward_carver(
+            train_months=args.train_months, test_months=args.test_months, step_months=args.step_months,
+            start=kw["start"], end=kw["end"], universe=kw["universe"],
+            capital=kw["capital"], vol_target=kw["vol_target"],
+            strategy_name=kw.get("strategy_name", "CarverMomentum"),
+            strategy_params=kw.get("strategy_params", {}),
+            max_workers=args.jobs,
+        )
+        st.heartbeat(note=f"gate computed: oos_sharpe={result['oos_sharpe']:.4f} n_windows={result['n_windows']}")
+        report_path = _write_readiness_report(
+            result, train_months=args.train_months, test_months=args.test_months,
+            step_months=args.step_months, start=kw["start"], end=kw["end"], report_path=args.report,
+        )
     logger.info(
         f"[walk_forward_carver] wrote {report_path}; "
         f"oos_sharpe={result['oos_sharpe']:.4f} psr={result['psr']:.4f} "
