@@ -218,7 +218,18 @@ class ContinuousContractDataLoader:
                     continue
                 day_before = max(prev_dates)
                 old_c = close_map[day_before]
-                new_c = close_map[roll_date]
+                # The roll date may have no bar in this series (holiday / data
+                # gap): the calendar's roll dates and the price series' dates can
+                # differ. Snap to the nearest available trading day on-or-after
+                # the roll (the new front's first close) instead of a hard
+                # lookup that KeyErrors and silently drops the whole root.
+                if roll_date in close_map:
+                    new_c = close_map[roll_date]
+                else:
+                    on_or_after = [d for d in close_map if d >= roll_date]
+                    if not on_or_after:
+                        continue
+                    new_c = close_map[min(on_or_after)]
                 if old_c == 0:
                     continue
                 this_ratio = new_c / old_c

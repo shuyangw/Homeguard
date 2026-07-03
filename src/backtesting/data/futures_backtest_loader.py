@@ -30,8 +30,14 @@ def load_daily_panel(roots: list[str], start: date, end: date) -> pd.DataFrame:
     for root in roots:
         try:
             d = loader.aggregate_to_daily(root, method="ratio_adjusted", start=start, end=end)
-        except Exception as e:
-            logger.warning(f"[load_daily_panel] skipping {root} in {start}..{end}: {type(e).__name__}: {e}")
+        except FileNotFoundError as e:
+            # Legitimate "this root has no data file for the window" -> skip it.
+            # ONLY this case is skipped: an over-broad `except Exception` used to
+            # swallow genuine bugs (e.g. the roll-date KeyError) and silently drop
+            # a root that HAS data, quietly shrinking the basket. Unexpected
+            # exceptions now propagate (fail loud) so the basket is never silently
+            # narrowed.
+            logger.warning(f"[load_daily_panel] no data for {root} in {start}..{end}: {e}")
             continue
         if d.is_empty():
             continue
