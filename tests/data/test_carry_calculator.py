@@ -117,8 +117,8 @@ def test_compute_bond_micro_yield(tmp_path, monkeypatch):
     assert carry == pytest.approx(0.063, abs=0.005)
 
 
-def test_compute_bond_standard_returns_zero(tmp_path, monkeypatch):
-    """ZN (price-traded T-Note): no direct yield available -> v1 fallback returns 0."""
+def test_compute_bond_standard_uses_fred(tmp_path, monkeypatch):
+    """ZN (price-traded T-Note): uses FRED CMT yield minus funding rate."""
     rows = [
         {"timestamp": datetime(2024, 6, 3, 14, 0, tzinfo=timezone.utc),
          "open": 110.5, "high": 110.5, "low": 110.5, "close": 110.5,
@@ -132,8 +132,14 @@ def test_compute_bond_standard_returns_zero(tmp_path, monkeypatch):
         "src.data.futures.paths.get_local_storage_dir",
         lambda: tmp_path,
     )
+    # Mock FRED data: 10Y CMT = 4.2%, DFF = 5.3%, ZN duration = 9
+    # carry = 9 * (4.2 - 5.3) / 100 = -0.099
+    monkeypatch.setattr(
+        "src.data.carry_calculator.get_fred_series",
+        lambda sid, d: {"DGS10": 4.2, "DFF": 5.3}[sid],
+    )
     carry = CarryCalculator().compute("ZN", "bond", date(2024, 6, 3))
-    assert carry == 0.0
+    assert carry == pytest.approx(-0.099, abs=0.001)
 
 
 def test_compute_history(tmp_path, monkeypatch):

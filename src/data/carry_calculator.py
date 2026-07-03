@@ -12,6 +12,7 @@ import polars as pl
 
 from src.data.derivations.futures.sofr import derive_sofr
 from src.data.futures.paths import per_contract_1min_dir
+from src.data.rates.fred_reader import get_fred_series
 from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -34,6 +35,11 @@ DURATION_BY_ROOT: dict[str, float] = {
 
 # Micro Yield roots: close IS yield in % directly.
 MICRO_YIELD_ROOTS = {"2YY", "5YY", "10Y", "30Y"}
+
+# CMT yield FRED series for price-traded bond futures (ZT/ZF/ZN/TN/ZB/UB).
+_BOND_CMT_TENOR = {"ZT": "DGS2", "ZF": "DGS5", "ZN": "DGS10",
+                   "TN": "DGS10", "ZB": "DGS30", "UB": "DGS30"}
+_BOND_FUNDING_SERIES = "DFF"
 
 
 def _is_outright(symbol: str, root: str) -> bool:
@@ -127,10 +133,12 @@ class CarryCalculator:
                 front_yield = front_c
                 funding = derive_sofr(d)
                 return duration * (front_yield - funding) / 100.0
-            # ZT/ZF/ZN/ZB/TN/UB: price-traded bond futures.
-            # Yield not directly available without CTD conversion factor.
-            # v1 fallback: return 0 (caller can ignore bond carry for these).
-            return 0.0
+            # ZT/ZF/ZN/TN/ZB/UB: price-traded bond futures. Yield is not in the
+            # futures price; use the FRED constant-maturity yield for the tenor
+            # minus the funding rate, scaled by duration (Carver bond carry).
+            cmt_yield = get_fred_series(_BOND_CMT_TENOR[root], d)
+            funding = get_fred_series(_BOND_FUNDING_SERIES, d)
+            return duration * (cmt_yield - funding) / 100.0
         raise ValueError(f"unknown asset_class: {asset_class}")
 
     def compute_history(
