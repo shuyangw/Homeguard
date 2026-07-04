@@ -139,7 +139,7 @@ class FuturesPortfolioSimulator:
 
     def run_sized(self, close_panel: pd.DataFrame, forecast_panel: pd.DataFrame,
                   daily_vol_panel: pd.DataFrame, vol_target: float,
-                  div_mult: float = 1.0) -> FuturesBacktestResult:
+                  div_mult: float | dict = 1.0) -> FuturesBacktestResult:
         roots = list(close_panel.columns)
 
         def provider(d, equity_now, current):
@@ -153,7 +153,8 @@ class FuturesPortfolioSimulator:
                     continue
                 row[r] = size_from_forecast(
                     float(forecast), equity_now, vol_target, r,
-                    price=float(price), daily_vol=float(vol), div_mult=div_mult,
+                    price=float(price), daily_vol=float(vol),
+                    div_mult=(div_mult if isinstance(div_mult, (int, float)) else div_mult.get(r, 1.0)),
                 )
             return self.margin.check_and_scale(row, equity=equity_now)
 

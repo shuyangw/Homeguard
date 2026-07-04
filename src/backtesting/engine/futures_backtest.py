@@ -62,6 +62,7 @@ def run_futures_backtest(config: Dict[str, Any], register: bool = True,
     vol_target = float(backtest_cfg.get("vol_target_per_instrument", _DEFAULT_VOL_TARGET))
     rebalance = backtest_cfg.get("rebalance", _DEFAULT_REBALANCE)
     cost_mult = float(backtest_cfg.get("cost_mult", 1.0))
+    use_idm = bool(backtest_cfg.get("idm", False))
 
     strategy_name = strategy_cfg.get("name", "CarverMomentum")
     strategy_params = strategy_cfg.get("params", {})
@@ -89,7 +90,13 @@ def run_futures_backtest(config: Dict[str, Any], register: bool = True,
         rebalance=rebalance,
         cost_mult=cost_mult,
     )
-    res = sim.run_sized(close, forecasts, daily_vol, vol_target)
+    if use_idm:
+        from src.backtesting.utils.idm_weights import compute_div_mult
+
+        dm = compute_div_mult(universe)
+        res = sim.run_sized(close, forecasts, daily_vol, vol_target, div_mult=dm)
+    else:
+        res = sim.run_sized(close, forecasts, daily_vol, vol_target)
 
     report = StandardReportGenerator().generate_report(
         res.equity_curve, strategy_name, universe,
