@@ -38,7 +38,12 @@ vs carry_idm_broad + inclusion verdicts). Serial due to 8-thread cap (one CPU jo
 | crypto WF | 1 | +1 | parameter-free |
 
 ## Results (append per experiment; Sharpe 1x/1.5x, PBO, PSR, DSR, skew, kurt, corr, verdict)
-- (pending)
+- **VALUE (Asness 5yr-1yr reversal, train 61m):** OOS Sharpe -0.2162 (1.5x -0.2273), PBO 0.6420,
+  PSR/DSR 0.0, skew 0.51, kurt 8.30, n_windows 11, n_oos 3316. **Verdict REJECT -> EXCLUDE**
+  (fails inclusion Sharpe floor 0.35 AND PBO floor 0.35; correlation moot). Reversal anti-worked
+  on this basket 2015-2026 (long-horizon momentum persisted; raw signal ~+0.22). Sign NOT flipped
+  post-hoc (pre-committed construction; flipping after seeing results = data-snooping, forbidden).
+  Legitimate negative finding (unit tests confirmed causal + correct reversal sign). N += 1.
 
 ## After Phase 1
 If a pillar qualifies -> next plan = Phase 0 combiner + Phase 4 combination.
