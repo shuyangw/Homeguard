@@ -60,6 +60,7 @@ _STRATEGY_REGISTRY: Dict[str, Tuple[str, str]] = {
     "CarverMomentum": ("src.strategies.advanced.carver_momentum_strategy", "CarverMomentumStrategy"),
     "FuturesCarry": ("src.strategies.advanced.futures_carry_strategy", "FuturesCarryStrategy"),
     "FuturesCarryXS": ("src.strategies.advanced.futures_carry_strategy", "FuturesCarryXSStrategy"),
+    "FuturesValue": ("src.strategies.advanced.futures_value_strategy", "FuturesValueStrategy"),
 }
 
 # Display name -> class name mapping for user-friendly config files
@@ -149,6 +150,8 @@ _DISPLAY_NAME_MAP: Dict[str, str] = {
     "Futures Carry": "FuturesCarry",
     "XS Carry": "FuturesCarryXS",
     "Cross-Sectional Carry": "FuturesCarryXS",
+    "Value": "FuturesValue",
+    "Futures Value": "FuturesValue",
 }
 
 # Cache for loaded strategy classes
