@@ -17,13 +17,18 @@ standalone PBO<0.35 AND Sharpe>0.35; corr vs carry: <0.3 full / 0.3-0.5 only if 
 ## Task status
 | Task | What | Status |
 |---|---|---|
-| 1 | crypto carry branch + BTC/ETH maps | PENDING (building) |
-| 2 | build crypto carry cache (BTC/ETH) | PENDING (needs T1) |
-| 3 | value + crypto standalone configs | PENDING |
-| 4 | pillar correlation tool | PENDING |
-| 5 | VALUE standalone WF (train 61m) | LAUNCHED |
-| 6 | CRYPTO carry standalone WF | PENDING (needs T1-3 + T2 cache) |
+| 1 | crypto carry branch + BTC/ETH maps | DONE 4f2a1cc |
+| 2 | build crypto carry cache (BTC/ETH) | PENDING (run after value WF frees threads) |
+| 3 | value + crypto standalone configs | DONE 7eb100f |
+| 4 | pillar correlation tool | DONE 5ff47e9 |
+| 5 | VALUE standalone WF (train 61m) | RUNNING (bx1cdo5k7, cfg value_broad) |
+| 6 | CRYPTO carry standalone WF | PENDING (needs T2 cache; run after value WF) |
 | 7 | correlation + inclusion verdict | PENDING (needs T5,T6) |
+
+**Controller next step:** when value WF (Task 5) completes -> record its metrics -> run Task 2
+(crypto cache: `build_carry_cache.py --roots BTC ETH --start 2017-01-01 --end 2026-02-20 --jobs 2`,
+8-thread capped) -> Task 6 (crypto WF, own bg job) -> Task 7 (pillar_correlation for value & crypto
+vs carry_idm_broad + inclusion verdicts). Serial due to 8-thread cap (one CPU job at a time).
 
 ## DSR trial-count ledger (project-wide N)
 | exp | combinations_in_run | cumulative N | note |
