@@ -45,11 +45,47 @@ Binding constraint on 1 and 3: DATA availability (instrument price + carry/vol h
 - Multiple-comparisons honesty: track cumulative trial count; any "best of N" selection is
   disclosed and deflation-checked before a deploy claim.
 
-## Status log
-- 2026-07-04: charter written. Trend diagnosis complete (0.11 WEAK, not broken). Next:
-  Phase 1 data/universe scoping (what liquid futures beyond the 33 have usable history).
+## Data scoping verdict (2026-07-04) -- PRUNES the campaign
 
-## Realistic outcome
-Credible ceiling with breadth + buffering alone: ~0.9-1.0. A hard, sustained >1.0 likely
-requires a genuine second pillar (Phase 3) that we do not yet have. Each gate will report
-honestly whether we are clearing the bar or curve-fitting toward it.
+Inventory of `H:\Stock_Data\futures\databento` (62 symbol partitions):
+- **Universe expansion is weak.** 47 roots reachable with data+specs+carry, but the 14
+  addables are mostly REDUNDANT micros (MES/MNQ/MYM/M2K, MGC/MCL/MNG, SIL = smaller copies of
+  roots already in the basket -> zero new diversification; IDM would just down-weight the
+  crowded clusters). Genuinely diversifying adds: crypto (BTC/ETH -- needs a carry branch +
+  cluster/class mapping in code), and marginally RTY/KE. -> DROP the redundant micros.
+- **Skew / vol-carry: BLOCKED.** The only futures options on disk cover ES + NQ. No broad
+  skew signal buildable. (This was the best carry-COMPARABLE second-pillar candidate.)
+- **Value: buildable** across all 47 roots (price-only). The one viable second pillar --
+  but value and carry are cousins, so measure its carry-correlation before counting on it.
+
+### Pruned scope (what we actually build)
+- Phase 1 breadth: NOT broad micros. Only (a) multiple carry HORIZONS via the combiner, and
+  (b) genuinely-diversifying instruments = crypto carry (BTC/ETH, needs code) + RTY/KE.
+- Phase 3 second pillar: VALUE only (skew dead). Gate additionally on low carry-correlation.
+- Phases 2 (buffering), 4 (combine), 5 (productionize) unchanged.
+
+### Revised realistic outcome
+Skew (blocked) and broad breadth (redundant) were the two biggest expected levers; both are
+largely gone. Honest ceiling now ~0.85-0.95; a hard sustained >1.0 looks UNLIKELY on this
+data unless value surprises or crypto carry pulls real weight. Proceeding anyway per user
+direction, pruned to what's buildable; every gate reports honestly.
+
+## Phase 0 design -- forecast combiner + FDM
+
+New `src/backtesting/utils/forecast_combine.py`:
+`combine_forecasts(forecasts: dict[str, pd.DataFrame], weights: dict[str, float] | None,
+inter_corr: float, cap: float, fdm_cap: float) -> pd.DataFrame`.
+- Align the per-signal forecast panels (same dates x roots); weighted sum per cell
+  (default equal weights summing to 1).
+- FDM = min(1 / sqrt(w' C w), fdm_cap) with C a FIXED constant correlation matrix
+  (diagonal 1, off-diagonal `inter_corr` -- doctrine constant, NOT swept; data-free ->
+  parameter-free, causal). Same math family as IDM.
+- Combined = (weighted_sum * FDM).clip(-cap, cap).
+- Back-compat identity: a SINGLE signal (N=1) -> FDM=1 -> returns that forecast unchanged.
+- NaN contract: a cell missing in any contributing signal stays NaN (no fabricated forecast);
+  or combine over available signals with renormalized weights -- decide + test explicitly.
+This is scaling plumbing (FDM does not change Sharpe); Sharpe comes from weights + signals.
+
+## Status log
+- 2026-07-04: charter written; trend diagnosed (0.11 WEAK, not broken); data scoped
+  (skew blocked, breadth redundant, value the only pillar). Building Phase 0 (combiner+FDM).
