@@ -52,6 +52,18 @@ vs carry_idm_broad + inclusion verdicts). Serial due to 8-thread cap (one CPU jo
   2019-2026 regime-heavy (2020-21 trends, 2022 crash) -> strong result may be partly regime luck.
   Best-of-2 pillar trials (value rejected, crypto passed) -- mild multiple-comparison.
 
+- **COMBINED carry+crypto (35-root naive IDM equal-cluster, serial):** OOS Sharpe 0.4217
+  (1.5x 0.4038), PBO 0.1019, PSR/DSR 1.0, skew 0.82, kurt 27.60, n_windows 13, n_oos 3964.
+  **DOES NOT WIN** (Sharpe 0.42 << incumbent 0.76). Clears the full stat gate (PBO 0.10 -- crypto
+  diversification HELPED robustness) but Sharpe CRATERED. ROOT CAUSE: IDM equal-cluster-risk gives
+  the 2-root crypto sleeve a full 1/8 risk budget = same as the 8-root fx cluster; crypto's high vol
+  + 2022 crash dominate the book (kurt 22.2->27.6), dragging Sharpe. Captured only 42% of the 1.007
+  optimal-weight bound -- naive weighting massively over-allocates crypto. Incumbent stays carry_idm.
+  NEXT: per-instrument div_mult cap (Minor-4 pre-committed refinement, ONE ex-ante value) to constrain
+  crypto over-allocation; re-run combination (max_workers=1, OOM-safe).
+  KNOWN BUGS (real fixes, logged): (1) parallel OOM on crypto 1min data at jobs=8; (2) CLI report-phase
+  hang on crypto-inclusive run.
+
 ## After Phase 1
 If a pillar qualifies -> next plan = Phase 0 combiner + Phase 4 combination.
 If neither -> honest fallback: carry + breadth/buffering only; write summary. Then (time permitting,
