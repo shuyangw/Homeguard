@@ -38,3 +38,10 @@ def test_scalar_divmult_still_works():
     close, fc, vol = _panels()
     res = _sim().run_sized(close, fc, vol, 0.20, div_mult=1.0)   # float path back-compat
     assert len(res.equity_curve) == 8
+
+
+def test_scalar_and_all_ones_dict_identical():
+    close, fc, vol = _panels()
+    scalar = _sim().run_sized(close, fc, vol, 0.20, div_mult=1.0)
+    as_dict = _sim().run_sized(close, fc, vol, 0.20, div_mult={"GC": 1.0, "CL": 1.0})
+    assert list(scalar.equity_curve) == list(as_dict.equity_curve)
