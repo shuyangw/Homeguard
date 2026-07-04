@@ -18,11 +18,11 @@ standalone PBO<0.35 AND Sharpe>0.35; corr vs carry: <0.3 full / 0.3-0.5 only if 
 | Task | What | Status |
 |---|---|---|
 | 1 | crypto carry branch + BTC/ETH maps | DONE 4f2a1cc |
-| 2 | build crypto carry cache (BTC/ETH) | PENDING (run after value WF frees threads) |
+| 2 | build crypto carry cache (BTC/ETH) | DONE (BTC 2527r/ETH 1554r, mean carry +0.059, non-inert) |
 | 3 | value + crypto standalone configs | DONE 7eb100f |
 | 4 | pillar correlation tool | DONE 5ff47e9 |
-| 5 | VALUE standalone WF (train 61m) | RUNNING (bx1cdo5k7, cfg value_broad) |
-| 6 | CRYPTO carry standalone WF | PENDING (needs T2 cache; run after value WF) |
+| 5 | VALUE standalone WF (train 61m) | DONE -> REJECT/EXCLUDE (-0.22 Sharpe, PBO 0.64) |
+| 6 | CRYPTO carry standalone WF | RUNNING (bbxcgkzeb, 2 roots) |
 | 7 | correlation + inclusion verdict | PENDING (needs T5,T6) |
 
 **Controller next step:** when value WF (Task 5) completes -> record its metrics -> run Task 2
