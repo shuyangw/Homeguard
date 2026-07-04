@@ -67,6 +67,7 @@ def _config_to_kwargs(config: Dict[str, Any]) -> Dict[str, Any]:
         "strategy_name": strat.get("name", "CarverMomentum"),
         "strategy_params": strat.get("params", {}),
         "idm": bool(bt.get("idm", False)),
+        "idm_cap": bt.get("idm_cap", None),
     }
 
 
@@ -96,6 +97,7 @@ def _run_window(universe: Sequence[str], train_start: date, test_end: date,
                  strategy_name: str = "CarverMomentum",
                  strategy_params: Optional[Dict[str, Any]] = None,
                  idm: bool = False,
+                 idm_cap: float | None = None,
                  register: bool = True) -> Dict[str, Any]:
     config = {
         "strategy": {"name": strategy_name, "universe": list(universe),
@@ -107,6 +109,7 @@ def _run_window(universe: Sequence[str], train_start: date, test_end: date,
             "rebalance": "weekly",
             "cost_mult": cost_mult,
             "idm": idm,
+            "idm_cap": idm_cap,
         },
     }
     return run_futures_backtest(config, register=register)
@@ -151,6 +154,7 @@ def process_window(spec: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     capital, vol_target = spec["capital"], spec["vol_target"]
     strategy_name, strategy_params = spec["strategy_name"], spec["strategy_params"]
     idm = spec.get("idm", False)
+    idm_cap = spec.get("idm_cap", None)
     try:
         panel = load_daily_panel(universe, train_start, test_end)
     except FileNotFoundError as e:
@@ -160,10 +164,12 @@ def process_window(spec: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     dates = list(panel.index)
     res_1x = _run_window(window_universe, train_start, test_end, capital, vol_target,
                          cost_mult=1.0, strategy_name=strategy_name,
-                         strategy_params=strategy_params, idm=idm, register=False)
+                         strategy_params=strategy_params, idm=idm, idm_cap=idm_cap,
+                         register=False)
     res_1_5x = _run_window(window_universe, train_start, test_end, capital, vol_target,
                            cost_mult=1.5, strategy_name=strategy_name,
-                           strategy_params=strategy_params, idm=idm, register=False)
+                           strategy_params=strategy_params, idm=idm, idm_cap=idm_cap,
+                           register=False)
     return {
         "train_start": train_start, "test_start": test_start, "test_end": test_end,
         "window_universe": window_universe,
@@ -202,6 +208,7 @@ def walk_forward_carver(
     strategy_name: str = "CarverMomentum",
     strategy_params: Optional[Dict[str, Any]] = None,
     idm: bool = False,
+    idm_cap: float | None = None,
     max_workers: Optional[int] = None,
 ) -> Dict[str, Any]:
     """Roll OOS test windows for the parameter-free Carver TSMOM strategy.
@@ -235,7 +242,7 @@ def walk_forward_carver(
         {"universe": universe, "train_start": ts, "test_start": tst, "test_end": te,
          "capital": capital, "vol_target": vol_target,
          "strategy_name": strategy_name, "strategy_params": strategy_params or {},
-         "idm": idm}
+         "idm": idm, "idm_cap": idm_cap}
         for (ts, tst, te) in windows
     ]
     from src.backtesting.parallel import parallel_map
@@ -492,7 +499,8 @@ def main() -> None:
     else:
         kw = {"universe": list(_DEFAULT_UNIVERSE), "capital": _DEFAULT_CAPITAL,
               "vol_target": _DEFAULT_VOL_TARGET, "start": "2010-06-07", "end": "2025-02-01",
-              "strategy_name": "CarverMomentum", "strategy_params": {}, "idm": False}
+              "strategy_name": "CarverMomentum", "strategy_params": {}, "idm": False,
+              "idm_cap": None}
 
     # Run-status logging survives a SIGKILL: if this run is killed, the status
     # file is frozen at RUNNING with the last heartbeat, so a stale RUNNING file
@@ -502,7 +510,7 @@ def main() -> None:
     _meta = {"strategy": kw.get("strategy_name", "CarverMomentum"),
              "config": args.config, "jobs": args.jobs,
              "start": kw["start"], "end": kw["end"], "n_roots": len(kw["universe"]),
-             "idm": kw.get("idm", False)}
+             "idm": kw.get("idm", False), "idm_cap": kw.get("idm_cap")}
     with RunStatus("carver_walkforward", meta=_meta) as st:
         result = walk_forward_carver(
             train_months=args.train_months, test_months=args.test_months, step_months=args.step_months,
@@ -511,6 +519,7 @@ def main() -> None:
             strategy_name=kw.get("strategy_name", "CarverMomentum"),
             strategy_params=kw.get("strategy_params", {}),
             idm=kw.get("idm", False),
+            idm_cap=kw.get("idm_cap"),
             max_workers=args.jobs,
         )
         st.heartbeat(note=f"gate computed: oos_sharpe={result['oos_sharpe']:.4f} n_windows={result['n_windows']}")

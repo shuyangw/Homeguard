@@ -18,3 +18,21 @@ def test_median_divmult_near_one():
     d = compute_div_mult(U)
     med = float(np.median(list(d.values())))
     assert abs(med - 1.0) < 1e-6                       # N_scale pins the median to 1
+
+
+def test_per_instrument_cap_clips():
+    # BTC/ETH (2-root crypto cluster) sit alongside a 6-root equity cluster and
+    # a 6-root rates cluster -> uncapped div_mult for BTC/ETH is 3.0, well
+    # above a 2.0 cap.
+    U = ["ES", "NQ", "YM", "RTY", "M2K", "MES",
+         "ZT", "ZF", "ZN", "TN", "ZB", "UB", "BTC", "ETH"]
+    uncapped = compute_div_mult(U)
+    assert uncapped["BTC"] > 2.0 and uncapped["ETH"] > 2.0
+
+    capped = compute_div_mult(U, per_instrument_cap=2.0)
+    assert all(v <= 2.0 for v in capped.values())
+    assert capped["BTC"] == 2.0 and capped["ETH"] == 2.0
+    # Uncapped roots (already <= cap) are untouched.
+    assert capped["ES"] == uncapped["ES"]
+
+    assert compute_div_mult(U, per_instrument_cap=None) == uncapped
