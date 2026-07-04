@@ -1,0 +1,18 @@
+# config/backtesting/crypto_carry_broad.yaml -- standalone crypto CME calendar carry (BTC/ETH)
+asset_class: futures
+
+strategy:
+  name: FuturesCarry
+  universe:
+    - BTC
+    - ETH
+
+dates:
+  start: "2017-01-01"
+  end: "2026-02-20"
+
+backtest:
+  initial_capital: 10000000
+  vol_target_per_instrument: 0.20
+  rebalance: weekly
+  cost_mult: 1.0
