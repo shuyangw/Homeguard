@@ -64,6 +64,15 @@ vs carry_idm_broad + inclusion verdicts). Serial due to 8-thread cap (one CPU jo
   KNOWN BUGS (real fixes, logged): (1) parallel OOM on crypto 1min data at jobs=8; (2) CLI report-phase
   hang on crypto-inclusive run.
 
+- **COMBINED carry+crypto CAPPED (idm_cap 1.5, serial):** OOS Sharpe 0.5475 (1.5x 0.5306),
+  PBO 0.0856, PSR/DSR 1.0, skew 0.63, kurt 21.87. Cap HELPED (0.42->0.55, kurt 27.6->21.9) but
+  STILL < carry-alone 0.76. THREE-WAY: carry 0.76/PBO0.19 | +crypto naive 0.42/0.10 | +crypto
+  capped 0.55/0.086. **VERDICT: crypto does NOT lift the book under any pre-committed sizing;
+  it improves ROBUSTNESS (PBO down) but DILUTES Sharpe (over-allocation of a 2-root high-vol
+  sleeve). Incumbent stays carry_idm 0.76. >1.0 NOT reached.** Harvesting crypto's real
+  diversification would need portfolio-level small-sleeve weighting (fitting -> out of scope) or
+  the stronger perp-funding signal (1C, data not on disk).
+
 ## After Phase 1
 If a pillar qualifies -> next plan = Phase 0 combiner + Phase 4 combination.
 If neither -> honest fallback: carry + breadth/buffering only; write summary. Then (time permitting,
