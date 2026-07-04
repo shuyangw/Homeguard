@@ -23,7 +23,7 @@ standalone PBO<0.35 AND Sharpe>0.35; corr vs carry: <0.3 full / 0.3-0.5 only if 
 | 4 | pillar correlation tool | DONE 5ff47e9 |
 | 5 | VALUE standalone WF (train 61m) | DONE -> REJECT/EXCLUDE (-0.22 Sharpe, PBO 0.64) |
 | 6 | CRYPTO carry standalone WF | DONE -> PASS (0.61 Sharpe, PBO 0.24) |
-| 7 | correlation + inclusion verdict | crypto corr RUNNING (bphjrc7lk); value already EXCLUDED |
+| 7 | correlation + inclusion verdict | DONE: crypto INCLUDE full weight (rho -0.065); value EXCLUDE |
 
 **Controller next step:** when value WF (Task 5) completes -> record its metrics -> run Task 2
 (crypto cache: `build_carry_cache.py --roots BTC ETH --start 2017-01-01 --end 2026-02-20 --jobs 2`,
