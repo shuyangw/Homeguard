@@ -30,7 +30,7 @@ prioritizing crypto-carry (the only lever with a plausible path per the spanning
 | CRYPTO carry standalone (BTC/ETH) | 0.61 / 0.61 | 0.24 | 11.3 | PASS, qualifies as pillar |
 | carry + crypto (naive IDM cluster) | 0.42 / 0.40 | 0.10 | 27.6 | worse Sharpe, better PBO |
 | carry + crypto (per-instrument cap 1.5) | 0.55 / 0.53 | 0.086 | 21.9 | worse Sharpe, better PBO |
-| carry + cap 1.5 (no crypto, Minor-4) | PENDING (bmjlqzh41) | | | |
+| carry + cap 1.5 (no crypto, Minor-4) | 0.71 / 0.71 | 0.186 | 23.9 | no improvement vs 0.76 |
 
 Correlation: rho(crypto, carry) = **-0.065** (near-zero -> crypto qualifies for FULL weight tier).
 
@@ -55,9 +55,12 @@ A risk-averse mandate might prefer the more-robust lower-Sharpe book. For the Sh
    of 33 macro roots exhausts RAM -> a worker is OOM-killed -> `BrokenProcessPool`. Serial (max_workers=1)
    runs all 13 windows fine. Real fix: cache daily panels / cap crypto worker memory / lower --jobs
    for crypto-inclusive runs. (Combined gates were computed serially to get the numbers.)
-2. **CLI report-phase hang**: the crypto-inclusive walk-forward CLI reproducibly stalls/gets reaped
-   ~15.8min in, right after the standard-report save (the parallel OOM manifests as a hang here).
-   Pure 33-root carry + 2-root crypto standalone both complete fine.
+2. **CLI walk-forward killed ~13-16min in (GENERAL, not crypto-specific)**: three CLI runs were
+   reaped ~13-16min in, right after the standard-report save -- including a 33-root NO-crypto run
+   (carry_idm_cap15). So it is NOT the crypto OOM (that is bug #1) and NOT the 60-min bg cap. Cause
+   unresolved (CLI late-phase instability or external reaper). WORKAROUND: direct serial gate scripts
+   (walk_forward_carver max_workers=1) complete reliably every time -- all combined/gate numbers here
+   were obtained that way. Some CLI runs (value, plain carry) did complete; the trigger is not fully pinned.
 
 ## DSR trial-count (project-wide N)
 Pre-committed pillar trials this campaign: value (N+1), crypto standalone (N+1), plus combination
@@ -71,6 +74,8 @@ over value) is mild; crypto's PBO 0.24 is thin and its sample short (2 roots, 7 
 2. If pursuing crypto further: (a) proper portfolio small-sleeve sizing (a real Phase-4 combiner
    with a pre-registered satellite weight), (b) acquire perp funding-rate data (stronger crypto
    carry than CME calendar), (c) fix the parallel OOM so crypto runs are not serial-only.
-3. Incremental carry polish (multi-horizon, buffering, IDM cap) may add +0.02-0.08 toward ~0.85,
-   but not > 1 (strategy-lead estimate). Lower priority.
+3. Incremental carry polish: the per-instrument IDM cap 1.5 was TESTED on carry alone -> 0.71
+   (WORSE than 0.76; capping beneficial LE/HE/ES concentration hurts). So IDM-cap is NOT a win for
+   carry. Multi-horizon / buffering remain untested (need combiner / buffer build); strategy-lead
+   estimate +0.02-0.08 each, not > 1. Lower priority.
 4. Nothing merged/pushed - review the branch and decide what (if anything) lands on main.
