@@ -22,8 +22,8 @@ standalone PBO<0.35 AND Sharpe>0.35; corr vs carry: <0.3 full / 0.3-0.5 only if 
 | 3 | value + crypto standalone configs | DONE 7eb100f |
 | 4 | pillar correlation tool | DONE 5ff47e9 |
 | 5 | VALUE standalone WF (train 61m) | DONE -> REJECT/EXCLUDE (-0.22 Sharpe, PBO 0.64) |
-| 6 | CRYPTO carry standalone WF | RUNNING (bbxcgkzeb, 2 roots) |
-| 7 | correlation + inclusion verdict | PENDING (needs T5,T6) |
+| 6 | CRYPTO carry standalone WF | DONE -> PASS (0.61 Sharpe, PBO 0.24) |
+| 7 | correlation + inclusion verdict | crypto corr RUNNING (bphjrc7lk); value already EXCLUDED |
 
 **Controller next step:** when value WF (Task 5) completes -> record its metrics -> run Task 2
 (crypto cache: `build_carry_cache.py --roots BTC ETH --start 2017-01-01 --end 2026-02-20 --jobs 2`,
@@ -44,6 +44,13 @@ vs carry_idm_broad + inclusion verdicts). Serial due to 8-thread cap (one CPU jo
   on this basket 2015-2026 (long-horizon momentum persisted; raw signal ~+0.22). Sign NOT flipped
   post-hoc (pre-committed construction; flipping after seeing results = data-snooping, forbidden).
   Legitimate negative finding (unit tests confirmed causal + correct reversal sign). N += 1.
+- **CRYPTO CARRY (CME BTC/ETH calendar roll-yield):** OOS Sharpe 0.6130 (1.5x 0.6107 -- near-zero
+  cost drag, slow/low-turnover), PBO 0.2433, PSR/DSR 1.0, skew +0.57, kurt 11.30, n_windows 7,
+  n_oos 1915. **Verdict PASS** (clears Sec 2.5 + cost gate); clears inclusion Sharpe floor 0.35 AND
+  PBO floor 0.35. Correlation vs carry PENDING (bphjrc7lk) -> decides weight tier. N += 1 (now 3).
+  CAVEATS (low-confidence): only 2 roots / 7 windows / ~7.6yr, PBO 0.24 is JUST under 0.25, crypto
+  2019-2026 regime-heavy (2020-21 trends, 2022 crash) -> strong result may be partly regime luck.
+  Best-of-2 pillar trials (value rejected, crypto passed) -- mild multiple-comparison.
 
 ## After Phase 1
 If a pillar qualifies -> next plan = Phase 0 combiner + Phase 4 combination.
