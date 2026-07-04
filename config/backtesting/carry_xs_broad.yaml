@@ -1,0 +1,53 @@
+# config/backtesting/carry_xs_broad.yaml
+# Cross-sectional (no IDM) futures carry over the 33-root broad basket.
+# Requires the carry cache: python scripts/data/build_carry_cache.py --roots <...> --start 2010-06-07 --end 2026-02-20
+# Walk-forward: python scripts/backtest_scripts/run_carver_walkforward.py \
+#   --config config/backtesting/carry_xs_broad.yaml --report docs/reports/futures/CARRY_XS_BROAD_READINESS.md
+asset_class: futures
+
+strategy:
+  name: FuturesCarryXS
+  universe:
+    - ES
+    - NQ
+    - YM
+    - ZT
+    - ZF
+    - ZN
+    - TN
+    - ZB
+    - UB
+    - 6E
+    - 6J
+    - 6B
+    - 6A
+    - 6C
+    - 6S
+    - 6M
+    - 6N
+    - CL
+    - BZ
+    - NG
+    - HO
+    - RB
+    - GC
+    - SI
+    - HG
+    - PL
+    - ZC
+    - ZW
+    - ZS
+    - ZL
+    - ZM
+    - LE
+    - HE
+
+dates:
+  start: "2010-06-07"
+  end: "2026-02-20"
+
+backtest:
+  initial_capital: 10000000
+  vol_target_per_instrument: 0.20
+  rebalance: weekly
+  cost_mult: 1.0
