@@ -15,6 +15,8 @@ ASSET_CLASS: dict[str, str] = {
     "PL": "commodity", "MGC": "commodity", "SIL": "commodity", "MET": "commodity",
     "ZC": "commodity", "ZW": "commodity", "ZS": "commodity", "ZL": "commodity", "ZM": "commodity",
     "KE": "commodity", "LE": "commodity", "HE": "commodity",
+    # crypto (CME futures)
+    "BTC": "crypto", "ETH": "crypto",
 }
 
 
@@ -35,6 +37,7 @@ CLUSTER: dict[str, str] = {
     "SIL": "metals", "MET": "metals",
     "ZC": "grains", "ZW": "grains", "ZS": "grains", "ZL": "grains", "ZM": "grains", "KE": "grains",
     "LE": "meats", "HE": "meats",
+    "BTC": "crypto", "ETH": "crypto",
 }
 
 

@@ -120,6 +120,10 @@ class CarryCalculator:
 
         if asset_class == "commodity":
             return (second_c - front_c) / front_c * (365.0 / days_to_second)
+        if asset_class == "crypto":
+            # CME crypto futures: annualized calendar roll yield (same convention
+            # as commodity). Short history + regime risk -- flagged in the report.
+            return (second_c - front_c) / front_c * (365.0 / days_to_second)
         if asset_class == "equity_index":
             return (front_c - second_c) / second_c * (365.0 / days_to_second)
         if asset_class == "fx":
