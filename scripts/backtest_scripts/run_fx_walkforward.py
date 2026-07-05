@@ -1,20 +1,9 @@
-"""Carver TSMOM walk-forward + statistical gate + readiness report (Task 10).
+"""Spot-FX walk-forward + statistical gate + readiness report.
 
-Carver TSMOM is PARAMETER-FREE (the multi-speed EWMAC blend and forecast cap
-are fixed doctrine, not fit). "Walk-forward" here therefore does NOT search
-over parameters -- it rolls non-overlapping OOS test windows across the full
-date range, runs `run_futures_backtest` once per window (using the preceding
-`train_months` purely as signal warm-up so the EWMAC speeds have lookback at
-the start of the OOS segment, then keeping ONLY the OOS-dated portion of the
-resulting equity curve), stitches those per-window OOS return series into one
-concatenated OOS return series, and evaluates the statistical gate
-(Sharpe / PSR / DSR / PBO) on that stitched series. Because there is no
-parameter selection, the project trial count for this run is 1 -- DSR
-therefore reduces to PSR against benchmark Sharpe 0 (no deflation term).
-
-This is the acceptance/proof script for the futures backtest harness
-(Tasks 1-9): the first methodology-compliant (Section 3 walk-forward +
-Section 2 statistical gate) futures result.
+FX trend and value are PARAMETER-FREE (fixed forecast scalars/speeds), so this
+rolls non-overlapping OOS windows, runs run_fx_backtest once per window per cost
+leg (1x and 1.5x), stitches the OOS-dated return series, and evaluates the
+Sharpe/PSR/DSR/PBO gate. Trial count = 1.
 """
 from __future__ import annotations
 
@@ -25,8 +14,8 @@ from typing import Any, Dict, List, Optional, Sequence
 import numpy as np
 import pandas as pd
 
-from src.backtesting.data.futures_backtest_loader import load_daily_panel
-from src.backtesting.engine.futures_backtest import run_futures_backtest
+from src.backtesting.data.fx_backtest_loader import load_fx_daily_panel
+from src.backtesting.engine.fx_backtest import run_fx_backtest
 from src.backtesting.statistics.dsr import dsr
 from src.backtesting.statistics.psr import psr
 from src.backtesting.walkforward_common import (
@@ -36,22 +25,18 @@ from src.backtesting.walkforward_common import (
     _build_windows,
     _compute_pbo,
     _oos_returns,
-    _oos_returns_dated,
-    _verdict,
+    _verdict as _verdict_fx,
 )
 from src.utils import logger
 
-_DEFAULT_UNIVERSE = [
-    "MES", "MNQ", "M2K", "MYM", "MCL", "MNG", "MGC", "SIL", "6E", "6J", "ZN", "ZC",
-]
+_DEFAULT_UNIVERSE = ["EURUSD", "USDJPY", "USDCHF", "EURJPY", "EURCHF", "CHFJPY", "XAUUSD", "XAGUSD"]
 _DEFAULT_CAPITAL = 100_000.0
 _DEFAULT_VOL_TARGET = 0.20
-
-_REPORT_PATH = "docs/reports/futures/CARVER_TSMOM_READINESS.md"
+_REPORT_PATH = "docs/reports/fx/FX_WALK_FORWARD.md"
 
 
 def _config_to_kwargs(config: Dict[str, Any]) -> Dict[str, Any]:
-    """Extract walk_forward_carver kwargs from a futures backtest YAML dict."""
+    """Extract walk_forward_fx kwargs from an FX backtest YAML dict."""
     strat = config.get("strategy", {})
     dates = config.get("dates", {})
     bt = config.get("backtest", {})
@@ -61,75 +46,54 @@ def _config_to_kwargs(config: Dict[str, Any]) -> Dict[str, Any]:
         "vol_target": float(bt.get("vol_target_per_instrument", _DEFAULT_VOL_TARGET)),
         "start": str(dates["start"]),
         "end": str(dates["end"]),
-        "strategy_name": strat.get("name", "CarverMomentum"),
-        "strategy_params": strat.get("params", {}),
+        "strategy_name": strat.get("name", "FxTrend"),
+        "tier": bt.get("tier", "major"),
         "idm": bool(bt.get("idm", False)),
         "idm_cap": bt.get("idm_cap", None),
     }
 
 
-def _run_window(universe: Sequence[str], train_start: date, test_end: date,
-                 capital: float, vol_target: float, cost_mult: float,
-                 strategy_name: str = "CarverMomentum",
-                 strategy_params: Optional[Dict[str, Any]] = None,
-                 idm: bool = False,
-                 idm_cap: float | None = None,
-                 register: bool = True) -> Dict[str, Any]:
+def _run_window_fx(universe: Sequence[str], train_start: date, test_end: date,
+                    capital: float, vol_target: float, cost_mult: float,
+                    strategy_name: str, tier: str, idm: bool,
+                    idm_cap: Optional[float]) -> Dict[str, Any]:
     config = {
-        "strategy": {"name": strategy_name, "universe": list(universe),
-                     "params": strategy_params or {}},
+        "asset_class": "fx",
+        "strategy": {"name": strategy_name, "universe": list(universe), "params": {}},
         "dates": {"start": str(train_start), "end": str(test_end)},
-        "backtest": {
-            "initial_capital": capital,
-            "vol_target_per_instrument": vol_target,
-            "rebalance": "weekly",
-            "cost_mult": cost_mult,
-            "idm": idm,
-            "idm_cap": idm_cap,
-        },
+        "backtest": {"initial_capital": capital, "vol_target_per_instrument": vol_target,
+                     "rebalance": "weekly", "cost_mult": cost_mult, "leverage_cap": 10.0,
+                     "tier": tier, "idm": idm, "idm_cap": idm_cap},
     }
-    return run_futures_backtest(config, register=register)
+    return run_fx_backtest(config, register=False, log_trades=False)
 
 
 def process_window(spec: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-    """Top-level (picklable) per-window worker: runs both cost legs, register=False.
-
-    Returns None if the window has no usable data (mirrors the serial loop's
-    FileNotFoundError skip behavior).
-    """
+    """Top-level (picklable) per-window worker: runs both cost legs, register=False."""
     universe = spec["universe"]
     train_start, test_start, test_end = spec["train_start"], spec["test_start"], spec["test_end"]
-    capital, vol_target = spec["capital"], spec["vol_target"]
-    strategy_name, strategy_params = spec["strategy_name"], spec["strategy_params"]
-    idm = spec.get("idm", False)
-    idm_cap = spec.get("idm_cap", None)
     try:
-        panel = load_daily_panel(universe, train_start, test_end)
+        panel = load_fx_daily_panel(universe, train_start, test_end)
     except FileNotFoundError as e:
-        logger.warning(f"[walk_forward] skipping window {test_start}..{test_end}: {e}")
+        logger.warning(f"[fx_walk_forward] skipping window {test_start}..{test_end}: {e}")
         return None
-    window_universe = sorted({r for r, _ in panel.columns})
+    window_universe = sorted({p for p, _ in panel.columns})
     dates = list(panel.index)
-    res_1x = _run_window(window_universe, train_start, test_end, capital, vol_target,
-                         cost_mult=1.0, strategy_name=strategy_name,
-                         strategy_params=strategy_params, idm=idm, idm_cap=idm_cap,
-                         register=False)
-    res_1_5x = _run_window(window_universe, train_start, test_end, capital, vol_target,
-                           cost_mult=1.5, strategy_name=strategy_name,
-                           strategy_params=strategy_params, idm=idm, idm_cap=idm_cap,
-                           register=False)
-    result = {
+    res_1x = _run_window_fx(window_universe, train_start, test_end, spec["capital"],
+                            spec["vol_target"], 1.0, spec["strategy_name"], spec["tier"],
+                            spec["idm"], spec["idm_cap"])
+    res_1_5x = _run_window_fx(window_universe, train_start, test_end, spec["capital"],
+                              spec["vol_target"], 1.5, spec["strategy_name"], spec["tier"],
+                              spec["idm"], spec["idm_cap"])
+    return {
         "train_start": train_start, "test_start": test_start, "test_end": test_end,
         "window_universe": window_universe,
         "oos_1x": _oos_returns(res_1x["equity_curve"], dates, test_start),
         "oos_1_5x": _oos_returns(res_1_5x["equity_curve"], dates, test_start),
     }
-    if spec.get("return_dated"):
-        result["oos_1x_dated"] = _oos_returns_dated(res_1x["equity_curve"], dates, test_start)
-    return result
 
 
-def walk_forward_carver(
+def walk_forward_fx(
     train_months: int,
     test_months: int,
     step_months: int,
@@ -138,14 +102,13 @@ def walk_forward_carver(
     universe: Optional[Sequence[str]] = None,
     capital: float = _DEFAULT_CAPITAL,
     vol_target: float = _DEFAULT_VOL_TARGET,
-    strategy_name: str = "CarverMomentum",
-    strategy_params: Optional[Dict[str, Any]] = None,
+    strategy_name: str = "FxTrend",
+    tier: str = "major",
     idm: bool = False,
-    idm_cap: float | None = None,
+    idm_cap: Optional[float] = None,
     max_workers: Optional[int] = None,
-    return_window_returns: bool = False,
 ) -> Dict[str, Any]:
-    """Roll OOS test windows for the parameter-free Carver TSMOM strategy.
+    """Roll OOS test windows for a parameter-free FX strategy (trend/value).
 
     Returns a dict with `oos_sharpe`, `psr`, `dsr`, `pbo`,
     `oos_sharpe_1_5x_cost`, `n_windows`, `n_oos_days`, `window_sharpes`,
@@ -167,17 +130,11 @@ def walk_forward_carver(
     window_sharpes: List[float] = []
     window_universes: List[List[str]] = []
     used_windows: List[tuple[date, date, date]] = []
-    per_window_oos: List[pd.Series] = []
 
-    # Each window is independent (own panel load + two cost-leg backtests), so
-    # windows are mapped across worker processes; `parallel_map` preserves
-    # INPUT order, so aggregation below is byte-identical to the old serial
-    # loop regardless of max_workers.
     specs = [
         {"universe": universe, "train_start": ts, "test_start": tst, "test_end": te,
-         "capital": capital, "vol_target": vol_target,
-         "strategy_name": strategy_name, "strategy_params": strategy_params or {},
-         "idm": idm, "idm_cap": idm_cap, "return_dated": return_window_returns}
+         "capital": capital, "vol_target": vol_target, "strategy_name": strategy_name,
+         "tier": tier, "idm": idm, "idm_cap": idm_cap}
         for (ts, tst, te) in windows
     ]
     from src.backtesting.parallel import parallel_map
@@ -190,8 +147,6 @@ def walk_forward_carver(
         window_sharpes.append(_annualized_sharpe(r["oos_1x"]))
         window_universes.append(r["window_universe"])
         used_windows.append((r["train_start"], r["test_start"], r["test_end"]))
-        if return_window_returns and r.get("oos_1x_dated") is not None:
-            per_window_oos.append(r["oos_1x_dated"])
 
     if len(used_windows) < 2:
         raise ValueError(
@@ -238,8 +193,6 @@ def walk_forward_carver(
         "window_end": windows[-1][2],
         "strategy_name": strategy_name,
     }
-    if return_window_returns:
-        result["per_window_oos"] = per_window_oos
 
     run_id = None
     try:
@@ -247,12 +200,12 @@ def walk_forward_carver(
 
         run_id = append_run(
             strategy_name=strategy_name,
-            agent_name="futures-harness-walkforward",
+            agent_name="fx-harness-walkforward",
             metrics={
                 k: v for k, v in result.items()
                 if k not in ("window_sharpes", "universe", "window_universes")
             },
-            asset_class="futures",
+            asset_class="fx",
             data_frequency="daily",
             params={
                 "train_months": train_months,
@@ -261,6 +214,7 @@ def walk_forward_carver(
                 "universe": universe,
                 "vol_target_per_instrument": vol_target,
                 "initial_capital": capital,
+                "tier": tier,
                 "trial_count_project_wide": TRIAL_COUNT_PARAMETER_FREE,
             },
             window_start=windows[0][1],
@@ -268,7 +222,7 @@ def walk_forward_carver(
             phase="walk_forward",
         )
     except Exception as e:
-        logger.error(f"[walk_forward_carver] registry append_run failed (non-fatal): {e}")
+        logger.error(f"[walk_forward_fx] registry append_run failed (non-fatal): {e}")
 
     result["run_id"] = run_id
     return result
@@ -277,17 +231,17 @@ def walk_forward_carver(
 def _write_readiness_report(result: Dict[str, Any], train_months: int, test_months: int,
                              step_months: int, start: str, end: str,
                              report_path: str = _REPORT_PATH) -> str:
-    verdict = _verdict(result)
+    verdict = _verdict_fx(result)
     window_rows = "\n".join(
         f"| {i + 1} | {s:.4f} | {result['window_universes'][i]} |"
         for i, s in enumerate(result["window_sharpes"])
     )
-    _title_display = {"CarverMomentum": "Carver TSMOM"}
-    _sname = result.get("strategy_name", "CarverMomentum")
+    _title_display = {"FxTrend": "FX Trend", "FxValue": "FX Value"}
+    _sname = result.get("strategy_name", "FxTrend")
     title = _title_display.get(_sname, _sname)
     content = f"""# {title} Walk-Forward Readiness Report
 
-Generated by `scripts/backtest_scripts/run_carver_walkforward.py::main()`.
+Generated by `scripts/backtest_scripts/run_fx_walkforward.py::main()`.
 
 ## Design
 
@@ -295,7 +249,7 @@ Generated by `scripts/backtest_scripts/run_carver_walkforward.py::main()`.
 data. Consequently this walk-forward performs NO parameter search. It rolls
 non-overlapping OOS test windows
 (train={train_months}m / test={test_months}m / step={step_months}m) across
-{start} .. {end}, running `run_futures_backtest` once per window over
+{start} .. {end}, running `run_fx_backtest` once per window over
 [train_start, test_end] (the train segment serves only as signal lookback
 warm-up), keeping ONLY the OOS-dated (test_start..test_end) portion of each
 window's equity curve, and stitching those OOS segments into one
@@ -309,26 +263,10 @@ With `n_trials=1`, `expected_max_sharpe` returns 0.0 (no deflation term), so
 DSR reduces to PSR against a benchmark Sharpe of 0 -- this is the correct,
 honest behavior for a non-selected, parameter-free strategy, not a bug.
 
-Requested universe ({len(result['universe'])} roots): {result['universe']}.
+Requested universe ({len(result['universe'])} pairs): {result['universe']}.
 Initial capital: ${result['capital']:,.0f}. Vol target per instrument:
 {result['vol_target']:.2f}. Rebalance: weekly.
-Data frequency: daily (aggregated from Databento 1-min continuous contracts).
-
-**Per-window data-availability filtering.** Instruments phase in over time
-(micro contracts launched 2019+, SOFR 2018, some roots later), so a fixed
-universe cannot have full history back to {start} for every root.
-`load_daily_panel` (`src/backtesting/data/futures_backtest_loader.py`)
-gracefully excludes any root with no usable data for a window's
-[train_start, test_end] range (logged as a WARNING, never silently). One isolated data-quality issue was
-also handled the same way: `ContinuousContractDataLoader.load` previously
-raised a nondeterministic `KeyError` for SIL on windows spanning 2017-02-26,
-traced to an unstable tie-break in the per-day active-contract ranking
-(`_active_contract_per_day` in `src/data/continuous_contract_loader.py`) --
-fixed by adding a deterministic `symbol` tie-break to the sort. See the
-per-window "roots with data" column below for exactly which roots
-contributed to which window (a root with data for only part of a window
-still appears -- `run_futures_backtest` sizes it to zero contracts wherever
-its forecast/price/vol are unavailable).
+Data frequency: daily spot FX.
 
 ## Metrics
 
@@ -349,7 +287,7 @@ its forecast/price/vol are unavailable).
 
 ## Per-window OOS Sharpe
 
-| Window | OOS Sharpe | Roots with data |
+| Window | OOS Sharpe | Pairs with data |
 |---|---|---|
 {window_rows}
 
@@ -365,20 +303,6 @@ parameter-selection PBO -- there is no parameter selection for a
 parameter-free strategy. It answers whether the ranking of windows by Sharpe
 is stable under resampling, a weaker but still informative overfitting check
 given only one configuration was ever run.
-
-## Note: tail statistics
-
-The stitched OOS return series has skew {result['skew']:.2f} and Pearson
-kurtosis {result['kurtosis_pearson']:.1f} -- fat-tailed but finite, far from
-the pathological tail stats (kurtosis in the thousands) an earlier version of
-the harness produced when the simulator let account equity cross zero and
-`pct_change` exploded on the zero-crossing equity curve; that was fixed before
-merge via equity-feedback sizing plus a bankruptcy floor (equity is now
-provably non-negative after both mark-to-market and cost debits), so the
-PSR/DSR values here are reliable. Elevated kurtosis reflects a few large days
-concentrating the performance and should be weighed alongside PBO when judging
-robustness. The WEAK verdict (OOS Sharpe {result['oos_sharpe']:.4f}, PBO
-{result['pbo']:.3f}) rests on the clean statistics, not on any tail artifact.
 """
     out_path = Path(report_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -390,9 +314,9 @@ def main() -> None:
     import argparse
     import yaml
 
-    parser = argparse.ArgumentParser(description="Carver TSMOM walk-forward + gate")
+    parser = argparse.ArgumentParser(description="FX trend/value walk-forward + gate")
     parser.add_argument("--config", default=None,
-                        help="Futures backtest YAML; drives universe/capital/vol-target/dates")
+                        help="FX backtest YAML; drives universe/capital/vol-target/dates")
     parser.add_argument("--report", default=_REPORT_PATH,
                         help="Output readiness-report path (defaults to the baseline path)")
     parser.add_argument("--jobs", type=int, default=None,
@@ -409,26 +333,25 @@ def main() -> None:
         kw = _config_to_kwargs(cfg)
     else:
         kw = {"universe": list(_DEFAULT_UNIVERSE), "capital": _DEFAULT_CAPITAL,
-              "vol_target": _DEFAULT_VOL_TARGET, "start": "2010-06-07", "end": "2025-02-01",
-              "strategy_name": "CarverMomentum", "strategy_params": {}, "idm": False,
-              "idm_cap": None}
+              "vol_target": _DEFAULT_VOL_TARGET, "start": "2011-01-01", "end": "2025-12-31",
+              "strategy_name": "FxTrend", "tier": "major", "idm": True, "idm_cap": 2.5}
 
     # Run-status logging survives a SIGKILL: if this run is killed, the status
     # file is frozen at RUNNING with the last heartbeat, so a stale RUNNING file
     # tells us it died (and roughly when) instead of leaving us to guess.
     from src.utils.run_status import RunStatus
 
-    _meta = {"strategy": kw.get("strategy_name", "CarverMomentum"),
+    _meta = {"strategy": kw.get("strategy_name", "FxTrend"),
              "config": args.config, "jobs": args.jobs,
-             "start": kw["start"], "end": kw["end"], "n_roots": len(kw["universe"]),
+             "start": kw["start"], "end": kw["end"], "n_pairs": len(kw["universe"]),
              "idm": kw.get("idm", False), "idm_cap": kw.get("idm_cap")}
-    with RunStatus("carver_walkforward", meta=_meta) as st:
-        result = walk_forward_carver(
+    with RunStatus("fx_walkforward", meta=_meta) as st:
+        result = walk_forward_fx(
             train_months=args.train_months, test_months=args.test_months, step_months=args.step_months,
             start=kw["start"], end=kw["end"], universe=kw["universe"],
             capital=kw["capital"], vol_target=kw["vol_target"],
-            strategy_name=kw.get("strategy_name", "CarverMomentum"),
-            strategy_params=kw.get("strategy_params", {}),
+            strategy_name=kw.get("strategy_name", "FxTrend"),
+            tier=kw.get("tier", "major"),
             idm=kw.get("idm", False),
             idm_cap=kw.get("idm_cap"),
             max_workers=args.jobs,
@@ -439,7 +362,7 @@ def main() -> None:
             step_months=args.step_months, start=kw["start"], end=kw["end"], report_path=args.report,
         )
     logger.info(
-        f"[walk_forward_carver] wrote {report_path}; "
+        f"[walk_forward_fx] wrote {report_path}; "
         f"oos_sharpe={result['oos_sharpe']:.4f} psr={result['psr']:.4f} "
         f"dsr={result['dsr']:.4f} pbo={result['pbo']} "
         f"oos_sharpe_1_5x_cost={result['oos_sharpe_1_5x_cost']:.4f} "
