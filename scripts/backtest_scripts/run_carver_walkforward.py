@@ -115,8 +115,12 @@ def _run_window(universe: Sequence[str], train_start: date, test_end: date,
     return run_futures_backtest(config, register=register)
 
 
-def _oos_returns(equity_curve: List[float], dates: List[date], test_start: date) -> np.ndarray:
-    """Slice the OOS-dated segment of a window's equity curve and diff to returns."""
+def _oos_returns_dated(equity_curve: List[float], dates: List[date], test_start: date) -> pd.Series:
+    """Slice the OOS-dated segment of a window's equity curve and diff to returns.
+
+    Same slice logic as `_oos_returns`, but returns the dated `pd.Series`
+    (index = OOS dates) instead of a bare numpy array.
+    """
     if len(equity_curve) != len(dates):
         raise ValueError(
             f"equity_curve length {len(equity_curve)} != trading-day count {len(dates)} "
@@ -125,12 +129,17 @@ def _oos_returns(equity_curve: List[float], dates: List[date], test_start: date)
     eq = pd.Series(equity_curve, index=pd.Index(dates))
     oos_idx = eq.index[eq.index >= test_start]
     if len(oos_idx) == 0:
-        return np.array([], dtype=float)
+        return pd.Series([], dtype=float)
     start_pos = eq.index.get_loc(oos_idx[0])
     # Include one day before the OOS start (if available) so the first OOS
     # return is a real day-over-day change, not a NaN from pct_change's edge.
     segment = eq.iloc[max(start_pos - 1, 0):]
-    return segment.pct_change().dropna().to_numpy(dtype=float)
+    return segment.pct_change().dropna()
+
+
+def _oos_returns(equity_curve: List[float], dates: List[date], test_start: date) -> np.ndarray:
+    """Slice the OOS-dated segment of a window's equity curve and diff to returns."""
+    return _oos_returns_dated(equity_curve, dates, test_start).to_numpy(dtype=float)
 
 
 def _annualized_sharpe(returns: np.ndarray) -> float:
@@ -170,12 +179,15 @@ def process_window(spec: Dict[str, Any]) -> Optional[Dict[str, Any]]:
                            cost_mult=1.5, strategy_name=strategy_name,
                            strategy_params=strategy_params, idm=idm, idm_cap=idm_cap,
                            register=False)
-    return {
+    result = {
         "train_start": train_start, "test_start": test_start, "test_end": test_end,
         "window_universe": window_universe,
         "oos_1x": _oos_returns(res_1x["equity_curve"], dates, test_start),
         "oos_1_5x": _oos_returns(res_1_5x["equity_curve"], dates, test_start),
     }
+    if spec.get("return_dated"):
+        result["oos_1x_dated"] = _oos_returns_dated(res_1x["equity_curve"], dates, test_start)
+    return result
 
 
 def _compute_pbo(per_window_returns: List[np.ndarray]) -> float:
@@ -210,6 +222,7 @@ def walk_forward_carver(
     idm: bool = False,
     idm_cap: float | None = None,
     max_workers: Optional[int] = None,
+    return_window_returns: bool = False,
 ) -> Dict[str, Any]:
     """Roll OOS test windows for the parameter-free Carver TSMOM strategy.
 
@@ -233,6 +246,7 @@ def walk_forward_carver(
     window_sharpes: List[float] = []
     window_universes: List[List[str]] = []
     used_windows: List[tuple[date, date, date]] = []
+    per_window_oos: List[pd.Series] = []
 
     # Each window is independent (own panel load + two cost-leg backtests), so
     # windows are mapped across worker processes; `parallel_map` preserves
@@ -242,7 +256,7 @@ def walk_forward_carver(
         {"universe": universe, "train_start": ts, "test_start": tst, "test_end": te,
          "capital": capital, "vol_target": vol_target,
          "strategy_name": strategy_name, "strategy_params": strategy_params or {},
-         "idm": idm, "idm_cap": idm_cap}
+         "idm": idm, "idm_cap": idm_cap, "return_dated": return_window_returns}
         for (ts, tst, te) in windows
     ]
     from src.backtesting.parallel import parallel_map
@@ -255,6 +269,8 @@ def walk_forward_carver(
         window_sharpes.append(_annualized_sharpe(r["oos_1x"]))
         window_universes.append(r["window_universe"])
         used_windows.append((r["train_start"], r["test_start"], r["test_end"]))
+        if return_window_returns and r.get("oos_1x_dated") is not None:
+            per_window_oos.append(r["oos_1x_dated"])
 
     if len(used_windows) < 2:
         raise ValueError(
@@ -301,6 +317,8 @@ def walk_forward_carver(
         "window_end": windows[-1][2],
         "strategy_name": strategy_name,
     }
+    if return_window_returns:
+        result["per_window_oos"] = per_window_oos
 
     run_id = None
     try:
