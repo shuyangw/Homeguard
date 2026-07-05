@@ -48,3 +48,8 @@ def carry_dir() -> Path:
 def daily_raw_dir() -> Path:
     """Cached per-root daily-raw OHLCV artifacts (aggregate_to_daily, method='raw')."""
     return _futures_root() / "daily_raw"
+
+
+def roll_volume_dir() -> Path:
+    """Cached per-(root, year) daily symbol-volume artifacts (roll detection)."""
+    return _futures_root() / "roll_volume"

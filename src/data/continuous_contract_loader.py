@@ -17,7 +17,7 @@ from pathlib import Path
 
 import polars as pl
 
-from src.data.futures.paths import continuous_1min_dir, per_contract_1min_dir
+from src.data.futures.paths import continuous_1min_dir, per_contract_1min_dir, roll_volume_dir
 
 # CME month codes: F=Jan G=Feb H=Mar J=Apr K=May M=Jun N=Jul Q=Aug U=Sep V=Oct X=Nov Z=Dec
 _MONTH_CODES = "FGHJKMNQUVXZ"
@@ -89,6 +89,12 @@ class ContinuousContractDataLoader:
         if cache_key in _YEAR_DAILY_VOLUME_CACHE:
             return _YEAR_DAILY_VOLUME_CACHE[cache_key]
 
+        disk_fp = roll_volume_dir() / root / f"{year}.parquet"
+        if disk_fp.exists():
+            daily = pl.read_parquet(disk_fp)
+            _YEAR_DAILY_VOLUME_CACHE[cache_key] = daily
+            return daily
+
         empty = pl.DataFrame(schema={"date": pl.Date, "symbol": pl.String, "vol": pl.UInt64})
         year_dir = pcm_root / f"year={year}"
         if not year_dir.exists():
@@ -110,6 +116,8 @@ class ContinuousContractDataLoader:
             pl.col("timestamp").dt.date().alias("date"),
             pl.col("symbol"),
         ]).agg(pl.col("volume").sum().alias("vol"))
+        disk_fp.parent.mkdir(parents=True, exist_ok=True)
+        daily.write_parquet(disk_fp)
         _YEAR_DAILY_VOLUME_CACHE[cache_key] = daily
         return daily
 
