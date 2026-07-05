@@ -83,6 +83,10 @@ def main() -> None:
     # it onto each core window's dates (missing -> 0), so a schedule mismatch
     # between the core and satellite walk-forward windows is handled cleanly.
     sat_all = pd.concat(sat["per_window_oos"]).sort_index()
+    # per-window OOS series each include one pre-OOS day for a clean first return,
+    # so concatenated boundaries carry duplicate dates -> drop them (reindex needs
+    # unique labels); keep first occurrence.
+    sat_all = sat_all[~sat_all.index.duplicated(keep="first")]
     sat_windows = [sat_all for _ in core_windows]
 
     blended = blend_books(core_windows, sat_windows, sat_weight=args.sat_weight)
