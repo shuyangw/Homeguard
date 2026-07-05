@@ -1488,7 +1488,9 @@ git commit -m "feat(fx): run_fx_backtest orchestration, routing, config, univers
 - Consumes: `run_fx_backtest` (Task 9), `load_fx_daily_panel` (Task 2), `psr`, `dsr`, `pbo` (existing `src/backtesting/statistics/`), `parallel_map` (existing), `RunStatus` (existing), `append_run` (existing).
 - Produces: `walk_forward_fx(train_months, test_months, step_months, start, end, universe, capital=100000.0, vol_target=0.20, strategy_name="FxTrend", tier="major", idm=False, idm_cap=None, max_workers=None) -> dict` with keys `oos_sharpe`, `psr`, `dsr`, `pbo`, `oos_sharpe_1_5x_cost`, `n_windows`, `n_oos_days`, `window_sharpes`, `trial_count`, `run_id`; and `_verdict_fx(result) -> str`.
 
-Reuse the exact window-building, OOS-slicing, and gate logic from `scripts/backtest_scripts/run_carver_walkforward.py`, substituting `run_fx_backtest` for `run_futures_backtest` and `load_fx_daily_panel` for `load_daily_panel`. Because trend/value are parameter-free, `trial_count = 1`.
+Reuse the window-building, OOS-slicing, and gate logic from `scripts/backtest_scripts/run_carver_walkforward.py` by **importing** the pure helpers (they operate only on dates/equity-curves/return-arrays and carry no futures concepts) -- do NOT copy them. Only the FX per-window runner and aggregator are new. Because trend/value are parameter-free, `trial_count = 1`.
+
+Note (annualization): `_annualized_sharpe` uses 252; FX daily bars are ~260/yr. The ~1.5% difference is immaterial and matches the futures convention, so 252 is kept deliberately.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -1521,7 +1523,16 @@ Expected: FAIL with `ImportError`.
 
 - [ ] **Step 3: Write the implementation**
 
-Create `scripts/backtest_scripts/run_fx_walkforward.py` by adapting `run_carver_walkforward.py`. Copy `_as_date`, `_add_months`, `_build_windows`, `_oos_returns_dated`, `_oos_returns`, `_annualized_sharpe`, `_compute_pbo`, and `_verdict` verbatim (rename `_verdict` to `_verdict_fx`). Replace the per-window runner and aggregator so they call FX:
+Create `scripts/backtest_scripts/run_fx_walkforward.py` that IMPORTS the pure helpers from `run_carver_walkforward.py` (no duplication) and adds only the FX-specific runner/aggregator. Import line:
+
+```python
+from scripts.backtest_scripts.run_carver_walkforward import (
+    _as_date, _add_months, _build_windows, _oos_returns_dated, _oos_returns,
+    _annualized_sharpe, _compute_pbo, _verdict as _verdict_fx,
+)
+```
+
+Then define the FX per-window runner and aggregator:
 
 ```python
 """Spot-FX walk-forward + statistical gate + readiness report.
@@ -1554,7 +1565,7 @@ _REPORT_PATH = "docs/reports/fx/FX_WALK_FORWARD.md"
 _TRADING_DAYS_PER_YEAR = 252
 ```
 
-Then copy `_as_date`, `_add_months`, `_build_windows`, `_oos_returns_dated`, `_oos_returns`, `_annualized_sharpe`, `_compute_pbo` unchanged from the Carver script, and define the FX per-window runner + aggregator:
+With the helpers imported (above), define the FX per-window runner + aggregator:
 
 ```python
 def _run_window_fx(universe, train_start, test_end, capital, vol_target,
@@ -1594,7 +1605,7 @@ def process_window(spec: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     }
 ```
 
-Define `walk_forward_fx(...)` mirroring `walk_forward_carver` (build specs, `parallel_map(process_window, specs)`, stitch, compute `psr`/`dsr`/`pbo`, `append_run(asset_class="fx", ...)`), and `_verdict_fx` copied from `_verdict`. Add a `main()` wrapping the run in `RunStatus("fx_walkforward", ...)` and writing `_REPORT_PATH`, following `run_carver_walkforward.py::main` (config-driven via `--config`, `--train-months/--test-months/--step-months`, `--json`).
+Define `walk_forward_fx(...)` mirroring `walk_forward_carver` (build specs, `parallel_map(process_window, specs)`, stitch, compute `psr`/`dsr`/`pbo`, `append_run(asset_class="fx", ...)`); `_verdict_fx` is the imported `_verdict`. Add a `main()` wrapping the run in `RunStatus("fx_walkforward", ...)` and writing `_REPORT_PATH`, following `run_carver_walkforward.py::main` (config-driven via `--config`, `--train-months/--test-months/--step-months`, `--json`). The default `--train-months` is 36 for trend; the value walk-forward MUST be invoked with `--train-months 72` because FxValue needs a 5yr (1260-day) lookback and a 3yr warmup leaves its first OOS window signal-starved.
 
 - [ ] **Step 4: Run test to verify it passes**
 
@@ -1642,7 +1653,8 @@ Run:
 conda run -n fintech python scripts/backtest_scripts/run_fx_walkforward.py \
   --config config/backtesting/fx_trend.yaml --json output/fx_trend_gate.json
 conda run -n fintech python scripts/backtest_scripts/run_fx_walkforward.py \
-  --config config/backtesting/fx_value.yaml --report docs/reports/fx/FX_VALUE_WALK_FORWARD.md \
+  --config config/backtesting/fx_value.yaml --train-months 72 \
+  --report docs/reports/fx/FX_VALUE_WALK_FORWARD.md \
   --json output/fx_value_gate.json
 ```
 Expected: each writes a readiness report with `OOS Sharpe`, `PSR`, `DSR`, `PBO`, and a verdict line. Record the numbers.
