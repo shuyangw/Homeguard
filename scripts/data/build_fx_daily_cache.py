@@ -6,8 +6,11 @@ whose (prev-day 17:00, this-day 17:00] window contains it; the daily close is
 the last minute close inside that window. A +7h wall-clock shift after tz
 conversion (24 - 17 = 7) maps each ET timestamp onto its FX date.
 
-DST is handled by the America/New_York tz conversion; the +7h shift is applied
-in local wall-clock time, so the boundary tracks 17:00 ET across DST changes.
+The +7h shift is absolute elapsed-time arithmetic on a tz-aware timestamp, not
+wall-clock arithmetic -- it does not itself track DST. It is safe anyway
+because every US DST transition happens at 2am local time on a Sunday, which
+falls inside the Fri-17:00-ET to Sun-17:00-ET market closure; no real FX
+minute bar ever lands in the window where the two would disagree.
 """
 from __future__ import annotations
 
@@ -23,7 +26,9 @@ from src.utils import logger
 
 def resample_fx_minute_to_daily(df_min: pd.DataFrame) -> pd.DataFrame:
     if df_min.empty:
-        return pd.DataFrame(columns=["close"])
+        empty = pd.DataFrame(columns=["close"])
+        empty.index.name = "fx_date"
+        return empty
     ts_et = df_min["timestamp"].dt.tz_convert("America/New_York")
     fx_date = (ts_et + pd.Timedelta(hours=7)).dt.date
     tmp = df_min.assign(fx_date=fx_date).sort_values("timestamp")
@@ -47,8 +52,10 @@ def build_fx_daily_cache(pairs: list[str], start: date, end: date,
         lf = pl.scan_parquet(sym_dir / "**/*.parquet").select(["timestamp", "close"])
         pdf = lf.collect().to_pandas()
         pdf["timestamp"] = pd.to_datetime(pdf["timestamp"], utc=True)
-        pdf = pdf[(pdf["timestamp"].dt.date >= start) & (pdf["timestamp"].dt.date <= end)]
         daily = resample_fx_minute_to_daily(pdf)
+        if daily.empty:
+            continue
+        daily = daily[(daily.index >= start) & (daily.index <= end)]
         if daily.empty:
             continue
         out = daily.reset_index()
