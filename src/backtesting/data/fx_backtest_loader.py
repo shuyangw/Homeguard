@@ -24,7 +24,7 @@ def load_fx_daily_panel(pairs: list[str], start: date, end: date) -> pd.DataFram
     frames: dict[str, pd.Series] = {}
     for pair in pairs:
         sym_dir = base / f"symbol={pair}"
-        if not sym_dir.exists():
+        if not sym_dir.exists() or not any(sym_dir.glob("**/*.parquet")):
             logger.warning(f"[load_fx_daily_panel] no fx_daily data for {pair}")
             continue
         pdf = pl.scan_parquet(sym_dir / "**/*.parquet").collect().to_pandas()

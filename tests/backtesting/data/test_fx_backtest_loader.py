@@ -1,9 +1,10 @@
 import datetime as dt
 
-import numpy as np
 import pandas as pd
+import polars as pl
 import pytest
 
+from src.backtesting.data import fx_backtest_loader
 from src.backtesting.data.fx_backtest_loader import build_quote_usd_panel
 
 
@@ -45,3 +46,37 @@ def test_missing_usd_leg_raises():
     panel = _close_panel({"EURGBP": [0.85, 0.86]})  # no GBPUSD, no USDGBP
     with pytest.raises(ValueError):
         build_quote_usd_panel(panel, ["EURGBP"])
+
+
+def _write_fixture(root, pair, dates, closes):
+    d = root / "fx_daily" / f"symbol={pair}" / "year=2024" / "month=1"
+    d.mkdir(parents=True, exist_ok=True)
+    pl.DataFrame({"fx_date": dates, "close": closes}).write_parquet(d / "data.parquet")
+
+
+def test_load_fx_daily_panel_shape(monkeypatch, tmp_path):
+    monkeypatch.setattr(fx_backtest_loader, "get_local_storage_dir", lambda: str(tmp_path))
+    ds = [dt.date(2024, 1, 2), dt.date(2024, 1, 3)]
+    _write_fixture(tmp_path, "EURUSD", ds, [1.10, 1.11])
+    panel = fx_backtest_loader.load_fx_daily_panel(
+        ["EURUSD"], dt.date(2024, 1, 1), dt.date(2024, 1, 31))
+    assert ("EURUSD", "close") in panel.columns
+    assert ("EURUSD", "ret") in panel.columns
+    assert panel[("EURUSD", "close")].tolist() == [1.10, 1.11]
+
+
+def test_load_fx_daily_panel_excludes_missing_pair(monkeypatch, tmp_path):
+    monkeypatch.setattr(fx_backtest_loader, "get_local_storage_dir", lambda: str(tmp_path))
+    ds = [dt.date(2024, 1, 2), dt.date(2024, 1, 3)]
+    _write_fixture(tmp_path, "EURUSD", ds, [1.10, 1.11])
+    # GBPUSD has no data dir -> excluded, not fatal
+    panel = fx_backtest_loader.load_fx_daily_panel(
+        ["EURUSD", "GBPUSD"], dt.date(2024, 1, 1), dt.date(2024, 1, 31))
+    assert {c[0] for c in panel.columns} == {"EURUSD"}
+
+
+def test_load_fx_daily_panel_raises_when_all_missing(monkeypatch, tmp_path):
+    monkeypatch.setattr(fx_backtest_loader, "get_local_storage_dir", lambda: str(tmp_path))
+    with pytest.raises(FileNotFoundError):
+        fx_backtest_loader.load_fx_daily_panel(
+            ["EURUSD"], dt.date(2024, 1, 1), dt.date(2024, 1, 31))
