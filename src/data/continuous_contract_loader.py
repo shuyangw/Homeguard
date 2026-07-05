@@ -280,6 +280,76 @@ class ContinuousContractDataLoader:
 
         raise ValueError(f"unreachable: {method}")
 
+    def ratio_adjust_daily(
+        self,
+        daily_raw: pl.DataFrame,
+        root: str,
+        start: date | None = None,
+        end: date | None = None,
+    ) -> pl.DataFrame:
+        """Apply the ratio roll-adjustment directly to a RAW daily series.
+
+        Result-identical to `load(root, "ratio_adjusted")` aggregated to
+        daily via `aggregate_to_daily`: the per-date ratio factor is uniform
+        within a date, so `last(1min_close * factor) == raw_daily_close *
+        factor`. This lets the daily-panel cache path skip re-reading and
+        re-aggregating the (much larger) 1-min continuous series.
+        """
+        df = daily_raw
+        if start is not None:
+            df = df.filter(pl.col("timestamp").dt.date() >= start)
+        if end is not None:
+            df = df.filter(pl.col("timestamp").dt.date() <= end)
+        if df.is_empty():
+            return df
+
+        data_start = df["timestamp"].min().date()
+        data_end = df["timestamp"].max().date()
+        rolls = self.detect_roll_dates(root, data_start, data_end)
+        if not rolls:
+            return df
+
+        # Each date already has exactly one row in a daily series, so its
+        # close IS the per-date last close (same close_map as the 1-min path).
+        close_map = {
+            row["timestamp"].date(): row["close"] for row in df.iter_rows(named=True)
+        }
+
+        date_factor: dict[date, float] = {d: 1.0 for d in close_map}
+        cumulative = 1.0
+        for roll_date in reversed(rolls):
+            prev_dates = [d for d in close_map if d < roll_date]
+            if not prev_dates:
+                continue
+            day_before = max(prev_dates)
+            old_c = close_map[day_before]
+            if roll_date in close_map:
+                new_c = close_map[roll_date]
+            else:
+                on_or_after = [d for d in close_map if d >= roll_date]
+                if not on_or_after:
+                    continue
+                new_c = close_map[min(on_or_after)]
+            if old_c == 0:
+                continue
+            this_ratio = new_c / old_c
+            cumulative *= this_ratio
+            for d in [d for d in date_factor if d < roll_date]:
+                date_factor[d] = cumulative
+
+        df_dates = df.with_columns(pl.col("timestamp").dt.date().alias("d"))
+        factor_df = pl.DataFrame({
+            "d": list(date_factor.keys()),
+            "factor": list(date_factor.values()),
+        })
+        df_adj = df_dates.join(factor_df, on="d", how="left").with_columns([
+            (pl.col("open") * pl.col("factor")).alias("open"),
+            (pl.col("high") * pl.col("factor")).alias("high"),
+            (pl.col("low") * pl.col("factor")).alias("low"),
+            (pl.col("close") * pl.col("factor")).alias("close"),
+        ]).drop(["d", "factor"])
+        return df_adj.sort("timestamp")
+
     def aggregate_to_daily(
         self, root: str, method: str = "ratio_adjusted",
         start: date | None = None, end: date | None = None,
