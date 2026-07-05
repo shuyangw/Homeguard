@@ -51,10 +51,13 @@ The combined books (capped 0.55 / PBO 0.086) are MORE robust than carry alone (0
 A risk-averse mandate might prefer the more-robust lower-Sharpe book. For the Sharpe>1 goal, none beat carry.
 
 ## Bugs found (real, logged; not yet fixed)
-1. **Parallel OOM**: 8 workers each loading crypto's large 1min data (BTC 2017+/ETH 2021+) on top
-   of 33 macro roots exhausts RAM -> a worker is OOM-killed -> `BrokenProcessPool`. Serial (max_workers=1)
-   runs all 13 windows fine. Real fix: cache daily panels / cap crypto worker memory / lower --jobs
-   for crypto-inclusive runs. (Combined gates were computed serially to get the numbers.)
+1. **Parallel OOM (MEASURED)**: one crypto-inclusive window peaks at **5.59 GB RSS**; 8 concurrent
+   workers ~= **45 GB** vs 66 GB machine total. MARGINAL, not blatant -> intermittent worker OOM-kill
+   (`BrokenProcessPool`) when OS/other apps use the remaining ~20 GB. 33-root (less/worker) mostly
+   completed; 35-root tipped over. ROOT CAUSE: each worker RE-AGGREGATES raw 1-min continuous-contract
+   data to daily EVERY window (redundant + memory-hungry) -- daily panels are tiny. REAL FIX: cache/
+   pre-aggregate daily panels once (drops per-worker RSS to a fraction, makes 8-way trivial). Serial
+   (max_workers=1, 5.6 GB) always works -- all combined gates were computed that way.
 2. **CLI walk-forward killed ~13-16min in (GENERAL, not crypto-specific)**: three CLI runs were
    reaped ~13-16min in, right after the standard-report save -- including a 33-root NO-crypto run
    (carry_idm_cap15). So it is NOT the crypto OOM (that is bug #1) and NOT the 60-min bg cap. Cause
