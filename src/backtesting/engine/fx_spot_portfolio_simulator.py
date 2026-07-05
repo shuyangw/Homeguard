@@ -8,7 +8,7 @@ floor (equity is provably non-negative).
 
     base_to_usd  = price * quote_to_usd            # 1 base unit in USD
     mtm_usd      = sum_p units_p * (px_t - px_{t-1}) * quote_to_usd_t
-    carry_usd    = sum_p (units_p * base_to_usd_t) * rate_diff_t / 365
+    carry_usd    = sum_p (units_p * base_to_usd_t) * rate_diff_t * days_elapsed_t / 365
     equity_t     = equity_{t-1} + mtm_usd + carry_usd - costs_t
 """
 from __future__ import annotations
@@ -86,6 +86,7 @@ class FxSpotPortfolioSimulator:
 
             # 1. MTM + carry on existing positions
             if prev_close is not None:
+                days_elapsed = (d - prev_d).days
                 pnl = 0.0
                 for p in pairs:
                     u = current[p]
@@ -95,7 +96,7 @@ class FxSpotPortfolioSimulator:
                     if pd.notna(px) and pd.notna(ppx) and pd.notna(q):
                         pnl += u * (px - ppx) * q
                     if pd.notna(px) and pd.notna(q) and pd.notna(row_rd[p]):
-                        pnl += (u * px * q) * row_rd[p] / 365.0
+                        pnl += (u * px * q) * row_rd[p] * days_elapsed / 365.0
                 equity_val += pnl
 
             if equity_val <= 0:

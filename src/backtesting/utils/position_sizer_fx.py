@@ -17,6 +17,4 @@ def size_from_forecast_fx(forecast: float, capital: float, vol_target: float,
         return 0.0
     ann_vol = daily_vol * (252 ** 0.5)
     denom = base_to_usd * ann_vol
-    if denom <= 0:
-        return 0.0
     return (forecast / 10.0) * capital * vol_target * div_mult / denom

@@ -49,6 +49,40 @@ def test_golden_carry_flat_price():
     assert gain == pytest.approx(100_000.0 * 0.02, rel=0.05)
 
 
+def test_carry_accrues_over_weekend_gap():
+    # Friday -> Monday is a 3-calendar-day gap in a daily bar sequence (no
+    # weekend bars). Carry must accrue for all 3 calendar days on the Monday
+    # bar, not just 1 (which is what a naive per-bar accrual would give).
+    friday = dt.date(2024, 1, 5)
+    monday = dt.date(2024, 1, 8)
+    idx = pd.Index([friday, monday])
+    price = 1.00
+    close = pd.DataFrame({"EURUSD": [price, price]}, index=idx)
+    quote_usd = pd.DataFrame({"EURUSD": [1.0, 1.0]}, index=idx)
+    rate_diff = pd.DataFrame({"EURUSD": [0.02, 0.02]}, index=idx)
+    # Fix a known held position: forecast/vol chosen so units == 100_000 on
+    # the Friday rebalance, then held (no rebalance) into Monday via a large
+    # enough leverage cap and daily rebalance so day-2 has no new trade delta
+    # affecting the carry measurement (carry is computed BEFORE rebalance).
+    capital, vol_target = 1_000_000.0, 0.2
+    base_to_usd = price * 1.0
+    target_units = 100_000.0
+    daily_vol = (1.0 * capital * vol_target) / (base_to_usd * target_units * np.sqrt(252))
+    forecast = pd.DataFrame({"EURUSD": [10.0, 10.0]}, index=idx)
+    dvol = pd.DataFrame({"EURUSD": [daily_vol, daily_vol]}, index=idx)
+
+    sim = FxSpotPortfolioSimulator(capital, _zero_cost, rebalance="daily", leverage_cap=100.0)
+    res = sim.run_sized(close, forecast, dvol, vol_target, quote_usd, rate_diff)
+
+    # Monday's equity change is pure carry (flat price -> zero MTM) for the
+    # 100k units held since Friday, over (Mon - Fri).days == 3 calendar days.
+    monday_gain = res.equity_curve.iloc[1] - res.equity_curve.iloc[0]
+    expected_one_day_carry = target_units * price * 1.0 * 0.02 / 365.0
+    expected_carry = expected_one_day_carry * 3
+    assert (monday - friday).days == 3
+    assert monday_gain == pytest.approx(expected_carry, rel=1e-6)
+
+
 def test_usd_base_pnl_conversion():
     # Long USDJPY: price rises 150 -> 151, quote is JPY. PnL in JPY converted
     # to USD via 1/price. With units of USD held, PnL_usd = units*(dPx)*quote_to_usd.

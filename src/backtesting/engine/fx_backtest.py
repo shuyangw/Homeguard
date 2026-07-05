@@ -35,10 +35,21 @@ def _as_date(value: Any) -> date:
     return datetime.strptime(str(value), "%Y-%m-%d").date()
 
 
-def _cost_fn_factory(tier: str, session: str = "ny"):
+_METALS_BASES = {"XAU", "XAG"}
+
+
+def _tier_for_pair(pair: str) -> str:
+    if pair[:3] in _METALS_BASES or pair[3:] in _METALS_BASES:
+        return "major"  # metals use the bps path; tier is irrelevant
+    if "USD" in (pair[:3], pair[3:]):
+        return "major"
+    return "minor"
+
+
+def _cost_fn_factory(session: str = "ny"):
     def cost_fn(pair, units_traded, price, quote_to_usd):
         return fx_round_trip_usd(pair, units_traded, price, quote_to_usd,
-                                 tier=tier, session=session)
+                                 tier=_tier_for_pair(pair), session=session)
     return cost_fn
 
 
@@ -56,16 +67,16 @@ def run_fx_backtest(config: Dict[str, Any], register: bool = True,
     rebalance = bt.get("rebalance", _DEFAULT_REBALANCE)
     cost_mult = float(bt.get("cost_mult", 1.0))
     leverage_cap = float(bt.get("leverage_cap", _DEFAULT_LEVERAGE_CAP))
-    tier = bt.get("tier", "major")
     use_idm = bool(bt.get("idm", False))
     idm_cap = bt.get("idm_cap", None)
 
     strategy_name = strat_cfg.get("name", "FxTrend")
-    strategy = get_strategy_class(strategy_name)(universe, **strat_cfg.get("params", {}))
 
     panel = load_fx_daily_panel(universe, start, end)
     present = [p for p in universe if p in {c[0] for c in panel.columns}]
     close = panel.xs("close", axis=1, level=1)[present]
+
+    strategy = get_strategy_class(strategy_name)(present, **strat_cfg.get("params", {}))
 
     quote_usd = build_quote_usd_panel(panel, present)
     rate_panel = load_fx_rate_panel(currencies_for_pairs(present), close.index)
@@ -78,7 +89,7 @@ def run_fx_backtest(config: Dict[str, Any], register: bool = True,
     div_mult = compute_div_mult(present, per_instrument_cap=idm_cap,
                                 cluster_fn=fx_cluster_for) if use_idm else 1.0
 
-    sim = FxSpotPortfolioSimulator(capital, _cost_fn_factory(tier), rebalance=rebalance,
+    sim = FxSpotPortfolioSimulator(capital, _cost_fn_factory(), rebalance=rebalance,
                                    cost_mult=cost_mult, leverage_cap=leverage_cap)
     res = sim.run_sized(close, forecasts, daily_vol, vol_target, quote_usd, rate_diff, div_mult)
 
