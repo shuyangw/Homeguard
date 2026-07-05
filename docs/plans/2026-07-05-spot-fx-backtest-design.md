@@ -269,6 +269,23 @@ Walk-forward test: mirrors `test_futures_walkforward.py`.
   (keyless pandas-datareader suffices; a FRED API key would ease discovery) on the
   machine that holds the data. This Mac has no `[macos]` storage config, so all
   real-data runs (Task 11, cache build, walk-forward) execute on the EC2/Windows box.
+- v1 implementation notes (2026-07-05, post-final-review): (1) carry accrues per
+  CALENDAR day (`rate_diff * (d - prev_d).days / 365`), so weekend rollover is
+  captured -- an early per-trading-day-bar `/365` draft understated carry ~31% and
+  was fixed. (2) Cost tier is per-pair: USD-leg pairs = major, in-universe crosses
+  (EURJPY/EURCHF/CHFJPY) = minor, metals via bps. (3) FxTrend tolerates a
+  partial cache (strategy built on the present-pairs set).
+- KNOWN LIMITATION (v1.1 candidate): a position forward-held across a MULTI-DAY
+  data gap does NOT realize the gap-spanning price move on reopen -- `prev_close`
+  holds the NaN row, so the accumulated move is dropped, not caught up. Material
+  for the 2020-10/11 EURUSD multi-week outage. Any walk-forward window crossing a
+  known gap must be read with this caveat; the fix (forward-fill `prev_close` to
+  realize the move on reopen) is deferred to v1.1.
+- ACCEPTANCE RUN PENDING: Task 11 (build_fx_daily_cache -> run_fx_backtest ->
+  run_fx_walkforward, value with `--train-months 72`) has NOT been executed -- it
+  requires the EC2/Windows machine that holds the fx_1min + FRED data. No FX code
+  has been run against real data yet; the first real OOS gate verdict comes from
+  that run.
 - Carry-signal fidelity: FRED short rates are step functions and some foreign
   rates lag; G10 coverage is adequate, EM is thinner. The academically correct
   carry input is FX forward points, which we do not have for spot; IR
