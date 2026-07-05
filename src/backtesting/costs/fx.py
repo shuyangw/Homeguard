@@ -53,3 +53,28 @@ def fx_round_trip_pips(
     if session not in _SESSION_MULT:
         raise ValueError(f"Unknown session {session!r}. Choices: {list(_SESSION_MULT)}")
     return FX_PIP_TIERS[tier] * _SESSION_MULT[session] * 2  # round-trip
+
+
+_METALS_BASES = {"XAU", "XAG"}
+
+
+def _pip_size(pair: str) -> float:
+    """0.01 for JPY-quoted pairs, 0.0001 otherwise."""
+    return 0.01 if pair[3:] == "JPY" else 0.0001
+
+
+def fx_round_trip_usd(pair: str, units_traded: float, price: float,
+                      quote_to_usd: float, tier: FxTier = "major",
+                      session: Session = "ny", metals_bps: float = 4.0) -> float:
+    """Total round-trip USD cost for trading abs(units_traded) base units.
+
+    Currency pairs: spread (pips) x pip_size x units x quote->USD. Metals
+    (XAU/XAG) have no standard pip -> priced as metals_bps of USD notional,
+    which is scale-invariant and how metal spreads are actually quoted.
+    """
+    qty = abs(units_traded)
+    if pair[:3] in _METALS_BASES:
+        notional_usd = qty * price * quote_to_usd
+        return notional_usd * metals_bps / 10_000.0
+    rt_pips = fx_round_trip_pips(tier, session)
+    return rt_pips * _pip_size(pair) * qty * quote_to_usd
