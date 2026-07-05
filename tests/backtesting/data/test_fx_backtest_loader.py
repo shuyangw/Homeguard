@@ -1,0 +1,47 @@
+import datetime as dt
+
+import numpy as np
+import pandas as pd
+import pytest
+
+from src.backtesting.data.fx_backtest_loader import build_quote_usd_panel
+
+
+def _close_panel(data: dict) -> pd.DataFrame:
+    idx = pd.Index([dt.date(2024, 1, 2), dt.date(2024, 1, 3)], name="fx_date")
+    frames = {}
+    for pair, closes in data.items():
+        frames[(pair, "close")] = pd.Series(closes, index=idx)
+        frames[(pair, "ret")] = pd.Series(closes, index=idx).pct_change()
+    df = pd.DataFrame(frames)
+    df.columns = pd.MultiIndex.from_tuples(df.columns)
+    return df
+
+
+def test_usd_quote_pair_is_identity():
+    panel = _close_panel({"EURUSD": [1.10, 1.11]})
+    q = build_quote_usd_panel(panel, ["EURUSD"])
+    # quote is USD -> USD->USD = 1.0
+    assert (q["EURUSD"] == 1.0).all()
+
+
+def test_usd_base_pair_inverts():
+    panel = _close_panel({"USDJPY": [150.0, 160.0]})
+    q = build_quote_usd_panel(panel, ["USDJPY"])
+    # quote is JPY -> JPY->USD = 1/USDJPY
+    assert q["USDJPY"].iloc[0] == pytest.approx(1 / 150.0)
+    assert q["USDJPY"].iloc[1] == pytest.approx(1 / 160.0)
+
+
+def test_true_cross_uses_usd_leg():
+    # EURGBP: quote GBP -> USD via GBPUSD
+    panel = _close_panel({"EURGBP": [0.85, 0.86], "GBPUSD": [1.25, 1.26]})
+    q = build_quote_usd_panel(panel, ["EURGBP", "GBPUSD"])
+    assert q["EURGBP"].iloc[0] == pytest.approx(1.25)
+    assert q["EURGBP"].iloc[1] == pytest.approx(1.26)
+
+
+def test_missing_usd_leg_raises():
+    panel = _close_panel({"EURGBP": [0.85, 0.86]})  # no GBPUSD, no USDGBP
+    with pytest.raises(ValueError):
+        build_quote_usd_panel(panel, ["EURGBP"])
