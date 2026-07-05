@@ -34,7 +34,8 @@
 - `src/backtesting/engine/fx_spot_portfolio_simulator.py` -- `FxSpotPortfolioSimulator`, `FxBacktestResult`.
 - `src/backtesting/engine/fx_backtest.py` -- `run_fx_backtest`.
 - `src/strategies/advanced/fx_strategies.py` -- `FxTrendStrategy`, `FxValueStrategy`.
-- `scripts/backtest_scripts/run_fx_walkforward.py` -- `walk_forward_fx`, `_verdict_fx`, report writer.
+- `src/backtesting/walkforward_common.py` -- pure walk-forward helpers (window building, OOS slicing, annualized Sharpe, PBO, verdict) shared by the futures and FX walk-forward scripts.
+- `scripts/backtest_scripts/run_fx_walkforward.py` -- `walk_forward_fx`, report writer (imports helpers from `walkforward_common`).
 - `config/backtesting/fx_trend.yaml`, `config/backtesting/fx_value.yaml`
 - `config/universes/fx_spot-2026.csv`
 - Tests mirroring each of the above under `tests/`.
@@ -44,6 +45,7 @@
 - `src/backtesting/utils/idm_weights.py` -- add optional `cluster_fn` param.
 - `src/strategies/registry.py` -- register `FxTrend`, `FxValue`.
 - `src/backtest_runner.py` -- add `asset_class == 'fx'` routing branch.
+- `scripts/backtest_scripts/run_carver_walkforward.py` -- move its pure helpers to `walkforward_common.py` and import them back (Task 10; futures walk-forward test is the regression gate).
 
 ---
 
@@ -1488,7 +1490,9 @@ git commit -m "feat(fx): run_fx_backtest orchestration, routing, config, univers
 - Consumes: `run_fx_backtest` (Task 9), `load_fx_daily_panel` (Task 2), `psr`, `dsr`, `pbo` (existing `src/backtesting/statistics/`), `parallel_map` (existing), `RunStatus` (existing), `append_run` (existing).
 - Produces: `walk_forward_fx(train_months, test_months, step_months, start, end, universe, capital=100000.0, vol_target=0.20, strategy_name="FxTrend", tier="major", idm=False, idm_cap=None, max_workers=None) -> dict` with keys `oos_sharpe`, `psr`, `dsr`, `pbo`, `oos_sharpe_1_5x_cost`, `n_windows`, `n_oos_days`, `window_sharpes`, `trial_count`, `run_id`; and `_verdict_fx(result) -> str`.
 
-Reuse the window-building, OOS-slicing, and gate logic from `scripts/backtest_scripts/run_carver_walkforward.py` by **importing** the pure helpers (they operate only on dates/equity-curves/return-arrays and carry no futures concepts) -- do NOT copy them. Only the FX per-window runner and aggregator are new. Because trend/value are parameter-free, `trial_count = 1`.
+Extract the pure window-building, OOS-slicing, and gate helpers into a NEW shared module `src/backtesting/walkforward_common.py` (they operate only on dates/equity-curves/return-arrays and carry no futures concepts), and have BOTH `run_carver_walkforward.py` and the new `run_fx_walkforward.py` import them -- no duplication, single source of truth. Only the FX per-window runner and aggregator are new. Because trend/value are parameter-free, `trial_count = 1`.
+
+This modifies `run_carver_walkforward.py` (delete its local helper defs, import them from the shared module instead). The existing futures walk-forward test (`tests/backtesting/test_futures_walkforward.py`) MUST still pass unchanged after the move -- run it as a regression gate.
 
 Note (annualization): `_annualized_sharpe` uses 252; FX daily bars are ~260/yr. The ~1.5% difference is immaterial and matches the futures convention, so 252 is kept deliberately.
 
@@ -1523,12 +1527,14 @@ Expected: FAIL with `ImportError`.
 
 - [ ] **Step 3: Write the implementation**
 
-Create `scripts/backtest_scripts/run_fx_walkforward.py` that IMPORTS the pure helpers from `run_carver_walkforward.py` (no duplication) and adds only the FX-specific runner/aggregator. Import line:
+Step A -- create the shared module. Move these functions VERBATIM out of `scripts/backtest_scripts/run_carver_walkforward.py` into a new `src/backtesting/walkforward_common.py`: `_as_date`, `_add_months`, `_build_windows`, `_oos_returns_dated`, `_oos_returns`, `_annualized_sharpe`, `_compute_pbo`, `_verdict`, plus the constants `TRIAL_COUNT_PARAMETER_FREE` and `_TRADING_DAYS_PER_YEAR`. Keep the exact names (leading underscores). Then edit `run_carver_walkforward.py` to `from src.backtesting.walkforward_common import (...)` those names and DELETE its now-moved local defs (leave its FX-agnostic futures-specific functions -- `_config_to_kwargs`, `_run_window`, `process_window`, `walk_forward_carver`, `_write_readiness_report`, `main` -- in place). Run `conda run -n fintech pytest tests/backtesting/test_futures_walkforward.py -v` as a REGRESSION GATE -- it MUST pass unchanged.
+
+Step B -- create `scripts/backtest_scripts/run_fx_walkforward.py` importing from the shared module:
 
 ```python
-from scripts.backtest_scripts.run_carver_walkforward import (
-    _as_date, _add_months, _build_windows, _oos_returns_dated, _oos_returns,
-    _annualized_sharpe, _compute_pbo, _verdict as _verdict_fx,
+from src.backtesting.walkforward_common import (
+    _as_date, _build_windows, _oos_returns, _annualized_sharpe,
+    _compute_pbo, _verdict as _verdict_fx,
 )
 ```
 
@@ -1679,7 +1685,7 @@ git commit -m "docs(fx): first spot-FX walk-forward readiness reports (trend + v
 - Gap surfaced vs spec: the spec said `compute_div_mult` is reused "as-is"; it is NOT fully asset-agnostic (depends on futures `cluster_for`). Task 4 corrects this with a backward-compatible `cluster_fn` param. Documented.
 - Out-of-scope items (PPP/CPI, empirical spreads, intraday calendar, live FX) are correctly absent; the `context` extension seam for PPP is preserved by keeping strategies on the `forecast_panel(close)` contract.
 
-**Placeholder scan:** No TBD/TODO. Task 10 references "copy verbatim from `run_carver_walkforward.py`" for pure boilerplate helpers (window building, OOS slicing) with the exact function names and the exact substitutions listed -- acceptable because the source functions are quoted in full in this plan's context and the substitutions are explicit.
+**Placeholder scan:** No TBD/TODO. Task 10 extracts the pure walk-forward helpers into `src/backtesting/walkforward_common.py` (single source of truth) and has both the futures and FX walk-forward scripts import them -- no duplication; the futures walk-forward test is the regression gate for the move.
 
 **Type consistency:**
 - `load_fx_daily_panel(pairs, start, end) -> MultiIndex (pair,{close,ret})` consumed by `run_fx_backtest` via `panel.xs("close", axis=1, level=1)` and by `build_quote_usd_panel(panel, pairs)` -- consistent.
