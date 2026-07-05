@@ -107,6 +107,8 @@ class FxSpotPortfolioSimulator:
                 continue
 
             # 2. Rebalance -> target notionals, leverage-capped
+            # Pairs with any NaN input (px/q/forecast/vol) are forward-held:
+            # left out of `targets` entirely, so they are untouched below.
             if self._is_rebalance(d, prev_d):
                 base_to_usd = {}
                 targets = {}
@@ -115,15 +117,13 @@ class FxSpotPortfolioSimulator:
                     f = forecast_panel.loc[d, p] if d in forecast_panel.index else float("nan")
                     v = daily_vol_panel.loc[d, p] if d in daily_vol_panel.index else float("nan")
                     if pd.isna(px) or pd.isna(q) or pd.isna(f) or pd.isna(v):
-                        base_to_usd[p] = 0.0
-                        targets[p] = 0.0
                         continue
                     b2u = px * q
                     base_to_usd[p] = b2u
                     targets[p] = size_from_forecast_fx(
                         float(f), equity_val, vol_target, b2u, float(v), dm(p))
                 targets = self._scale_to_leverage(targets, base_to_usd, equity_val)
-                for p in pairs:
+                for p in targets:
                     want = targets[p]
                     diff = want - current[p]
                     if diff != 0.0:

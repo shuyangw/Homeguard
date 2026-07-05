@@ -21,11 +21,12 @@ def _zero_cost(pair, units_traded, price, quote_to_usd):
 
 
 def test_golden_carry_flat_price():
-    # Hold long EURUSD one "year" (365 daily steps) at flat price with a +2%
-    # rate differential and no costs. Carry should compound the equity by ~2%
-    # of the held USD notional. We fix units directly via a huge forecast + the
-    # sizer, so instead we drive units deterministically: use forecast that
-    # yields a known notional by setting daily_vol so units are round.
+    # Hold long EURUSD one "year" (366 daily steps) at flat price with a +2%
+    # rate differential and no costs. Flat price means MTM is always zero, so
+    # the entire equity gain is carry. We drive the sizer's output to a known,
+    # round notional (100k units) by solving for the daily_vol that makes
+    # size_from_forecast_fx return exactly that, so the expected carry gain
+    # can be computed analytically below.
     n = 366
     idx = _dates(n)
     price = 1.00
@@ -67,6 +68,30 @@ def test_usd_base_pnl_conversion():
     # Day 2 PnL = units * (151-150) * quote_to_usd(day2) = 10_000 * 1 * (1/151)
     day2_pnl = res.equity_curve.iloc[1] - res.equity_curve.iloc[0]
     assert day2_pnl == pytest.approx(10_000.0 * 1.0 * (1 / 151.0), rel=1e-6)
+
+
+def test_nan_price_holds_position_no_nan_cost():
+    # Day 2 is a missing-data gap (NaN close + NaN quote_usd), as happens for
+    # real EURUSD data around 2019-09 / 2020-10-11. The pair must be
+    # forward-held through the gap: no flatten-to-zero trade, no NaN cost.
+    idx = _dates(3)
+    close = pd.DataFrame({"EURUSD": [1.10, np.nan, 1.11]}, index=idx)
+    quote_usd = pd.DataFrame({"EURUSD": [1.0, np.nan, 1.0]}, index=idx)
+    rate_diff = pd.DataFrame({"EURUSD": [0.0, 0.0, 0.0]}, index=idx)
+    forecast = pd.DataFrame({"EURUSD": [10.0, 10.0, 10.0]}, index=idx)
+    dvol = pd.DataFrame({"EURUSD": [0.005, 0.005, 0.005]}, index=idx)
+
+    def nonzero_cost(pair, units_traded, price, quote_to_usd):
+        return abs(units_traded) * 1.0
+
+    sim = FxSpotPortfolioSimulator(100_000.0, nonzero_cost, rebalance="daily", leverage_cap=100.0)
+    res = sim.run_sized(close, forecast, dvol, 0.2, quote_usd, rate_diff)
+
+    assert res.equity_curve.notna().all()
+    nan_day = idx[1]
+    assert not (res.trades["date"] == nan_day).any()
+    day1_units = res.trades.loc[res.trades["date"] == idx[0], "units"].iloc[0]
+    assert day1_units != 0.0
 
 
 def test_bankruptcy_floor():
