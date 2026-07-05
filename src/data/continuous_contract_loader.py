@@ -355,6 +355,12 @@ class ContinuousContractDataLoader:
         start: date | None = None, end: date | None = None,
     ) -> pl.DataFrame:
         """Aggregate minute bars to daily OHLCV."""
+        if method == "ratio_adjusted":
+            from src.data.futures.paths import daily_raw_dir
+            cache_fp = daily_raw_dir() / f"{root}.parquet"
+            if cache_fp.exists():
+                raw_daily = pl.read_parquet(cache_fp)
+                return self.ratio_adjust_daily(raw_daily, root, start=start, end=end)
         df = self.load(root, method=method, start=start, end=end)
         if df.is_empty():
             return df
