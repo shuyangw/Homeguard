@@ -8,23 +8,27 @@ Parameter-free, deterministic, no I/O, no market data.
 
 import numpy as np
 
-from src.data.futures.asset_class import cluster_for
+from src.data.futures.asset_class import cluster_for as _default_cluster_for
 
 INTRA_CLUSTER_RHO = 0.5
 IDM_CAP = 2.5
 
 
 def compute_div_mult(
-    universe: list[str], per_instrument_cap: float | None = None
+    universe: list[str],
+    per_instrument_cap: float | None = None,
+    cluster_fn=_default_cluster_for,
 ) -> dict[str, float]:
-    """Return {root: div_mult} for every root in `universe`.
+    """Return {symbol: div_mult} for every symbol in `universe`.
 
-    Raises KeyError if any root is unmapped in `cluster_for`.
+    `cluster_fn` maps a symbol to its cluster label (default: the futures
+    asset-class map, preserving existing behavior). Raises KeyError if any
+    symbol is unmapped.
 
-    `per_instrument_cap`, if given, clips each root's div_mult to at most
+    `per_instrument_cap`, if given, clips each symbol's div_mult to at most
     that value. Default None reproduces the uncapped output exactly.
     """
-    clusters = [cluster_for(root) for root in universe]
+    clusters = [cluster_fn(sym) for sym in universe]
     clusters_present = set(clusters)
     n_clusters = len(clusters_present)
     cluster_counts = {c: clusters.count(c) for c in clusters_present}
