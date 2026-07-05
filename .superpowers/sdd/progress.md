@@ -120,3 +120,4 @@ Spec: docs/plans/2026-07-05-spot-fx-backtest-design.md
 Base for Task 1: 154245a
 - Task 10 DECISION CHANGE (user): do NOT import helpers; EXTRACT to src/backtesting/walkforward_common.py, both futures+FX WF import it. run_carver_walkforward.py modified; test_futures_walkforward.py is the regression gate.
 - Task 1: implemented (commit defa58b, 1/1) -- pending review.
+- Task 1: COMPLETE (commits defa58b..209b2e7, review Approved after 1 fix wave: FX-date filter bug, DST docstring+test, empty-return contract). Base for Task 2: 209b2e7
