@@ -43,3 +43,8 @@ def roll_calendar_dir() -> Path:
 def carry_dir() -> Path:
     """Carry-based signal and computation artifacts."""
     return _futures_root() / "carry"
+
+
+def daily_raw_dir() -> Path:
+    """Cached per-root daily-raw OHLCV artifacts (aggregate_to_daily, method='raw')."""
+    return _futures_root() / "daily_raw"
