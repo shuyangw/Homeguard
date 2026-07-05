@@ -1216,6 +1216,21 @@ Available strategies:
                 logger.info(f"[registry] appended run_id={result['run_id']}")
             return
 
+        if raw_config.get('asset_class') == 'fx':
+            from src.backtesting.engine.fx_backtest import run_fx_backtest
+
+            logger.info(f"Running config-driven spot-FX backtest: {args.config}")
+            save_trades = raw_config.get('output', {}).get('save_trades', True)
+            result = run_fx_backtest(raw_config, log_trades=save_trades)
+            logger.success(
+                f"FX backtest complete: n_days={result['n_days']}, "
+                f"sharpe_ratio={result['metrics'].get('sharpe_ratio')}, "
+                f"trade_log={result.get('trade_log_dir')}"
+            )
+            if result.get('run_id'):
+                logger.info(f"[registry] appended run_id={result['run_id']}")
+            return
+
         try:
             config = load_config(args.config)
 
