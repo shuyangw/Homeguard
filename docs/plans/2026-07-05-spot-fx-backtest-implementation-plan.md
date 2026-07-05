@@ -435,15 +435,19 @@ from src.settings import get_local_storage_dir
 from src.utils import logger
 
 # Currency -> FRED daily short-rate series id (percent units in FRED).
+# v1 covers ONLY the currencies whose rate series are on disk in alt_data/fred/
+# (verified against config/universes/fred_series-2026.csv). GBP/CAD/AUD/NZD have
+# no short-rate series downloaded, so the v1 universe is restricted to
+# USD/EUR/CHF/JPY pairs + metals -- see the universe CSV in Task 9. Any currency
+# absent from this map falls back to 0.0 with a WARNING (graceful, not fatal).
 CURRENCY_FRED_SERIES: dict[str, str] = {
-    "USD": "DFF",        # Effective Federal Funds Rate
-    "EUR": "ECBDFR",     # ECB Deposit Facility Rate
-    "JPY": "IRSTCI01JPM156N",  # Japan immediate call rate
-    "GBP": "IUDSOIA",    # SONIA
-    "CAD": "IRSTCI01CAM156N",
-    "CHF": "IR3TIB01CHM156N",
-    "AUD": "IR3TIB01AUM156N",
-    "NZD": "IR3TIB01NZM156N",
+    "USD": "DFF",              # Effective Federal Funds Rate
+    "EUR": "ECBDFR",           # ECB Deposit Facility Rate
+    "CHF": "IRSTCB01CHM156N",  # Switzerland short-term rate
+    "JPY": "IRLTLT01JPM156N",  # Japan LONG-term rate used as a proxy: no short
+                               # series is on disk; JP rates were ~0 across the
+                               # sample so the magnitude error is small. Documented
+                               # caveat, not an oversight.
 }
 _METALS = {"XAU", "XAG"}
 
@@ -462,6 +466,10 @@ def load_fx_rate_panel(currencies: list[str], index: pd.Index) -> pd.DataFrame:
             out[ccy] = pd.Series(0.0, index=index)
             continue
         fp = base / series_id / "daily.parquet"
+        if not fp.exists():
+            logger.warning(f"[load_fx_rate_panel] FRED file missing for {ccy} ({series_id}); rate=0")
+            out[ccy] = pd.Series(0.0, index=index)
+            continue
         raw = pd.read_parquet(fp)
         s = pd.Series(raw["value"].values, index=pd.to_datetime(raw["date"].values)) / 100.0
         s = s.sort_index().reindex(idx_dt.union(s.index)).ffill().reindex(idx_dt)
@@ -1405,18 +1413,16 @@ Immediately after the futures routing block (after `return` at line 1217, before
 # config/universes/fx_spot-2026.csv
 symbol
 EURUSD
-GBPUSD
-AUDUSD
-NZDUSD
 USDJPY
-USDCAD
 USDCHF
-EURGBP
 EURJPY
-GBPJPY
+EURCHF
+CHFJPY
 XAUUSD
 XAGUSD
 ```
+
+v1 is restricted to USD/EUR/CHF/JPY-legged pairs + metals because only those currencies have carry rates on disk (Task 3). GBP/CAD/AUD/NZD are deferred until their FRED short rates are pulled. All USD-conversion legs (USDJPY, USDCHF, EURUSD) are in-universe, so every cross resolves.
 
 - [ ] **Step 3d: Create the config YAMLs**
 
@@ -1425,7 +1431,7 @@ XAGUSD
 asset_class: fx
 strategy:
   name: FxTrend
-  universe: [EURUSD, GBPUSD, AUDUSD, NZDUSD, USDJPY, USDCAD, USDCHF, EURGBP, EURJPY, GBPJPY, XAUUSD, XAGUSD]
+  universe: [EURUSD, USDJPY, USDCHF, EURJPY, EURCHF, CHFJPY, XAUUSD, XAGUSD]
   params: {}
 dates:
   start: "2011-01-01"
@@ -1447,7 +1453,7 @@ output:
 asset_class: fx
 strategy:
   name: FxValue
-  universe: [EURUSD, GBPUSD, AUDUSD, NZDUSD, USDJPY, USDCAD, USDCHF, EURGBP, EURJPY, GBPJPY, XAUUSD, XAGUSD]
+  universe: [EURUSD, USDJPY, USDCHF, EURJPY, EURCHF, CHFJPY, XAUUSD, XAGUSD]
   params: {}
 dates:
   start: "2011-01-01"

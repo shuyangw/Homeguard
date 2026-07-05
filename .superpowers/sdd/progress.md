@@ -122,3 +122,4 @@ Base for Task 1: 154245a
 - Task 1: implemented (commit defa58b, 1/1) -- pending review.
 - Task 1: COMPLETE (commits defa58b..209b2e7, review Approved after 1 fix wave: FX-date filter bug, DST docstring+test, empty-return contract). Base for Task 2: 209b2e7
 - Task 2: COMPLETE (commits bd21983..c39869b, review Approved after 1 fix wave: hardened load_fx_daily_panel no-data exclusion + 3 tests; 7 passed). 
+- SCOPE DECISION (user, 2026-07-05): narrow v1 universe to carry-covered currencies USD/EUR/CHF/JPY + metals: EURUSD,USDJPY,USDCHF,EURJPY,EURCHF,CHFJPY,XAUUSD,XAGUSD. GBP/CAD/AUD/NZD deferred (no FRED short rate on disk). CURRENCY_FRED_SERIES restricted to DFF/ECBDFR/IRSTCB01CHM156N/IRLTLT01JPM156N(proxy). ENV: this Mac has no [macos] storage section -> Task 11 real runs must execute on EC2/Windows. Tasks 3-10 buildable+testable here with fixtures.

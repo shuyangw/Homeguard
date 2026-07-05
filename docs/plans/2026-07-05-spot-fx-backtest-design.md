@@ -261,6 +261,14 @@ Walk-forward test: mirrors `test_futures_walkforward.py`.
 
 ## Risks and open items
 
+- Carry-data coverage (v1 scope decision, 2026-07-05): only USD/EUR/CHF short
+  rates (+ a JPY long-rate proxy) are on disk in `alt_data/fred/`. GBP/CAD/AUD/NZD
+  short rates are not downloaded, so v1 is restricted to USD/EUR/CHF/JPY-legged
+  pairs + metals (EURUSD, USDJPY, USDCHF, EURJPY, EURCHF, CHFJPY, XAUUSD, XAGUSD).
+  Extending to the full G10 requires pulling the missing FRED foreign short rates
+  (keyless pandas-datareader suffices; a FRED API key would ease discovery) on the
+  machine that holds the data. This Mac has no `[macos]` storage config, so all
+  real-data runs (Task 11, cache build, walk-forward) execute on the EC2/Windows box.
 - Carry-signal fidelity: FRED short rates are step functions and some foreign
   rates lag; G10 coverage is adequate, EM is thinner. The academically correct
   carry input is FX forward points, which we do not have for spot; IR
