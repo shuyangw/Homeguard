@@ -3,10 +3,12 @@ from datetime import date
 from src.data.artifacts import registry
 from src.data.artifacts.daily_ohlc_cache import DailyOhlcCache
 from src.data.artifacts.spread_model import SpreadModel
+from src.data.artifacts.vol_surface import VolSurface
 
 # Register all builders as they are implemented (append in later phases).
 registry.register(DailyOhlcCache())
 registry.register(SpreadModel())
+registry.register(VolSurface())
 
 
 def list_components() -> list[dict]:
