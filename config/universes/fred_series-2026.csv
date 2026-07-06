@@ -28,3 +28,11 @@ DEXUSAL,fx_fixings,USD/AUD daily fixing
 DEXUSNZ,fx_fixings,USD/NZD daily fixing
 DEXNOUS,fx_fixings,NOK/USD daily fixing
 DEXSDUS,fx_fixings,SEK/USD daily fixing
+IRSTCI01GBM156N,foreign_policy,UK call-money (overnight) rate
+IRSTCI01CAM156N,foreign_policy,Canada call-money (overnight) rate
+IRSTCI01AUM156N,foreign_policy,Australia call-money (overnight) rate
+IRSTCI01NZM156N,foreign_policy,New Zealand call-money (overnight) rate
+IRSTCI01NOM156N,foreign_policy,Norway call-money (overnight) rate
+IRSTCI01SEM156N,foreign_policy,Sweden call-money (overnight) rate
+IRSTCI01MXM156N,foreign_policy,Mexico call-money (overnight) rate
+IRSTCI01ZAM156N,foreign_policy,South Africa call-money (overnight) rate

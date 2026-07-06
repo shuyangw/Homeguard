@@ -92,7 +92,12 @@ class FREDRatesPlugin:
 
         series = df[series_id] if series_id in df.columns else df.iloc[:, 0]
         series = series.dropna()
-        validate_fred_series(series, series_id)
+        try:
+            validate_fred_series(series, series_id)
+        except FredValidationError as e:
+            logger.error(f"FRED validation failed for {series_id}: {e}")
+            return {"series_id": series_id, "skipped": False, "rows": 0,
+                    "error": str(e), "out_path": None}
         path = fred_to_parquet(series, series_id, self._root)
         logger.info(f"[wrote] {series_id}: {len(series)} rows -> {path}")
         return {"series_id": series_id, "skipped": False, "rows": len(series),
