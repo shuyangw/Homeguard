@@ -32,6 +32,8 @@ class Regime(ArtifactBuilder):
     output_subdir = "regime"
 
     def inputs(self) -> list[str]:
+        # vol_surface is a forward-looking dependency reserved for the deferred
+        # gold-state/HMM overlay; the ATR-ratio baseline below does not consume it yet.
         return ["daily_ohlc_cache", "vol_surface"]
 
     def build(self, start: date, end: date) -> Path:
@@ -39,7 +41,7 @@ class Regime(ArtifactBuilder):
         from src.data.artifacts.daily_ohlc_cache import DailyOhlcCache
         panel = load_fx_daily_panel(DailyOhlcCache().target_pairs(), start, end)
         rows = []
-        for pair in {c[0] for c in panel.columns}:
+        for pair in sorted({c[0] for c in panel.columns}):
             sub = panel[pair]
             tr = _true_range(sub["high"], sub["low"], sub["close"].shift(1))
             atr_fast = tr.rolling(14).mean()

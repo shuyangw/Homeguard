@@ -38,8 +38,10 @@ class PcaDollar(ArtifactBuilder):
     def build(self, start: date, end: date) -> Path:
         from src.backtesting.data.fx_backtest_loader import load_fx_daily_panel
         from src.data.artifacts.daily_ohlc_cache import DailyOhlcCache
+        metals = {"XAU", "XAG"}
         pairs = [p for p in DailyOhlcCache().target_pairs()
-                 if p.endswith("USD") or p.startswith("USD")]
+                 if (p.endswith("USD") or p.startswith("USD"))
+                 and p[:3] not in metals and p[3:] not in metals]
         panel = load_fx_daily_panel(pairs, start, end)
         rets = panel.xs("ret", axis=1, level=1)
         pc1, resid = dollar_factor(rets)

@@ -17,7 +17,7 @@ def ou_half_life(spread: pd.Series) -> float:
     delta = (s - s.shift(1)).dropna()
     lag = lag.loc[delta.index]
     beta = np.polyfit(lag.values, delta.values, 1)[0]
-    if beta >= 0:
+    if beta <= -1 or beta >= 0:
         return float("inf")
     return float(-np.log(2) / np.log(1 + beta))
 

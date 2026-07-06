@@ -2,6 +2,7 @@ from __future__ import annotations
 from datetime import date
 from pathlib import Path
 import os
+import numpy as np
 import pandas as pd
 import polars as pl
 from src.data.artifacts.base import ArtifactBuilder
@@ -13,6 +14,7 @@ def label_vol_spikes(returns: pd.DataFrame, z: float = 3.0) -> pd.DataFrame:
     for pair in returns.columns:
         r = returns[pair].dropna()
         roll_std = r.rolling(60, min_periods=20).std()
+        roll_std = roll_std.replace(0, np.nan)
         zscore = r / roll_std
         hits = zscore[zscore.abs() > z]
         for d, val in hits.items():

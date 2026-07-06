@@ -7,10 +7,13 @@ pass/fail decision:
 - DSR (`src.backtesting.validation.deflated_sharpe.compute_deflated_sharpe`)
   on the pooled OOS returns, adjusted for `n_trials`.
 - PBO (`src.backtesting.statistics.pbo.pbo`) treating each CPCV split's OOS
-  return path as one "config" column -- this is the standard CPCV+PBO
-  construction (Bailey/Lopez de Prado): each combinatorial split produces a
-  distinct backtest path, and PBO measures whether the path that looks best
-  in-sample also looks best out-of-sample.
+  return path as one "config" column. This is a path-dispersion proxy, not
+  the textbook CSCV construction (Bailey/Lopez de Prado): CSCV measures
+  whether the configuration that looks best in-sample also looks best
+  out-of-sample across N *distinct strategy configurations*. Here there is
+  only one strategy; the N CPCV splits are treated as pseudo-configurations,
+  so `pbo` measures cross-split rank instability rather than genuine
+  selection-bias overfitting risk.
 - Mean per-split annualized Sharpe as a plain magnitude check.
 
 `pass` requires all three legs to clear their thresholds.
@@ -27,7 +30,6 @@ from src.utils.logger import get_logger
 
 logger = get_logger()
 
-DSR_PASS_THRESHOLD = 0.95
 MEAN_SHARPE_PASS_THRESHOLD = 0.5
 PBO_PASS_THRESHOLD = 0.5
 ANNUALIZATION_PERIODS = 252
@@ -75,6 +77,11 @@ def combined_gate(oos_returns_by_split: Sequence[np.ndarray], n_trials: int) -> 
     Args:
         oos_returns_by_split: per-split out-of-sample return series
             (e.g. produced by `cpcv_splits` + a backtest run per split).
+            MUST be non-overlapping OOS segments (each observation appears
+            in exactly one split), e.g. from walk-forward windows or a CPCV
+            harness reduced to one prediction per observation. Overlapping
+            CPCV test folds would double-count observations and inflate the
+            DSR; the caller is responsible for de-duplication before calling.
         n_trials: number of strategy configurations tested, for DSR's
             multiple-testing deflation.
 
@@ -94,7 +101,6 @@ def combined_gate(oos_returns_by_split: Sequence[np.ndarray], n_trials: int) -> 
 
     passed = bool(
         dsr_result.passed
-        and dsr > DSR_PASS_THRESHOLD
         and mean_oos_sharpe > MEAN_SHARPE_PASS_THRESHOLD
         and np.isfinite(pbo_value)
         and pbo_value < PBO_PASS_THRESHOLD
