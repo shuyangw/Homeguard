@@ -8,6 +8,7 @@ Modules:
     bootstrap       - Bootstrap confidence intervals for strategy metrics
     cpcv            - Combinatorial Purged Cross-Validation
     permutation     - Permutation test framework for signal significance
+    combined_gate   - Combined CPCV + DSR + PBO pass/fail statistical gate
 """
 
 from src.backtesting.validation.deflated_sharpe import (
@@ -30,6 +31,7 @@ from src.backtesting.validation.permutation import (
     PermutationResult,
     run_permutation_test,
 )
+from src.backtesting.validation.combined_gate import combined_gate
 
 __all__ = [
     "DSRResult",
@@ -44,4 +46,5 @@ __all__ = [
     "run_cpcv",
     "PermutationResult",
     "run_permutation_test",
+    "combined_gate",
 ]
