@@ -15,16 +15,23 @@ from pathlib import Path
 import pandas as pd
 import polars as pl
 
+from src.data.artifacts.spike_clean import scrub_spike_reverts
 from src.settings import get_local_storage_dir
 from src.utils import logger
 
 
-def load_fx_daily_panel(pairs: list[str], start: date, end: date) -> pd.DataFrame:
+def load_fx_daily_panel(pairs: list[str], start: date, end: date,
+                        clean_spikes: bool = True) -> pd.DataFrame:
     """Load the daily OHLC+ret panel for `pairs` in [start, end].
 
     `ret` is each pair's close.pct_change() on its OWN native index, computed
     BEFORE cross-pair alignment. This means a date gap in one pair's calendar
     does not NaN-contaminate the following row of another pair's `ret`.
+
+    When `clean_spikes` is True (default), spike-and-revert bad-close artifacts
+    (a large single-day move that fully reverses next day; see spike_clean) are
+    nulled to NaN across the whole OHLC row for that day, so no fake tail reaches
+    returns or range/ATR. Persistent real moves (e.g. SNB 2015) are preserved.
     """
     base = Path(get_local_storage_dir()) / "fx_daily"
     frames: dict[str, pd.DataFrame] = {}
@@ -39,7 +46,13 @@ def load_fx_daily_panel(pairs: list[str], start: date, end: date) -> pd.DataFram
         if pdf.empty:
             continue
         pdf = pdf.set_index("fx_date").sort_index()
-        frames[pair] = pdf[["open", "high", "low", "close"]].astype(float)
+        ohlc = pdf[["open", "high", "low", "close"]].astype(float)
+        if clean_spikes:
+            _, flagged = scrub_spike_reverts(ohlc["close"])
+            if flagged:
+                ohlc.loc[flagged, :] = float("nan")
+                logger.info(f"[load_fx_daily_panel] {pair}: nulled {len(flagged)} spike-revert artifact bar(s)")
+        frames[pair] = ohlc
     if not frames:
         raise FileNotFoundError(f"no fx_daily data for pairs {pairs} in {start}..{end}")
     fields = ("open", "high", "low", "close", "ret")
