@@ -17,7 +17,9 @@ def hour_of_week(ts: pd.Timestamp) -> int:
 
 def build_surface(minute_df: pd.DataFrame) -> pd.DataFrame:
     df = minute_df.copy()
-    ts = pd.to_datetime(df["timestamp"], utc=True)
+    df["timestamp"] = pd.to_datetime(df["timestamp"], utc=True)
+    df = df.sort_values("timestamp").reset_index(drop=True)
+    ts = df["timestamp"]
     df["how"] = ts.dt.dayofweek * 24 + ts.dt.hour
     df["abs_ret"] = df["close"].pct_change(fill_method=None).abs()
     g = df.dropna(subset=["abs_ret"]).groupby("how")["abs_ret"]
