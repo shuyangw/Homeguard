@@ -126,6 +126,11 @@ equities_*/
 # Artifacts - all generated/runtime output (machine-local, not committed)
 # Consolidates: logs, cache, models, output, charts, optimization, backtest_logs, gui_config
 artifacts/
+# Source-tree artifact packages are code, not runtime output -- keep them tracked
+!src/data/artifacts/
+!src/data/artifacts/**
+!tests/data/artifacts/
+!tests/data/artifacts/**
 
 # Legacy output dir names (in case old paths are still used locally)
 logs/
