@@ -25,11 +25,11 @@ from src.utils import logger
 CURRENCY_FRED_SERIES: dict[str, str] = {
     "USD": "DFF",              # Effective Federal Funds Rate
     "EUR": "ECBDFR",           # ECB Deposit Facility Rate
-    "CHF": "IRSTCB01CHM156N",  # Switzerland short-term rate
-    "JPY": "IRLTLT01JPM156N",  # Japan LONG-term rate used as a proxy: no short
-                               # series is on disk; JP rates were ~0 across the
-                               # sample so the magnitude error is small. Documented
-                               # caveat, not an oversight.
+    "CHF": "IRSTCI01CHM156N",  # Switzerland call-money (overnight) rate. Monthly,
+                               # ffilled to daily; the series was discontinued
+                               # 2024-03 so the last ~2yrs carry the last value.
+    "JPY": "IRSTCI01JPM156N",  # Japan call-money (overnight) rate. Monthly,
+                               # ffilled to daily; current through 2026.
 }
 _METALS = {"XAU", "XAG"}
 
