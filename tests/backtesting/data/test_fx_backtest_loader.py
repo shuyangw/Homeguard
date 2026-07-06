@@ -48,23 +48,35 @@ def test_missing_usd_leg_raises():
         build_quote_usd_panel(panel, ["EURGBP"])
 
 
-def _write_fixture(root, pair, dates, closes):
+def _write_fixture(root, pair, dates, closes, opens=None, highs=None, lows=None):
     d = root / "fx_daily" / f"symbol={pair}" / "year=2024" / "month=1"
     d.mkdir(parents=True, exist_ok=True)
     pl.DataFrame({
-        "fx_date": dates, "open": closes, "high": closes, "low": closes, "close": closes,
+        "fx_date": dates,
+        "open": opens if opens is not None else closes,
+        "high": highs if highs is not None else closes,
+        "low": lows if lows is not None else closes,
+        "close": closes,
     }).write_parquet(d / "data.parquet")
 
 
 def test_load_fx_daily_panel_shape(monkeypatch, tmp_path):
     monkeypatch.setattr(fx_backtest_loader, "get_local_storage_dir", lambda: str(tmp_path))
     ds = [dt.date(2024, 1, 2), dt.date(2024, 1, 3)]
-    _write_fixture(tmp_path, "EURUSD", ds, [1.10, 1.11])
+    _write_fixture(
+        tmp_path, "EURUSD", ds,
+        closes=[1.10, 1.11], opens=[1.09, 1.10], highs=[1.12, 1.13], lows=[1.08, 1.095])
     panel = fx_backtest_loader.load_fx_daily_panel(
         ["EURUSD"], dt.date(2024, 1, 1), dt.date(2024, 1, 31))
     assert ("EURUSD", "close") in panel.columns
     assert ("EURUSD", "ret") in panel.columns
+    assert ("EURUSD", "open") in panel.columns
+    assert ("EURUSD", "high") in panel.columns
+    assert ("EURUSD", "low") in panel.columns
     assert panel[("EURUSD", "close")].tolist() == [1.10, 1.11]
+    assert panel[("EURUSD", "open")].tolist() == [1.09, 1.10]
+    assert panel[("EURUSD", "high")].tolist() == [1.12, 1.13]
+    assert panel[("EURUSD", "low")].tolist() == [1.08, 1.095]
 
 
 def test_load_fx_daily_panel_excludes_missing_pair(monkeypatch, tmp_path):

@@ -20,6 +20,12 @@ from src.utils import logger
 
 
 def load_fx_daily_panel(pairs: list[str], start: date, end: date) -> pd.DataFrame:
+    """Load the daily OHLC+ret panel for `pairs` in [start, end].
+
+    `ret` is each pair's close.pct_change() on its OWN native index, computed
+    BEFORE cross-pair alignment. This means a date gap in one pair's calendar
+    does not NaN-contaminate the following row of another pair's `ret`.
+    """
     base = Path(get_local_storage_dir()) / "fx_daily"
     frames: dict[str, pd.DataFrame] = {}
     for pair in pairs:
