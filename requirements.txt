@@ -48,6 +48,7 @@ vectorbt==0.28.1
 yfinance==0.2.66
 pandas-datareader==0.10.0  # FRED API fallback for VIX data
 httpx>=0.27.0  # Modern HTTP client for ThetaData options API
+holidays>=0.99  # Holiday calendar feed for FX data + TARGET holidays
 coinbase-advanced-py>=1.2.0  # Coinbase Advanced Trade API for CSCM crypto strategy
 
 # Visualization
