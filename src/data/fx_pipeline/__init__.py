@@ -1,0 +1,25 @@
+from __future__ import annotations
+from datetime import date
+from src.data.artifacts import registry
+from src.data.artifacts.daily_ohlc_cache import DailyOhlcCache
+
+# Register all builders as they are implemented (append in later phases).
+registry.register(DailyOhlcCache())
+
+
+def list_components() -> list[dict]:
+    out = []
+    for name, b in registry._DEFAULT._builders.items():
+        out.append({
+            "name": name,
+            "kind": "artifact",
+            "requires_key": getattr(b, "REQUIRES_KEY", None),
+            "up_to_date": b.output_path().exists(),
+        })
+    return out
+
+
+def build(names: list[str], start: date, end: date) -> None:
+    order = registry.resolve_order(names)
+    for n in order:
+        registry.get_builder(n).build(start, end)
