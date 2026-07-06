@@ -21,6 +21,29 @@ from src.utils.logger import get_logger
 logger = get_logger(__name__)
 
 
+class FredValidationError(Exception):
+    pass
+
+
+def validate_fred_series(series: pd.Series, series_id: str) -> None:
+    """Reject empty / all-NaN / implausible-value FRED series at fetch time.
+
+    Guards against FRED returning an HTML error page for a bad series ID
+    (pandas_datareader parses it into a garbage/empty series instead of
+    raising) -- the bug that once silently zeroed CHF carry.
+    """
+    if series is None or len(series) == 0:
+        raise FredValidationError(f"{series_id}: empty series")
+    vals = series.dropna()
+    if len(vals) == 0:
+        raise FredValidationError(f"{series_id}: all-NaN series")
+    # Policy short rates realistically live in [-5, 100] percent even for EM.
+    if vals.min() < -5.0 or vals.max() > 100.0:
+        raise FredValidationError(
+            f"{series_id}: values out of plausible rate range "
+            f"[{vals.min()}, {vals.max()}]")
+
+
 def fred_to_parquet(series: pd.Series, series_id: str, root: Path) -> Path:
     """Write a single FRED series to alt_data/fred/{id}/daily.parquet."""
     out_dir = root / "fred" / series_id
@@ -69,6 +92,7 @@ class FREDRatesPlugin:
 
         series = df[series_id] if series_id in df.columns else df.iloc[:, 0]
         series = series.dropna()
+        validate_fred_series(series, series_id)
         path = fred_to_parquet(series, series_id, self._root)
         logger.info(f"[wrote] {series_id}: {len(series)} rows -> {path}")
         return {"series_id": series_id, "skipped": False, "rows": len(series),

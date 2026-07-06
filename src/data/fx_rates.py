@@ -17,11 +17,13 @@ from src.settings import get_local_storage_dir
 from src.utils import logger
 
 # Currency -> FRED daily short-rate series id (percent units in FRED).
-# v1 covers ONLY the currencies whose rate series are on disk in alt_data/fred/
-# (verified against config/universes/fred_series-2026.csv). GBP/CAD/AUD/NZD have
-# no short-rate series downloaded, so the v1 universe is restricted to
-# USD/EUR/CHF/JPY pairs + metals -- see the universe CSV in Task 9. Any currency
-# absent from this map falls back to 0.0 with a WARNING (graceful, not fatal).
+# G10 + select EM short-rate coverage (Task 4). All IRSTCI01* IDs below were
+# live-verified via FREDRatesPlugin.fetch_series before being added here (each
+# returned >0 rows over 2011-2026); a bad ID raises FredValidationError instead
+# of silently writing an HTML error page (the 2026 CHF-series bug this guards
+# against). SGD has no free short-rate series on FRED (SIBOR/SORA are not
+# published there) and is intentionally omitted -- falls back to 0.0 with a
+# WARNING like any other currency missing from this map.
 CURRENCY_FRED_SERIES: dict[str, str] = {
     "USD": "DFF",              # Effective Federal Funds Rate
     "EUR": "ECBDFR",           # ECB Deposit Facility Rate
@@ -30,6 +32,14 @@ CURRENCY_FRED_SERIES: dict[str, str] = {
                                # 2024-03 so the last ~2yrs carry the last value.
     "JPY": "IRSTCI01JPM156N",  # Japan call-money (overnight) rate. Monthly,
                                # ffilled to daily; current through 2026.
+    "GBP": "IRSTCI01GBM156N",  # UK call-money (overnight) rate. Monthly, ffilled.
+    "CAD": "IRSTCI01CAM156N",  # Canada call-money (overnight) rate. Monthly, ffilled.
+    "AUD": "IRSTCI01AUM156N",  # Australia call-money (overnight) rate. Monthly, ffilled.
+    "NZD": "IRSTCI01NZM156N",  # New Zealand call-money (overnight) rate. Monthly, ffilled.
+    "NOK": "IRSTCI01NOM156N",  # Norway call-money (overnight) rate. Monthly, ffilled.
+    "SEK": "IRSTCI01SEM156N",  # Sweden call-money (overnight) rate. Monthly, ffilled.
+    "MXN": "IRSTCI01MXM156N",  # Mexico call-money (overnight) rate. Monthly, ffilled.
+    "ZAR": "IRSTCI01ZAM156N",  # South Africa call-money (overnight) rate. Monthly, ffilled.
 }
 _METALS = {"XAU", "XAG"}
 
