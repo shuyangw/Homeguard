@@ -27,7 +27,7 @@ def _pip_size(pair: str) -> float:
 
 
 def synthetic_spread(pair: str, hour_of_week: int, anchors: dict[str, float]) -> float:
-    base = TIER_BASE_PIPS[_tier(pair)]
+    base = anchors[pair] if pair in anchors else TIER_BASE_PIPS[_tier(pair)]
     hour_utc = hour_of_week % 24
     mult = ROLLOVER_MULT if hour_utc == ROLLOVER_HOUR_UTC else 1.0
     return base * mult
