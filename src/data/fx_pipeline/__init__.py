@@ -3,6 +3,7 @@ from datetime import date
 from src.data.artifacts import registry
 from src.data.artifacts.currency_strength import CurrencyStrength
 from src.data.artifacts.daily_ohlc_cache import DailyOhlcCache
+from src.data.artifacts.pca_dollar import PcaDollar
 from src.data.artifacts.spread_model import SpreadModel
 from src.data.artifacts.vol_surface import VolSurface
 
@@ -11,6 +12,7 @@ registry.register(DailyOhlcCache())
 registry.register(SpreadModel())
 registry.register(VolSurface())
 registry.register(CurrencyStrength())
+registry.register(PcaDollar())
 
 
 def list_components() -> list[dict]:
