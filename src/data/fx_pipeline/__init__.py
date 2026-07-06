@@ -9,7 +9,7 @@ registry.register(DailyOhlcCache())
 
 def list_components() -> list[dict]:
     out = []
-    for name, b in registry._DEFAULT._builders.items():
+    for name, b in registry.all_builders().items():
         out.append({
             "name": name,
             "kind": "artifact",

@@ -37,3 +37,19 @@ def test_missing_dependency_raises():
     reg.register(_B())
     with pytest.raises(KeyError):
         reg.resolve_order(["b"])
+
+
+def test_all_builders_returns_registered_builders():
+    reg = registry.Registry()
+    builder = _A()
+    reg.register(builder)
+    builders = reg.all_builders()
+    assert builders == {"a": builder}
+
+
+def test_all_builders_returns_a_copy():
+    reg = registry.Registry()
+    reg.register(_A())
+    builders = reg.all_builders()
+    builders["b"] = _B()
+    assert "b" not in reg.all_builders()

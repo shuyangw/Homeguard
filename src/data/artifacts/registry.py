@@ -15,6 +15,9 @@ class Registry:
     def get_builder(self, name: str) -> ArtifactBuilder:
         return self._builders[name]
 
+    def all_builders(self) -> dict[str, ArtifactBuilder]:
+        return dict(self._builders)
+
     def resolve_order(self, names: list[str]) -> list[str]:
         order: list[str] = []
         seen: set[str] = set()
@@ -45,3 +48,4 @@ _DEFAULT = Registry()
 register = _DEFAULT.register
 get_builder = _DEFAULT.get_builder
 resolve_order = _DEFAULT.resolve_order
+all_builders = _DEFAULT.all_builders
