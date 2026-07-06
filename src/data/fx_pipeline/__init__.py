@@ -1,6 +1,7 @@
 from __future__ import annotations
 from datetime import date
 from src.data.artifacts import registry
+from src.data.artifacts.cointegration import Cointegration
 from src.data.artifacts.currency_strength import CurrencyStrength
 from src.data.artifacts.daily_ohlc_cache import DailyOhlcCache
 from src.data.artifacts.pca_dollar import PcaDollar
@@ -13,6 +14,7 @@ registry.register(SpreadModel())
 registry.register(VolSurface())
 registry.register(CurrencyStrength())
 registry.register(PcaDollar())
+registry.register(Cointegration())
 
 
 def list_components() -> list[dict]:
