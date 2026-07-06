@@ -8,16 +8,19 @@ from src.data.artifacts.base import ArtifactBuilder
 from src.utils import logger
 
 
-def currency_returns(close_panel: pd.DataFrame) -> pd.DataFrame:
-    rets = close_panel.pct_change(fill_method=None)
+def aggregate_currency_returns(rets: pd.DataFrame) -> pd.DataFrame:
     contrib: dict[str, list[pd.Series]] = {}
-    for pair in close_panel.columns:
+    for pair in rets.columns:
         base, quote = pair[:3], pair[3:]
         r = rets[pair]
         contrib.setdefault(base, []).append(r)
         contrib.setdefault(quote, []).append(-r)
     out = {ccy: pd.concat(series, axis=1).mean(axis=1) for ccy, series in contrib.items()}
     return pd.DataFrame(out)
+
+
+def currency_returns(close_panel: pd.DataFrame) -> pd.DataFrame:
+    return aggregate_currency_returns(close_panel.pct_change(fill_method=None))
 
 
 class CurrencyStrength(ArtifactBuilder):
@@ -31,8 +34,8 @@ class CurrencyStrength(ArtifactBuilder):
         from src.backtesting.data.fx_backtest_loader import load_fx_daily_panel
         from src.data.artifacts.daily_ohlc_cache import DailyOhlcCache
         panel = load_fx_daily_panel(DailyOhlcCache().target_pairs(), start, end)
-        close = panel.xs("close", axis=1, level=1)
-        cr = currency_returns(close)
+        rets = panel.xs("ret", axis=1, level=1)
+        cr = aggregate_currency_returns(rets)
         strength = cr.cumsum()
         long = strength.reset_index().melt(id_vars=strength.index.name or "index",
                                            var_name="currency", value_name="strength")
