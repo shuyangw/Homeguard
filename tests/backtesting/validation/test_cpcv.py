@@ -161,3 +161,28 @@ class TestCPCVSplits:
     def test_train_test_disjoint(self):
         for train, test in cpcv_splits(120, 6, 2, embargo=2):
             assert set(train.tolist()).isdisjoint(test.tolist())
+
+    def test_embargo_purges_adjacent_indices(self):
+        """Embargo must remove indices adjacent to the test block boundary
+        from train -- disjointness alone doesn't prove this (train excludes
+        the test block regardless of embargo)."""
+        # n_obs=60, n_groups=6 -> 6 contiguous blocks of 10: [0-9],[10-19],
+        # [20-29],[30-39],[40-49],[50-59]. k_test=1 so combinations(range(6),1)
+        # yields test_combo=(2,) as the third split -- test block is [20-29].
+        splits = cpcv_splits(n_obs=60, n_groups=6, k_test=1, embargo=2)
+        train, test = splits[2]
+        assert set(test.tolist()) == set(range(20, 30))
+
+        train_set = set(train.tolist())
+        for adjacent in (18, 19, 30, 31):
+            assert adjacent not in train_set
+        for far in (15, 34):
+            assert far in train_set
+
+        # With embargo=0 on the same split, the adjacent indices come back.
+        splits_no_embargo = cpcv_splits(n_obs=60, n_groups=6, k_test=1, embargo=0)
+        train_no_embargo, test_no_embargo = splits_no_embargo[2]
+        assert set(test_no_embargo.tolist()) == set(range(20, 30))
+        train_no_embargo_set = set(train_no_embargo.tolist())
+        for adjacent in (18, 19, 30, 31):
+            assert adjacent in train_no_embargo_set

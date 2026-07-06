@@ -6,6 +6,12 @@ data leakage at train/test boundaries.
 
 Generic framework: accepts a callable that runs a backtest over a date range
 and returns a Sharpe ratio (or other scalar metric).
+
+This module holds two API families. `generate_cpcv_splits`/`run_cpcv` are
+the date/backtest-callable orchestration harness (blocks are calendar date
+ranges, purge is applied in calendar days). `cpcv_splits` is a separate,
+generic index-based splitter returning (train_idx, test_idx) arrays for
+slicing pre-computed metric arrays -- used by the combined statistical gate.
 """
 
 from dataclasses import dataclass, field
