@@ -23,6 +23,9 @@ import numpy as np
 
 from src.backtesting.statistics.pbo import pbo
 from src.backtesting.validation.deflated_sharpe import compute_deflated_sharpe
+from src.utils.logger import get_logger
+
+logger = get_logger()
 
 DSR_PASS_THRESHOLD = 0.95
 MEAN_SHARPE_PASS_THRESHOLD = 0.5
@@ -57,6 +60,10 @@ def _pbo_via_splits_as_configs(oos_returns_by_split: Sequence[np.ndarray]) -> fl
         if np.isfinite(result):
             return float(result)
 
+    logger.warning(
+        f"PBO fell back to the median-split proxy: no s in (16, 12, 8, 6, 4) "
+        f"produced a real CSCV fold for n_splits={n_splits}, min_split_len={min_len}"
+    )
     sharpes = [_annualized_sharpe(r) for r in oos_returns_by_split]
     med = float(np.median(sharpes))
     return float(np.mean([sh < med for sh in sharpes]))
