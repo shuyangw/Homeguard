@@ -1,0 +1,28 @@
+# Curated central-bank policy decision calendar (keyless, version-controlled).
+# Covers the in-universe CBs for the FX vertical: ECB/BOE/BOJ/SNB/RBA/RBNZ/NORGES/RIKSBANK/BANXICO/FOMC.
+# Scope: 2025-2026 starter set only (see src/data/macro_calendar.py docstring for the API seam
+# that will eventually replace this file's role). Full 2011-2026 historical backfill is deferred.
+ECB:
+  - 2025-01-30
+  - 2025-03-06
+BOE:
+  - 2025-02-06
+  - 2025-03-20
+BOJ:
+  - 2025-01-24
+  - 2025-03-19
+SNB:
+  - 2025-03-20
+RBA:
+  - 2025-02-18
+RBNZ:
+  - 2025-02-19
+NORGES:
+  - 2025-01-23
+RIKSBANK:
+  - 2025-01-29
+BANXICO:
+  - 2025-02-06
+FOMC:
+  - 2025-01-29
+  - 2025-03-19
