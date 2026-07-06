@@ -2,6 +2,12 @@
 
 General coding standards (encoding, git workflow, testing, defensive mindset, output efficiency, GUI) are in `~/.claude/CLAUDE.md`. This file covers Homeguard-specific guidelines only.
 
+## Git Workflow (repo-specific standing authorization)
+
+**Merge and push to `main` when a feature is complete** -- this repo grants standing permission, overriding the global "ask before pushing" rule. When a feature/branch is done (tests pass, reviewed), merge it to `main` and push, without re-asking each time. Still: work on a branch (never implement directly on `main`), verify tests pass before merging, and commit incrementally.
+
+**macOS/Dropbox git hazard:** broken Windows worktree gitlinks (`.claude/worktrees/*`) make `git checkout <branch>`, `git status`/`git diff` with no args, and `git reset --hard` FATAL (and a failed checkout can partially clobber the tree). Use targeted git only: `git add <paths>`, `git commit`, `git log`, `git push`. Merge via fast-forward ref-update, not checkout: `git branch -f main <tip> && git symbolic-ref HEAD refs/heads/main`, then `git branch -d <feature>`.
+
 ## Architecture
 
 ### src/ packages
