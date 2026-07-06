@@ -9,6 +9,7 @@ import pytest
 from src.backtesting.validation.cpcv import (
     CPCVResult,
     CPCVSplit,
+    cpcv_splits,
     generate_cpcv_splits,
     run_cpcv,
 )
@@ -147,3 +148,16 @@ class TestRunCPCV:
             n_blocks=4, n_test=2, purge_days=5,
         )
         assert all(s == 0.0 for s in result.oos_sharpes)
+
+
+class TestCPCVSplits:
+    """Index-based CPCV splits with purge + embargo for the statistical gate."""
+
+    def test_split_count_is_c_n_k(self):
+        splits = cpcv_splits(n_obs=100, n_groups=6, k_test=2, embargo=0)
+        # C(6,2) = 15 combinations
+        assert len(splits) == 15
+
+    def test_train_test_disjoint(self):
+        for train, test in cpcv_splits(120, 6, 2, embargo=2):
+            assert set(train.tolist()).isdisjoint(test.tolist())

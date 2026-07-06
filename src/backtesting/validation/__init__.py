@@ -22,6 +22,7 @@ from src.backtesting.validation.bootstrap import (
 )
 from src.backtesting.validation.cpcv import (
     CPCVResult,
+    cpcv_splits,
     generate_cpcv_splits,
     run_cpcv,
 )
@@ -38,6 +39,7 @@ __all__ = [
     "bootstrap_metric",
     "bootstrap_strategy_suite",
     "CPCVResult",
+    "cpcv_splits",
     "generate_cpcv_splits",
     "run_cpcv",
     "PermutationResult",

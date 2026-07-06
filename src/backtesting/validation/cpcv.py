@@ -20,6 +20,47 @@ from src.utils.logger import get_logger
 logger = get_logger()
 
 
+def cpcv_splits(
+    n_obs: int, n_groups: int, k_test: int, embargo: int = 0
+) -> List[Tuple[np.ndarray, np.ndarray]]:
+    """Index-based combinatorial purged CV splits with purge + embargo.
+
+    Divides `n_obs` observations into `n_groups` contiguous blocks. Each
+    split selects `k_test` blocks as the test set (test index arrays are
+    the concatenation of the selected blocks) and trains on every other
+    index, purging `embargo` observations on each side of every test
+    block boundary to prevent leakage from adjacent, temporally
+    correlated observations.
+
+    Args:
+        n_obs: Total number of observations to index.
+        n_groups: Number of contiguous groups to split the index range into.
+        k_test: Number of groups used as the test set per split.
+        embargo: Number of observations purged from train on each side of
+            every test block boundary.
+
+    Returns:
+        List of (train_idx, test_idx) index array pairs, one per
+        C(n_groups, k_test) combination.
+    """
+    groups = np.array_split(np.arange(n_obs), n_groups)
+    splits = []
+    for test_combo in combinations(range(n_groups), k_test):
+        test_idx = np.concatenate([groups[g] for g in test_combo])
+        test_set = set(test_idx.tolist())
+        purged = set()
+        for g in test_combo:
+            lo, hi = groups[g][0], groups[g][-1]
+            for e in range(1, embargo + 1):
+                purged.add(lo - e)
+                purged.add(hi + e)
+        train_idx = np.array(
+            [i for i in range(n_obs) if i not in test_set and i not in purged]
+        )
+        splits.append((train_idx, test_idx))
+    return splits
+
+
 @dataclass
 class CPCVSplit:
     split_index: int
