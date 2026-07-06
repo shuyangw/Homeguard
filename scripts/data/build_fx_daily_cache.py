@@ -26,13 +26,18 @@ from src.utils import logger
 
 def resample_fx_minute_to_daily(df_min: pd.DataFrame) -> pd.DataFrame:
     if df_min.empty:
-        empty = pd.DataFrame(columns=["close"])
+        empty = pd.DataFrame(columns=["open", "high", "low", "close"])
         empty.index.name = "fx_date"
         return empty
     ts_et = df_min["timestamp"].dt.tz_convert("America/New_York")
     fx_date = (ts_et + pd.Timedelta(hours=7)).dt.date
     tmp = df_min.assign(fx_date=fx_date).sort_values("timestamp")
-    daily = tmp.groupby("fx_date").agg(close=("close", "last"))
+    daily = tmp.groupby("fx_date").agg(
+        open=("open", "first"),
+        high=("high", "max"),
+        low=("low", "min"),
+        close=("close", "last"),
+    )
     daily.index.name = "fx_date"
     return daily
 
@@ -49,7 +54,8 @@ def build_fx_daily_cache(pairs: list[str], start: date, end: date,
         if not sym_dir.exists():
             logger.warning(f"[build_fx_daily_cache] no source data for {pair}")
             continue
-        lf = pl.scan_parquet(sym_dir / "**/*.parquet").select(["timestamp", "close"])
+        lf = pl.scan_parquet(sym_dir / "**/*.parquet").select(
+            ["timestamp", "open", "high", "low", "close"])
         pdf = lf.collect().to_pandas()
         pdf["timestamp"] = pd.to_datetime(pdf["timestamp"], utc=True)
         daily = resample_fx_minute_to_daily(pdf)
@@ -64,7 +70,9 @@ def build_fx_daily_cache(pairs: list[str], start: date, end: date,
         for (yr, mo), grp in out.groupby(["year", "month"]):
             dst = out_root / f"symbol={pair}" / f"year={yr}" / f"month={mo}"
             dst.mkdir(parents=True, exist_ok=True)
-            pl.from_pandas(grp[["fx_date", "close"]]).write_parquet(dst / "data.parquet")
+            pl.from_pandas(
+                grp[["fx_date", "open", "high", "low", "close"]]
+            ).write_parquet(dst / "data.parquet")
         written.append(pair)
         logger.info(f"[build_fx_daily_cache] wrote {pair}: {len(daily)} daily bars")
     return written

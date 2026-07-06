@@ -51,7 +51,9 @@ def test_missing_usd_leg_raises():
 def _write_fixture(root, pair, dates, closes):
     d = root / "fx_daily" / f"symbol={pair}" / "year=2024" / "month=1"
     d.mkdir(parents=True, exist_ok=True)
-    pl.DataFrame({"fx_date": dates, "close": closes}).write_parquet(d / "data.parquet")
+    pl.DataFrame({
+        "fx_date": dates, "open": closes, "high": closes, "low": closes, "close": closes,
+    }).write_parquet(d / "data.parquet")
 
 
 def test_load_fx_daily_panel_shape(monkeypatch, tmp_path):

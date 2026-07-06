@@ -1,7 +1,7 @@
 """Daily spot-FX panel + per-currency USD-conversion panel.
 
-load_fx_daily_panel builds a (pair, {close,ret}) MultiIndex daily panel from the
-fx_daily/ cache. build_quote_usd_panel derives, for each pair, the daily rate
+load_fx_daily_panel builds a (pair, {open,high,low,close,ret}) MultiIndex daily
+panel from the fx_daily/ cache. build_quote_usd_panel derives, for each pair, the daily rate
 that converts its QUOTE currency into USD -- USD legs are read directly
 (EURUSD), inverted (USDJPY -> 1/rate), or sourced from another pair's USD leg
 for true crosses (EURGBP -> GBPUSD). A missing USD leg is a hard error: silent
@@ -21,7 +21,7 @@ from src.utils import logger
 
 def load_fx_daily_panel(pairs: list[str], start: date, end: date) -> pd.DataFrame:
     base = Path(get_local_storage_dir()) / "fx_daily"
-    frames: dict[str, pd.Series] = {}
+    frames: dict[str, pd.DataFrame] = {}
     for pair in pairs:
         sym_dir = base / f"symbol={pair}"
         if not sym_dir.exists() or not any(sym_dir.glob("**/*.parquet")):
@@ -32,16 +32,19 @@ def load_fx_daily_panel(pairs: list[str], start: date, end: date) -> pd.DataFram
         pdf = pdf[(pdf["fx_date"] >= start) & (pdf["fx_date"] <= end)]
         if pdf.empty:
             continue
-        s = pdf.set_index("fx_date").sort_index()["close"].astype(float)
-        frames[pair] = s
+        pdf = pdf.set_index("fx_date").sort_index()
+        frames[pair] = pdf[["open", "high", "low", "close"]].astype(float)
     if not frames:
         raise FileNotFoundError(f"no fx_daily data for pairs {pairs} in {start}..{end}")
-    close = pd.DataFrame(frames).sort_index()
-    ret = close.pct_change(fill_method=None)
-    panel = pd.concat(
-        {p: pd.DataFrame({"close": close[p], "ret": ret[p]}) for p in close.columns}, axis=1)
+    fields = ("open", "high", "low", "close", "ret")
+    per_pair = {}
+    for p, df in frames.items():
+        d = df.copy()
+        d["ret"] = d["close"].pct_change(fill_method=None)
+        per_pair[p] = d[list(fields)]
+    panel = pd.concat(per_pair, axis=1).sort_index()
     panel.columns = pd.MultiIndex.from_tuples(
-        [(p, f) for p in close.columns for f in ("close", "ret")])
+        [(p, f) for p in per_pair for f in fields])
     return panel
 
 
