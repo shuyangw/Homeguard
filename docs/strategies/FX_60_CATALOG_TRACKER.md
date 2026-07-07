@@ -30,6 +30,9 @@ Last updated: 2026-07-06
   (MTM + calendar-day carry + leverage cap + bankruptcy floor). Spike-clean + weekday filter on load.
 - Artifacts built: spread_model, vol_surface, currency_strength, pca_dollar, cointegration, regime,
   event_registries. Validation: CPCV + combined DSR/PBO gate.
+- Sizing calibration (2026-07-06): vol_target ~0.03/instrument -> ~17% portfolio vol for the 22-pair book
+  (8-pair configs' 0.20 over-leverages the correlated FX book -> blowup). FX pairs are highly correlated;
+  a portfolio-level vol cap is a candidate infra improvement.
 - NOT built: OHLC-into-forecast_panel wiring; intraday engine; spread execution; ML harness;
   oil/equity/full-CB-calendar feeds; EM spot pairs (USDMXN/USDZAR/USDCNH on disk, not in daily cache).
 
@@ -53,7 +56,7 @@ Last updated: 2026-07-06
 |---|---|---|---|---|---|---|---|
 | 1 | Dual MA + ATR trail | OHLC | ATR trail needs OHLC; daily EMA-cross ~= existing FxTrend | - | - | - | |
 | 2 | Donchian breakout | BRACKET | OHLC channel + stop-entry/pyramid | - | - | - | |
-| 3 | TSMOM portfolio | READY | -- | - | - | - | best-fit; sign of 3m & 12m ret, vol-scaled, weekly |
+| 3 | TSMOM portfolio | READY | -- | BT | - | REJECT | Sharpe -0.156 @17% vol (2011-26); FX trend decayed post-2010 |
 | 4 | Cross-sectional momentum | READY | currency_strength artifact | - | - | - | rank G10, long-top/short-bottom |
 | 5 | Breakout-pullback | INTRADAY | M15 triggers | - | - | - | |
 | 6 | ADX-gated trend | OHLC | ADX needs high/low | - | - | - | |
