@@ -103,3 +103,15 @@ def fx_trading_week_id(utc_index: pd.DatetimeIndex) -> pd.Series:
     iso = shifted.isocalendar()
     ids = (iso.year.to_numpy() * 100 + iso.week.to_numpy())
     return pd.Series(ids, index=utc_index)
+
+
+def hour_of_week_utc(utc_index: pd.DatetimeIndex) -> pd.Series:
+    how = utc_index.dayofweek * 24 + utc_index.hour
+    return pd.Series(how, index=utc_index)
+
+
+def hour_of_week_anchored(utc_index: pd.DatetimeIndex,
+                          anchor: str = "Europe/London") -> pd.Series:
+    local = utc_index.tz_convert(_zone_for(anchor))
+    how = local.dayofweek * 24 + local.hour
+    return pd.Series(how, index=utc_index)
