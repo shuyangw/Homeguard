@@ -5,7 +5,7 @@ import pytest
 
 from src.backtesting.sessions.fx_clock import (
     EXCHANGE_TZ, SESSION_WINDOWS, SessionWindow, local_to_utc, session_window_utc, in_session_mask,
-    fx_trading_day, is_friday_fx, fx_trading_week_id)
+    fx_trading_day, is_friday_fx, fx_trading_week_id, hour_of_week_utc, hour_of_week_anchored)
 
 
 def test_registries_present():
@@ -102,3 +102,21 @@ def test_fx_trading_week_id_constant_mon_to_fri():
     idx2 = pd.DatetimeIndex(["2024-06-14 12:00", "2024-06-17 12:00"], tz="UTC")  # Fri vs next Mon
     wk2 = fx_trading_week_id(idx2)
     assert wk2.iloc[0] != wk2.iloc[1]
+
+
+def test_hour_of_week_utc_monday_zero():
+    idx = pd.DatetimeIndex(["2024-06-10 00:00", "2024-06-10 08:00", "2024-06-11 00:00"], tz="UTC")
+    how = hour_of_week_utc(idx)  # Mon 00:00 -> 0, Mon 08:00 -> 8, Tue 00:00 -> 24
+    assert list(how) == [0, 8, 24]
+
+
+def test_hour_of_week_anchored_is_dst_stable():
+    # 08:00 London-local on a winter Monday (08:00 UTC) and a summer Monday (07:00 UTC).
+    winter = pd.DatetimeIndex(["2024-01-15 08:00"], tz="UTC")  # Mon, London==UTC
+    summer = pd.DatetimeIndex(["2024-06-17 07:00"], tz="UTC")  # Mon, London==UTC+1
+    # Anchored (London) bucket is identical (Monday hour 8) across the DST change...
+    assert hour_of_week_anchored(winter).iloc[0] == 8
+    assert hour_of_week_anchored(summer).iloc[0] == 8
+    # ...while the raw UTC hour-of-week differs by one (8 vs 7).
+    assert hour_of_week_utc(winter).iloc[0] == 8
+    assert hour_of_week_utc(summer).iloc[0] == 7
