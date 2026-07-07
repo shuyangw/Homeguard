@@ -38,3 +38,10 @@ def test_annualized_sharpe_matches_walkforward_common():
     rng = np.random.default_rng(11)
     r = rng.normal(0.0003, 0.01, 400)
     assert abs(bench_sharpe(pd.Series(r)) - wf_sharpe(np.asarray(r))) < 1e-12
+
+
+def test_sp500_aligned_count_matches_intersection():
+    from src.backtesting.benchmark import sp500_aligned_count
+    sp = _sp_returns()
+    subset = sp.index[100:250]
+    assert sp500_aligned_count(subset, sp_returns=sp) == len(sp.reindex(pd.to_datetime(subset)).dropna())

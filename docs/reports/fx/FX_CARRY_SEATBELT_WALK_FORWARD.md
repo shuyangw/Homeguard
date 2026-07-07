@@ -9,11 +9,12 @@ PSR/DSR/PBO are diagnostics, not gates (see the 2026-07-06 pre-registration).
 | Metric | Value |
 |---|---|
 | OOS Sharpe (1x) | -0.7498 |
-| S&P Sharpe (same dates) | 0.6842 |
+| S&P Sharpe (aligned OOS dates) | 0.6842 |
+| S&P observation count | 3080 |
 | Beats S&P | False |
 | OOS Sharpe (1.5x cost) | -0.9955 |
 | IS Sharpe (1x, mean per-window) | -0.5416 |
-| IS/OOS Sharpe ratio | 0.7224 |
+| IS/OOS Sharpe ratio | nan |
 | Correlation to S&P | 0.0667 |
 | Information ratio vs S&P | -0.9080 |
 | PSR (diag) | 0.0000 |
@@ -38,11 +39,12 @@ proxy (optimism bias); the offensive short rests on ~4-6 events.
 | Metric | Value |
 |---|---|
 | OOS Sharpe (1x) | -0.1123 |
-| S&P Sharpe (same dates) | 0.6842 |
+| S&P Sharpe (aligned OOS dates) | 0.6842 |
+| S&P observation count | 3080 |
 | Beats S&P | False |
 | OOS Sharpe (1.5x cost) | -0.2449 |
 | IS Sharpe (1x, mean per-window) | -0.0865 |
-| IS/OOS Sharpe ratio | 0.7703 |
+| IS/OOS Sharpe ratio | nan |
 | Correlation to S&P | 0.0771 |
 | Information ratio vs S&P | -0.7075 |
 | PSR (diag) | 0.0000 |

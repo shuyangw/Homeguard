@@ -44,6 +44,12 @@ def sp500_sharpe_over_dates(dates, sp_returns=None) -> float:
     return _annualized_sharpe(aligned)
 
 
+def sp500_aligned_count(dates, sp_returns=None) -> int:
+    if sp_returns is None:
+        sp_returns = load_sp500_daily_returns()
+    return int(sp_returns.reindex(pd.to_datetime(pd.Index(dates))).dropna().size)
+
+
 def correlation_over_dates(strat_returns: pd.Series, sp_returns=None) -> float:
     if sp_returns is None:
         sp_returns = load_sp500_daily_returns()

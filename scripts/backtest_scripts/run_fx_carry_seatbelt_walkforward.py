@@ -7,7 +7,6 @@ IR, and per-episode attribution are computed and reported as diagnostics only.
 """
 from __future__ import annotations
 
-from datetime import date
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -15,7 +14,7 @@ import numpy as np
 import pandas as pd
 
 from src.backtesting.benchmark import (
-    load_sp500_daily_returns, sp500_sharpe_over_dates,
+    load_sp500_daily_returns, sp500_sharpe_over_dates, sp500_aligned_count,
     correlation_over_dates, information_ratio_vs_sp500)
 from src.backtesting.data.fx_backtest_loader import load_fx_daily_panel
 from src.backtesting.engine.fx_backtest import run_fx_backtest
@@ -90,9 +89,9 @@ def run(config_path: str, cadence_label: str, trial_count: int,
     # Adjacent windows share one boundary calendar day (test_end_N ==
     # test_start_{N+1}) since _oos_returns_dated returns a closed [start, end]
     # interval; dedupe on concat to avoid double-counting that day.
-    oos_1x = pd.concat([r["oos_1x"] for r in results]).sort_index()
+    oos_1x = pd.concat([r["oos_1x"] for r in results]).sort_index(kind="stable")
     oos_1x = oos_1x[~oos_1x.index.duplicated(keep="first")]
-    oos_1_5x = pd.concat([r["oos_1_5x"] for r in results]).sort_index()
+    oos_1_5x = pd.concat([r["oos_1_5x"] for r in results]).sort_index(kind="stable")
     oos_1_5x = oos_1_5x[~oos_1_5x.index.duplicated(keep="first")]
     per_window_1x = [r["oos_1x"].to_numpy(dtype=float) for r in results]
 
@@ -114,7 +113,7 @@ def run(config_path: str, cadence_label: str, trial_count: int,
                      for r in results if r["is_1x"].size > 1]
     is_sharpe = float(np.nanmean(per_window_is)) if per_window_is else float("nan")
     is_oos_ratio = (is_sharpe / sharpe
-                    if sharpe not in (0.0,) and not np.isnan(sharpe) else float("nan"))
+                    if sharpe > 0 and not np.isnan(sharpe) else float("nan"))
     ser = pd.Series(arr)
     skew = float(ser.skew()) if n > 2 else 0.0
     kurt = float(ser.kurtosis()) + 3.0 if n > 3 else 3.0
@@ -124,6 +123,9 @@ def run(config_path: str, cadence_label: str, trial_count: int,
 
     sp = load_sp500_daily_returns()
     sp_sharpe = sp500_sharpe_over_dates(oos_1x.index, sp_returns=sp)
+    sp_n = sp500_aligned_count(oos_1x.index, sp_returns=sp)
+    if n > 0 and abs(sp_n - n) / n > 0.05:
+        logger.warning(f"[seatbelt_wf] S&P aligned day count {sp_n} differs from strategy OOS day count {n} by >5%; comparison may not be apples-to-apples")
     corr = correlation_over_dates(oos_1x, sp_returns=sp)
     ir = information_ratio_vs_sp500(oos_1x, sp_returns=sp)
     beats = bool(sharpe > sp_sharpe)
@@ -136,7 +138,7 @@ def run(config_path: str, cadence_label: str, trial_count: int,
     return {"cadence": cadence_label, "n_oos_days": n, "n_windows": len(results),
             "oos_sharpe": sharpe, "oos_sharpe_1_5x": sharpe_1_5x,
             "is_sharpe": is_sharpe, "is_oos_ratio": is_oos_ratio,
-            "sp500_sharpe": sp_sharpe, "beats_sp500": beats,
+            "sp500_sharpe": sp_sharpe, "sp500_n_days": sp_n, "beats_sp500": beats,
             "correlation_sp500": corr, "information_ratio_sp500": ir,
             "psr": psr_val, "dsr": dsr_val, "pbo": pbo_val, "skew": skew,
             "kurtosis_pearson": kurt, "trial_count": trial_count,
@@ -154,7 +156,8 @@ def _write_report(results: List[Dict[str, Any]], path: str = _REPORT_PATH) -> st
         lines += [f"## Cadence: {r['cadence']} -- {verdict}", "",
                   "| Metric | Value |", "|---|---|",
                   f"| OOS Sharpe (1x) | {r['oos_sharpe']:.4f} |",
-                  f"| S&P Sharpe (same dates) | {r['sp500_sharpe']:.4f} |",
+                  f"| S&P Sharpe (aligned OOS dates) | {r['sp500_sharpe']:.4f} |",
+                  f"| S&P observation count | {r['sp500_n_days']} |",
                   f"| Beats S&P | {r['beats_sp500']} |",
                   f"| OOS Sharpe (1.5x cost) | {r['oos_sharpe_1_5x']:.4f} |",
                   f"| IS Sharpe (1x, mean per-window) | {r['is_sharpe']:.4f} |",
