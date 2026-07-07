@@ -4,10 +4,8 @@
 #23 short-horizon reversal: forecast ~ -z(5-day return) on liquid index roots."""
 from __future__ import annotations
 
-import numpy as np
 import pandas as pd
 
-from src.features.volatility import close_to_close_rv
 from src.strategies.advanced.futures_signal_base import CrossSectionalRankStrategy
 
 _SKIP_DAYS = 21     # skip the most recent month (short-term reversal contamination)
@@ -26,9 +24,4 @@ class FuturesXSMomentumStrategy(CrossSectionalRankStrategy):
         px = close_panel[cols].astype(float)
         # 12-1 return: price at t-21 relative to price at t-252 (skip last month)
         mom = px.shift(_SKIP_DAYS) / px.shift(_LOOKBACK_DAYS) - 1.0
-        # Insufficient lookback (warmup) -> no signal yet; 0.0 raw return makes the
-        # base class's zero-dispersion path emit forecast 0.0 rather than propagating
-        # NaN (matches the fillna(0.0) convention used elsewhere for warmup windows,
-        # e.g. src/backtesting/signals/carry_unwind.py).
-        mom = mom.fillna(0.0)
         return mom.reindex(columns=self.universe)

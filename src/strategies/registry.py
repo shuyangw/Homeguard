@@ -87,6 +87,8 @@ _DISPLAY_NAME_MAP: Dict[str, str] = {
     "OMR": "OvernightMeanReversion",
     "Cross-Sectional Momentum": "CrossSectionalMomentum",
     "Cross Sectional Momentum": "CrossSectionalMomentum",
+    "XS Commodity Momentum": "FuturesXSMomentum",
+    "Cross-Sectional Commodity Momentum": "FuturesXSMomentum",
     "Pairs Trading": "PairsTrading",
     "Pairs": "PairsTrading",
     "Momentum Protection": "MomentumProtection",

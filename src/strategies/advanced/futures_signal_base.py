@@ -52,5 +52,7 @@ class CrossSectionalRankStrategy:
             z = block.sub(mean, axis=0).div(std.replace(0.0, np.nan), axis=0)
             zero_dispersion = valid & std.eq(0.0)
             z = z.where(~zero_dispersion, 0.0)
-            out[present] = (z * self.xs_scale).clip(-self.cap, self.cap)
+            scaled = (z * self.xs_scale).clip(-self.cap, self.cap)
+            all_nan = block.isna().all(axis=1)
+            out[present] = scaled.where(~all_nan, 0.0)
         return out.reindex(columns=self.universe)
