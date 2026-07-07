@@ -41,6 +41,14 @@ def _zone_for(exchange: str) -> ZoneInfo:
     return tz if tz is not None else ZoneInfo(exchange)
 
 
+def _require_utc(utc_index: pd.DatetimeIndex) -> None:
+    tz = getattr(utc_index, "tz", None)
+    if tz is None or str(tz) != "UTC":
+        raise ValueError(
+            f"expected a tz-aware UTC DatetimeIndex, got tz={tz!r}; "
+            "localize/convert to UTC before calling fx_clock functions")
+
+
 def local_to_utc(exchange: str, local_dt: dt.datetime,
                  nonexistent: str = "roll_forward",
                  ambiguous: str = "first") -> pd.Timestamp:
@@ -61,7 +69,7 @@ def _resolve_window(window: "str | SessionWindow") -> SessionWindow:
 def session_window_utc(window: "str | SessionWindow",
                        day: dt.date) -> tuple[pd.Timestamp, pd.Timestamp]:
     w = _resolve_window(window)
-    end_day = day if w.end > w.start else day + dt.timedelta(days=1)
+    end_day = day + dt.timedelta(days=1) if w.end < w.start else day
     start = local_to_utc(w.exchange, dt.datetime.combine(day, w.start))
     end = local_to_utc(w.exchange, dt.datetime.combine(end_day, w.end))
     return start, end
@@ -73,6 +81,7 @@ def _seconds_of_day(t: dt.time) -> int:
 
 def in_session_mask(utc_index: pd.DatetimeIndex,
                     window: "str | SessionWindow") -> pd.Series:
+    _require_utc(utc_index)
     w = _resolve_window(window)
     local = utc_index.tz_convert(_zone_for(w.exchange))
     sod = local.hour * 3600 + local.minute * 60 + local.second
@@ -82,10 +91,13 @@ def in_session_mask(utc_index: pd.DatetimeIndex,
 
 
 def _fx_day_index(utc_index: pd.DatetimeIndex) -> pd.DatetimeIndex:
-    # Shift NY-local time by +7h so the 17:00-ET boundary becomes midnight, then
-    # the local calendar date is the FX trading day. DST handled by tz_convert.
-    ny = utc_index.tz_convert("America/New_York") + pd.Timedelta(hours=7)
-    return ny
+    _require_utc(utc_index)
+    # Shift NY-local wall time by +7h so the 17:00-ET boundary becomes local
+    # midnight, then the local calendar date is the FX trading day. DateOffset
+    # preserves wall-clock across DST, so this is correct for any boundary hour,
+    # not only ones whose +7h span avoids the 02:00 transition.
+    ny = utc_index.tz_convert("America/New_York") + pd.DateOffset(hours=7)
+    return pd.DatetimeIndex(ny)
 
 
 def fx_trading_day(utc_index: pd.DatetimeIndex) -> pd.Series:
@@ -106,12 +118,14 @@ def fx_trading_week_id(utc_index: pd.DatetimeIndex) -> pd.Series:
 
 
 def hour_of_week_utc(utc_index: pd.DatetimeIndex) -> pd.Series:
+    _require_utc(utc_index)
     how = utc_index.dayofweek * 24 + utc_index.hour
     return pd.Series(how, index=utc_index)
 
 
 def hour_of_week_anchored(utc_index: pd.DatetimeIndex,
                           anchor: str = "Europe/London") -> pd.Series:
+    _require_utc(utc_index)
     local = utc_index.tz_convert(_zone_for(anchor))
     how = local.dayofweek * 24 + local.hour
     return pd.Series(how, index=utc_index)

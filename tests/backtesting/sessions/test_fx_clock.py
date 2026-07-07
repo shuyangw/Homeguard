@@ -120,3 +120,34 @@ def test_hour_of_week_anchored_is_dst_stable():
     # ...while the raw UTC hour-of-week differs by one (8 vs 7).
     assert hour_of_week_utc(winter).iloc[0] == 8
     assert hour_of_week_utc(summer).iloc[0] == 7
+
+
+def test_fx_trading_day_across_ny_dst_transitions():
+    # Spring-forward 2024-03-10 (17:00 EDT = 21:00 UTC) and fall-back 2024-11-03
+    # (17:00 EST = 22:00 UTC). Bars just before/after the 17:00-ET boundary must
+    # land on the correct FX day even on the transition day itself.
+    idx = pd.DatetimeIndex(
+        ["2024-03-10 20:59", "2024-03-10 21:00", "2024-11-03 21:59", "2024-11-03 22:00"],
+        tz="UTC")
+    days = fx_trading_day(idx)
+    assert list(days) == [dt.date(2024, 3, 10), dt.date(2024, 3, 11),
+                          dt.date(2024, 11, 3), dt.date(2024, 11, 4)]
+
+
+def test_session_window_utc_midnight_crossing():
+    w = SessionWindow("LONDON", dt.time(22, 0), dt.time(2, 0))  # end < start -> next day
+    s, e = session_window_utc(w, dt.date(2024, 1, 15))  # London == UTC in January
+    assert s == pd.Timestamp("2024-01-15 22:00", tz="UTC")
+    assert e == pd.Timestamp("2024-01-16 02:00", tz="UTC")
+
+
+def test_functions_require_utc_index():
+    naive = pd.DatetimeIndex(["2024-06-10 08:00"])  # tz-naive
+    mislabeled = pd.DatetimeIndex(["2024-06-10 08:00"], tz="Europe/London")  # aware, not UTC
+    for idx in (naive, mislabeled):
+        with pytest.raises(ValueError):
+            hour_of_week_utc(idx)
+        with pytest.raises(ValueError):
+            in_session_mask(idx, "LONDON")
+        with pytest.raises(ValueError):
+            fx_trading_day(idx)
