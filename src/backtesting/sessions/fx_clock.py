@@ -79,3 +79,27 @@ def in_session_mask(utc_index: pd.DatetimeIndex,
     s, e = _seconds_of_day(w.start), _seconds_of_day(w.end)
     mask = (sod >= s) & (sod < e) if s <= e else (sod >= s) | (sod < e)
     return pd.Series(mask, index=utc_index)
+
+
+def _fx_day_index(utc_index: pd.DatetimeIndex) -> pd.DatetimeIndex:
+    # Shift NY-local time by +7h so the 17:00-ET boundary becomes midnight, then
+    # the local calendar date is the FX trading day. DST handled by tz_convert.
+    ny = utc_index.tz_convert("America/New_York") + pd.Timedelta(hours=7)
+    return ny
+
+
+def fx_trading_day(utc_index: pd.DatetimeIndex) -> pd.Series:
+    shifted = _fx_day_index(utc_index)
+    return pd.Series(shifted.date, index=utc_index)
+
+
+def is_friday_fx(utc_index: pd.DatetimeIndex) -> pd.Series:
+    shifted = _fx_day_index(utc_index)
+    return pd.Series(shifted.dayofweek == 4, index=utc_index)
+
+
+def fx_trading_week_id(utc_index: pd.DatetimeIndex) -> pd.Series:
+    shifted = _fx_day_index(utc_index)
+    iso = shifted.isocalendar()
+    ids = (iso.year.to_numpy() * 100 + iso.week.to_numpy())
+    return pd.Series(ids, index=utc_index)
