@@ -49,3 +49,70 @@ class FxTSMOMStrategy:
             out[root] = (self.scale * (s + l) / 2.0).fillna(0.0)
         cols = [r for r in self.universe if r in out]
         return pd.DataFrame(out)[cols]
+
+
+class FxCarryStrategy:
+    """Carry factor (#15). Forecast proportional to the annualized interest-rate
+    differential (base minus quote); long high-carry pairs, short negative-carry.
+    Loads its own FRED rate panel (forecast_panel only receives close). Vol-target
+    sizing gives the vol-scaled carry basket. Forecast on the Carver scale.
+    """
+
+    def __init__(self, universe, scale: float = 500.0, cap: float = 20.0, **params):
+        self.universe = list(universe)
+        self.scale = float(scale)
+        self.cap = float(cap)
+
+    def forecast_panel(self, close_panel: pd.DataFrame) -> pd.DataFrame:
+        from src.data.fx_rates import (load_fx_rate_panel, build_rate_diff_panel,
+                                        currencies_for_pairs)
+        present = [p for p in self.universe if p in close_panel.columns]
+        rate_panel = load_fx_rate_panel(currencies_for_pairs(present), close_panel.index)
+        rd = build_rate_diff_panel(present, rate_panel)  # date x pair, annualized decimal
+        fc = (rd * self.scale).clip(-self.cap, self.cap)
+        return fc[present].fillna(0.0)
+
+
+class FxGoldSilverStrategy:
+    """Gold/silver ratio reversion (#43). z-score the XAU/XAG ratio vs a rolling
+    window; when the ratio is rich (gold expensive vs silver) short gold / long
+    silver, and vice versa. Two-instrument RV.
+    """
+
+    def __init__(self, universe=("XAUUSD", "XAGUSD"), lookback: int = 756,
+                 scale: float = 5.0, **params):
+        self.universe = list(universe)
+        self.lookback = int(lookback)
+        self.scale = float(scale)
+
+    def forecast_panel(self, close_panel: pd.DataFrame) -> pd.DataFrame:
+        if "XAUUSD" not in close_panel or "XAGUSD" not in close_panel:
+            return pd.DataFrame(index=close_panel.index)
+        ratio = close_panel["XAUUSD"].astype(float) / close_panel["XAGUSD"].astype(float)
+        z = (ratio - ratio.rolling(self.lookback).mean()) / ratio.rolling(self.lookback).std()
+        out = {"XAUUSD": (-z * self.scale).clip(-20, 20),
+               "XAGUSD": (z * self.scale).clip(-20, 20)}
+        return pd.DataFrame(out).fillna(0.0)
+
+
+class FxXSectMomStrategy:
+    """Cross-sectional momentum (#4). Rank pairs by trailing risk-adjusted return
+    each day; long the strongest, short the weakest (cross-sectional z of
+    return/vol). Nets out common direction.
+    """
+
+    def __init__(self, universe, lookback: int = 63, vol_window: int = 63,
+                 scale: float = 7.0, **params):
+        self.universe = list(universe)
+        self.lookback = int(lookback)
+        self.vol_window = int(vol_window)
+        self.scale = float(scale)
+
+    def forecast_panel(self, close_panel: pd.DataFrame) -> pd.DataFrame:
+        present = [p for p in self.universe if p in close_panel.columns]
+        c = close_panel[present].astype(float)
+        mom = c.pct_change(self.lookback, fill_method=None)
+        vol = c.pct_change(fill_method=None).rolling(self.vol_window).std()
+        radj = mom / vol.replace(0, np.nan)
+        z = radj.sub(radj.mean(axis=1), axis=0).div(radj.std(axis=1), axis=0)
+        return (z * self.scale).clip(-20, 20).fillna(0.0)

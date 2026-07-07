@@ -63,6 +63,9 @@ _STRATEGY_REGISTRY: Dict[str, Tuple[str, str]] = {
     "FuturesValue": ("src.strategies.advanced.futures_value_strategy", "FuturesValueStrategy"),
     "FxTrend": ("src.strategies.advanced.fx_strategies", "FxTrendStrategy"),
     "FxTSMOM": ("src.strategies.advanced.fx_strategies", "FxTSMOMStrategy"),
+    "FxCarry": ("src.strategies.advanced.fx_strategies", "FxCarryStrategy"),
+    "FxGoldSilver": ("src.strategies.advanced.fx_strategies", "FxGoldSilverStrategy"),
+    "FxXSectMom": ("src.strategies.advanced.fx_strategies", "FxXSectMomStrategy"),
     "FxValue": ("src.strategies.advanced.fx_strategies", "FxValueStrategy"),
 }
 
@@ -157,6 +160,7 @@ _DISPLAY_NAME_MAP: Dict[str, str] = {
     "Futures Value": "FuturesValue",
     "FX Trend": "FxTrend",
     "FX TSMOM": "FxTSMOM",
+    "FX Carry": "FxCarry",
     "FX Value": "FxValue",
 }
 
