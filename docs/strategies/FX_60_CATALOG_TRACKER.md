@@ -20,7 +20,7 @@ Last updated: 2026-07-06
 
 ## Test-progress legend
 
-`-` not started | `BT` backtested | `WF` walk-forward done | `PASS`/`WEAK`/`REJECT` gate verdict
+`-` not started | `BT` in-sample backtest | `WF` walk-forward + gate | Gate: `PASS` / `WEAK` / `FAIL-naive` (naive form fails gate; enhanced form untested) / `REJECT` (idea killed across forms)
 
 ## Infrastructure status (2026-07-06)
 
@@ -56,8 +56,8 @@ Last updated: 2026-07-06
 |---|---|---|---|---|---|---|---|
 | 1 | Dual MA + ATR trail | OHLC | ATR trail needs OHLC; daily EMA-cross ~= existing FxTrend | - | - | - | |
 | 2 | Donchian breakout | BRACKET | OHLC channel + stop-entry/pyramid | - | - | - | |
-| 3 | TSMOM portfolio | READY | -- | BT | - | screen-only | in-sample -0.16 @ 1 config (63/252, IDM off, weekly); NOT gated -- needs sweep+WF+PSR/DSR |
-| 4 | Cross-sectional momentum | READY | currency_strength artifact | BT | - | screen-only | in-sample -0.07 @ 1 config (63d, IDM off); NOT gated |
+| 3 | TSMOM portfolio | READY | -- | BT | WF | FAIL-naive | OOS -0.02, DSR 0.20, PBO 0.85 (IDM on, 13 win); naive sign form fails gate. Enhanced/param-sweep untested |
+| 4 | Cross-sectional momentum | READY | currency_strength artifact | BT | WF | FAIL-naive | OOS -0.05, DSR 0.01, PBO 0.66; naive 63d form fails gate |
 | 5 | Breakout-pullback | INTRADAY | M15 triggers | - | - | - | |
 | 6 | ADX-gated trend | OHLC | ADX needs high/low | - | - | - | |
 | 7 | Multi-TF momentum | INTRADAY | D1/H4/M15 stack | - | - | - | |
@@ -78,7 +78,7 @@ Last updated: 2026-07-06
 
 | # | Name | Status | Blocks / needs | BT | WF | Gate | Notes |
 |---|---|---|---|---|---|---|---|
-| 15 | Vol-targeted carry basket | READY | G10 FRED rates current | BT | - | screen-only | in-sample -0.01 @ 1 config (continuous rate-diff, IDM off); naive != deep-dive ranked basket; NOT gated |
+| 15 | Vol-targeted carry basket | READY | G10 FRED rates current | BT | WF | FAIL-naive | OOS -0.33, DSR 0, PBO 0.73; CONTINUOUS rate-diff form (not the ranked top-3 + crash-filter basket) fails gate |
 | 16 | Carry-momentum filter | READY | -- | - | - | - | |
 | 17 | Swap-aware swing bias | READY | overlay/tilt | - | - | - | carry PnL modeled |
 | 18 | EM carry (MXN) | DATA | USDMXN not in daily cache (on disk; MXN rate ready) | - | - | - | buildable via Dukascopy/Massive |
@@ -131,7 +131,7 @@ Last updated: 2026-07-06
 
 | # | Name | Status | Blocks / needs | BT | WF | Gate | Notes |
 |---|---|---|---|---|---|---|---|
-| 43 | Gold/silver ratio | READY | XAU/XAG clean | BT | - | screen-only | in-sample -0.28 @ 1 config (756d z); no momentum-brake/vol-band enhancements; NOT gated |
+| 43 | Gold/silver ratio | READY | XAU/XAG clean | BT | WF | FAIL-naive | OOS -0.31, DSR 0, PBO 0.49; plain 756d z-reversion (no momentum-brake/vol-band) fails gate |
 | 44 | Non-USD gold momentum | READY | synth XAU crosses from FX legs | - | - | - | |
 | 45 | Metals-implied FX | INTRADAY | minute/diagnostic | - | - | - | |
 | 46 | Gold as risk filter | READY | overlay, computable | - | - | - | |
