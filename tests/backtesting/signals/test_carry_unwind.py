@@ -58,3 +58,22 @@ def test_score_handles_missing_inputs():
     score = compute_unwind_score(panel)
     assert not score.isna().any()
     assert len(score) == 300
+
+
+def test_currency_strength_rises_when_chf_appreciates():
+    idx = pd.date_range("2020-01-01", periods=50, freq="D")
+    # EURCHF falling = fewer CHF per EUR = CHF appreciating vs EUR
+    panel = pd.DataFrame({"EURCHF": np.linspace(1.10, 1.00, 50)}, index=idx)
+    strength = currency_strength(panel)
+    assert strength["CHF"].iloc[-1] > strength["CHF"].iloc[0]
+    assert strength["EUR"].iloc[-1] < strength["EUR"].iloc[0]
+
+
+def test_chf_appreciation_raises_score():
+    idx = pd.date_range("2020-01-01", periods=300, freq="D")
+    rng = np.random.default_rng(7)
+    close = 1.10 + np.cumsum(rng.normal(0, 0.0005, 300))
+    close[-3:] = close[-4] * np.array([0.97, 0.95, 0.93])  # EURCHF drops -> CHF up
+    panel = pd.DataFrame({"EURCHF": close}, index=idx)
+    score = compute_unwind_score(panel)
+    assert score.iloc[-1] > 0.0
