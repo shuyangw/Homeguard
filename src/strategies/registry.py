@@ -61,6 +61,7 @@ _STRATEGY_REGISTRY: Dict[str, Tuple[str, str]] = {
     "FuturesCarry": ("src.strategies.advanced.futures_carry_strategy", "FuturesCarryStrategy"),
     "FuturesCarryXS": ("src.strategies.advanced.futures_carry_strategy", "FuturesCarryXSStrategy"),
     "FuturesValue": ("src.strategies.advanced.futures_value_strategy", "FuturesValueStrategy"),
+    "FuturesXSMomentum": ("src.strategies.advanced.futures_momentum_strategy", "FuturesXSMomentumStrategy"),
     "FxTrend": ("src.strategies.advanced.fx_strategies", "FxTrendStrategy"),
     "FxTSMOM": ("src.strategies.advanced.fx_strategies", "FxTSMOMStrategy"),
     "FxCarry": ("src.strategies.advanced.fx_strategies", "FxCarryStrategy"),

@@ -1,0 +1,23 @@
+# config/backtesting/xs_commodity_momentum.yaml
+# #3 Cross-sectional commodity momentum (12-1), long-short over the commodity block.
+asset_class: futures
+
+strategy:
+  name: FuturesXSMomentum
+  universe: [CL, BZ, NG, HO, RB, GC, SI, HG, PL, ZC, ZW, ZS, ZL, ZM, LE, HE]
+
+dates:
+  start: "2010-06-07"
+  end: "2026-02-20"
+
+backtest:
+  initial_capital: 10000000
+  vol_target_per_instrument: 0.20
+  rebalance: weekly
+  cost_mult: 1.0
+  idm: true
+
+pre_registration:
+  construction: "Rank trailing 12-1 return (skip most recent 21 trading days) across the commodity block; long-short demeaned within the single commodity group, z-scored, scaled, clipped."
+  expected_sign: "long_short"
+  hypothesis: "Cross-sectional commodity momentum earns a positive OOS premium distinct from time-series trend and carry."
