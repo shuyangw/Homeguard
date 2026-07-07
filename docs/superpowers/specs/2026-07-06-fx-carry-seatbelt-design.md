@@ -81,7 +81,7 @@ Daily rebalance is faithful to #19's instant-flatten intent but costs more turno
 
 Primary bar is RELATIVE to the S&P 500, not an absolute statistical threshold.
 
-- Gate mechanics: the existing walk-forward harness (36-month train / 12-month test / 12-month step, purge + embargo, both 1.0x and 1.5x cost legs), run on BOTH cadences. Log ALL FIVE combined-gate legs from methodology Section 2.5 (Sharpe, PSR, DSR, PBO, plus trade count and IS/OOS ratio), fixing the earlier 3-of-5 reporting gap. The two new configs increment the project-wide DSR trial count in `output/experiments.duckdb`.
+- Gate mechanics: the existing walk-forward harness (36-month train / 12-month test / 12-month step, purge + embargo, both 1.0x and 1.5x cost legs), run on BOTH cadences. Log all five combined-gate legs from methodology Section 2.5 (Sharpe, PSR, DSR, PBO, and 1.5x cost sensitivity), plus the IS/OOS Sharpe ratio, fixing the earlier subset-reporting gap. The two new configs increment the project-wide DSR trial count in `output/experiments.duckdb`.
 - Benchmark: S&P 500 buy-and-hold annualized Sharpe computed over the EXACT same stitched OOS dates the strategy trades (rf = 0, same convention as the strategy's Sharpe), net. Source `^GSPC` / SPY daily closes (available in the framework's equity data / `equity_index_yfinance` plugin). Align to the intersection of the strategy's OOS return dates and available S&P dates.
 - PASS: strategy OOS Sharpe (1.0x cost) > S&P OOS Sharpe over those dates. Also reported under 1.5x cost for robustness.
 - No absolute kill threshold. DSR / PSR / PBO are computed and reported as honesty diagnostics but do not gate the pass/fail decision; the S&P comparison does.
