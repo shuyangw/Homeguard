@@ -13,11 +13,18 @@ def _data_present():
 # Mirror the e2e guard: skip (not error) on a machine/CI without the futures store.
 pytestmark = pytest.mark.skipif(not _data_present(), reason="futures store not present")
 
+_PRE_REG = {
+    "construction": "test fixture -- pluggable strategy wiring check",
+    "expected_sign": "long_short",
+    "hypothesis": "not a real trial; validates strategy-registry plumbing only",
+}
+
 _SLICE = {
     "strategy": {"universe": ["6E", "GC"]},
     "dates": {"start": "2022-01-03", "end": "2022-06-30"},
     "backtest": {"initial_capital": 100000, "vol_target_per_instrument": 0.20,
                  "rebalance": "weekly", "cost_mult": 1.0},
+    "pre_registration": _PRE_REG,
 }
 
 
@@ -88,6 +95,7 @@ def test_strategy_params_flow_to_constructor():
         "dates": {"start": "2022-01-03", "end": "2022-06-30"},
         "backtest": {"initial_capital": 1_000_000, "vol_target_per_instrument": 0.20,
                      "rebalance": "weekly", "cost_mult": 1.0},
+        "pre_registration": _PRE_REG,
     }
     res = run_futures_backtest(cfg)
     eq = res["equity_curve"]

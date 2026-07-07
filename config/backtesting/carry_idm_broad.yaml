@@ -52,3 +52,8 @@ backtest:
   rebalance: weekly
   cost_mult: 1.0
   idm: true
+
+pre_registration:
+  construction: "Absolute Carver roll-yield carry, EWMA-smoothed, vol-scaled, IDM-weighted over the 33-root broad basket"
+  expected_sign: "long_short"
+  hypothesis: "Absolute carry earns a positive risk-transfer premium; IDM sizing reduces PBO vs un-weighted carry"

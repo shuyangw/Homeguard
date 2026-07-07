@@ -54,3 +54,8 @@ backtest:
   rebalance: weekly
   cost_mult: 1.0
   idm: true
+
+pre_registration:
+  construction: "Absolute Carver roll-yield carry (macro roots) combined with CME BTC/ETH calendar-basis carry in a single IDM-weighted book (33 macro roots + BTC/ETH)"
+  expected_sign: "long_short"
+  hypothesis: "Adding crypto calendar carry to the macro carry book improves diversification (lower PBO) without diluting the macro carry premium"

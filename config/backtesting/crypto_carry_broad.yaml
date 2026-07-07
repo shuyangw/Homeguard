@@ -16,3 +16,8 @@ backtest:
   vol_target_per_instrument: 0.20
   rebalance: weekly
   cost_mult: 1.0
+
+pre_registration:
+  construction: "CME BTC/ETH calendar-spread implied carry (annualized front/back futures basis), vol-scaled per instrument, no IDM"
+  expected_sign: "long_short"
+  hypothesis: "CME crypto calendar basis reflects a structural futures-financing premium that is exploitable OOS despite the short (2017+) history"

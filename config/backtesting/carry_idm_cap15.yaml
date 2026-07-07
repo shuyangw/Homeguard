@@ -53,3 +53,8 @@ backtest:
   rebalance: weekly
   cost_mult: 1.0
   idm: true
+
+pre_registration:
+  construction: "Absolute Carver roll-yield carry, EWMA-smoothed, vol-scaled, IDM-weighted with per-instrument diversification-multiplier cap of 1.5x over the 33-root broad basket"
+  expected_sign: "long_short"
+  hypothesis: "Capping the per-instrument div_mult at 1.5x reduces concentration risk from the uncapped IDM carry book without materially hurting Sharpe"

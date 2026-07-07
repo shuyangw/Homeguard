@@ -18,6 +18,11 @@ def _base_config():
         "dates": {"start": "2022-01-01", "end": "2023-12-31"},
         "backtest": {"initial_capital": 25000, "vol_target_per_instrument": 0.20,
                      "rebalance": "weekly"},
+        "pre_registration": {
+            "construction": "test fixture -- IDM div_mult threading check",
+            "expected_sign": "long_short",
+            "hypothesis": "not a real trial; validates div_mult plumbing only",
+        },
     }
 
 

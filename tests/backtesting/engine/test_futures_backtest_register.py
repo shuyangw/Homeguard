@@ -6,6 +6,11 @@ _SLICE = {
     "dates": {"start": "2022-01-03", "end": "2022-03-31"},
     "backtest": {"initial_capital": 1_000_000, "vol_target_per_instrument": 0.20,
                  "rebalance": "weekly", "cost_mult": 1.0},
+    "pre_registration": {
+        "construction": "test fixture -- append_run registration gating check",
+        "expected_sign": "long_short",
+        "hypothesis": "not a real trial; validates register=True/False routing to append_run only",
+    },
 }
 
 

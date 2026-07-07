@@ -19,6 +19,11 @@ def test_carver_backtest_produces_equity_curve():
         "dates": {"start": "2022-01-01", "end": "2023-12-31"},
         "backtest": {"initial_capital": 25000, "vol_target_per_instrument": 0.20,
                      "rebalance": "weekly"},
+        "pre_registration": {
+            "construction": "test fixture -- Carver default-strategy e2e equity-curve check",
+            "expected_sign": "long_short",
+            "hypothesis": "not a real trial; validates end-to-end equity curve output only",
+        },
     }
     result = run_futures_backtest(cfg)
     assert result["n_days"] > 200

@@ -21,6 +21,7 @@ from src.backtesting.engine.futures_portfolio_simulator import FuturesPortfolioS
 from src.backtesting.margin.futures_margin import MarginModel
 from src.backtesting.reporting.standard_report import StandardReportGenerator
 from src.features.volatility import close_to_close_rv
+from src.backtesting.utils.pre_registration import validate_pre_registration
 from src.strategies.registry import get_strategy_class
 from src.utils import logger
 
@@ -54,6 +55,8 @@ def run_futures_backtest(config: Dict[str, Any], register: bool = True,
     strategy_cfg = config.get("strategy", {})
     dates_cfg = config.get("dates", {})
     backtest_cfg = config.get("backtest", {})
+
+    validate_pre_registration(config)
 
     universe = list(strategy_cfg["universe"])
     start = _as_date(dates_cfg["start"])
