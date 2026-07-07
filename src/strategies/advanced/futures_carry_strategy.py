@@ -10,12 +10,11 @@ import numpy as np
 import pandas as pd
 import polars as pl
 
-from src.data.futures.asset_class import asset_class_for
 from src.data.futures.paths import carry_dir
 from src.features.volatility import close_to_close_rv
+from src.strategies.advanced.futures_signal_base import CrossSectionalRankStrategy
 
 _SQRT252 = np.sqrt(252.0)
-_XS_SCALE = 10.0  # doctrine: maps a same-day cross-sectional z-score to forecast units
 
 
 class FuturesCarryStrategy:
@@ -56,26 +55,16 @@ class FuturesCarryStrategy:
         return pd.DataFrame(out).reindex(columns=self.universe)
 
 
-class FuturesCarryXSStrategy(FuturesCarryStrategy):
+class FuturesCarryXSStrategy(CrossSectionalRankStrategy, FuturesCarryStrategy):
     """Cross-sectional carry: absolute carry forecast demeaned WITHIN asset-class
-    each day (removes the common directional carry bet), z-scored by the same-day
-    within-class dispersion, scaled to forecast units, clipped. Same-day stats only
-    -> causal. Singleton/empty classes contribute 0 (no relative-value bet)."""
-    def forecast_panel(self, close_panel: pd.DataFrame) -> pd.DataFrame:
-        raw = super().forecast_panel(close_panel)  # per-root absolute carry forecasts
-        groups: dict[str, list[str]] = {}
-        for r in self.universe:
-            groups.setdefault(asset_class_for(r), []).append(r)
-        out = pd.DataFrame(0.0, index=raw.index, columns=self.universe)
-        for _, roots in groups.items():
-            if len(roots) < 2:
-                continue  # singleton class: no relative-value bet, stays 0.0
-            block = raw[roots]                          # dates x class-roots
-            mean = block.mean(axis=1)                   # same-day within-class mean
-            std = block.std(axis=1)                     # same-day within-class dispersion
-            valid = block.notna().all(axis=1)            # exclude warmup/missing-data rows
-            z = block.sub(mean, axis=0).div(std.replace(0.0, np.nan), axis=0)
-            zero_dispersion = valid & std.eq(0.0)        # real data, no cross-sectional spread
-            z = z.where(~zero_dispersion, 0.0)           # -> no relative-value bet, not NaN
-            out[roots] = (z * _XS_SCALE).clip(-self.cap, self.cap)
-        return out.reindex(columns=self.universe)
+    each day (removes the common directional carry bet), z-scored by same-day
+    within-class dispersion, scaled, clipped. Same-day stats only -> causal."""
+
+    def __init__(self, universe, carry_scalar: float = 30.0, ewma_span: int = 10,
+                 cap: float = 20.0, **params):
+        FuturesCarryStrategy.__init__(self, universe, carry_scalar=carry_scalar,
+                                      ewma_span=ewma_span, cap=cap)
+        CrossSectionalRankStrategy.__init__(self, universe, cap=cap)
+
+    def _raw_signal_panel(self, close_panel: pd.DataFrame) -> pd.DataFrame:
+        return FuturesCarryStrategy.forecast_panel(self, close_panel)
