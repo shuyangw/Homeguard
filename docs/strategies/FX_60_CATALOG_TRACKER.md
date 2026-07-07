@@ -56,8 +56,8 @@ Last updated: 2026-07-06
 |---|---|---|---|---|---|---|---|
 | 1 | Dual MA + ATR trail | OHLC | ATR trail needs OHLC; daily EMA-cross ~= existing FxTrend | - | - | - | |
 | 2 | Donchian breakout | BRACKET | OHLC channel + stop-entry/pyramid | - | - | - | |
-| 3 | TSMOM portfolio | READY | -- | BT | - | REJECT | Sharpe -0.156 @17% vol (2011-26); FX trend decayed post-2010 |
-| 4 | Cross-sectional momentum | READY | currency_strength artifact | BT | - | WEAK | Sharpe -0.066 (flat); naive XS-mom no edge on G10 |
+| 3 | TSMOM portfolio | READY | -- | BT | - | screen-only | in-sample -0.16 @ 1 config (63/252, IDM off, weekly); NOT gated -- needs sweep+WF+PSR/DSR |
+| 4 | Cross-sectional momentum | READY | currency_strength artifact | BT | - | screen-only | in-sample -0.07 @ 1 config (63d, IDM off); NOT gated |
 | 5 | Breakout-pullback | INTRADAY | M15 triggers | - | - | - | |
 | 6 | ADX-gated trend | OHLC | ADX needs high/low | - | - | - | |
 | 7 | Multi-TF momentum | INTRADAY | D1/H4/M15 stack | - | - | - | |
@@ -78,7 +78,7 @@ Last updated: 2026-07-06
 
 | # | Name | Status | Blocks / needs | BT | WF | Gate | Notes |
 |---|---|---|---|---|---|---|---|
-| 15 | Vol-targeted carry basket | READY | G10 FRED rates current | BT | - | WEAK | Sharpe -0.013 (flat); G10 carry thin (no EM, no crash filter) |
+| 15 | Vol-targeted carry basket | READY | G10 FRED rates current | BT | - | screen-only | in-sample -0.01 @ 1 config (continuous rate-diff, IDM off); naive != deep-dive ranked basket; NOT gated |
 | 16 | Carry-momentum filter | READY | -- | - | - | - | |
 | 17 | Swap-aware swing bias | READY | overlay/tilt | - | - | - | carry PnL modeled |
 | 18 | EM carry (MXN) | DATA | USDMXN not in daily cache (on disk; MXN rate ready) | - | - | - | buildable via Dukascopy/Massive |
@@ -131,7 +131,7 @@ Last updated: 2026-07-06
 
 | # | Name | Status | Blocks / needs | BT | WF | Gate | Notes |
 |---|---|---|---|---|---|---|---|
-| 43 | Gold/silver ratio | READY | XAU/XAG clean | BT | - | REJECT | Sharpe -0.284, -7% DD; naive z-reversion anti-predictive |
+| 43 | Gold/silver ratio | READY | XAU/XAG clean | BT | - | screen-only | in-sample -0.28 @ 1 config (756d z); no momentum-brake/vol-band enhancements; NOT gated |
 | 44 | Non-USD gold momentum | READY | synth XAU crosses from FX legs | - | - | - | |
 | 45 | Metals-implied FX | INTRADAY | minute/diagnostic | - | - | - | |
 | 46 | Gold as risk filter | READY | overlay, computable | - | - | - | |
@@ -174,11 +174,11 @@ Last updated: 2026-07-06
 
 ## Findings
 
-2026-07-06: naive/canonical versions of 4 READY strategies (#3 TSMOM, #4 XS-mom, #15 carry,
-#43 gold/silver) all show NO edge on clean G10 daily (Sharpe -0.01 to -0.28). Matches the research:
-FX trend decayed post-2010; G10 carry is thin without EM + crash management; simple ratio reversion
-is anti-predictive. Survivors (if any) will be the ENHANCED variants (#16 carry+trend, #19 carry-unwind,
-regime-gated) or the intraday half. Sizing note: vol_target 0.03 -> ~17% book vol.
+2026-07-06: 4 READY strategies got a QUICK IN-SAMPLE SCREEN only (one arbitrary config each, IDM off,
+weekly, NO walk-forward, NO PSR/DSR/PBO gate). In-sample Sharpe -0.01 to -0.28. These are NOT verdicts --
+per methodology a real verdict needs a parameter sweep + walk-forward (purge/embargo) + the combined gate,
+IDM on, and cost sensitivity. Suggestive that naive daily factors are weak, but not conclusive; re-evaluate
+properly before rejecting. Sizing note: vol_target 0.03 -> ~17% book vol.
 
 ## Current focus
 
