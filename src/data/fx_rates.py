@@ -16,30 +16,31 @@ import pandas as pd
 from src.settings import get_local_storage_dir
 from src.utils import logger
 
-# Currency -> FRED daily short-rate series id (percent units in FRED).
-# G10 + select EM short-rate coverage (Task 4). All IRSTCI01* IDs below were
-# live-verified via FREDRatesPlugin.fetch_series before being added here (each
-# returned >0 rows over 2011-2026); a bad ID raises FredValidationError instead
-# of silently writing an HTML error page (the 2026 CHF-series bug this guards
-# against). SGD has no free short-rate series on FRED (SIBOR/SORA are not
-# published there) and is intentionally omitted -- falls back to 0.0 with a
-# WARNING like any other currency missing from this map.
+# Currency -> FRED short-rate series id (percent units in FRED).
+# USD/EUR use their daily policy rates (DFF, ECB deposit). All other currencies
+# use the OECD 3-month interbank rate (IR3TIB01*M156N), a single consistent
+# family that is CURRENT for every currency (verified ends 2026-04/05).
+# This replaced the earlier IRSTCI01* (call-money) family, which OECD
+# DISCONTINUED for several currencies -- SEK ended 2020-10 (5.7yr stale, stuck
+# at 0.10% while Riksbank hiked to ~4%), CHF ended 2024-03, NZD ended 2024-12 --
+# silently producing wrong carry for those legs. IR3TIB01 carries a small
+# (~10-30bp) term premium over the USD/EUR overnight rates; acceptable for carry
+# differentials and vastly better than multi-year-stale data. A bad ID raises
+# FredValidationError (guards the 2026 CHF-series HTML-error bug). SGD has no
+# free FRED short-rate series -- omitted, falls back to 0.0 with a WARNING.
 CURRENCY_FRED_SERIES: dict[str, str] = {
-    "USD": "DFF",              # Effective Federal Funds Rate
-    "EUR": "ECBDFR",           # ECB Deposit Facility Rate
-    "CHF": "IRSTCI01CHM156N",  # Switzerland call-money (overnight) rate. Monthly,
-                               # ffilled to daily; the series was discontinued
-                               # 2024-03 so the last ~2yrs carry the last value.
-    "JPY": "IRSTCI01JPM156N",  # Japan call-money (overnight) rate. Monthly,
-                               # ffilled to daily; current through 2026.
-    "GBP": "IRSTCI01GBM156N",  # UK call-money (overnight) rate. Monthly, ffilled.
-    "CAD": "IRSTCI01CAM156N",  # Canada call-money (overnight) rate. Monthly, ffilled.
-    "AUD": "IRSTCI01AUM156N",  # Australia call-money (overnight) rate. Monthly, ffilled.
-    "NZD": "IRSTCI01NZM156N",  # New Zealand call-money (overnight) rate. Monthly, ffilled.
-    "NOK": "IRSTCI01NOM156N",  # Norway call-money (overnight) rate. Monthly, ffilled.
-    "SEK": "IRSTCI01SEM156N",  # Sweden call-money (overnight) rate. Monthly, ffilled.
-    "MXN": "IRSTCI01MXM156N",  # Mexico call-money (overnight) rate. Monthly, ffilled.
-    "ZAR": "IRSTCI01ZAM156N",  # South Africa call-money (overnight) rate. Monthly, ffilled.
+    "USD": "DFF",              # Effective Federal Funds Rate (daily policy)
+    "EUR": "ECBDFR",           # ECB Deposit Facility Rate (daily policy)
+    "CHF": "IR3TIB01CHM156N",  # 3-month interbank, monthly, ffilled to daily
+    "JPY": "IR3TIB01JPM156N",
+    "GBP": "IR3TIB01GBM156N",
+    "CAD": "IR3TIB01CAM156N",
+    "AUD": "IR3TIB01AUM156N",
+    "NZD": "IR3TIB01NZM156N",
+    "NOK": "IR3TIB01NOM156N",
+    "SEK": "IR3TIB01SEM156N",
+    "MXN": "IR3TIB01MXM156N",
+    "ZAR": "IR3TIB01ZAM156N",
 }
 _METALS = {"XAU", "XAG"}
 

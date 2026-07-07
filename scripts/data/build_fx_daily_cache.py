@@ -38,6 +38,13 @@ def resample_fx_minute_to_daily(df_min: pd.DataFrame) -> pd.DataFrame:
         low=("low", "min"),
         close=("close", "last"),
     )
+    # Drop Sat/Sun fx_dates: the FX week is Sun 17:00 -> Fri 17:00 ET, so these
+    # are only thin stray-edge bars (Fri-post-close, Sun-pre-open; ~10-100 min vs
+    # ~1439 for a real weekday) whose closes are unreliable. A clean daily series
+    # is Mon-Fri; the real Fri close and Sun-evening open already sit in the
+    # Friday and Monday fx_dates respectively.
+    weekday = pd.to_datetime(pd.Index(daily.index)).dayofweek < 5
+    daily = daily[weekday]
     daily.index.name = "fx_date"
     return daily
 
