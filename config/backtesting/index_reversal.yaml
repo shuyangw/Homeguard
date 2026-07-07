@@ -1,0 +1,22 @@
+# #23 Short-horizon (5-day) reversal on liquid index roots.
+asset_class: futures
+
+strategy:
+  name: FuturesReversal
+  universe: [ES, NQ, YM, RTY]
+
+dates:
+  start: "2010-06-07"
+  end: "2026-02-20"
+
+backtest:
+  initial_capital: 10000000
+  vol_target_per_instrument: 0.20
+  rebalance: weekly
+  cost_mult: 1.0
+  idm: true
+
+pre_registration:
+  construction: "Per-root -z(5-day return) vs trailing 60-day window, scaled, clipped; continuous forecast on index roots."
+  expected_sign: "long_short"
+  hypothesis: "Short-horizon reversal (liquidity provision) is weak-positive in liquid index futures; expect state-dependence."
