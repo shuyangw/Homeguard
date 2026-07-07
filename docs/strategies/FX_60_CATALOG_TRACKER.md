@@ -20,7 +20,7 @@ Last updated: 2026-07-06
 
 ## Test-progress legend
 
-`-` not started | `BT` in-sample backtest | `WF` walk-forward + gate | Gate: `PASS` / `WEAK` / `FAIL-naive` (naive form fails gate; enhanced form untested) / `REJECT` (idea killed across forms)
+`-` not started | `BT` in-sample backtest | `WF` walk-forward + gate | Gate: `PASS` / `WEAK` / `FAIL-naive` (naive form fails gate; enhanced form untested) / `FAIL-enh` (enhanced form tested, fails gate) / `REJECT` (idea killed across forms)
 
 ## Infrastructure status (2026-07-06)
 
@@ -79,10 +79,10 @@ Last updated: 2026-07-06
 | # | Name | Status | Blocks / needs | BT | WF | Gate | Notes |
 |---|---|---|---|---|---|---|---|
 | 15 | Vol-targeted carry basket | READY | G10 FRED rates current | BT | WF | FAIL-naive | OOS -0.33, DSR 0, PBO 0.73; CONTINUOUS rate-diff form (not the ranked top-3 + crash-filter basket) fails gate |
-| 16 | Carry-momentum filter | READY | -- | - | - | - | |
+| 16 | Carry-momentum filter | READY | -- | BT | WF | FAIL-enh | Built as FxCarrySeatbelt (#16 swap+EMA50 filter + #19 veto/short), broad G10, daily+weekly. FAIL S&P bar: daily OOS -0.75 / weekly -0.11 vs S&P 0.68 (2014-2026, 3196d). DSR 0. Report FX_CARRY_SEATBELT_WALK_FORWARD.md; 1 deferred variant (12mo-TSMOM leg / graded sizing) remains per pre-reg |
 | 17 | Swap-aware swing bias | READY | overlay/tilt | - | - | - | carry PnL modeled |
 | 18 | EM carry (MXN) | DATA | USDMXN not in daily cache (on disk; MXN rate ready) | - | - | - | buildable via Dukascopy/Massive |
-| 19 | Carry-unwind detector | READY | AUD/NZD/JPY/CHF/XAU all present | - | - | - | daily composite z-score |
+| 19 | Carry-unwind detector | READY | AUD/NZD/JPY/CHF/XAU all present | BT | WF | FAIL-enh | Built as the veto + offensive-short leg of FxCarrySeatbelt. Short earned +1.4% in the Aug-2024 yen unwind (existence proof, N~4-6). Combined strategy FAILs S&P bar (see #16). carry_unwind score reusable (src/backtesting/signals/carry_unwind.py) |
 
 ## Category D -- Session / Time-of-day (20-25)
 
