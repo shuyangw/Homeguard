@@ -25,8 +25,16 @@ def test_correlation_of_series_with_itself_is_one():
     assert abs(correlation_over_dates(sp, sp_returns=sp) - 1.0) < 1e-9
 
 
-def test_information_ratio_is_zero_against_itself():
+def test_information_ratio_is_nan_against_itself():
     sp = _sp_returns()
     # active return (sp - sp) is all zeros -> IR is nan (zero std), handled
     ir = information_ratio_vs_sp500(sp, sp_returns=sp)
     assert np.isnan(ir)
+
+
+def test_annualized_sharpe_matches_walkforward_common():
+    from src.backtesting.benchmark import _annualized_sharpe as bench_sharpe
+    from src.backtesting.walkforward_common import _annualized_sharpe as wf_sharpe
+    rng = np.random.default_rng(11)
+    r = rng.normal(0.0003, 0.01, 400)
+    assert abs(bench_sharpe(pd.Series(r)) - wf_sharpe(np.asarray(r))) < 1e-12
