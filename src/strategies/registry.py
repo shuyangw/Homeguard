@@ -66,6 +66,7 @@ _STRATEGY_REGISTRY: Dict[str, Tuple[str, str]] = {
     "FxCarry": ("src.strategies.advanced.fx_strategies", "FxCarryStrategy"),
     "FxGoldSilver": ("src.strategies.advanced.fx_strategies", "FxGoldSilverStrategy"),
     "FxXSectMom": ("src.strategies.advanced.fx_strategies", "FxXSectMomStrategy"),
+    "FxCarrySeatbelt": ("src.strategies.advanced.fx_carry_seatbelt", "FxCarrySeatbelt"),
     "FxValue": ("src.strategies.advanced.fx_strategies", "FxValueStrategy"),
 }
 

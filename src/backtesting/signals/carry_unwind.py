@@ -16,6 +16,7 @@ import pandas as pd
 def _trailing_zscore(s: pd.Series, window: int) -> pd.Series:
     mean = s.rolling(window, min_periods=max(window // 2, 2)).mean()
     std = s.rolling(window, min_periods=max(window // 2, 2)).std()
+    std = std.clip(lower=1e-10)  # Avoid division by tiny numbers in synthetic data
     z = (s - mean) / std.replace(0.0, np.nan)
     return z.fillna(0.0)
 
