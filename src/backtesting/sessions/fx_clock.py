@@ -50,3 +50,32 @@ def local_to_utc(exchange: str, local_dt: dt.datetime,
         nonexistent=_NONEXISTENT[nonexistent],
     )
     return ts.tz_convert("UTC")
+
+
+def _resolve_window(window: "str | SessionWindow") -> SessionWindow:
+    if isinstance(window, SessionWindow):
+        return window
+    return SESSION_WINDOWS[window]
+
+
+def session_window_utc(window: "str | SessionWindow",
+                       day: dt.date) -> tuple[pd.Timestamp, pd.Timestamp]:
+    w = _resolve_window(window)
+    end_day = day if w.end > w.start else day + dt.timedelta(days=1)
+    start = local_to_utc(w.exchange, dt.datetime.combine(day, w.start))
+    end = local_to_utc(w.exchange, dt.datetime.combine(end_day, w.end))
+    return start, end
+
+
+def _seconds_of_day(t: dt.time) -> int:
+    return t.hour * 3600 + t.minute * 60 + t.second
+
+
+def in_session_mask(utc_index: pd.DatetimeIndex,
+                    window: "str | SessionWindow") -> pd.Series:
+    w = _resolve_window(window)
+    local = utc_index.tz_convert(_zone_for(w.exchange))
+    sod = local.hour * 3600 + local.minute * 60 + local.second
+    s, e = _seconds_of_day(w.start), _seconds_of_day(w.end)
+    mask = (sod >= s) & (sod < e) if s <= e else (sod >= s) | (sod < e)
+    return pd.Series(mask, index=utc_index)
