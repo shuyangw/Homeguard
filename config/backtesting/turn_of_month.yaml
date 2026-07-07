@@ -1,0 +1,22 @@
+# #16 Turn-of-month long index (payment-cycle / rebalancing liquidity flow).
+asset_class: futures
+
+strategy:
+  name: FuturesTurnOfMonth
+  universe: [ES, NQ, YM, RTY]
+
+dates:
+  start: "2010-06-07"
+  end: "2026-02-20"
+
+backtest:
+  initial_capital: 10000000
+  vol_target_per_instrument: 0.20
+  rebalance: daily
+  cost_mult: 1.0
+  idm: true
+
+pre_registration:
+  construction: "Long index roots (+cap) on the last trading day of each month through the third trading day of the next; flat otherwise."
+  expected_sign: "long"
+  hypothesis: "Turn-of-month payment-cycle flow yields a small positive index drift, concentrated in the window."

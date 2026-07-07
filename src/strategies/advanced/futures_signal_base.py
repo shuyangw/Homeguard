@@ -56,3 +56,25 @@ class CrossSectionalRankStrategy:
             all_nan = block.isna().all(axis=1)
             out[present] = scaled.where(~all_nan, 0.0)
         return out.reindex(columns=self.universe)
+
+
+class CalendarMaskStrategy:
+    """Daily on/off hold by a trading-calendar rule.
+
+    forecast = sign(date) * cap on active days, 0 otherwise, broadcast across all
+    universe roots. Subclass supplies _active_and_sign(index) -> Series in
+    {-1, 0, +1}. The calendar is derived from close_panel.index (the traded days)
+    so it is holiday-aware by construction."""
+
+    def __init__(self, universe, cap: float = _CAP, **params):
+        self.universe = list(universe)
+        self.cap = float(cap)
+
+    def _active_and_sign(self, index: pd.DatetimeIndex) -> pd.Series:
+        raise NotImplementedError("subclass must supply per-date sign in {-1, 0, +1}")
+
+    def forecast_panel(self, close_panel: pd.DataFrame) -> pd.DataFrame:
+        index = close_panel.index
+        sign = self._active_and_sign(index).reindex(index).fillna(0.0)
+        col = (sign * self.cap).astype(float)
+        return pd.DataFrame({r: col.values for r in self.universe}, index=index)

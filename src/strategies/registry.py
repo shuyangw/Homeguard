@@ -70,6 +70,7 @@ _STRATEGY_REGISTRY: Dict[str, Tuple[str, str]] = {
     "FxXSectMom": ("src.strategies.advanced.fx_strategies", "FxXSectMomStrategy"),
     "FxCarrySeatbelt": ("src.strategies.advanced.fx_carry_seatbelt", "FxCarrySeatbelt"),
     "FxValue": ("src.strategies.advanced.fx_strategies", "FxValueStrategy"),
+    "FuturesTurnOfMonth": ("src.strategies.advanced.futures_seasonal_strategy", "FuturesTurnOfMonthStrategy"),
 }
 
 # Display name -> class name mapping for user-friendly config files
@@ -165,6 +166,7 @@ _DISPLAY_NAME_MAP: Dict[str, str] = {
     "Cross-Sectional Carry": "FuturesCarryXS",
     "Value": "FuturesValue",
     "Futures Value": "FuturesValue",
+    "Turn of Month": "FuturesTurnOfMonth",
     "FX Trend": "FxTrend",
     "FX TSMOM": "FxTSMOM",
     "FX Carry": "FxCarry",
