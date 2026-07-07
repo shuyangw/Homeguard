@@ -20,3 +20,8 @@ backtest:
   vol_target_per_instrument: 0.20
   rebalance: weekly
   cost_mult: 1.0
+
+pre_registration:
+  construction: "Carver parameter-free multi-speed EWMAC trend (blend of EWMAC crossover filters), vol-scaled per instrument over a small 3-root futures basket (MES, MGC, 6E)"
+  expected_sign: "long_short"
+  hypothesis: "Multi-speed EWMAC trend captures a persistent time-series momentum premium; the small basket is a smoke-test of the trend engine, not a capacity claim"

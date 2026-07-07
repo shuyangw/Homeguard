@@ -52,3 +52,8 @@ backtest:
   rebalance: weekly
   cost_mult: 1.0
   idm: true
+
+pre_registration:
+  construction: "Cross-sectional (within-asset-class demeaned) Carver carry, EWMA-smoothed, vol-scaled, IDM-weighted over the 33-root broad basket"
+  expected_sign: "long_short"
+  hypothesis: "Relative-value (demeaned) carry earns a positive premium OOS; IDM sizing on top of the cross-sectional signal reduces PBO vs the un-weighted cross-sectional book"

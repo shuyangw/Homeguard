@@ -51,3 +51,8 @@ backtest:
   vol_target_per_instrument: 0.20
   rebalance: weekly
   cost_mult: 1.0
+
+pre_registration:
+  construction: "Absolute Carver roll-yield carry, EWMA-smoothed, vol-scaled per instrument over the 33-root broad basket, no IDM diversification multiplier"
+  expected_sign: "long_short"
+  hypothesis: "Absolute carry earns a positive risk-transfer premium; the un-weighted (no-IDM) baseline isolates the raw carry signal before diversification sizing"
