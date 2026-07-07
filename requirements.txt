@@ -100,3 +100,4 @@ discord.py>=2.3.0
 
 # Binance WebSocket streaming for demo trading
 websocket-client>=1.6.0
+dukascopy-python==4.0.1  # keyless historical FX backfill (gaps Polygon lacks)
