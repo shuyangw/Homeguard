@@ -1,0 +1,22 @@
+# #15 Same-calendar-month cross-sectional seasonality over the commodity block.
+asset_class: futures
+
+strategy:
+  name: FuturesSameMonthSeasonality
+  universe: [CL, BZ, NG, HO, RB, GC, SI, HG, PL, ZC, ZW, ZS, ZL, ZM, LE, HE]
+
+dates:
+  start: "2010-06-07"
+  end: "2026-02-20"
+
+backtest:
+  initial_capital: 10000000
+  vol_target_per_instrument: 0.20
+  rebalance: weekly
+  cost_mult: 1.0
+  idm: true
+
+pre_registration:
+  construction: "Rank each commodity by expanding-prior-years mean return in the current calendar month (causal), long-short across the commodity block."
+  expected_sign: "long_short"
+  hypothesis: "Commodity same-month seasonal risk premia persist but are decayed post-2000; expect a modest, possibly sub-gate effect."

@@ -4,7 +4,8 @@ import pandas as pd
 import pytest
 
 from src.backtesting.sessions.fx_clock import (
-    EXCHANGE_TZ, SESSION_WINDOWS, SessionWindow, local_to_utc, session_window_utc, in_session_mask)
+    EXCHANGE_TZ, SESSION_WINDOWS, SessionWindow, local_to_utc, session_window_utc, in_session_mask,
+    fx_trading_day, is_friday_fx, fx_trading_week_id)
 
 
 def test_registries_present():
@@ -73,3 +74,31 @@ def test_in_session_mask_midnight_crossing():
     assert not m.loc["2024-01-15 21:30"]
     assert m.loc["2024-01-15 22:00"] and m.loc["2024-01-16 01:30"]
     assert not m.loc["2024-01-16 02:00"]
+
+
+def test_fx_trading_day_17et_boundary():
+    # Summer: boundary 21:00 UTC (17:00 EDT). 20:30 UTC -> same day; 21:30 UTC -> next day.
+    idx = pd.DatetimeIndex(["2024-06-13 20:30", "2024-06-13 21:30"], tz="UTC")
+    days = fx_trading_day(idx)
+    assert days.iloc[0] == dt.date(2024, 6, 13)
+    assert days.iloc[1] == dt.date(2024, 6, 14)
+    # Winter: boundary 22:00 UTC (17:00 EST). 21:30 UTC -> still same day.
+    idxw = pd.DatetimeIndex(["2024-01-15 21:30"], tz="UTC")
+    assert fx_trading_day(idxw).iloc[0] == dt.date(2024, 1, 15)
+
+
+def test_is_friday_fx_rolls_at_17et():
+    # 2024-06-13 is Thursday; 21:30 UTC (17:30 EDT) rolls into Friday 2024-06-14.
+    idx = pd.DatetimeIndex(["2024-06-13 20:30", "2024-06-13 21:30"], tz="UTC")
+    ff = is_friday_fx(idx)
+    assert not ff.iloc[0]  # still Thursday FX day
+    assert ff.iloc[1]      # rolled into Friday FX day
+
+
+def test_fx_trading_week_id_constant_mon_to_fri():
+    idx = pd.DatetimeIndex(["2024-06-10 12:00", "2024-06-14 12:00"], tz="UTC")  # Mon..Fri
+    wk = fx_trading_week_id(idx)
+    assert wk.iloc[0] == wk.iloc[1]
+    idx2 = pd.DatetimeIndex(["2024-06-14 12:00", "2024-06-17 12:00"], tz="UTC")  # Fri vs next Mon
+    wk2 = fx_trading_week_id(idx2)
+    assert wk2.iloc[0] != wk2.iloc[1]
