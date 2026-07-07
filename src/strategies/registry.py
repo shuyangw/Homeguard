@@ -72,6 +72,7 @@ _STRATEGY_REGISTRY: Dict[str, Tuple[str, str]] = {
     "FxValue": ("src.strategies.advanced.fx_strategies", "FxValueStrategy"),
     "FuturesTurnOfMonth": ("src.strategies.advanced.futures_seasonal_strategy", "FuturesTurnOfMonthStrategy"),
     "FuturesSameMonthSeasonality": ("src.strategies.advanced.futures_seasonal_strategy", "FuturesSameMonthSeasonalityStrategy"),
+    "FuturesCarryTrend": ("src.strategies.advanced.futures_conditioning_strategy", "FuturesCarryTrendStrategy"),
 }
 
 # Display name -> class name mapping for user-friendly config files
@@ -173,6 +174,7 @@ _DISPLAY_NAME_MAP: Dict[str, str] = {
     "FX TSMOM": "FxTSMOM",
     "FX Carry": "FxCarry",
     "FX Value": "FxValue",
+    "Carry-Trend Gate": "FuturesCarryTrend",
 }
 
 # Cache for loaded strategy classes

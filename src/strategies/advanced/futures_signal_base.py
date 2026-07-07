@@ -78,3 +78,37 @@ class CalendarMaskStrategy:
         sign = self._active_and_sign(index).reindex(index).fillna(0.0)
         col = (sign * self.cap).astype(float)
         return pd.DataFrame({r: col.values for r in self.universe}, index=index)
+
+
+class ConditioningOverlayStrategy:
+    """Combine a base forecast with a conditioning forecast.
+
+    Instantiates two registered strategies (base + conditioning) over the same
+    universe and combines their forecast panels via _combine (subclass hook).
+    Used for gate/tilt interactions (carry-trend, vol-filter, OI). The combined
+    signal must be validated by the marginal-Sharpe-vs-the-pair test, not a naive
+    correlation screen."""
+
+    def __init__(self, universe, base_name: str, cond_name: str,
+                 base_params: Optional[dict] = None, cond_params: Optional[dict] = None,
+                 cap: float = _CAP, **params):
+        from src.strategies.registry import get_strategy_class
+        self.universe = list(universe)
+        self.cap = float(cap)
+        self._base = get_strategy_class(base_name)(universe, **(base_params or {}))
+        self._cond = get_strategy_class(cond_name)(universe, **(cond_params or {}))
+
+    def _base_forecast(self, close_panel: pd.DataFrame) -> pd.DataFrame:
+        return self._base.forecast_panel(close_panel)
+
+    def _cond_forecast(self, close_panel: pd.DataFrame) -> pd.DataFrame:
+        return self._cond.forecast_panel(close_panel)
+
+    def _combine(self, base_fc: pd.DataFrame, cond_fc: pd.DataFrame) -> pd.DataFrame:
+        raise NotImplementedError("subclass must combine base and conditioning forecasts")
+
+    def forecast_panel(self, close_panel: pd.DataFrame) -> pd.DataFrame:
+        base_fc = self._base_forecast(close_panel)
+        cond_fc = self._cond_forecast(close_panel).reindex(
+            index=base_fc.index, columns=base_fc.columns)
+        return self._combine(base_fc, cond_fc).clip(-self.cap, self.cap)

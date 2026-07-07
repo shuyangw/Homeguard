@@ -1,0 +1,22 @@
+# #13 Carry-trend agreement gate over the broad basket.
+asset_class: futures
+
+strategy:
+  name: FuturesCarryTrend
+  universe: [ES, NQ, YM, ZT, ZF, ZN, TN, ZB, UB, 6E, 6J, 6B, 6A, 6C, 6S, 6M, 6N, CL, BZ, NG, HO, RB, GC, SI, HG, PL, ZC, ZW, ZS, ZL, ZM, LE, HE]
+
+dates:
+  start: "2010-06-07"
+  end: "2026-02-20"
+
+backtest:
+  initial_capital: 10000000
+  vol_target_per_instrument: 0.20
+  rebalance: weekly
+  cost_mult: 1.0
+  idm: true
+
+pre_registration:
+  construction: "Carver trend forecast passed through only where carry agrees in sign (else flat), over the broad basket."
+  expected_sign: "long_short"
+  hypothesis: "Carry-agreeing trends continue better than carry-opposing trends; the gate improves the trend sleeve's conditioning, not a new premium."
