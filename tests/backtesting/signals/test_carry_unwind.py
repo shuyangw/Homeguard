@@ -77,3 +77,13 @@ def test_chf_appreciation_raises_score():
     panel = pd.DataFrame({"EURCHF": close}, index=idx)
     score = compute_unwind_score(panel)
     assert score.iloc[-1] > 0.0
+
+
+def test_trailing_zscore_floors_near_zero_std():
+    # A near-constant series (float-noise-only variation) must not produce
+    # exploded z-scores; the 1e-10 std floor keeps them near 0.
+    idx = pd.date_range("2020-01-01", periods=300, freq="D")
+    s = pd.Series(1.10 * (1.0 + 1e-4) ** np.arange(300), index=idx)
+    ret = s.pct_change().fillna(0.0)
+    z = _trailing_zscore(ret, 252)
+    assert z.abs().max() < 5.0
