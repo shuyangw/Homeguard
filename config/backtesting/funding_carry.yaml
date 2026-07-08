@@ -1,0 +1,19 @@
+# config/backtesting/funding_carry.yaml
+# #49 Perp-funding crypto carry over CME BTC/ETH.
+asset_class: futures
+strategy:
+  name: FuturesFundingCarry
+  universe: [BTC, ETH]
+dates:
+  start: "2020-01-01"
+  end: "2026-02-20"
+backtest:
+  initial_capital: 10000000
+  vol_target_per_instrument: 0.20
+  rebalance: weekly
+  cost_mult: 1.0
+  idm: true
+pre_registration:
+  construction: "Smoothed annualized Binance perp funding / price-vol, scaled, clipped, on CME BTC/ETH."
+  expected_sign: "long_short"
+  hypothesis: "Perp funding carries a crypto risk-transfer premium; the pre-registered claim is MARGINAL Sharpe after the deployed CME-basis satellite (#48), tested via correlated-re-expression, not raw performance."
