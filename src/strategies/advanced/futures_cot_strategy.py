@@ -52,7 +52,8 @@ class FuturesCoTTiltStrategy:
                 out[root] = pd.Series(0.0, index=close_panel.index)
                 continue
             cot = self._load_cot(root)
-            if cot is None or "noncommercial_long" not in cot.columns:
+            if (cot is None or "noncommercial_long" not in cot.columns
+                    or "noncommercial_short" not in cot.columns):
                 out[root] = pd.Series(0.0, index=close_panel.index)
                 continue
             out[root] = self._root_forecast(close_panel[root].astype(float), cot)
