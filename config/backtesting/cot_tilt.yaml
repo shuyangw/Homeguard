@@ -1,0 +1,19 @@
+# config/backtesting/cot_tilt.yaml
+# #37 CoT net-speculator positioning tilt over the broad universe.
+asset_class: futures
+strategy:
+  name: FuturesCoTTilt
+  universe: [ES, NQ, YM, ZN, ZB, ZF, ZT, CL, NG, HO, RB, GC, SI, HG, PL, ZC, ZW, ZS, ZL, ZM, LE, HE]
+dates:
+  start: "2010-06-07"
+  end: "2026-02-20"
+backtest:
+  initial_capital: 10000000
+  vol_target_per_instrument: 0.20
+  rebalance: weekly
+  cost_mult: 1.0
+  idm: true
+pre_registration:
+  construction: "Non-commercial net position normalized to trailing 3-year range (centered), lagged to Friday publication, per-root tilt over the broad universe."
+  expected_sign: "long_short"
+  hypothesis: "Net-speculator positioning behaves momentum-like (the replicable CoT finding); contested [C], expect a modest possibly sub-gate effect."
