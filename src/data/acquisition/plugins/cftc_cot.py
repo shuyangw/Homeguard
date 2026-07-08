@@ -128,7 +128,10 @@ def parse_legacy_csv(raw: bytes, contract_market_code: str) -> pl.DataFrame:
     numeric_cols = [c for c in ("commercial_long", "commercial_short",
                                  "noncommercial_long", "noncommercial_short") if c in df.columns]
     if numeric_cols:
-        df = df.with_columns([pl.col(c).cast(pl.Int64, strict=False) for c in numeric_cols])
+        df = df.with_columns([
+            pl.col(c).cast(pl.Utf8).str.strip_chars().cast(pl.Int64, strict=False)
+            for c in numeric_cols
+        ])
     if "report_date_raw" in df.columns:
         df = df.with_columns(
             pl.col("report_date_raw").cast(pl.Utf8).str.strptime(
