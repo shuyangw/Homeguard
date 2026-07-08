@@ -12,7 +12,7 @@ from typing import Any, Dict, List
 import numpy as np
 import pandas as pd
 
-from scripts.backtest_scripts.run_carver_walkforward import (
+from src.backtesting.walkforward_common import (
     TRIAL_COUNT_PARAMETER_FREE, _annualized_sharpe, _compute_pbo,
 )
 from src.backtesting.statistics.dsr import dsr
