@@ -1,0 +1,9 @@
+# #26/#27 VIX roll-down return-stream evaluation params.
+vix_rolldown:
+  train_months: 36
+  test_months: 12
+  step_months: 12
+pre_registration:
+  construction: "Short front VX in contango (vx2>vx1), flat on backwardation (kill-switch); prior-day signal; return stream gated by walk-forward PSR/DSR/PBO."
+  expected_sign: "short"
+  hypothesis: "The VIX futures roll-down (volatility risk premium) is positive net of the backwardation kill-switch; catastrophic left tail is contained by going flat on inversion."
