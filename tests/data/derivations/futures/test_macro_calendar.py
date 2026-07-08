@@ -57,7 +57,7 @@ def test_dates_returned_sorted(tmp_path: Path):
 
 
 def test_all_event_types_valid():
-    assert set(VALID_EVENT_TYPES) == {"fomc", "nfp", "cpi"}
+    assert set(VALID_EVENT_TYPES) == {"fomc", "nfp", "cpi", "eia"}
 
 
 # Integration tests against the committed real YAML files

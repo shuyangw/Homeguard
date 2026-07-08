@@ -23,7 +23,7 @@ from pathlib import Path
 
 import yaml
 
-VALID_EVENT_TYPES = ("fomc", "nfp", "cpi")
+VALID_EVENT_TYPES = ("fomc", "nfp", "cpi", "eia")
 _DEFAULT_CALENDAR_DIR = Path(__file__).resolve().parents[4] / "config" / "macro_calendar"
 
 
