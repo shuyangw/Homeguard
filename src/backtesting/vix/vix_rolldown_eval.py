@@ -23,13 +23,22 @@ def rolldown_returns(curve: pd.DataFrame) -> pd.Series:
     """Daily return of a short-VX1 roll-down sleeve with a backwardation kill-switch.
 
     Position (prior-day, causal): short (-1) when vx2 > vx1 (contango), else flat.
-    Daily P&L of a short VX1 = -(vx1_t / vx1_{t-1} - 1)."""
+    Daily P&L of a short VX1 = -(vx1_t / vx1_{t-1} - 1).
+
+    Roll days are excluded: vx1_settle is a continuous nearest-unexpired front, so at
+    each monthly expiry the series switches to a further-out contract and JUMPS. A real
+    rolled position never realizes that jump (it rolls at market, no P&L gap), so the
+    pct_change on a roll day is a spurious return -- zeroed here. Roll days are detected
+    by the front-contract switch (vx1_dte snaps from ~1 back up to ~30, i.e. diff > 0)."""
     c = curve.copy()
     c["date"] = pd.to_datetime(c["date"])
     c = c.sort_values("date").set_index("date")
     contango = (c["vx2_settle"] > c["vx1_settle"]).astype(float)
     position = (-1.0 * contango).shift(1)  # prior-day signal -> today's position (causal)
     vx1_ret = c["vx1_settle"].pct_change(fill_method=None)
+    if "vx1_dte" in c.columns:
+        roll_day = c["vx1_dte"].diff() > 0
+        vx1_ret = vx1_ret.mask(roll_day, 0.0)
     return (position * vx1_ret).rename("rolldown_return")
 
 
