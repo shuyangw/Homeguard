@@ -88,7 +88,7 @@ def _run_window(universe: Sequence[str], train_start: date, test_end: date,
             "idm_cap": idm_cap,
         },
     }
-    return run_futures_backtest(config, register=register)
+    return run_futures_backtest(config, register=register, validate_prereg=False)
 
 
 def process_window(spec: Dict[str, Any]) -> Optional[Dict[str, Any]]:

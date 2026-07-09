@@ -43,7 +43,8 @@ def _as_date(value: Any) -> date:
 
 
 def run_futures_backtest(config: Dict[str, Any], register: bool = True,
-                         log_trades: bool = False) -> Dict[str, Any]:
+                         log_trades: bool = False,
+                         validate_prereg: bool = True) -> Dict[str, Any]:
     """Run a config-driven Carver TSMOM futures backtest end-to-end.
 
     Returns a dict with `n_days`, `metrics` (StandardReportGenerator's
@@ -56,7 +57,12 @@ def run_futures_backtest(config: Dict[str, Any], register: bool = True,
     dates_cfg = config.get("dates", {})
     backtest_cfg = config.get("backtest", {})
 
-    validate_pre_registration(config)
+    # The pre-registration gate is for user-facing config-file runs. Internal
+    # machinery that builds configs programmatically per-window (the walk-forward
+    # runner) passes validate_prereg=False -- the trial is pre-registered once at
+    # the strategy level, not per window.
+    if validate_prereg:
+        validate_pre_registration(config)
 
     universe = list(strategy_cfg["universe"])
     start = _as_date(dates_cfg["start"])
