@@ -25,5 +25,18 @@ def test_front_next_golden_date_cl():
     df = front_next_history("CL", date(2022, 2, 14), date(2022, 2, 16))
     row = df[df["date"] == pd.Timestamp(2022, 2, 15)]
     assert not row.empty
-    assert row.iloc[0]["front_symbol"].startswith("CL")
+    assert row.iloc[0]["front_symbol"] == "CLH2"
     assert row.iloc[0]["months"] == 1  # front to next listed month
+
+
+def test_front_next_wider_window_returns_full_range():
+    cache_fp = front_next_dir() / "CL.parquet"
+    if cache_fp.exists():
+        cache_fp.unlink()
+
+    narrow = front_next_history("CL", date(2022, 1, 1), date(2022, 2, 28))
+    assert not narrow.empty
+
+    wide = front_next_history("CL", date(2022, 1, 1), date(2022, 6, 30))
+    assert wide["date"].max() >= pd.Timestamp(2022, 6, 1)
+    assert len(wide) > len(narrow)
