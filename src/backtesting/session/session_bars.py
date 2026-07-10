@@ -45,6 +45,18 @@ def extract_from_minute_frame(mf: pd.DataFrame, times_et: dict[str, time]) -> pd
     return out
 
 
+def drop_all_nan_dates(df: pd.DataFrame) -> pd.DataFrame:
+    """Drop dates where EVERY session-time close is NaN.
+
+    ES/NQ Globex opens Sunday 18:00 ET, so a Sunday ET date carries bars only
+    after 18:00 -- all five SESSION_TIMES (02:00-16:00 ET) precede the open and
+    the whole row is NaN. Keeping these all-NaN rows would inject phantom
+    "trading days" into the date index, so a strategy's next-index lookup maps
+    Friday -> Sunday (not Monday) and skips the Friday-close -> Monday-open
+    weekend overnight. Rows with at least one non-NaN close are kept."""
+    return df.dropna(how="all")
+
+
 def extract_session_bars(root: str, start=None, end=None) -> pd.DataFrame:
     df = ContinuousContractDataLoader().load(root, method="ratio_adjusted", start=start, end=end)
     if df.is_empty():
@@ -53,6 +65,7 @@ def extract_session_bars(root: str, start=None, end=None) -> pd.DataFrame:
     mf["timestamp"] = pd.to_datetime(mf["timestamp"], utc=True)
     mf = mf.set_index("timestamp").sort_index()
     out = extract_from_minute_frame(mf, SESSION_TIMES)
+    out = drop_all_nan_dates(out)
     del mf, df  # free the large minute frame
     return out
 

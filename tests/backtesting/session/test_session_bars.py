@@ -1,7 +1,8 @@
 from datetime import date, time
 import pandas as pd
 import numpy as np
-from src.backtesting.session.session_bars import extract_from_minute_frame, SESSION_TIMES
+from src.backtesting.session.session_bars import (
+    extract_from_minute_frame, drop_all_nan_dates, SESSION_TIMES)
 
 
 def _minute_frame(rows):
@@ -28,3 +29,17 @@ def test_missing_time_is_nan():
 
 def test_session_times_cover_the_five_boundaries():
     assert set(SESSION_TIMES) == {"et_0200", "et_0500", "et_0930", "et_1400", "et_1600"}
+
+
+def test_drop_all_nan_dates_removes_only_all_nan_rows():
+    # A normal (weekday) row with some closes and an all-NaN (Sunday) row.
+    cols = list(SESSION_TIMES)
+    normal = {c: 100.0 + i for i, c in enumerate(cols)}
+    sunday = {c: np.nan for c in cols}
+    frame = pd.DataFrame(
+        [normal, sunday],
+        index=pd.Index([date(2015, 6, 5), date(2015, 6, 7)], name="date"),
+    )
+    out = drop_all_nan_dates(frame)
+    assert list(out.index) == [date(2015, 6, 5)]  # only the all-NaN Sunday dropped
+    assert out.loc[date(2015, 6, 5), cols[0]] == 100.0
