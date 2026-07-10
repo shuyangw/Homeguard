@@ -58,3 +58,8 @@ def roll_volume_dir() -> Path:
 def session_bars_dir() -> Path:
     """Cached per-root session-boundary closes for the intraday session engine."""
     return _futures_root() / "session_bars"
+
+
+def front_next_dir() -> Path:
+    """Cached per-root front/next daily settle series (#31 calendar spread)."""
+    return _futures_root() / "front_next"
