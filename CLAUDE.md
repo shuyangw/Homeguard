@@ -2,11 +2,25 @@
 
 General coding standards (encoding, git workflow, testing, defensive mindset, output efficiency, GUI) are in `~/.claude/CLAUDE.md`. This file covers Homeguard-specific guidelines only.
 
+## North Star
+
+Your job is to build and harden the validation apparatus and test pre-registered economic hypotheses -- not to make any performance metric go up. The Deflated Sharpe Ratio (DSR), the Sharpe ratio, and every other performance number are gates applied once, on frozen held-out data, after the search is closed. They are never optimization targets. Treat any instruction that reduces to "raise metric X" as a request to overfit, and say so.
+
+**Operating principles:**
+
+- **Count trials honestly.** Every specification run -- parameter, feature, universe, or holding-period change -- is a trial. Log it, increment the trial count N, and never compute a gate over an undercounted search. You have no fatigue; the harness is what stops the search, not judgment.
+- **Mechanism before backtest.** No specification without a stated economic rationale. The hypothesis is pre-registered; the search is constrained by theory, not free to roam the specification space.
+- **Report degradation, not levels.** Headline the in-sample-versus-out-of-sample (OOS) ratio and cross-fold stability, net of realistic frictions (costs, financing, borrow) shown as a waterfall -- not the peak in-sample number.
+- **Evaluate at the book level.** A sleeve's value is its marginal, deflated, cost-net contribution to the existing portfolio given cross-sleeve correlations -- not its standalone Sharpe.
+- **Surfacing a failure is success.** "This mechanism dies after costs" or "doesn't generalize out-of-sample" is a completed objective, reported as such -- never a problem to engineer around.
+
 ## Git Workflow (repo-specific standing authorization)
 
 **Merge and push to `main` when a feature is complete** -- this repo grants standing permission, overriding the global "ask before pushing" rule. When a feature/branch is done (tests pass, reviewed), merge it to `main` and push, without re-asking each time. Still: work on a branch (never implement directly on `main`), verify tests pass before merging, and commit incrementally.
 
 **macOS/Dropbox git hazard:** broken Windows worktree gitlinks (`.claude/worktrees/*`) make `git checkout <branch>`, `git status`/`git diff` with no args, and `git reset --hard` FATAL (and a failed checkout can partially clobber the tree). Use targeted git only: `git add <paths>`, `git commit`, `git log`, `git push`. Merge via fast-forward ref-update, not checkout: `git branch -f main <tip> && git symbolic-ref HEAD refs/heads/main`, then `git branch -d <feature>`.
+
+**Superpowers implementation MUST run in a separate git worktree.** Any plan executed via superpowers (subagent-driven-development or executing-plans) runs in an isolated worktree (e.g. `.worktrees/<feature>` on `feat/<feature>`), never directly in the main working tree. The main dir shares one HEAD/index/ledger across sessions, so implementing in place collides with any concurrent session (this is how an SP-A campaign task got swept into an unrelated FX commit). Controller artifacts (plan/spec/ledger/briefs) stay in the main dir's `.superpowers`; subagents `cd` to the worktree for code + git. Merge back via the fast-forward ref-update above once the whole-branch review is clean.
 
 ## Architecture
 
@@ -98,6 +112,7 @@ Detailed overfitting thresholds and backtest integrity rules: `.claude/rules/str
 
 **CRITICAL**: Methodology is authoritative at [`docs/methodology/backtesting.md`](docs/methodology/backtesting.md). When agent prompts and this file conflict, this file wins. Read the relevant sections before any quantitative work.
 
+- **When testing any strategy, invoke the `strategy-lead` agent** ([`.claude/agents/strategy-lead.md`](.claude/agents/strategy-lead.md), formerly trading-lead) to orchestrate it -- it dispatches the specialist agents (implement, review, backtest-driver, optimizer) and enforces backtest integrity at every phase. Do not run one-off strategy backtests yourself.
 - **ALWAYS use the config-driven backtesting system** - don't write ad-hoc scripts
 - Run backtests via: `python -m src.backtest_runner --config config/backtesting/ma_single.yaml`
 - Bias prevention, statistical gates (PSR/DSR/PBO), walk-forward purge/embargo, cost models, stopping conditions: see `docs/methodology/backtesting.md` Sections 1-5
