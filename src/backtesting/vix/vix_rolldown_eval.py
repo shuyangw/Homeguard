@@ -11,10 +11,7 @@ from typing import Any, Dict
 
 import pandas as pd
 
-from src.backtesting.walkforward_common import (
-    TRIAL_COUNT_PARAMETER_FREE, _annualized_sharpe, _compute_pbo,
-    gate_return_stream,
-)
+from src.backtesting.walkforward_common import gate_return_stream
 
 
 def rolldown_returns(curve: pd.DataFrame) -> pd.Series:
