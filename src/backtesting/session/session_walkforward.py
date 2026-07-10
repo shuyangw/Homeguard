@@ -27,7 +27,9 @@ def aggregate_returns(per_root: Dict[str, pd.Series]) -> pd.Series:
         vol = float(s.std(ddof=1))
         aligned = s.reindex(idx).fillna(0.0)
         norm.append(aligned / vol if vol > 0 else aligned * 0.0)
-    return sum(norm) / float(len(norm))
+    result = sum(norm) / float(len(norm))
+    result.index = pd.DatetimeIndex(result.index)
+    return result
 
 
 def _oos_windows(returns: pd.Series, train_months: int, test_months: int,
