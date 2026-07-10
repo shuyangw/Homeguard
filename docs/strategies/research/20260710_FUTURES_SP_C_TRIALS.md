@@ -5,8 +5,10 @@ segment/pair x weighting x sign is a pre-registered trial; verdicts below are th
 REAL walk-forward gate output (train 36m / test 12m / step 12m), recorded verbatim.
 
 **Gate (methodology Section 2.5):** PASS requires PSR >= 0.95 AND DSR >= 0.95 AND
-PBO < 0.25 AND survives the 1.5x cost sensitivity. **Benchmark:** carry_idm OOS
-Sharpe 0.765 (the incumbent best deployable futures book).
+PBO < 0.25. The return-stream path used here bakes realistic per-turnover cost
+directly into the stream (it does not compute a separate 1.5x-cost OOS Sharpe
+sub-gate); no trial reaches the cost question, since none clears PBO first.
+**Benchmark:** carry_idm OOS Sharpe 0.765 (the incumbent best deployable futures book).
 
 **Bottom line: NOTHING in Family E beats carry_idm, and nothing passes the gate.**
 Every trial is ungradeable, a reject, or (for #33 crush) PBO-clean but with a

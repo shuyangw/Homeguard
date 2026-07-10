@@ -1,6 +1,4 @@
 from datetime import date
-import numpy as np
-import pandas as pd
 from src.strategies.advanced.spread_intermarket_strategy import (
     PAIRS, intermarket_spread, intermarket_return_stream)
 
