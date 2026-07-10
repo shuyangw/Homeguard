@@ -30,7 +30,15 @@ def calendar_signal(root: str, start: date, end: date) -> tuple[pd.Series, pd.Se
     valid = hist["f1"].dropna()
     scale = abs(float(valid.iloc[0])) if not valid.empty else 1.0
     scale = scale if scale > 1e-9 else 1.0
+    # roll days swap the F1/F2 contract identities, which jumps `level` by a
+    # contract-swap amount that is not realized market P&L -- mask those diffs
+    # (mirrors src/backtesting/vix/vix_rolldown_eval.py::rolldown_returns).
+    roll_day = (hist["front_symbol"] != hist["front_symbol"].shift(1)) | \
+               (hist["second_symbol"] != hist["second_symbol"].shift(1))
+    if len(roll_day) > 0:
+        roll_day.iloc[0] = True
     unit_return = (level.diff() / scale).rename("return")
+    unit_return = unit_return.mask(roll_day, 0.0)
     return level, unit_return
 
 
