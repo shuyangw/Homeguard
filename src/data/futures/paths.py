@@ -53,3 +53,8 @@ def daily_raw_dir() -> Path:
 def roll_volume_dir() -> Path:
     """Cached per-(root, year) daily symbol-volume artifacts (roll detection)."""
     return _futures_root() / "roll_volume"
+
+
+def session_bars_dir() -> Path:
+    """Cached per-root session-boundary closes for the intraday session engine."""
+    return _futures_root() / "session_bars"
