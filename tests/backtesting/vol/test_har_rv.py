@@ -11,9 +11,20 @@ def test_har_forecast_causal_and_shaped():
     # first min_train entries are NaN (no forecast yet)
     assert fc.iloc[:252].isna().all()
     assert fc.iloc[252:].notna().any()
-    # a forecast at t must not use rv at t+1 (causality): forecasting a shifted-up
-    # series should not perfectly anticipate the jump
     assert fc.index.equals(rv.index)
+
+
+def test_har_forecast_does_not_leak_future_spike():
+    # flat series with a single, unforecastable spike planted at index k. A causal
+    # model fit only on strictly-prior data cannot know the spike is coming, so the
+    # forecast made for index k (i.e. fc.iloc[k], produced using data up to k-1)
+    # must stay close to the flat baseline, not jump up to anticipate it.
+    idx = pd.date_range("2015-01-01", periods=400, freq="B")
+    rv = pd.Series(1e-4, index=idx)
+    k = 350
+    rv.iloc[k] = 1.0  # huge, isolated spike unrelated to prior history
+    fc = har_forecast(rv, min_train=252)
+    assert fc.iloc[k] < 1e-2, "forecast for the spike day must not anticipate the future spike"
 
 
 def test_har_forecast_positive():
