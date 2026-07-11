@@ -250,11 +250,15 @@ Strategy skill: `.claude/skills/implement-strategy/`
 
 Shell scripts: `source infra/ec2/load_env.sh`. Batch scripts: `call infra\ec2\load_env.bat`.
 
-## Session Work Logs
+## Session Work Logs (MANDATORY -- write to disk, do not just summarize in chat)
 
-After completing a significant implementation session (new features, infra changes, migrations, multi-step fixes), write a timestamped summary to `docs/progress/YYYYMMDD_<TOPIC>.md`.
+**This is a hard requirement, not a suggestion.** A session that produced commits is NOT done until a timestamped summary exists ON DISK. Summarizing progress in the conversation does NOT satisfy this -- the deliverable is a committed file. Write it PROACTIVELY at the close of the work, without being asked. The trigger is concrete: the moment you are reporting results and reaching for a wrap-up, STOP and write the file first, then report.
 
-**When to write:** At the end of a session that produced commits -- not for pure research/discussion sessions.
+**When to write:** at the end of any commit-producing session (new features, infra changes, migrations, multi-step fixes, and EVERY strategy backtest/campaign that produces a verdict). Skip only for pure research/discussion sessions with no commits.
+
+**Two docs, both persisted to disk (one does not replace the other):**
+1. **Results doc** -- for any strategy test/campaign: the verdict + metrics. `docs/reports/<strategy>/` (or `docs/reports/futures/portfolio_summary.md`) PLUS a durable tracked copy under `docs/strategies/research/`. strategy-lead / the specialists own this at close-out.
+2. **Session log** -- the orchestrator-level narrative + decisions at `docs/progress/YYYYMMDD_<TOPIC>.md` (format below). This is the MAIN-LOOP's own job, owed EVEN WHEN subagents already wrote the results doc. A subagent's results summary is NOT the session log -- do not treat it as satisfying this requirement (this is exactly what was missed on 2026-07-11).
 
 **Format:**
 ```markdown
