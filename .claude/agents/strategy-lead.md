@@ -357,16 +357,15 @@ The strategy spec declares its required data frequency. Mismatches between strat
 ### Phase 6: Validate results
 **Orchestrator does this — no subagent.** You need the full picture.
 
-Read the backtest report and check:
-- [ ] Sharpe < 3.0? (if not: REJECT)
-- [ ] CAGR < 20%? (if not: INVESTIGATE)
-- [ ] Max DD > 5%? (if not: SUSPICIOUS for volatile assets)
-- [ ] Trades > 30? (if not: INSUFFICIENT)
-- [ ] Regime robust? (check >70% single-regime returns)
-- [ ] Transaction costs included?
-- [ ] Slippage modeled?
-- [ ] No lookahead bias confirmed?
-- [ ] Data frequency matches strategy logic?
+Read the backtest report and apply the combined statistical gate (methodology Section 2.5) plus
+the integrity checks -- NOT the retired magic-number heuristics (Sharpe<3.0 etc. are gone):
+- [ ] Combined gate: PSR(0) > 0.95 AND DSR > 0.95 (project-wide GROWING trial count, Section 9.4)
+      AND PBO < 0.25 AND 1.5x-cost gate. This is the binding viability test.
+- [ ] Trade count >= 30 OOS; OOS/IS Sharpe ratio >= 0.7.
+- [ ] Section 12 operational gates (capacity, regime-transition robustness, IR, parameter
+      stability) where the path produces them; Section 11 exit gates for exit-bearing strategies.
+- [ ] Regime robust (flag if >70% of returns from a single regime).
+- [ ] Transaction costs + slippage modeled; no lookahead; data frequency matches strategy logic.
 
 **Decision:**
 - Results clearly not viable → `[-]` skip, record reason, move to next strategy
@@ -412,16 +411,34 @@ with Section 11.6 backing)".
 - Update TODO.md with the round number and the chosen improvement.
 
 **Guardrails (NON-NEGOTIABLE -- this loop is a researcher-degrees-of-freedom risk):**
-1. **Bounded: max 2 improvement rounds per strategy.** After 2 rounds that still do not clear
-   Phase 6/8, mark `[-]` NOT VIABLE -- the edge is not structurally there.
-2. **Every improvement round increments the project-wide trial count** feeding DSR (Section 9.4,
-   `output/experiments.duckdb`). Design iteration informed by seeing the results inflates the
-   effective trial count exactly like a parameter sweep does; the DSR that gates viability MUST
-   be penalized for it, or this loop silently manufactures false edges.
-3. **Each improvement is a pre-committed, falsifiable hypothesis** -- written to the round doc
+1. **Bounded: max 15 specification iterations per strategy** (structural Phase 6.5 rounds +
+   Phase 7 optimizer rounds, combined). Do NOT give up after a single failing pass -- a
+   marginal-but-real strategy earns iterations up to this budget. After 15 that still do not clear
+   Phase 6/8, mark `[-]` NOT VIABLE -- the edge is not there.
+   **Exception (does NOT consume the budget, unlimited):** fixing a BUG or MIS-SPECIFICATION in
+   the apparatus -- a mis-sampled rebalance (cf. #16 weekly-hardcode), a lookahead leak, a data
+   error, a roll-jump contamination -- and re-running the SAME pre-registered spec is an
+   apparatus correction, NOT a search. The 15-budget is only for genuine SPECIFICATION variations
+   (new feature, overlay, universe, or parameter set), each of which IS a trial.
+2. **Every specification iteration increments the project-wide trial count** feeding DSR (Section
+   9.4, `output/experiments.duckdb`) -- this is the LOAD-BEARING protection that makes a 15-trial
+   budget safe rather than a false-edge machine. Design iteration informed by seeing the results
+   inflates the effective trial count exactly like a parameter sweep does; the DSR that gates
+   viability MUST be penalized for it. **State this consequence to the user when iterating:** the
+   trial count is shared and GROWING, so SR_zero rises with every iteration anyone spends -- the
+   15th variation must clear a strictly HIGHER DSR bar than the 1st. A weak strategy cannot be
+   iterated into passing; only a genuinely strong edge survives its own search cost. That is the
+   feature, not a limitation. (This enforcement is real only post-Gate-0, which sources a growing
+   N from the registry; if the registry is not being appended, STOP -- the tax is not biting.)
+3. **Each iteration is a pre-committed, falsifiable hypothesis** -- written to the round doc
    BEFORE the re-backtest, never a post-hoc rationalization of whatever the next run shows.
 4. **Re-entry re-runs ALL integrity gates** (Section 2) and Phase 6 validation from scratch. An
-   improvement gets no pass on lookahead / cost / regime checks.
+   iteration gets no pass on lookahead / cost / regime checks.
+5. **Early stop within the budget (diminishing returns / no-reach):** stop before 15 and mark
+   NOT VIABLE if either (a) two consecutive iterations each improve DSR-adjusted Sharpe by < 5%,
+   or (b) the rising shared trial count has pushed SR_zero above the strategy's best achieved OOS
+   Sharpe (no remaining variation could plausibly clear the bar). Do NOT spend the full budget on
+   a decisively-dead signal (DSR ~0, negative Sharpe) -- reserve it for genuinely marginal ones.
 
 ### Phase 7: Parameter optimization
 **Agent: backtest-optimizer** (self-writing)
@@ -456,13 +473,15 @@ with Section 11.6 backing)".
 - Read validation report
 - Check: does 1.5x cost Sharpe stay above 0.5? Parameters stable at +/-10%? Regime robust?
 - Record final verdict in TODO.md with full reasoning
-- Verdict options: VIABLE (proceed to live paper trading) / MARGINAL (-> Phase 6.5 for a structural improvement round, if any of the 2 rounds remain; else NOT VIABLE) / NOT VIABLE (archive)
+- Verdict options: VIABLE (proceed to live paper trading) / MARGINAL (-> Phase 6.5 for a structural improvement round, if any of the 15-iteration budget remains; else NOT VIABLE) / NOT VIABLE (archive)
 - Update TODO.md: `[x]` Final validation
 - Move to next strategy
 
 ## Optimization loop control
 If optimizer recommends further iteration:
-- Maximum 3 optimization rounds per strategy
+- Optimizer rounds count against the strategy's 15-iteration budget (Phase 6.5 guardrail 1) and
+  each increments the project-wide DSR trial count; cap a single Phase 7 dispatch at 3 rounds
+  before returning to the orchestrator to re-validate and re-decide
 - Stop if DSR-adjusted Sharpe < 0.5 (not distinguishable from luck)
 - Stop if IS vs OOS gap > 30% (strong overfitting)
 - Stop if last round showed <5% improvement over previous
