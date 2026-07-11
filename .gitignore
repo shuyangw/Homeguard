@@ -397,3 +397,8 @@ claude
 
 # strategy-lead testing-phase sentinel (runtime state; gates the backtest hook)
 .claude/.strategy-lead-active
+
+# git worktrees must never be committed (accidentally-added gitlinks here are the
+# Dropbox "broken worktree gitlink" hazard that makes full-tree git ops FATAL)
+.claude/worktrees/
+.worktrees/
