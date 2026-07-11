@@ -23,6 +23,7 @@ from __future__ import annotations
 import json
 import os
 import threading
+import time
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -62,7 +63,24 @@ class RunStatus:
             data.update(extra)
         tmp = self.path.with_suffix(".tmp")
         tmp.write_text(json.dumps(data, indent=2), encoding="utf-8")
-        tmp.replace(self.path)  # atomic swap so a reader never sees a partial file
+        # `output/` can live inside a Dropbox-synced folder; Dropbox's indexer
+        # periodically opens a just-written file for read, which collides with
+        # the atomic rename below (WinError 5 / PermissionError). Retry
+        # briefly rather than letting a transient lock abort an otherwise
+        # successful run or heartbeat -- mirrors the identical pattern already
+        # used for the same failure mode in
+        # src/experiments/registry.py::_connect_with_retry.
+        last_exc: Optional[BaseException] = None
+        for attempt in range(5):
+            try:
+                tmp.replace(self.path)  # atomic swap so a reader never sees a partial file
+                return
+            except (OSError, PermissionError) as exc:
+                last_exc = exc
+                if attempt == 4:
+                    raise
+                time.sleep(0.2 * (2 ** attempt))
+        raise RuntimeError(f"unreachable: run_status write retries exhausted (last={last_exc})")
 
     def heartbeat(self, note: str = "") -> None:
         if note:
