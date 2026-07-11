@@ -394,3 +394,6 @@ tmpclaude-*
 *.exe
 claude
 
+
+# strategy-lead testing-phase sentinel (runtime state; gates the backtest hook)
+.claude/.strategy-lead-active

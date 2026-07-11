@@ -2,6 +2,10 @@
 
 These rules load alongside CLAUDE.md at session start. They apply to the orchestrator. Subagents do NOT read this file — the orchestrator must include relevant rules in every dispatch prompt.
 
+## Strategy testing goes through strategy-lead — even under superpowers
+
+Superpowers (brainstorming / writing-plans / subagent-driven-development) governs BUILDING (engines, wrappers, data plumbing). It does NOT exempt strategy TESTING from `strategy-lead`. Any phase that runs a backtest / walk-forward / statistical gate (PSR/DSR/PBO) / smoke producing a strategy VERDICT must be delegated to `strategy-lead`, which owns the integrity gates and the backtest sentinel. When a superpowers plan contains a verdict/gate/smoke phase, split it: build tasks run via subagent-driven-development; verdict phases go to `strategy-lead`. This is hard-enforced by the `PreToolUse` hook `.claude/hooks/strategy_lead_gate.py` (registered in `.claude/settings.json`): backtest/gate/smoke commands are DENIED unless `strategy-lead` has created the `.claude/.strategy-lead-active` sentinel. A blocked backtest is the guard, not a bug — route through `strategy-lead`.
+
 ## Session recovery protocol
 
 1. On EVERY session start (fresh or resumed), read TODO.md FIRST
