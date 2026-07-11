@@ -18,7 +18,7 @@ from scipy.stats import norm
 
 from src.settings import get_local_storage_dir
 from src.data.rates.fred_reader import get_fred_series
-from src.backtesting.data.futures_backtest_loader import load_daily_panel
+from src.data.continuous_contract_loader import ContinuousContractDataLoader
 from src.backtesting.vol.option_symbol import parse_option_symbol
 from src.utils.logger import get_logger
 
@@ -102,9 +102,21 @@ def _atm_iv_for_day(d: date, root: str, F: float, r: float, day_rows: list[dict]
 
 
 def atm_iv_series(root: str, start: date, end: date, target_dte: int = 30) -> pd.Series:
-    """Date-indexed daily ATM implied vol for `root` over [start, end]."""
-    panel = load_daily_panel([root], start, end)
-    underlying = panel.xs("close", axis=1, level=1)[root]
+    """Date-indexed daily ATM implied vol for `root` over [start, end].
+
+    The Black-76 underlying F is sourced from the RAW (unadjusted) front-future
+    daily close, not the ratio-adjusted continuous close. Option strikes/prices
+    are quoted against the real futures level that day; the ratio-adjustment
+    back-splices historical price levels for pct_change continuity and is off
+    by up to ~7% (2020 ES) versus the real level, which corrupts near-ATM
+    strike selection, the intrinsic bound, and the resulting IV.
+    """
+    raw_daily = ContinuousContractDataLoader().aggregate_to_daily(
+        root, method="raw", start=start, end=end,
+    )
+    raw_pd = raw_daily.to_pandas()
+    raw_pd["d"] = pd.to_datetime(raw_pd["timestamp"]).dt.date
+    underlying = raw_pd.set_index("d")["close"]
 
     out: dict[pd.Timestamp, float] = {}
     months = pd.period_range(start, end, freq="M")
