@@ -33,8 +33,13 @@ Two defects made the "deflated" Sharpe ratio inert; both are now fixed
    rows. Raised the drop threshold to 2*s so a short trailing window is excluded, not
    NaN-ing the whole statistic.
 
-This is a SHARED-gate change (all sleeves now deflate) but only lowers DSR, so no
-prior PASS flips.
+Scope: the trial-Sharpe distribution is threaded into the `gate_return_stream` path
+only -- the one used by #26, #28, and the SP-C spread book. The other four gate paths
+(`run_carver_walkforward`, `run_fx_walkforward`, `session_walkforward`,
+`satellite_blend`) got the count relabeled to 40 but still pass a single-element
+trial-Sharpe list, so their SR_zero stays 0 and their DSR does NOT yet deflate
+(a documented follow-up; the spec scoped re-deflation to carry/#26/#28). Where the
+change does apply it only LOWERS DSR, so no prior PASS can flip.
 
 ## Verdicts (deflated)
 
