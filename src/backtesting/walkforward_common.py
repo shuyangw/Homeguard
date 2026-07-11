@@ -79,6 +79,50 @@ CAMPAIGN_TRIAL_SHARPES: List[float] = [
     0.269,           # #34 GC/SI ratio
 ]
 
+def get_campaign_trial_distribution(db_path: Any = None) -> tuple[int, List[float]]:
+    """Growing project-wide DSR trial-Sharpe distribution (Gate 0.2, methodology
+    Section 9.4).
+
+    Starts from the static, documented `CAMPAIGN_TRIAL_SHARPES` baseline (the
+    40 pre-registered trials of the SP-A/B/C/E campaign, fixed before
+    `output/experiments.duckdb` existed) and appends one Sharpe per run
+    subsequently logged to the registry with a numeric `oos_sharpe` metric.
+    Every registry-logged run postdates the static baseline by construction,
+    so this is strictly additive -- it never re-counts a trial already baked
+    into the 40. As this retest (and any future work) appends runs via
+    `src.experiments.registry.append_run`, N grows and SR_zero rises with it
+    -- the intended honest, growing-search behavior (never shrinking N to
+    make a gate easier).
+
+    Falls back to the static baseline alone -- never raises -- if the
+    registry file is missing, empty, or briefly lock-contended (e.g. a fresh
+    worktree checkout where `output/` is gitignored and not yet created).
+    """
+    try:
+        from src.experiments.registry import DEFAULT_DB_PATH, _connect_with_retry, init_db
+        import json as _json
+
+        path = db_path or DEFAULT_DB_PATH
+        init_db(path)
+        con = _connect_with_retry(path, read_only=True)
+        try:
+            rows = con.execute("SELECT metrics FROM runs WHERE metrics IS NOT NULL").fetchall()
+        finally:
+            con.close()
+        extra: List[float] = []
+        for (metrics_json,) in rows:
+            try:
+                m = _json.loads(metrics_json)
+            except (TypeError, ValueError):
+                continue
+            val = m.get("oos_sharpe")
+            if isinstance(val, (int, float)) and not (isinstance(val, float) and np.isnan(val)):
+                extra.append(float(val))
+        return CAMPAIGN_CUMULATIVE_TRIALS + len(extra), list(CAMPAIGN_TRIAL_SHARPES) + extra
+    except Exception:
+        return CAMPAIGN_CUMULATIVE_TRIALS, list(CAMPAIGN_TRIAL_SHARPES)
+
+
 _TRADING_DAYS_PER_YEAR = 252
 
 
@@ -230,10 +274,12 @@ def gate_return_stream(returns: pd.Series, train_months: int = 36,
     s = pd.Series(stitched)
     skew = float(s.skew()) if n > 2 else 0.0
     kurt = float(s.kurtosis()) + 3.0 if n > 3 else 3.0
+    n_trials, trial_sharpes = get_campaign_trial_distribution()
     return {
         "oos_sharpe": sharpe, "n_oos": n, "n_windows": len(oos),
         "psr": psr(sharpe, 0.0, n, skew, kurt) if n else float("nan"),
-        "dsr": dsr(sharpe, CAMPAIGN_TRIAL_SHARPES, n, skew, kurt, n_trials_project=CAMPAIGN_CUMULATIVE_TRIALS) if n else float("nan"),
+        "dsr": dsr(sharpe, trial_sharpes, n, skew, kurt, n_trials_project=n_trials) if n else float("nan"),
         "pbo": _compute_pbo(per_window) if len(per_window) > 1 else float("nan"),
         "skew": skew, "kurtosis": kurt,
+        "trial_count": n_trials,
     }

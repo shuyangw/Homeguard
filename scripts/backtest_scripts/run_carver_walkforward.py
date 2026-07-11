@@ -30,7 +30,6 @@ from src.backtesting.engine.futures_backtest import run_futures_backtest
 from src.backtesting.statistics.dsr import dsr
 from src.backtesting.statistics.psr import psr
 from src.backtesting.walkforward_common import (
-    CAMPAIGN_CUMULATIVE_TRIALS,
     _annualized_sharpe,
     _as_date,
     _build_windows,
@@ -38,6 +37,7 @@ from src.backtesting.walkforward_common import (
     _oos_returns,
     _oos_returns_dated,
     _verdict,
+    get_campaign_trial_distribution,
 )
 from src.utils import logger
 
@@ -214,8 +214,15 @@ def walk_forward_carver(
     kurt = float(series.kurtosis()) + 3.0 if n > 3 else 3.0
 
     psr_val = psr(oos_sharpe, 0.0, n, skew, kurt)
-    dsr_val = dsr(oos_sharpe, [oos_sharpe], n, skew, kurt,
-                   n_trials_project=CAMPAIGN_CUMULATIVE_TRIALS)
+    # Gate 0.1/0.2: deflate against the real, growing project-wide
+    # trial-Sharpe distribution (mirrors gate_return_stream in
+    # walkforward_common.py), not a single-element list -- a 1-element
+    # distribution makes DSR reduce to undeflated PSR, which understates
+    # multiple-testing risk for a strategy sitting inside a 40+-trial
+    # (and growing) campaign search.
+    n_trials, trial_sharpes = get_campaign_trial_distribution()
+    dsr_val = dsr(oos_sharpe, trial_sharpes, n, skew, kurt,
+                   n_trials_project=n_trials)
     pbo_val = _compute_pbo(per_window_returns_1x)
 
     result: Dict[str, Any] = {
@@ -227,7 +234,7 @@ def walk_forward_carver(
         "n_windows": len(windows),
         "n_oos_days": n,
         "window_sharpes": window_sharpes,
-        "trial_count": CAMPAIGN_CUMULATIVE_TRIALS,
+        "trial_count": n_trials,
         "skew": skew,
         "kurtosis_pearson": kurt,
         "universe": universe,
@@ -261,7 +268,7 @@ def walk_forward_carver(
                 "universe": universe,
                 "vol_target_per_instrument": vol_target,
                 "initial_capital": capital,
-                "trial_count_project_wide": CAMPAIGN_CUMULATIVE_TRIALS,
+                "trial_count_project_wide": n_trials,
             },
             window_start=windows[0][1],
             window_end=windows[-1][2],
@@ -302,12 +309,18 @@ window's equity curve, and stitching those OOS segments into one
 concatenated OOS daily return series. The statistical gate
 (Sharpe / PSR / DSR / PBO) is computed on that stitched series.
 
-**Trial count = {result['trial_count']}.** This is a single parameter-free
-configuration with no selection over trials, so the project-wide trial count
-fed to DSR (`docs/methodology/backtesting.md` Section 2.3) is 1 for this run.
-With `n_trials=1`, `expected_max_sharpe` returns 0.0 (no deflation term), so
-DSR reduces to PSR against a benchmark Sharpe of 0 -- this is the correct,
-honest behavior for a non-selected, parameter-free strategy, not a bug.
+**Trial count = {result['trial_count']}.** {title} itself is a single
+parameter-free configuration with no in-run parameter search, but per Gate 0
+(the strategy-lead honest-deflation fix) DSR is deflated using the real
+PROJECT-WIDE trial-Sharpe distribution across the whole futures campaign
+(`docs/methodology/backtesting.md` Section 2.3 / 9.4) -- the static
+40-trial SP-A/B/C/E baseline plus every run subsequently logged to
+`output/experiments.duckdb`, sourced via
+`src.backtesting.walkforward_common.get_campaign_trial_distribution()`. This
+strategy did not select over trials itself, but it is evaluated inside a
+multiple-testing search that has now run 40+ trials project-wide, and DSR
+must be deflated for that search, not treated as if this were the only
+trial ever run.
 
 Requested universe ({len(result['universe'])} roots): {result['universe']}.
 Initial capital: ${result['capital']:,.0f}. Vol target per instrument:
