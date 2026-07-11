@@ -160,47 +160,79 @@ Command shape (under sentinel, RunStatus-wrapped):
 
 ### Tier 2 -- Path 2: return-stream sleeves (run_* via G0.3 drivers; gates deflated)
 
-- [ ] **#26/#27 VIX roll-down** -- `run_vix_rolldown` (`vix/vix_rolldown_eval.py`), gate_return_stream (deflated).
-  Already FAIL (DSR 8.9e-06, PBO 0.613, max DD -81.1%). Re-run for the durable record + attach the subperiod/skew tail audit.
-  - [ ] Phase 5 (driver sp_retest_vix) / [ ] Phase 6 / [ ] Phase 8
-- [ ] **#28 VRP short-VX1** -- `run_vrp` (`vol/vrp_strategy.py`), gate_return_stream (deflated).
-  Already FAIL + re-expression of #26 (corr 0.479, marginal Sharpe 0.015). Re-run; attach re-expression stats.
-  - [ ] Phase 5 / [ ] Phase 6 / [ ] Phase 8
-- [ ] **#21/#25 Overnight drift** -- `run_overnight_drift` (`overnight_drift_strategy.py`), gate_session_stream (NOW Gate-0-deflated).
-  Was WEAK (0.792/0.671, PBO 0.513). Re-gate under 0.733.
-  - [ ] Phase 5 / [ ] Phase 6 / [ ] Phase 8
-- [ ] **#21 Hour-slice** -- `run_hour_slice` (same file), gate_session_stream (deflated). Was REJECT (-0.023).
-  - [ ] Phase 5 / [ ] Phase 6
-- [ ] **#36 Intermarket (NQ/ES, RTY/ES)** -- `run_intermarket` (`spread_intermarket_strategy.py`), gate_return_stream (deflated).
-  Was NQ/ES FAIL (0.329) / RTY/ES REJECT (-0.280). **CAVEAT-FIX:** run the MANDATORY
-  book-correlation check vs the equity-momentum sleeve (never run) -- a high positive corr
-  means re-expression regardless of Sharpe.
-  - [ ] Phase 5 / [ ] Phase 6 (+ book-corr) / [ ] Phase 8
-- [ ] **#31 Calendar (CL/NG/ZC/ZS/ZW)** -- `run_calendar` (`spread_calendar_strategy.py`), gate_convergence (deflated).
-  REJECT all (roll-masked). **CAVEAT-FIX (optional):** NG REJECT provisional (PBO 0.320);
-  try RollCalendar-based F1/F2 instead of volume-rank to stop over-masking. Produce
-  Section 11 exit diagnostics (SpreadTrade exits: converge / time / structural).
-  - [ ] Phase 5 (+ Section 11 exit diag) / [ ] Phase 6 / [ ] NG RollCalendar caveat-fix / [ ] Phase 8
-- [ ] **#32 Crack (RB-CL, HO-CL)** -- `run_processing` (`spread_processing_strategy.py`), gate_convergence (deflated).
-  REJECT (negative). Section 11 exit diagnostics apply.
-  - [ ] Phase 5 (+ exit diag) / [ ] Phase 6
-- [ ] **#33 Crush (ZM+ZL-ZS)** -- `run_processing` (same), gate_convergence (deflated).
-  MARGINAL (PBO 0.109 clean, Sharpe 0.136 trivial) -- the ONLY candidate that might reach
-  Phase 6.5. Apply the improvement-design discipline (pre-committed hypotheses, trial-count cost).
-  - [ ] Phase 5 (+ exit diag) / [ ] Phase 6 / [ ] Phase 6.5 improve (<=2 rounds) / [ ] Phase 7 optimize / [ ] Phase 8
-- [ ] **#34 Ratio (GC/SI)** -- `run_ratio` (`spread_ratio_strategy.py`), gate_convergence (deflated).
-  REJECT (0.269, PBO 0.674; kurt 109 genuine GC/SI tails). Section 11 exit diagnostics apply.
-  - [ ] Phase 5 (+ exit diag) / [ ] Phase 6
+- [x] **#26/#27 VIX roll-down** -- `run_vix_rolldown` via `sp_retest_vix.py`, gate_return_stream (deflated).
+  Re-gated: oos_sharpe 0.5640, DSR ~0 (1.0e-06), PBO 0.6129, 1.5x cost leg not run by `run_vix_rolldown`
+  (NaN, honestly reported) -- fails the 1.5x cost gate on that basis alone too. VERDICT: WEAK/FAIL,
+  confirms prior finding under honest deflation. Subperiod/tail audit attached to the report.
+  - [x] Phase 5 (driver sp_retest_vix) / [x] Phase 6 / [-] Phase 8
+- [x] **#28 VRP short-VX1** -- `run_vrp` via `sp_retest_vrp.py`, gate_return_stream (deflated).
+  Re-gated: oos_sharpe 0.0771, DSR ~0, PBO 0.297, re-expression vs #26 corr 0.488 / marginal Sharpe
+  0.034 (confirms it is substantially a re-expression of #26, not an independent edge). VERDICT:
+  WEAK/FAIL.
+  - [x] Phase 5 / [x] Phase 6 / [-] Phase 8
+- [x] **#21/#25 Overnight drift** -- `run_overnight_drift` via `sp_retest_overnight_drift.py`,
+  gate_session_stream (Gate-0-deflated). Re-gated: oos_sharpe_1x 0.7924, oos_sharpe_1.5x 0.6710,
+  DSR 0.872 (closest to 0.95 of any strategy in the entire retest, but still below the bar), PBO
+  0.513 (fails <0.25 independently). VERDICT: WEAK/FAIL -- the strongest near-miss in the whole
+  campaign, but does not clear the combined gate.
+  - [x] Phase 5 / [x] Phase 6 / [-] Phase 8
+- [x] **#21 Hour-slice** -- `run_hour_slice` via `sp_retest_hour_slice.py`, gate_session_stream
+  (deflated). Re-gated: oos_sharpe_1x -0.0225 (negative). VERDICT: REJECT (Sharpe<=0).
+  - [x] Phase 5 / [x] Phase 6
+- [x] **#36 Intermarket (NQ/ES, RTY/ES)** -- `run_intermarket` via `sp_retest_intermarket.py`,
+  gate_return_stream (deflated). Re-gated: NQ/ES oos_sharpe 0.329, DSR ~0, PBO 0.582 -- WEAK/FAIL.
+  RTY/ES oos_sharpe -0.280 -- REJECT. **CAVEAT-FIX status: book_corr NOT computed** -- no RAMP
+  equity-momentum daily return stream was supplied to `--ramp-returns` this session (none readily
+  available in the worktree's registry). `book_corr` is honestly reported as NaN in both reports,
+  per the driver's design (never fabricated as a low/zero placeholder). Since both pairs already
+  decisively FAIL the statistical gate on their own (DSR ~0 / negative Sharpe), the book-correlation
+  check would only ever REINFORCE the FAIL (a high correlation adds a re-expression reason; DSR ~0
+  already rejects on primary grounds) -- not run given both are conclusively rejected without it.
+  - [x] Phase 5 / [x] Phase 6 (book-corr deferred, both pairs FAIL independently regardless) / [-] Phase 8
+- [x] **#31 Calendar (CL/NG/ZC/ZS/ZW)** -- `run_calendar` via `sp_retest_calendar.py`, gate_convergence
+  (deflated). Re-gated all 5 roots (values match prior campaign closely): CL 0.394 (DSR~0, PBO
+  0.631), NG -0.150 (REJECT, PBO 0.320), ZC 0.174 (DSR~0, PBO 0.529), ZS 0.358 (DSR~0, PBO 0.429),
+  ZW 0.263 (DSR~0, PBO 0.818). ALL WEAK/FAIL/REJECT. Section 11 exit diagnostics reported honestly
+  via `convergence_exit_summary` (no fabricated exit_reason breakdown -- see Gate 0.3 commit).
+  **NG RollCalendar caveat-fix: NOT attempted** -- with 4/5 roots already decisively FAILing DSR (not
+  just PBO-marginal), and NG itself REJECT on Sharpe<=0 grounds (not PBO-marginal either), the
+  volume-rank-vs-RollCalendar F1/F2 distinction would not change any verdict in this set; deprioritized.
+  - [x] Phase 5 (+ Section 11 exit diag) / [x] Phase 6 / [-] NG RollCalendar caveat-fix (deprioritized,
+  would not change the verdict) / [-] Phase 8
+- [x] **#32 Crack (RB-CL, HO-CL)** -- `run_processing` via `sp_retest_processing.py`, gate_convergence
+  (deflated). Re-gated: RB-CL oos_sharpe -0.116 (REJECT), HO-CL oos_sharpe -0.215 (REJECT). Both
+  Sharpe<=0. VERDICT: REJECT both.
+  - [x] Phase 5 (+ exit diag) / [x] Phase 6
+- [x] **#33 Crush (ZM+ZL-ZS)** -- `run_processing` (same driver), gate_convergence (deflated).
+  Re-gated: oos_sharpe 0.1360 (matches prior 0.136 exactly), PSR 1.0, **DSR ~0** (honest deflation
+  now applied -- was previously ungated/undeflated), PBO 0.1089 (clean, confirms it is not a
+  CSCV-detectable overfit). VERDICT: WEAK/FAIL -- **NOT escalated to Phase 6.5.** Rationale: DSR ~0
+  is a decisive rejection by the BINDING gate (Section 2.5), not a borderline miss the way overnight
+  drift's DSR 0.872 is -- a clean PBO does not make a near-zero-Sharpe (0.136), near-zero-DSR result
+  "marginal-but-real" per the Phase 6.5 entry criteria. Escalating would be exactly the kind of
+  design-iteration-chasing-a-metric this campaign's North Star forbids.
+  - [x] Phase 5 (+ exit diag) / [x] Phase 6 / [-] Phase 6.5 (not marginal-but-real, decisive DSR
+  rejection) / [-] Phase 7 / [-] Phase 8
+- [x] **#34 Ratio (GC/SI)** -- `run_ratio` via `sp_retest_ratio.py`, gate_convergence (deflated).
+  Re-gated: oos_sharpe 0.2687 (matches prior 0.269), DSR ~0, PBO 0.674, kurtosis 109.3 (confirms
+  genuine GC/SI tail risk, not a data artifact). Section 11 exit diagnostics reported honestly
+  (no exit_reason fabrication). VERDICT: WEAK/FAIL.
+  - [x] Phase 5 (+ exit diag) / [x] Phase 6
 
 ### Tier 3 -- ungradeable by the walk-forward gate (document, mark [-] with reason)
 
-- [-] **#39 Pre-FOMC** -- `run_prefomc` (`prefomc_strategy.py`). n_windows=0 (~8 events/yr never fill a
-  12-month/10-sample window). Architecturally ungradeable by this gate -- NOT a fixable
-  verdict. Record the diagnostic (decay split is small-n noise); skip.
-- [-] **#35 Steepener (2s10s/2s5s/5s30s)** -- `run_steepener` (`spread_steepener_strategy.py`).
-  n_windows=0 (2YY from ~2021; 3yr z-window leaves ~1.5yr < 48m; 5YY degraded ~440 rows).
-  Document; note the ZT/ZN DV01 fallback as a possible future rebuild when the yield-future
-  history matures. Skip until then.
+- [-] **#39 Pre-FOMC** -- `run_prefomc` via `sp_retest_prefomc.py`. Confirmed n_windows=0 (as
+  predicted -- ~8 events/yr never fill a 12-month/10-sample window). Architecturally ungradeable by
+  this gate, NOT a fixable verdict; `_verdict` correctly reports INCONCLUSIVE (NaN short-circuit).
+  Decay split (small-n descriptive only, not a gate): pre-2015 Sharpe 0.252 (n small), post-2015
+  Sharpe 6.540 (n small) -- this is SMALL-N NOISE, not evidence the Ma-Zhang decay reversed; a
+  single-digit-event subperiod Sharpe is not a statistically meaningful comparison either direction.
+  Skipped per the TODO's authoritative Tier 3 designation.
+- [-] **#35 Steepener (2s10s/2s5s/5s30s)** -- `run_steepener` via `sp_retest_steepener.py`. Confirmed
+  n_windows=0 for ALL THREE segments (2YY from ~2021 leaves <48mo; 5YY degraded ~440 rows), exactly
+  as predicted. `_verdict` correctly reports INCONCLUSIVE for all three. ZT/ZN DV01 fallback remains
+  a possible future rebuild once yield-future history matures -- not attempted. Skipped per the
+  TODO's authoritative Tier 3 designation.
 
 ---
 
@@ -225,6 +257,25 @@ Command shape (under sentinel, RunStatus-wrapped):
 | R1 | #23 FuturesReversal | Path 1 (carver) | 0.2970 | 0.2878 | 1.0000 | 5.63e-48 (N=41*) | 0.8050 | 7.0392 | 219.89 | 4.38%** | -70.13%** | N/A | N/A | N/A | N/A | 2262** | N/A | see INDEX_REVERSAL report, 13 windows | N/A | N/A | N/A | N/A | 2010-06-07..2026-02-20 | daily | WEAK/FAIL (worst PBO in Tier 1) |
 | R1 | #37 FuturesCoTTilt | Path 1 (carver) | -0.1236 | -0.1384 | 3.88e-15 | 0.0000 (N=41*) | 0.1414 | -0.2570 | 10.06 | -28.59%** | -99.52%** | N/A | N/A | N/A | N/A | 6056** | N/A | see COT_TILT report, 13 windows | N/A | N/A | N/A | N/A | 2010-06-07..2026-02-20 | daily | REJECT (Sharpe<=0) |
 | R1 | carry incumbent (FuturesCarry, carry_idm_broad) | Path 1 (carver) | 0.7646 | 0.6975 | 1.0000 | 0.8242 (N=41*) | 0.1887 | 1.3069 | 22.22 | 16.01%** | -38.98%** | N/A | N/A | N/A | N/A | 8290** | N/A | see CARRY_IDM_BROAD report, 13 windows | N/A | N/A | N/A | N/A | 2010-06-07..2026-02-20 | daily | FAIL (DSR 0.82<0.95) / PASS (PBO); best deployable, not certified |
+| R1 | #26/#27 VIX roll-down | Path 2 (return stream) | 0.5640 | NaN (1x leg only) | 1.0000 | ~0 (1.0e-06, N=41) | 0.6129 | -2.4958 | 20.39 | N/A | N/A | N/A | N/A | N/A | N/A | N/A (continuous) | N/A | 11 windows | N/A | N/A | N/A | N/A | full range | daily | WEAK/FAIL |
+| R1 | #28 VRP short-VX1 | Path 2 (return stream) | 0.0771 | NaN (1x leg only) | 0.9915 | ~0 (N=49) | 0.2971 | -13.1324 | 370.19 | N/A | N/A | N/A | N/A | N/A | N/A | N/A (continuous) | N/A | 10 windows; corr-vs-#26=0.488, marginal Sharpe=0.034 | N/A | N/A | N/A | N/A | full range | daily | WEAK/FAIL (substantially a re-expression of #26) |
+| R1 | #21/#25 Overnight drift | Path 2 (session stream) | 0.7924 | 0.6710 | 1.0000 | 0.8720 (N=41) | 0.5128 | -0.7313 | 18.51 | N/A | N/A | N/A | N/A | N/A | N/A | N/A (continuous) | N/A | 13 windows | N/A | N/A | N/A | N/A | full range | ET session bars | WEAK/FAIL (closest near-miss in the campaign) |
+| R1 | #21 Hour-slice | Path 2 (session stream) | -0.0225 | -0.2769 | 0.1021 | 0.0000 (N=41) | 0.8731 | 1.0721 | 22.78 | N/A | N/A | N/A | N/A | N/A | N/A | N/A (continuous) | N/A | 13 windows | N/A | N/A | N/A | N/A | full range | ET session bars | REJECT (Sharpe<=0) |
+| R1 | #36 Intermarket NQ/ES | Path 2 (return stream) | 0.3294 | NaN (1x leg only) | 1.0000 | ~0 (N=53) | 0.5821 | -0.1958 | 11.36 | N/A | N/A | N/A | N/A | N/A | N/A | N/A (continuous) | N/A | 12 windows; book_corr=NaN (RAMP stream not supplied) | N/A | N/A | N/A | N/A | full range | daily | WEAK/FAIL |
+| R1 | #36 Intermarket RTY/ES | Path 2 (return stream) | -0.2803 | NaN (1x leg only) | 0.0000 | 0.0000 (N=54) | 0.9128 | -1.4212 | 14.18 | N/A | N/A | N/A | N/A | N/A | N/A | N/A (continuous) | N/A | 4 windows; book_corr=NaN | N/A | N/A | N/A | N/A | full range | daily | REJECT (Sharpe<=0) |
+| R1 | #31 Calendar CL | Path 2 (convergence) | 0.3942 | NaN (1x leg only) | 1.0000 | ~0 (N=55) | 0.6314 | 1.0887 | 162.61 | N/A | N/A | N/A | N/A | N/A | N/A | 86 | N/A | 13 windows | N/A | N/A | N/A | see convergence_exit_summary (no exit_reason available) | full range | daily | WEAK/FAIL |
+| R1 | #31 Calendar NG | Path 2 (convergence) | -0.1500 | NaN (1x leg only) | 0.0000 | 0.0000 (N=56) | 0.3202 | -14.4244 | 598.38 | N/A | N/A | N/A | N/A | N/A | N/A | 66 | N/A | 13 windows | N/A | N/A | N/A | see convergence_exit_summary | full range | daily | REJECT (Sharpe<=0) |
+| R1 | #31 Calendar ZC | Path 2 (convergence) | 0.1736 | NaN (1x leg only) | 1.0000 | ~0 (N=57) | 0.5294 | 0.3937 | 64.26 | N/A | N/A | N/A | N/A | N/A | N/A | 33 | N/A | 13 windows | N/A | N/A | N/A | see convergence_exit_summary | full range | daily | WEAK/FAIL |
+| R1 | #31 Calendar ZS | Path 2 (convergence) | 0.3581 | NaN (1x leg only) | 1.0000 | ~0 (N=58) | 0.4285 | 4.6832 | 127.44 | N/A | N/A | N/A | N/A | N/A | N/A | 31 | N/A | 13 windows | N/A | N/A | N/A | see convergence_exit_summary | full range | daily | WEAK/FAIL |
+| R1 | #31 Calendar ZW | Path 2 (convergence) | 0.2634 | NaN (1x leg only) | 1.0000 | ~0 (N=59) | 0.8176 | 2.6950 | 68.85 | N/A | N/A | N/A | N/A | N/A | N/A | 54 | N/A | 13 windows | N/A | N/A | N/A | see convergence_exit_summary | full range | daily | WEAK/FAIL (worst PBO in this sleeve) |
+| R1 | #32 Crack RB-CL | Path 2 (convergence) | -0.1162 | NaN (1x leg only) | 0.0000 | 0.0000 (N=60) | 0.4689 | 1.4986 | 57.19 | N/A | N/A | N/A | N/A | N/A | N/A | 45 | N/A | 13 windows | N/A | N/A | N/A | see convergence_exit_summary | full range | daily | REJECT (Sharpe<=0) |
+| R1 | #32 Crack HO-CL | Path 2 (convergence) | -0.2150 | NaN (1x leg only) | 0.0000 | 0.0000 (N=61) | 0.7037 | 1.4650 | 128.53 | N/A | N/A | N/A | N/A | N/A | N/A | 57 | N/A | 13 windows | N/A | N/A | N/A | see convergence_exit_summary | full range | daily | REJECT (Sharpe<=0) |
+| R1 | #33 Crush ZM+ZL-ZS | Path 2 (convergence) | 0.1360 | NaN (1x leg only) | 1.0000 | ~0 (N=62) | 0.1089 | 5.8831 | 141.85 | N/A | N/A | N/A | N/A | N/A | N/A | 33 | N/A | 13 windows | N/A | N/A | N/A | see convergence_exit_summary | full range | daily | WEAK/FAIL (clean PBO, decisive DSR reject -- not escalated to 6.5) |
+| R1 | #34 Ratio GC/SI | Path 2 (convergence) | 0.2687 | NaN (1x leg only) | 1.0000 | ~0 (N=63) | 0.6738 | 3.0514 | 109.27 | N/A | N/A | N/A | N/A | N/A | N/A | 25 | N/A | 13 windows | N/A | N/A | N/A | see convergence_exit_summary (kurtosis 109 = genuine GC/SI tails) | full range | daily | WEAK/FAIL |
+| R1 | #39 Pre-FOMC (Tier 3) | Path 2 (session stream) | NaN | NaN | NaN | NaN | NaN | N/A | N/A | N/A | N/A | N/A | N/A | N/A | N/A | N/A (continuous) | N/A | n_windows=0 (architecturally ungradeable); pre-2015 Sharpe 0.252, post-2015 Sharpe 6.540 (SMALL-N NOISE, not a gate) | N/A | N/A | N/A | N/A | full range | ET session bars | INCONCLUSIVE (Tier 3, documented, not a fixable verdict) |
+| R1 | #35 Steepener 2s10s (Tier 3) | Path 2 (return stream) | NaN | NaN | NaN | NaN | NaN | N/A | N/A | N/A | N/A | N/A | N/A | N/A | N/A | N/A (continuous) | N/A | n_windows=0 (architecturally ungradeable, 2YY history too short) | N/A | N/A | N/A | N/A | full range | daily | INCONCLUSIVE (Tier 3) |
+| R1 | #35 Steepener 2s5s (Tier 3) | Path 2 (return stream) | NaN | NaN | NaN | NaN | NaN | N/A | N/A | N/A | N/A | N/A | N/A | N/A | N/A | N/A (continuous) | N/A | n_windows=0 | N/A | N/A | N/A | N/A | full range | daily | INCONCLUSIVE (Tier 3) |
+| R1 | #35 Steepener 5s30s (Tier 3) | Path 2 (return stream) | NaN | NaN | NaN | NaN | NaN | N/A | N/A | N/A | N/A | N/A | N/A | N/A | N/A | N/A (continuous) | N/A | n_windows=0 (5YY degraded ~440 rows) | N/A | N/A | N/A | N/A | full range | daily | INCONCLUSIVE (Tier 3) |
 
 \* N=41 reflects `get_campaign_trial_distribution()` at the time these runs executed (static 40-trial
 baseline + 1 registry-logged run picked up incidentally from an earlier walk-forward-config test
