@@ -36,6 +36,49 @@ from src.backtesting.statistics.psr import psr
 #   Total = 7 + 4 + 4 + 14 + 11 = 40.
 CAMPAIGN_CUMULATIVE_TRIALS = 40
 
+# DSR deflation distribution (methodology Section 2.3 / 8): the OOS Sharpe of
+# every distinct, gradeable, pre-registered campaign trial, extracted verbatim
+# from the OOS-Sharpe column of the four SP-A/E/B/C ledgers (never PBO, skew,
+# kurtosis, or gate thresholds -- those are different columns). Where a ledger
+# reports a pre-fix (contaminated) and a post-fix value, only the post-fix
+# value is included (e.g. SP-C #31's roll-masked Sharpes, not the roll-jump-
+# contaminated pre-fix numbers). Ungradeable trials (NaN / n_windows=0, e.g.
+# SP-A #9 deferred, SP-B #39 pre-FOMC, SP-C #35 all three segments, SP-E #49
+# no-data) are excluded -- they contribute no evaluated Sharpe to deflate
+# against. Both the 1x and 1.5x cost-sensitivity Sharpes are included where a
+# ledger reports both, since methodology Section 4's cost-sensitivity check is
+# itself an evaluated trial outcome, not a duplicate of the 1x number. This is
+# a documented, reproducible constant (recomputed only when a ledger gains new
+# graded rows), not a live query.
+CAMPAIGN_TRIAL_SHARPES: List[float] = [
+    # SP-A (docs/strategies/research/20260707_FUTURES_SP_A_TRIALS.md), OOS 1x / 1.5x
+    0.209, 0.181,    # #3 XS commodity momentum
+    0.846, 0.833,    # #10 curve-slope XS
+    0.180, 0.166,    # #15 same-month seasonality
+    -0.274, -0.279,  # #16 turn-of-month (mis-sampled per ledger, still a real graded Sharpe)
+    0.297, 0.288,    # #23 short-horizon reversal
+    0.357, 0.336,    # #13 carry-trend gate
+    # SP-E (docs/strategies/research/20260707_FUTURES_SP_E_TRIALS.md), OOS 1x
+    -0.124,          # #37 CoT tilt
+    0.564,           # #26/27 VIX roll-down, POST roll-jump fix (was -0.854 contaminated pre-fix)
+    # SP-B1 (docs/strategies/research/20260710_FUTURES_SP_B_TRIALS.md), OOS 1x / 1.5x
+    0.792, 0.671,    # #21/25 overnight drift
+    -0.023, -0.277,  # #21 NY-Fed hour-slice
+    # SP-C continuous engine (docs/strategies/research/20260710_FUTURES_SP_C_TRIALS.md)
+    0.329,           # #36 NQ/ES RV
+    -0.280,          # #36 RTY/ES RV
+    # SP-C convergence engine, roll-masked where applicable
+    0.394,           # #31 CL calendar (POST roll-jump mask; pre-fix was 1.183, excluded)
+    -0.150,          # #31 NG calendar (POST roll-jump mask; pre-fix was 1.017, excluded)
+    0.174,           # #31 ZC calendar
+    0.358,           # #31 ZS calendar
+    0.263,           # #31 ZW calendar (POST roll-jump mask; pre-fix was 1.019, excluded)
+    -0.116,          # #32 crack RB-CL
+    -0.215,          # #32 crack HO-CL
+    0.136,           # #33 crush ZM+ZL-ZS
+    0.269,           # #34 GC/SI ratio
+]
+
 _TRADING_DAYS_PER_YEAR = 252
 
 
@@ -111,13 +154,16 @@ def _compute_pbo(per_window_returns: List[np.ndarray]) -> float:
     stable under CSCV resampling, not a parameter-selection PBO (there is no
     parameter selection for a parameter-free strategy).
 
-    Windows shorter than the CSCV split count `s` are dropped BEFORE
-    truncation, so a single short data-end-truncated window does not force
-    NaN across all windows. Returns NaN honestly only if fewer than 2
-    windows of length >= s survive (genuinely insufficient).
+    Windows shorter than 2*s are dropped BEFORE truncation -- `pbo()` splits
+    each column into `s` folds, so a surviving window must guarantee
+    `min_len // s >= 2` (min_len >= 2*s) or the CSCV split itself degenerates.
+    A window with `s <= size < 2*s` (e.g. 30 rows against s=16) would pass the
+    old `>= s` filter yet still NaN the whole PBO once folded. Returns NaN
+    honestly only if fewer than 2 windows of length >= 2*s survive (genuinely
+    insufficient).
     """
     s = 16
-    usable = [r for r in per_window_returns if r.size >= s]
+    usable = [r for r in per_window_returns if r.size >= 2 * s]
     if len(usable) < 2:
         return float("nan")
     min_len = min(r.size for r in usable)
@@ -187,7 +233,7 @@ def gate_return_stream(returns: pd.Series, train_months: int = 36,
     return {
         "oos_sharpe": sharpe, "n_oos": n, "n_windows": len(oos),
         "psr": psr(sharpe, 0.0, n, skew, kurt) if n else float("nan"),
-        "dsr": dsr(sharpe, [sharpe], n, skew, kurt, n_trials_project=CAMPAIGN_CUMULATIVE_TRIALS) if n else float("nan"),
+        "dsr": dsr(sharpe, CAMPAIGN_TRIAL_SHARPES, n, skew, kurt, n_trials_project=CAMPAIGN_CUMULATIVE_TRIALS) if n else float("nan"),
         "pbo": _compute_pbo(per_window) if len(per_window) > 1 else float("nan"),
         "skew": skew, "kurtosis": kurt,
     }

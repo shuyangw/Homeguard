@@ -27,3 +27,11 @@ def test_insufficient_after_drop_is_nan():
     # Only one window >= s -> honestly NaN (need >= 2 configs).
     windows = [_win(250, 1)] + [_win(10, 2), _win(11, 3)]
     assert np.isnan(_compute_pbo(windows))
+
+
+def test_window_between_s_and_2s_dropped():
+    # a 30-row window (>= s=16 but < 2s=32) must NOT survive -> the remaining long
+    # windows give a real PBO, not NaN.
+    windows = [_win(250, i) for i in range(11)] + [_win(30, 77)]
+    val = _compute_pbo(windows)
+    assert not np.isnan(val) and 0.0 <= val <= 1.0
