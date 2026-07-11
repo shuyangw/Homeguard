@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from typing import Any, Dict
 
+import numpy as np
 import pandas as pd
 
 from src.backtesting.walkforward_common import gate_return_stream
@@ -35,6 +36,37 @@ def rolldown_returns(curve: pd.DataFrame) -> pd.Series:
         roll_day = c["vx1_dte"].diff() > 0
         vx1_ret = vx1_ret.mask(roll_day, 0.0)
     return (position * vx1_ret).rename("rolldown_return")
+
+
+def subperiod_audit(returns: pd.Series) -> dict:
+    """Tail/skew audit for a short-vol return stream (reporting, not a gate).
+
+    Per-calendar-year annualized Sharpe, realized skew/kurtosis, worst single-day
+    return, max drawdown, and the realized P&L in the 2018-02 (Volmageddon) and
+    2020-03 (COVID) crisis months. Computed on the WHOLE stream -- crash days are
+    never excised."""
+    r = returns.dropna()
+    r.index = pd.to_datetime(r.index)
+    by_year = {}
+    for yr, grp in r.groupby(r.index.year):
+        sd = grp.std()
+        by_year[int(yr)] = float(grp.mean() / sd * np.sqrt(252)) if sd and not np.isnan(sd) else float("nan")
+    equity = (1.0 + r).cumprod()
+    drawdown = equity / equity.cummax() - 1.0
+
+    def _month_sum(y, m):
+        mask = (r.index.year == y) & (r.index.month == m)
+        return float(r[mask].sum()) if mask.any() else float("nan")
+
+    return {
+        "by_year": by_year,
+        "skew": float(r.skew()),
+        "kurtosis": float(r.kurt()),
+        "worst_day": float(r.min()),
+        "max_drawdown": float(drawdown.min()),
+        "vol_2018_02": _month_sum(2018, 2),
+        "vol_2020_03": _month_sum(2020, 3),
+    }
 
 
 def run_vix_rolldown(curve: pd.DataFrame, output_dir, train_months: int = 36,
