@@ -58,7 +58,7 @@ A strategy is VIABLE for live only if ALL hold (methodology Sections 2.5, 4, 12,
    ratio, parameter temporal stability) -- where the execution path produces them.
 7. Section 11 exit gates (MAE/MFE, exit-logic summary) for exit-bearing strategies
    (the convergence spreads #31-#34).
-Parameter discipline: <= 3 tunables, economic rationale each, ±10/±20% neighborhood
+Parameter discipline: <= 3 tunables, economic rationale each, +/-10/+/-20% neighborhood
 Sharpe >= 0.9 of best (STABLE). No post-hoc sign flips.
 
 ---
