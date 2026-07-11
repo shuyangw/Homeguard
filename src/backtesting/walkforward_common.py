@@ -110,15 +110,19 @@ def _compute_pbo(per_window_returns: List[np.ndarray]) -> float:
     "config" column; PBO here answers whether the OOS ranking of windows is
     stable under CSCV resampling, not a parameter-selection PBO (there is no
     parameter selection for a parameter-free strategy).
+
+    Windows shorter than the CSCV split count `s` are dropped BEFORE
+    truncation, so a single short data-end-truncated window does not force
+    NaN across all windows. Returns NaN honestly only if fewer than 2
+    windows of length >= s survive (genuinely insufficient).
     """
-    usable = [r for r in per_window_returns if r.size > 1]
+    s = 16
+    usable = [r for r in per_window_returns if r.size >= s]
     if len(usable) < 2:
         return float("nan")
     min_len = min(r.size for r in usable)
-    if min_len < 2:
-        return float("nan")
     matrix = np.column_stack([r[:min_len] for r in usable])
-    return pbo(matrix)
+    return pbo(matrix, s=s)
 
 
 def _verdict(result: Dict[str, Any]) -> str:
