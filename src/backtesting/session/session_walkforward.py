@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 
 from src.backtesting.walkforward_common import (
-    CAMPAIGN_CUMULATIVE_TRIALS, _annualized_sharpe, _compute_pbo)
+    _annualized_sharpe, _compute_pbo, get_campaign_trial_distribution)
 from src.backtesting.statistics.dsr import dsr
 from src.backtesting.statistics.psr import psr
 
@@ -64,10 +64,15 @@ def gate_session_stream(returns: pd.Series, train_months: int = 36,
     s = pd.Series(stitched)
     skew = float(s.skew()) if n > 2 else 0.0
     kurt = float(s.kurtosis()) + 3.0 if n > 3 else 3.0
+    # Gate 0.1/0.2: deflate against the real, growing project-wide
+    # trial-Sharpe distribution (mirrors gate_return_stream), not a
+    # single-element list.
+    n_trials, trial_sharpes = get_campaign_trial_distribution()
     return {
         "oos_sharpe": sharpe, "n_oos": n, "n_windows": len(oos),
         "psr": psr(sharpe, 0.0, n, skew, kurt) if n else float("nan"),
-        "dsr": dsr(sharpe, [sharpe], n, skew, kurt, n_trials_project=CAMPAIGN_CUMULATIVE_TRIALS) if n else float("nan"),
+        "dsr": dsr(sharpe, trial_sharpes, n, skew, kurt, n_trials_project=n_trials) if n else float("nan"),
         "pbo": _compute_pbo(per_window) if len(per_window) > 1 else float("nan"),
         "skew": skew, "kurtosis": kurt,
+        "trial_count": n_trials,
     }

@@ -15,10 +15,10 @@ import numpy as np
 import pandas as pd
 
 from scripts.backtest_scripts.run_carver_walkforward import (
-    CAMPAIGN_CUMULATIVE_TRIALS,
     _annualized_sharpe,
     _compute_pbo,
 )
+from src.backtesting.walkforward_common import get_campaign_trial_distribution
 from src.backtesting.statistics.dsr import dsr
 from src.backtesting.statistics.psr import psr
 
@@ -66,8 +66,12 @@ def blend_books(
     kurt = float(series.kurtosis()) + 3.0 if n > 3 else 3.0
 
     psr_val = psr(oos_sharpe, 0.0, n, skew, kurt)
-    dsr_val = dsr(oos_sharpe, [oos_sharpe], n, skew, kurt,
-                   n_trials_project=CAMPAIGN_CUMULATIVE_TRIALS)
+    # Gate 0.1/0.2: deflate against the real, growing project-wide
+    # trial-Sharpe distribution (mirrors gate_return_stream), not a
+    # single-element list.
+    n_trials, trial_sharpes = get_campaign_trial_distribution()
+    dsr_val = dsr(oos_sharpe, trial_sharpes, n, skew, kurt,
+                   n_trials_project=n_trials)
     pbo_val = _compute_pbo(per_window_blended)
 
     return {

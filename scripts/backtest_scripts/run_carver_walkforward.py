@@ -30,7 +30,6 @@ from src.backtesting.engine.futures_backtest import run_futures_backtest
 from src.backtesting.statistics.dsr import dsr
 from src.backtesting.statistics.psr import psr
 from src.backtesting.walkforward_common import (
-    CAMPAIGN_CUMULATIVE_TRIALS,
     _annualized_sharpe,
     _as_date,
     _build_windows,
@@ -38,6 +37,7 @@ from src.backtesting.walkforward_common import (
     _oos_returns,
     _oos_returns_dated,
     _verdict,
+    get_campaign_trial_distribution,
 )
 from src.utils import logger
 
@@ -65,6 +65,14 @@ def _config_to_kwargs(config: Dict[str, Any]) -> Dict[str, Any]:
         "strategy_params": strat.get("params", {}),
         "idm": bool(bt.get("idm", False)),
         "idm_cap": bt.get("idm_cap", None),
+        # Gate 0 caveat-fix (#16 FuturesTurnOfMonth, strategy-lead TODO): this
+        # walk-forward used to hardcode "weekly" per-window regardless of what
+        # the config declared, mis-sampling any daily-rebalance signal (like
+        # turn-of-month's payment-cycle window) onto a weekly runner. Now
+        # honors the config's declared rebalance frequency, defaulting to
+        # "weekly" only when the config is silent (preserves prior behavior
+        # for every other Tier 1 config, none of which declare `rebalance`).
+        "rebalance": bt.get("rebalance", "weekly"),
     }
 
 
@@ -74,6 +82,7 @@ def _run_window(universe: Sequence[str], train_start: date, test_end: date,
                  strategy_params: Optional[Dict[str, Any]] = None,
                  idm: bool = False,
                  idm_cap: float | None = None,
+                 rebalance: str = "weekly",
                  register: bool = True) -> Dict[str, Any]:
     config = {
         "strategy": {"name": strategy_name, "universe": list(universe),
@@ -82,7 +91,7 @@ def _run_window(universe: Sequence[str], train_start: date, test_end: date,
         "backtest": {
             "initial_capital": capital,
             "vol_target_per_instrument": vol_target,
-            "rebalance": "weekly",
+            "rebalance": rebalance,
             "cost_mult": cost_mult,
             "idm": idm,
             "idm_cap": idm_cap,
@@ -103,6 +112,7 @@ def process_window(spec: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     strategy_name, strategy_params = spec["strategy_name"], spec["strategy_params"]
     idm = spec.get("idm", False)
     idm_cap = spec.get("idm_cap", None)
+    rebalance = spec.get("rebalance", "weekly")
     try:
         panel = load_daily_panel(universe, train_start, test_end)
     except FileNotFoundError as e:
@@ -113,11 +123,11 @@ def process_window(spec: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     res_1x = _run_window(window_universe, train_start, test_end, capital, vol_target,
                          cost_mult=1.0, strategy_name=strategy_name,
                          strategy_params=strategy_params, idm=idm, idm_cap=idm_cap,
-                         register=False)
+                         rebalance=rebalance, register=False)
     res_1_5x = _run_window(window_universe, train_start, test_end, capital, vol_target,
                            cost_mult=1.5, strategy_name=strategy_name,
                            strategy_params=strategy_params, idm=idm, idm_cap=idm_cap,
-                           register=False)
+                           rebalance=rebalance, register=False)
     result = {
         "train_start": train_start, "test_start": test_start, "test_end": test_end,
         "window_universe": window_universe,
@@ -142,6 +152,7 @@ def walk_forward_carver(
     strategy_params: Optional[Dict[str, Any]] = None,
     idm: bool = False,
     idm_cap: float | None = None,
+    rebalance: str = "weekly",
     max_workers: Optional[int] = None,
     return_window_returns: bool = False,
 ) -> Dict[str, Any]:
@@ -177,7 +188,8 @@ def walk_forward_carver(
         {"universe": universe, "train_start": ts, "test_start": tst, "test_end": te,
          "capital": capital, "vol_target": vol_target,
          "strategy_name": strategy_name, "strategy_params": strategy_params or {},
-         "idm": idm, "idm_cap": idm_cap, "return_dated": return_window_returns}
+         "idm": idm, "idm_cap": idm_cap, "rebalance": rebalance,
+         "return_dated": return_window_returns}
         for (ts, tst, te) in windows
     ]
     from src.backtesting.parallel import parallel_map
@@ -214,8 +226,15 @@ def walk_forward_carver(
     kurt = float(series.kurtosis()) + 3.0 if n > 3 else 3.0
 
     psr_val = psr(oos_sharpe, 0.0, n, skew, kurt)
-    dsr_val = dsr(oos_sharpe, [oos_sharpe], n, skew, kurt,
-                   n_trials_project=CAMPAIGN_CUMULATIVE_TRIALS)
+    # Gate 0.1/0.2: deflate against the real, growing project-wide
+    # trial-Sharpe distribution (mirrors gate_return_stream in
+    # walkforward_common.py), not a single-element list -- a 1-element
+    # distribution makes DSR reduce to undeflated PSR, which understates
+    # multiple-testing risk for a strategy sitting inside a 40+-trial
+    # (and growing) campaign search.
+    n_trials, trial_sharpes = get_campaign_trial_distribution()
+    dsr_val = dsr(oos_sharpe, trial_sharpes, n, skew, kurt,
+                   n_trials_project=n_trials)
     pbo_val = _compute_pbo(per_window_returns_1x)
 
     result: Dict[str, Any] = {
@@ -227,7 +246,7 @@ def walk_forward_carver(
         "n_windows": len(windows),
         "n_oos_days": n,
         "window_sharpes": window_sharpes,
-        "trial_count": CAMPAIGN_CUMULATIVE_TRIALS,
+        "trial_count": n_trials,
         "skew": skew,
         "kurtosis_pearson": kurt,
         "universe": universe,
@@ -261,7 +280,8 @@ def walk_forward_carver(
                 "universe": universe,
                 "vol_target_per_instrument": vol_target,
                 "initial_capital": capital,
-                "trial_count_project_wide": CAMPAIGN_CUMULATIVE_TRIALS,
+                "trial_count_project_wide": n_trials,
+                "rebalance": rebalance,
             },
             window_start=windows[0][1],
             window_end=windows[-1][2],
@@ -302,12 +322,18 @@ window's equity curve, and stitching those OOS segments into one
 concatenated OOS daily return series. The statistical gate
 (Sharpe / PSR / DSR / PBO) is computed on that stitched series.
 
-**Trial count = {result['trial_count']}.** This is a single parameter-free
-configuration with no selection over trials, so the project-wide trial count
-fed to DSR (`docs/methodology/backtesting.md` Section 2.3) is 1 for this run.
-With `n_trials=1`, `expected_max_sharpe` returns 0.0 (no deflation term), so
-DSR reduces to PSR against a benchmark Sharpe of 0 -- this is the correct,
-honest behavior for a non-selected, parameter-free strategy, not a bug.
+**Trial count = {result['trial_count']}.** {title} itself is a single
+parameter-free configuration with no in-run parameter search, but per Gate 0
+(the strategy-lead honest-deflation fix) DSR is deflated using the real
+PROJECT-WIDE trial-Sharpe distribution across the whole futures campaign
+(`docs/methodology/backtesting.md` Section 2.3 / 9.4) -- the static
+40-trial SP-A/B/C/E baseline plus every run subsequently logged to
+`output/experiments.duckdb`, sourced via
+`src.backtesting.walkforward_common.get_campaign_trial_distribution()`. This
+strategy did not select over trials itself, but it is evaluated inside a
+multiple-testing search that has now run 40+ trials project-wide, and DSR
+must be deflated for that search, not treated as if this were the only
+trial ever run.
 
 Requested universe ({len(result['universe'])} roots): {result['universe']}.
 Initial capital: ${result['capital']:,.0f}. Vol target per instrument:
@@ -411,7 +437,7 @@ def main() -> None:
         kw = {"universe": list(_DEFAULT_UNIVERSE), "capital": _DEFAULT_CAPITAL,
               "vol_target": _DEFAULT_VOL_TARGET, "start": "2010-06-07", "end": "2025-02-01",
               "strategy_name": "CarverMomentum", "strategy_params": {}, "idm": False,
-              "idm_cap": None}
+              "idm_cap": None, "rebalance": "weekly"}
 
     # Run-status logging survives a SIGKILL: if this run is killed, the status
     # file is frozen at RUNNING with the last heartbeat, so a stale RUNNING file
@@ -421,7 +447,8 @@ def main() -> None:
     _meta = {"strategy": kw.get("strategy_name", "CarverMomentum"),
              "config": args.config, "jobs": args.jobs,
              "start": kw["start"], "end": kw["end"], "n_roots": len(kw["universe"]),
-             "idm": kw.get("idm", False), "idm_cap": kw.get("idm_cap")}
+             "idm": kw.get("idm", False), "idm_cap": kw.get("idm_cap"),
+             "rebalance": kw.get("rebalance", "weekly")}
     with RunStatus("carver_walkforward", meta=_meta) as st:
         result = walk_forward_carver(
             train_months=args.train_months, test_months=args.test_months, step_months=args.step_months,
@@ -431,6 +458,7 @@ def main() -> None:
             strategy_params=kw.get("strategy_params", {}),
             idm=kw.get("idm", False),
             idm_cap=kw.get("idm_cap"),
+            rebalance=kw.get("rebalance", "weekly"),
             max_workers=args.jobs,
         )
         st.heartbeat(note=f"gate computed: oos_sharpe={result['oos_sharpe']:.4f} n_windows={result['n_windows']}")
