@@ -30,7 +30,7 @@ from src.backtesting.engine.futures_backtest import run_futures_backtest
 from src.backtesting.statistics.dsr import dsr
 from src.backtesting.statistics.psr import psr
 from src.backtesting.walkforward_common import (
-    TRIAL_COUNT_PARAMETER_FREE,
+    CAMPAIGN_CUMULATIVE_TRIALS,
     _annualized_sharpe,
     _as_date,
     _build_windows,
@@ -215,7 +215,7 @@ def walk_forward_carver(
 
     psr_val = psr(oos_sharpe, 0.0, n, skew, kurt)
     dsr_val = dsr(oos_sharpe, [oos_sharpe], n, skew, kurt,
-                   n_trials_project=TRIAL_COUNT_PARAMETER_FREE)
+                   n_trials_project=CAMPAIGN_CUMULATIVE_TRIALS)
     pbo_val = _compute_pbo(per_window_returns_1x)
 
     result: Dict[str, Any] = {
@@ -227,7 +227,7 @@ def walk_forward_carver(
         "n_windows": len(windows),
         "n_oos_days": n,
         "window_sharpes": window_sharpes,
-        "trial_count": TRIAL_COUNT_PARAMETER_FREE,
+        "trial_count": CAMPAIGN_CUMULATIVE_TRIALS,
         "skew": skew,
         "kurtosis_pearson": kurt,
         "universe": universe,
@@ -261,7 +261,7 @@ def walk_forward_carver(
                 "universe": universe,
                 "vol_target_per_instrument": vol_target,
                 "initial_capital": capital,
-                "trial_count_project_wide": TRIAL_COUNT_PARAMETER_FREE,
+                "trial_count_project_wide": CAMPAIGN_CUMULATIVE_TRIALS,
             },
             window_start=windows[0][1],
             window_end=windows[-1][2],

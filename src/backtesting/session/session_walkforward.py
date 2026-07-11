@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 
 from src.backtesting.walkforward_common import (
-    TRIAL_COUNT_PARAMETER_FREE, _annualized_sharpe, _compute_pbo)
+    CAMPAIGN_CUMULATIVE_TRIALS, _annualized_sharpe, _compute_pbo)
 from src.backtesting.statistics.dsr import dsr
 from src.backtesting.statistics.psr import psr
 
@@ -67,7 +67,7 @@ def gate_session_stream(returns: pd.Series, train_months: int = 36,
     return {
         "oos_sharpe": sharpe, "n_oos": n, "n_windows": len(oos),
         "psr": psr(sharpe, 0.0, n, skew, kurt) if n else float("nan"),
-        "dsr": dsr(sharpe, [sharpe], n, skew, kurt, n_trials_project=TRIAL_COUNT_PARAMETER_FREE) if n else float("nan"),
+        "dsr": dsr(sharpe, [sharpe], n, skew, kurt, n_trials_project=CAMPAIGN_CUMULATIVE_TRIALS) if n else float("nan"),
         "pbo": _compute_pbo(per_window) if len(per_window) > 1 else float("nan"),
         "skew": skew, "kurtosis": kurt,
     }

@@ -16,11 +16,25 @@ from src.backtesting.statistics.dsr import dsr
 from src.backtesting.statistics.pbo import pbo
 from src.backtesting.statistics.psr import psr
 
-# Parameter-free strategies (Carver TSMOM, FX trend/value) perform no
-# selection over trials, so the project-wide trial count for such runs is 1.
-# Documented per docs/methodology/backtesting.md Section 2.3's
-# explicit-trial-count rule.
-TRIAL_COUNT_PARAMETER_FREE = 1
+# Honest cumulative count of distinct pre-registered trials run across the
+# futures campaign (SP-A/E/B/C ledgers + the pre-campaign carry/crypto sweep),
+# used to deflate the Sharpe for multiple testing (methodology Section 2). DSR
+# grows only like sqrt(2 ln N), so this is a documented, defensible count, not
+# a live query. Derivation:
+#   SP-A ledger  (docs/strategies/research/20260707_FUTURES_SP_A_TRIALS.md): 7
+#     (6 executed: #3,10,13,15,16,23 + 1 deferred pre-registered: #9)
+#   SP-E ledger  (docs/strategies/research/20260707_FUTURES_SP_E_TRIALS.md): 4
+#     (#49, #37, #26, #27 -- catalog numbers counted individually)
+#   SP-B ledger  (docs/strategies/research/20260710_FUTURES_SP_B_TRIALS.md): 4
+#     (#21, #25 overnight drift, #21 hour-slice variant, #39 pre-FOMC)
+#   SP-C ledger  (docs/strategies/research/20260710_FUTURES_SP_C_TRIALS.md): 14
+#     (5 continuous-engine rows + 9 convergence-engine rows)
+#   Pre-campaign carry/crypto sweep (docs/strategies/research/
+#     20260705_FUTURES_STRATEGY_EXPLORATION_REVIEW.md Sections 2-3, cross-
+#     checked against docs/progress/20260704_SHARPE_UPLIFT_PHASE1_SUMMARY.md): 11
+#     (7 signal families + 3 combination blends + 1 IDM-cap-1.5-alone variant)
+#   Total = 7 + 4 + 4 + 14 + 11 = 40.
+CAMPAIGN_CUMULATIVE_TRIALS = 40
 
 _TRADING_DAYS_PER_YEAR = 252
 
@@ -169,7 +183,7 @@ def gate_return_stream(returns: pd.Series, train_months: int = 36,
     return {
         "oos_sharpe": sharpe, "n_oos": n, "n_windows": len(oos),
         "psr": psr(sharpe, 0.0, n, skew, kurt) if n else float("nan"),
-        "dsr": dsr(sharpe, [sharpe], n, skew, kurt, n_trials_project=TRIAL_COUNT_PARAMETER_FREE) if n else float("nan"),
+        "dsr": dsr(sharpe, [sharpe], n, skew, kurt, n_trials_project=CAMPAIGN_CUMULATIVE_TRIALS) if n else float("nan"),
         "pbo": _compute_pbo(per_window) if len(per_window) > 1 else float("nan"),
         "skew": skew, "kurtosis": kurt,
     }

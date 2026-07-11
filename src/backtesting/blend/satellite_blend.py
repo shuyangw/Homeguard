@@ -15,7 +15,7 @@ import numpy as np
 import pandas as pd
 
 from scripts.backtest_scripts.run_carver_walkforward import (
-    TRIAL_COUNT_PARAMETER_FREE,
+    CAMPAIGN_CUMULATIVE_TRIALS,
     _annualized_sharpe,
     _compute_pbo,
 )
@@ -67,7 +67,7 @@ def blend_books(
 
     psr_val = psr(oos_sharpe, 0.0, n, skew, kurt)
     dsr_val = dsr(oos_sharpe, [oos_sharpe], n, skew, kurt,
-                   n_trials_project=TRIAL_COUNT_PARAMETER_FREE)
+                   n_trials_project=CAMPAIGN_CUMULATIVE_TRIALS)
     pbo_val = _compute_pbo(per_window_blended)
 
     return {
