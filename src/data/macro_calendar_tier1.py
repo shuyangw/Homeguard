@@ -94,3 +94,25 @@ def generate_tier1_releases(start: dt.date, end: dt.date) -> pd.DataFrame:
     if not rows:
         return pd.DataFrame({c: pd.Series(dtype="object") for c in cols})
     return pd.DataFrame(rows, columns=cols).sort_values("release_utc").reset_index(drop=True)
+
+
+def tier1_release_in_window(day: dt.date, win_start: dt.time, win_end: dt.time,
+                            exchange: str = "LONDON",
+                            currencies: tuple[str, ...] = ("EUR", "GBP"),
+                            releases: "pd.DataFrame | None" = None) -> bool:
+    from zoneinfo import ZoneInfo
+    from src.backtesting.sessions.fx_clock import EXCHANGE_TZ
+
+    if releases is None:
+        releases = generate_tier1_releases(day, day)
+    if releases.empty:
+        return False
+    sub = releases[(releases["currency"].isin(currencies)) & (releases["date"] == day)]
+    if sub.empty:
+        return False
+    tz = EXCHANGE_TZ.get(exchange) or ZoneInfo(exchange)
+    local = sub["release_utc"].dt.tz_convert(tz)
+    sod = local.dt.hour * 3600 + local.dt.minute * 60 + local.dt.second
+    s = win_start.hour * 3600 + win_start.minute * 60 + win_start.second
+    e = win_end.hour * 3600 + win_end.minute * 60 + win_end.second
+    return bool(((sod >= s) & (sod < e)).any())

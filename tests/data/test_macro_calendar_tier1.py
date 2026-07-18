@@ -69,3 +69,46 @@ def test_from_cb_decisions_ecb_dates_present():
     df = generate_tier1_releases(dt.date(2025, 1, 1), dt.date(2025, 12, 31))
     ecb_rows = df[df["name"] == "ECB_DECISION"]
     assert set(ecb_rows["date"]) >= set(ecb)
+
+
+from src.data.macro_calendar_tier1 import tier1_release_in_window
+
+
+def _releases_for(name, day, time_local, tz, currency):
+    # Build a one-row releases frame for isolated predicate testing.
+    from src.backtesting.sessions.fx_clock import local_to_utc
+    hh, mm = (int(x) for x in time_local.split(":"))
+    rel = local_to_utc(tz, dt.datetime(day.year, day.month, day.day, hh, mm))
+    return pd.DataFrame([{"date": day, "name": name, "currency": currency, "release_utc": rel}])
+
+
+def test_ez_release_inside_0930_1200_window():
+    day = dt.date(2024, 2, 15)
+    rel = _releases_for("EZ_FLASH_CPI", day, "11:00", "Europe/Berlin", "EUR")  # 10:00 London
+    assert tier1_release_in_window(day, dt.time(9, 30), dt.time(12, 0), releases=rel) is True
+
+
+def test_uk_0700_release_outside_window():
+    day = dt.date(2024, 2, 15)
+    rel = _releases_for("UK_CPI", day, "07:00", "Europe/London", "GBP")  # 07:00 London
+    assert tier1_release_in_window(day, dt.time(9, 30), dt.time(12, 0), releases=rel) is False
+
+
+def test_uk_pmi_0930_is_inside_half_open_lower_edge():
+    day = dt.date(2024, 2, 15)
+    rel = _releases_for("UK_PMI", day, "09:30", "Europe/London", "GBP")
+    assert tier1_release_in_window(day, dt.time(9, 30), dt.time(12, 0), releases=rel) is True
+
+
+def test_currency_filter_excludes_other_ccy():
+    day = dt.date(2024, 2, 15)
+    rel = _releases_for("EZ_FLASH_CPI", day, "11:00", "Europe/Berlin", "EUR")
+    assert tier1_release_in_window(day, dt.time(9, 30), dt.time(12, 0),
+                                   currencies=("GBP",), releases=rel) is False
+
+
+def test_dst_stable_true_in_summer_and_winter():
+    # EZ 11:00 Berlin -> 10:00 London in both seasons -> inside window both times.
+    for day in (dt.date(2024, 1, 15), dt.date(2024, 7, 15)):
+        rel = _releases_for("EZ_FLASH_CPI", day, "11:00", "Europe/Berlin", "EUR")
+        assert tier1_release_in_window(day, dt.time(9, 30), dt.time(12, 0), releases=rel) is True
