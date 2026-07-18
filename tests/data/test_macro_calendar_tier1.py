@@ -1,5 +1,7 @@
 import datetime as dt
 
+import pytest
+
 from src.data.macro_calendar_tier1 import load_tier1_rules, _expand_rule_dates
 
 
@@ -41,6 +43,13 @@ def test_expand_from_cb_decisions_rule_returns_empty():
     assert _expand_rule_dates(rule, dt.date(2024, 1, 1), dt.date(2024, 12, 31)) == []
 
 
+def test_nth_weekday_overflow_is_skipped_not_wrapped():
+    # April 2023 has only 4 Tuesdays -> 5th Tuesday does not exist -> skipped
+    rule = {"cadence": "monthly:nth-weekday:5:TUE"}
+    dates = _expand_rule_dates(rule, dt.date(2023, 4, 1), dt.date(2023, 4, 30))
+    assert dates == []
+
+
 import pandas as pd
 from src.data.macro_calendar_tier1 import generate_tier1_releases
 
@@ -61,11 +70,31 @@ def test_ez_flash_cpi_release_utc_is_dst_stable_in_london():
     assert set(london.dt.hour) == {10}  # always 10:00 London
 
 
+def test_override_with_unquoted_date_key_is_applied():
+    import yaml
+    from src.backtesting.sessions.fx_clock import local_to_utc
+    from src.data import macro_calendar_tier1 as mod
+    raw = yaml.safe_load("rules:\n  - {name: X, currency: EUR, cadence: 'monthly:nth-weekday:3:WED', time_local: '11:00', tz: 'Europe/Berlin', overrides: {2024-01-17: '15:30'}}\n")
+    # 3rd Wed of Jan 2024 is 2024-01-17; override should push it to 15:30 Berlin
+    rule = raw["rules"][0]
+    # keys from safe_load are datetime.date, proving the normalization is needed
+    assert any(isinstance(k, dt.date) for k in rule["overrides"])
+    # drive generate via monkeypatching load_tier1_rules to return this one rule
+    orig = mod.load_tier1_rules
+    mod.load_tier1_rules = lambda: [rule]
+    try:
+        df = mod.generate_tier1_releases(dt.date(2024, 1, 1), dt.date(2024, 1, 31))
+    finally:
+        mod.load_tier1_rules = orig
+    row = df[df["name"] == "X"].iloc[0]
+    assert row["release_utc"] == local_to_utc("Europe/Berlin", dt.datetime(2024, 1, 17, 15, 30))
+
+
 def test_from_cb_decisions_ecb_dates_present():
     from src.data.macro_calendar import load_cb_decisions
     ecb = [d for d in load_cb_decisions().get("ECB", []) if d.year == 2025]
     if not ecb:
-        return  # cb_decisions has no 2025 ECB dates in this environment
+        pytest.skip("cb_decisions.yaml has no 2025 ECB dates")
     df = generate_tier1_releases(dt.date(2025, 1, 1), dt.date(2025, 12, 31))
     ecb_rows = df[df["name"] == "ECB_DECISION"]
     assert set(ecb_rows["date"]) >= set(ecb)
@@ -112,3 +141,12 @@ def test_dst_stable_true_in_summer_and_winter():
     for day in (dt.date(2024, 1, 15), dt.date(2024, 7, 15)):
         rel = _releases_for("EZ_FLASH_CPI", day, "11:00", "Europe/Berlin", "EUR")
         assert tier1_release_in_window(day, dt.time(9, 30), dt.time(12, 0), releases=rel) is True
+
+
+def test_boe_noon_boundary_half_open_vs_inclusive():
+    day = dt.date(2024, 2, 1)
+    rel = _releases_for("BOE_DECISION", day, "12:00", "Europe/London", "GBP")
+    # half-open [09:30,12:00) EXCLUDES the noon release...
+    assert tier1_release_in_window(day, dt.time(9, 30), dt.time(12, 0), releases=rel) is False
+    # ...[09:30,12:01) INCLUDES it (the correct #20 usage).
+    assert tier1_release_in_window(day, dt.time(9, 30), dt.time(12, 1), releases=rel) is True

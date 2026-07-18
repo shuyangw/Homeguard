@@ -84,11 +84,15 @@ def generate_tier1_releases(start: dt.date, end: dt.date) -> pd.DataFrame:
             dates = [d for d in cb.get(rule["from_cb_decisions"], []) if start <= d <= end]
         else:
             dates = _expand_rule_dates(rule, start, end)
-        overrides = rule.get("overrides", {}) or {}
+        raw_overrides = rule.get("overrides", {}) or {}
+        overrides = {(k.isoformat() if isinstance(k, dt.date) else str(k)): v
+                     for k, v in raw_overrides.items()}
         for d in dates:
             t_local = overrides.get(d.isoformat(), rule["time_local"])
             hh, mm = (int(x) for x in str(t_local).split(":"))
             rel = local_to_utc(rule["tz"], dt.datetime(d.year, d.month, d.day, hh, mm))
+            # INVARIANT: no rule uses a time_local within 1h of local midnight, so the
+            # local date == the exchange-local (London) date used by tier1_release_in_window's day match.
             rows.append({"date": d, "name": rule["name"],
                          "currency": rule["currency"], "release_utc": rel})
     if not rows:
