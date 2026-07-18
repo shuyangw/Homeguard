@@ -70,3 +70,27 @@ def _expand_rule_dates(rule: dict, start: dt.date, end: dt.date) -> list[dt.date
         if d is not None and start <= d <= end:
             out.append(d)
     return out
+
+
+def generate_tier1_releases(start: dt.date, end: dt.date) -> pd.DataFrame:
+    from src.backtesting.sessions.fx_clock import local_to_utc
+    from src.data.macro_calendar import load_cb_decisions
+
+    cb = load_cb_decisions()
+    cols = ["date", "name", "currency", "release_utc"]
+    rows: list[dict] = []
+    for rule in load_tier1_rules():
+        if "from_cb_decisions" in rule:
+            dates = [d for d in cb.get(rule["from_cb_decisions"], []) if start <= d <= end]
+        else:
+            dates = _expand_rule_dates(rule, start, end)
+        overrides = rule.get("overrides", {}) or {}
+        for d in dates:
+            t_local = overrides.get(d.isoformat(), rule["time_local"])
+            hh, mm = (int(x) for x in str(t_local).split(":"))
+            rel = local_to_utc(rule["tz"], dt.datetime(d.year, d.month, d.day, hh, mm))
+            rows.append({"date": d, "name": rule["name"],
+                         "currency": rule["currency"], "release_utc": rel})
+    if not rows:
+        return pd.DataFrame({c: pd.Series(dtype="object") for c in cols})
+    return pd.DataFrame(rows, columns=cols).sort_values("release_utc").reset_index(drop=True)

@@ -39,3 +39,33 @@ def test_expand_quarterly_only_anchor_months():
 def test_expand_from_cb_decisions_rule_returns_empty():
     rule = {"cadence": None, "from_cb_decisions": "ECB"}
     assert _expand_rule_dates(rule, dt.date(2024, 1, 1), dt.date(2024, 12, 31)) == []
+
+
+import pandas as pd
+from src.data.macro_calendar_tier1 import generate_tier1_releases
+
+
+def test_generate_has_columns_and_utc_and_sorted():
+    df = generate_tier1_releases(dt.date(2024, 1, 1), dt.date(2024, 12, 31))
+    assert list(df.columns) == ["date", "name", "currency", "release_utc"]
+    assert set(df["currency"]) == {"EUR", "GBP"}
+    assert str(df["release_utc"].dt.tz) == "UTC"
+    assert df["release_utc"].is_monotonic_increasing
+
+
+def test_ez_flash_cpi_release_utc_is_dst_stable_in_london():
+    # 11:00 Europe/Berlin -> 10:00 Europe/London year-round (constant 1h offset).
+    df = generate_tier1_releases(dt.date(2024, 1, 1), dt.date(2024, 12, 31))
+    cpi = df[df["name"] == "EZ_FLASH_CPI"].copy()
+    london = cpi["release_utc"].dt.tz_convert("Europe/London")
+    assert set(london.dt.hour) == {10}  # always 10:00 London
+
+
+def test_from_cb_decisions_ecb_dates_present():
+    from src.data.macro_calendar import load_cb_decisions
+    ecb = [d for d in load_cb_decisions().get("ECB", []) if d.year == 2025]
+    if not ecb:
+        return  # cb_decisions has no 2025 ECB dates in this environment
+    df = generate_tier1_releases(dt.date(2025, 1, 1), dt.date(2025, 12, 31))
+    ecb_rows = df[df["name"] == "ECB_DECISION"]
+    assert set(ecb_rows["date"]) >= set(ecb)
