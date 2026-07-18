@@ -1,0 +1,26 @@
+# Curated tier-1 EUR/GBP macro-release calendar (keyless, version-controlled).
+# Recurring RULES, not scraped actuals: dates are approximate (a real release may
+# shift a day or two). Consumers use this as a DAY-LEVEL skip filter, so approximate
+# dates are acceptable. Release TIMES are structural per event and determine whether
+# an event falls in a given session window. Cadence vocabulary understood by
+# src/data/macro_calendar_tier1.py::_expand_rule_dates:
+#   monthly:nth-weekday:<n>:<WD>        e.g. monthly:nth-weekday:3:WED
+#   monthly:month-end-business-day
+#   monthly:business-day:<n>
+#   quarterly:nth-weekday:<n>:<WD>:<anchor-month 1-3>   (months where (month-anchor)%3==0)
+rules:
+  # ---- EUR ----
+  - {name: EZ_FLASH_CPI,  currency: EUR, cadence: "monthly:month-end-business-day", time_local: "11:00", tz: "Europe/Berlin"}
+  - {name: EZ_FLASH_PMI,  currency: EUR, cadence: "monthly:nth-weekday:4:WED",       time_local: "10:00", tz: "Europe/Berlin"}
+  - {name: DE_IFO,        currency: EUR, cadence: "monthly:nth-weekday:4:MON",       time_local: "10:00", tz: "Europe/Berlin"}
+  - {name: DE_ZEW,        currency: EUR, cadence: "monthly:nth-weekday:2:TUE",       time_local: "11:00", tz: "Europe/Berlin"}
+  - {name: DE_FLASH_CPI,  currency: EUR, cadence: "monthly:month-end-business-day", time_local: "14:00", tz: "Europe/Berlin"}
+  - {name: EZ_FLASH_GDP,  currency: EUR, cadence: "quarterly:nth-weekday:5:TUE:1",  time_local: "11:00", tz: "Europe/Berlin"}
+  - {name: ECB_DECISION,  currency: EUR, from_cb_decisions: "ECB",                  time_local: "13:45", tz: "Europe/Berlin"}
+  # ---- GBP ----
+  - {name: UK_CPI,          currency: GBP, cadence: "monthly:nth-weekday:3:WED", time_local: "07:00", tz: "Europe/London"}
+  - {name: UK_JOBS,         currency: GBP, cadence: "monthly:nth-weekday:2:TUE", time_local: "07:00", tz: "Europe/London"}
+  - {name: UK_GDP,          currency: GBP, cadence: "monthly:nth-weekday:2:THU", time_local: "07:00", tz: "Europe/London"}
+  - {name: UK_RETAIL_SALES, currency: GBP, cadence: "monthly:nth-weekday:3:FRI", time_local: "07:00", tz: "Europe/London"}
+  - {name: UK_PMI,          currency: GBP, cadence: "monthly:business-day:1",    time_local: "09:30", tz: "Europe/London"}
+  - {name: BOE_DECISION,    currency: GBP, from_cb_decisions: "BOE",             time_local: "12:00", tz: "Europe/London"}
