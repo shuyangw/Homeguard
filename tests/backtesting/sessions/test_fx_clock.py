@@ -134,6 +134,16 @@ def test_fx_trading_day_across_ny_dst_transitions():
                           dt.date(2024, 11, 3), dt.date(2024, 11, 4)]
 
 
+def test_fx_trading_day_spring_forward_gap_no_crash():
+    # 1-minute intraday bars spanning the 2021-03-14 US spring-forward date.
+    # NY-local bars near 19:00-20:00 ET shift +7h into the nonexistent
+    # 02:00-03:00 wall-clock window; the tz-naive shift must not raise.
+    idx = pd.date_range("2021-03-14 00:00", "2021-03-14 12:00", freq="1min", tz="UTC")
+    days = fx_trading_day(idx)
+    assert len(days) == len(idx)
+    assert all(isinstance(d, dt.date) for d in days)
+
+
 def test_session_window_utc_midnight_crossing():
     w = SessionWindow("LONDON", dt.time(22, 0), dt.time(2, 0))  # end < start -> next day
     s, e = session_window_utc(w, dt.date(2024, 1, 15))  # London == UTC in January

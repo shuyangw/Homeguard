@@ -92,12 +92,13 @@ def in_session_mask(utc_index: pd.DatetimeIndex,
 
 def _fx_day_index(utc_index: pd.DatetimeIndex) -> pd.DatetimeIndex:
     _require_utc(utc_index)
-    # Shift NY-local wall time by +7h so the 17:00-ET boundary becomes local
-    # midnight, then the local calendar date is the FX trading day. DateOffset
-    # preserves wall-clock across DST, so this is correct for any boundary hour,
-    # not only ones whose +7h span avoids the 02:00 transition.
-    ny = utc_index.tz_convert("America/New_York") + pd.DateOffset(hours=7)
-    return pd.DatetimeIndex(ny)
+    # Shift NY-local WALL TIME by +7h so the 17:00-ET boundary becomes local
+    # midnight; the local calendar date is then the FX trading day. Strip tz
+    # before the shift so a shifted time landing in a DST spring-forward gap
+    # (02:00-03:00, nonexistent) does not raise -- we only need the date, and
+    # the +7h-from-17:00 boundary (00:00) never falls in the gap/ambiguous hour.
+    ny_wall = utc_index.tz_convert("America/New_York").tz_localize(None)
+    return pd.DatetimeIndex(ny_wall + pd.Timedelta(hours=7))
 
 
 def fx_trading_day(utc_index: pd.DatetimeIndex) -> pd.Series:
