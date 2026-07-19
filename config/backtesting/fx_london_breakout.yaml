@@ -1,0 +1,12 @@
+asset_class: fx
+strategy:
+  name: LondonBreakout
+  pairs: [GBPUSD, EURUSD, EURGBP, GBPJPY]
+  params: {risk_frac: 0.005, tp_fraction: 0.5, offset_pips: 3.0}
+dates:
+  start: "2011-01-01"
+  end: "2026-04-01"
+backtest:
+  initial_capital: 100000.0
+output:
+  save_trades: true
