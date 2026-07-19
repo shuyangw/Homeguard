@@ -138,7 +138,8 @@ def _update_position(self, bar: "Bar") -> list:
     hit_target = (bar.high >= p.target) if p.side == "buy" else (bar.low <= p.target)
     # Both-in-one-bar: adverse (stop) resolves first.
     if hit_stop:
-        events.append(("stop" if not p.took_partial else "trail", p.stop, p.qty))
+        reason = "trail" if (p.took_partial and p.trail_dist is not None) else "stop"
+        events.append((reason, p.stop, p.qty))
         p.realized_pips += sign * (p.stop - p.entry_price) * p.qty
         self.position = None
         return events
@@ -147,10 +148,22 @@ def _update_position(self, bar: "Bar") -> list:
         events.append(("target", p.target, take))
         p.realized_pips += sign * (p.target - p.entry_price) * take
         p.qty -= take
+        if p.qty <= 1e-12:
+            self.position = None
+            return events
         p.took_partial = True
         p.extreme = bar.high if p.side == "buy" else bar.low
         if p.trail_dist is not None:
-            p.stop = (p.extreme - p.trail_dist) if p.side == "buy" else (p.extreme + p.trail_dist)
+            if p.side == "buy":
+                p.stop = max(p.stop, p.extreme - p.trail_dist)
+            else:
+                p.stop = min(p.stop, p.extreme + p.trail_dist)
+            breached = (bar.low <= p.stop) if p.side == "buy" else (bar.high >= p.stop)
+            if breached:
+                events.append(("trail", p.stop, p.qty))
+                p.realized_pips += sign * (p.stop - p.entry_price) * p.qty
+                self.position = None
+                return events
     # Ratchet trailing stop on the remainder.
     if p.took_partial and p.trail_dist is not None:
         if p.side == "buy":

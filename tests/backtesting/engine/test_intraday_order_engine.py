@@ -89,3 +89,58 @@ def test_both_stop_and_target_in_one_bar_resolves_to_stop():
     ev = eng.update_position(_bar(1.2500, 1.2560, 1.2440, 1.2455, minute=6))
     assert any(r == "stop" for r, _, _ in ev)
     assert eng.position is None
+
+
+def test_partial_take_and_trail_breach_same_bar_closes_remainder():
+    eng = OrderEngine()
+    eng.open_position(side="buy", qty=1.0, entry_price=1.2500,
+                      entry_ts=dt.datetime(2024, 1, 2, 8, 5, tzinfo=dt.timezone.utc),
+                      stop=1.2450, target=1.2550, tp_fraction=0.5, trail_dist=0.0030)
+    # high 1.2560 arms trail at 1.2530; same bar's low 1.2500 breaches it -> close remainder now
+    ev = eng.update_position(_bar(1.2510, 1.2560, 1.2500, 1.2505, minute=6))
+    assert any(r == "target" for r, _, _ in ev)
+    trail_ev = [(r, px, q) for r, px, q in ev if r == "trail"]
+    assert len(trail_ev) == 1
+    assert abs(trail_ev[0][1] - 1.2530) < 1e-12
+    assert abs(trail_ev[0][2] - 0.5) < 1e-12
+    assert eng.position is None
+
+
+def test_trailing_arm_does_not_loosen_stop():
+    eng = OrderEngine()
+    eng.open_position(side="buy", qty=1.0, entry_price=1.2500,
+                      entry_ts=dt.datetime(2024, 1, 2, 8, 5, tzinfo=dt.timezone.utc),
+                      stop=1.2480, target=1.2550, tp_fraction=0.5, trail_dist=0.0080)
+    # extreme 1.2555 - 0.0080 = 1.2475 would loosen; must ratchet, stop stays 1.2480
+    ev = eng.update_position(_bar(1.2510, 1.2555, 1.2505, 1.2550, minute=6))
+    assert any(r == "target" for r, _, _ in ev)
+    assert eng.position is not None
+    assert eng.position.stop >= 1.2480 - 1e-12
+    assert abs(eng.position.stop - 1.2480) < 1e-12
+
+
+def test_tp_fraction_one_fully_closes_at_target():
+    eng = OrderEngine()
+    eng.open_position(side="buy", qty=1.0, entry_price=1.2500,
+                      entry_ts=dt.datetime(2024, 1, 2, 8, 5, tzinfo=dt.timezone.utc),
+                      stop=1.2450, target=1.2550, tp_fraction=1.0, trail_dist=0.0030)
+    ev = eng.update_position(_bar(1.2540, 1.2560, 1.2535, 1.2555, minute=6))
+    assert any(r == "target" for r, _, _ in ev)
+    assert eng.position is None
+    ev2 = eng.update_position(_bar(1.2560, 1.2570, 1.2555, 1.2565, minute=7))
+    assert ev2 == []
+
+
+def test_post_partial_stopout_labeled_stop_when_no_trailing():
+    eng = OrderEngine()
+    eng.open_position(side="buy", qty=1.0, entry_price=1.2500,
+                      entry_ts=dt.datetime(2024, 1, 2, 8, 5, tzinfo=dt.timezone.utc),
+                      stop=1.2450, target=1.2550, tp_fraction=0.5, trail_dist=None)
+    ev = eng.update_position(_bar(1.2540, 1.2560, 1.2535, 1.2555, minute=6))
+    assert any(r == "target" for r, _, _ in ev)
+    assert abs(eng.position.qty - 0.5) < 1e-12
+    ev2 = eng.update_position(_bar(1.2455, 1.2460, 1.2440, 1.2445, minute=7))
+    reasons = [r for r, _, _ in ev2]
+    assert "stop" in reasons
+    assert "trail" not in reasons
+    assert eng.position is None
