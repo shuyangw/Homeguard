@@ -144,3 +144,37 @@ def test_post_partial_stopout_labeled_stop_when_no_trailing():
     assert "stop" in reasons
     assert "trail" not in reasons
     assert eng.position is None
+
+
+def test_run_is_causal_order_placed_on_bar_fills_next():
+    eng = OrderEngine()
+
+    class S:
+        placed = False
+        def on_bar(self, bar, engine):
+            if not self.placed:
+                engine.add_order(Order(side="buy", kind="stop", trigger=1.2500, qty=1.0),
+                                 armed_at=bar.ts)
+                self.placed = True
+
+    bars = [_bar(1.2480, 1.2510, 1.2475, 1.2505, minute=0),   # would cross, but order not yet armed here
+            _bar(1.2490, 1.2510, 1.2485, 1.2505, minute=1)]   # fills here
+    eng.run(bars, S())
+    assert len(eng.fills) == 1 and eng.fills[0].ts.minute == 1
+
+
+def test_cancel_all_and_flatten_from_strategy():
+    eng = OrderEngine()
+
+    class S:
+        def on_bar(self, bar, engine):
+            if bar.ts.minute == 0:
+                engine.add_order(Order(side="buy", kind="stop", trigger=1.9999, qty=1.0),
+                                 armed_at=bar.ts)  # never fills
+            if bar.ts.minute == 1:
+                engine.cancel_all_resting()
+
+    bars = [_bar(1.2480, 1.2490, 1.2470, 1.2485, minute=0),
+            _bar(1.2480, 1.2490, 1.2470, 1.2485, minute=1)]
+    eng.run(bars, S())
+    assert eng.resting_orders == []

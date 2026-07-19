@@ -185,8 +185,22 @@ def _flatten(self, price: float, ts: dt.datetime, reason: str = "flat") -> list:
     return [(reason, price, p.qty)]
 
 
+def _cancel_all_resting(self) -> None:
+    self.resting_orders = []
+
+
+def _run(self, bars, strategy) -> None:
+    for bar in bars:
+        if self.position is not None:
+            self.update_position(bar)
+        self.match_resting_orders(bar)
+        strategy.on_bar(bar, self)
+
+
 OrderEngine.position = None
 OrderEngine.add_oco = _add_oco
 OrderEngine.open_position = _open_position
 OrderEngine.update_position = _update_position
 OrderEngine.flatten = _flatten
+OrderEngine.cancel_all_resting = _cancel_all_resting
+OrderEngine.run = _run
