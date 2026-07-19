@@ -88,3 +88,92 @@ class OrderEngine:
         for grp in cancelled_groups:
             self.resting_orders = [o for o in self.resting_orders if o.oco_group != grp]
         return new_fills
+
+
+@dataclass
+class Position:
+    side: str
+    qty: float
+    entry_price: float
+    entry_ts: dt.datetime
+    stop: float
+    target: float
+    tp_fraction: float
+    trail_dist: Optional[float] = None
+    took_partial: bool = False
+    extreme: Optional[float] = None  # high-water (buy) / low-water (sell) for trailing
+    realized_pips: float = 0.0
+
+
+def _add_oco(self, a: "Order", b: "Order") -> int:  # noqa: E301  (attached below)
+    grp = self._next_id
+    self._next_id += 1
+    a.oco_group = grp
+    b.oco_group = grp
+    self.add_order(a)
+    self.add_order(b)
+    return grp
+
+
+def _open_position(self, side, qty, entry_price, entry_ts, stop, target,
+                   tp_fraction, trail_dist):
+    self.position = Position(side=side, qty=qty, entry_price=entry_price,
+                             entry_ts=entry_ts, stop=stop, target=target,
+                             tp_fraction=tp_fraction, trail_dist=trail_dist,
+                             extreme=entry_price)
+    return self.position
+
+
+def _signed(side: str) -> float:
+    return 1.0 if side == "buy" else -1.0
+
+
+def _update_position(self, bar: "Bar") -> list:
+    p = self.position
+    if p is None:
+        return []
+    events: list = []
+    sign = _signed(p.side)
+    hit_stop = (bar.low <= p.stop) if p.side == "buy" else (bar.high >= p.stop)
+    hit_target = (bar.high >= p.target) if p.side == "buy" else (bar.low <= p.target)
+    # Both-in-one-bar: adverse (stop) resolves first.
+    if hit_stop:
+        events.append(("stop" if not p.took_partial else "trail", p.stop, p.qty))
+        p.realized_pips += sign * (p.stop - p.entry_price) * p.qty
+        self.position = None
+        return events
+    if hit_target and not p.took_partial:
+        take = p.qty * p.tp_fraction
+        events.append(("target", p.target, take))
+        p.realized_pips += sign * (p.target - p.entry_price) * take
+        p.qty -= take
+        p.took_partial = True
+        p.extreme = bar.high if p.side == "buy" else bar.low
+        if p.trail_dist is not None:
+            p.stop = (p.extreme - p.trail_dist) if p.side == "buy" else (p.extreme + p.trail_dist)
+    # Ratchet trailing stop on the remainder.
+    if p.took_partial and p.trail_dist is not None:
+        if p.side == "buy":
+            p.extreme = max(p.extreme, bar.high)
+            p.stop = max(p.stop, p.extreme - p.trail_dist)
+        else:
+            p.extreme = min(p.extreme, bar.low)
+            p.stop = min(p.stop, p.extreme + p.trail_dist)
+    return events
+
+
+def _flatten(self, price: float, ts: dt.datetime, reason: str = "flat") -> list:
+    p = self.position
+    if p is None:
+        return []
+    sign = _signed(p.side)
+    p.realized_pips += sign * (price - p.entry_price) * p.qty
+    self.position = None
+    return [(reason, price, p.qty)]
+
+
+OrderEngine.position = None
+OrderEngine.add_oco = _add_oco
+OrderEngine.open_position = _open_position
+OrderEngine.update_position = _update_position
+OrderEngine.flatten = _flatten

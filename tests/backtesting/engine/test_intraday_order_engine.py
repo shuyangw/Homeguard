@@ -48,3 +48,44 @@ def test_order_added_this_bar_not_eligible_until_next():
     b2 = Bar(b.ts + dt.timedelta(minutes=1), 1.2490, 1.2510, 1.2485, 1.2505)
     eng.match_resting_orders(b2)
     assert len(eng.fills) == 1 and eng.fills[0].order_id == oid
+
+
+from src.backtesting.engine.intraday_order_engine import Position
+
+
+def test_oco_one_leg_fill_cancels_sibling():
+    eng = OrderEngine()
+    grp = eng.add_oco(
+        Order(side="buy", kind="stop", trigger=1.2500, qty=1.0),
+        Order(side="sell", kind="stop", trigger=1.2400, qty=1.0))
+    assert grp is not None
+    eng.match_resting_orders(_bar(1.2480, 1.2510, 1.2475, 1.2505))  # buy leg triggers
+    assert len(eng.fills) == 1
+    assert eng.resting_orders == []  # sibling cancelled
+
+
+def test_bracket_partial_take_then_trail_closes_remainder():
+    eng = OrderEngine()
+    # long 1.0 @ 1.2500, stop 1.2450, target 1.2550, take half, trail 0.0030
+    eng.open_position(side="buy", qty=1.0, entry_price=1.2500,
+                      entry_ts=dt.datetime(2024, 1, 2, 8, 5, tzinfo=dt.timezone.utc),
+                      stop=1.2450, target=1.2550, tp_fraction=0.5, trail_dist=0.0030)
+    # bar reaches target -> take half; high 1.2560 arms trail at 1.2560-0.0030=1.2530
+    ev = eng.update_position(_bar(1.2540, 1.2560, 1.2535, 1.2555, minute=6))
+    assert any(r == "target" for r, _, _ in ev)
+    assert abs(eng.position.qty - 0.5) < 1e-12  # half remains
+    # next bar pulls back through the trailed stop 1.2530 -> remainder closes
+    ev2 = eng.update_position(_bar(1.2532, 1.2534, 1.2520, 1.2525, minute=7))
+    assert any(r == "trail" for r, _, _ in ev2)
+    assert eng.position is None
+
+
+def test_both_stop_and_target_in_one_bar_resolves_to_stop():
+    eng = OrderEngine()
+    eng.open_position(side="buy", qty=1.0, entry_price=1.2500,
+                      entry_ts=dt.datetime(2024, 1, 2, 8, 5, tzinfo=dt.timezone.utc),
+                      stop=1.2450, target=1.2550, tp_fraction=0.5, trail_dist=0.0030)
+    # bar spans BOTH stop and target -> adverse (stop) wins, full close
+    ev = eng.update_position(_bar(1.2500, 1.2560, 1.2440, 1.2455, minute=6))
+    assert any(r == "stop" for r, _, _ in ev)
+    assert eng.position is None
