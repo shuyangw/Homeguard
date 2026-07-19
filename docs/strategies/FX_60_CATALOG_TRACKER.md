@@ -88,7 +88,7 @@ Last updated: 2026-07-06
 
 | # | Name | Status | Blocks / needs | BT | WF | Gate | Notes |
 |---|---|---|---|---|---|---|---|
-| 20 | London open breakout | INTRADAY | session + OCO | - | - | - | |
+| 20 | London open breakout | READY | intraday engine BUILT | BT | WF | FAIL-enh | First gated INTRADAY result. Filtered Asian-range break (0.25-0.8x ATR width, tier-1 event skip), OCO bracket, conservative 1m fills, 1.2x London spread. FAIL S&P: OOS Sharpe -1.60 vs 0.68 (IS -0.99, DSR 0, 3064 same-dates OOS, 2014-2026). Dies after spread. Report FX_LONDON_BREAKOUT_WALK_FORWARD.md. Intraday engine (src/backtesting/engine/intraday_order_engine.py) now REUSABLE for #21-25 |
 | 21 | NY continuation | INTRADAY | session | - | - | - | |
 | 22 | Tokyo JPY-cross MR | INTRADAY | session + synth decomposition | - | - | - | |
 | 23 | WMR 16:00 fix | INTRADAY | intraday fix window | - | - | - | |
