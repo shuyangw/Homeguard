@@ -6,6 +6,11 @@ buy-stop/sell-stop bracket around the range in the 08:00-09:30 London window,
 cancel unfilled at 09:30, manage a bracket exit (take half at 1x range, trail
 the rest at 1x ATR(15m)), and flatten at 16:00 London. Drives the general
 intraday order engine; fixed-fractional risk sizing.
+
+P&L is reported as a qty-independent R-multiple series ``day_r`` (dict
+date -> float), booked against the day the trade was ENTERED. One unit of R is
+the initial per-trade risk ``abs(entry_fill_price - initial_stop_price)``, so a
+full-stop loss books ``-1.0 - rt_spread_R`` regardless of the stop's pip width.
 """
 from __future__ import annotations
 
@@ -42,17 +47,20 @@ class LondonBreakoutStrategy:
         self.offset = offset_pips * self.pip
         self.tier = tier
         self.releases = releases
-        self.day_pnl_pips: dict[dt.date, float] = {}
+        self.day_r: dict[dt.date, float] = {}
         self._rt_pips = fx_round_trip_pips(tier)
         self._day = None
         self._skip = False
         self._armed = False
+        self._cancelled = False
         self._range = None
         self._asian_hi = None
         self._asian_lo = None
         self._trail_dist = None
         self._pos = None
+        self._entry_day = None
         self._entry_qty = 0.0
+        self._initial_risk = None
         self._fill_cursor = 0
         self._bars_ts: list = []
         self._bars_o: list = []
@@ -67,22 +75,26 @@ class LondonBreakoutStrategy:
         lt = self._local(bar.ts)
         day = lt.date()
         if day != self._day:
-            self._start_day(day)
+            self._start_day(day, bar, engine)
         self._accumulate(bar, lt)
-        self._book_if_closed(day, engine)
+        self._book_if_closed(engine)
         self._maybe_open(bar, engine)
         if self._skip:
             return
         self._maybe_arm(bar, lt, engine)
-        if (lt.hour, lt.minute) == (9, 30):
-            engine.cancel_all_resting()
+        self._maybe_cancel(lt, engine)
         if lt.hour >= 16 and engine.position is not None:
             engine.flatten(bar.close, bar.ts, reason="flat_1600")
-            self._book_if_closed(day, engine)
+            self._book_if_closed(engine)
 
-    def _start_day(self, day):
+    def _start_day(self, day, bar, engine):
+        if self._pos is not None:
+            if engine.position is self._pos:
+                engine.flatten(bar.open, bar.ts, reason="stale_close")
+            self._book()
         self._day = day
         self._armed = False
+        self._cancelled = False
         self._range = None
         self._asian_hi = None
         self._asian_lo = None
@@ -131,6 +143,13 @@ class LondonBreakoutStrategy:
         self._trail_dist = self._compute_trail()
         self._arm_oco(hi, lo, engine)
 
+    def _maybe_cancel(self, lt, engine):
+        if self._cancelled:
+            return
+        if lt.hour > 9 or (lt.hour == 9 and lt.minute >= 30):
+            engine.cancel_all_resting()
+            self._cancelled = True
+
     def _arm_oco(self, hi, lo, engine):
         buy_trigger = hi + self.offset
         sell_trigger = lo - self.offset
@@ -157,6 +176,15 @@ class LondonBreakoutStrategy:
         val = atr.iloc[-1]
         return None if pd.isna(val) else float(val)
 
+    def _pick_fill(self, new_fills, bar):
+        if len(new_fills) == 1:
+            return new_fills[0]
+        want = "buy" if bar.close >= bar.open else "sell"
+        for fill in new_fills:
+            if fill.side == want:
+                return fill
+        return new_fills[-1]
+
     def _maybe_open(self, bar, engine):
         if len(engine.fills) <= self._fill_cursor:
             return
@@ -166,7 +194,7 @@ class LondonBreakoutStrategy:
             return
         if not isinstance(self._range, tuple):
             return
-        fill = new_fills[-1]
+        fill = self._pick_fill(new_fills, bar)
         hi, lo = self._range
         width = hi - lo
         if fill.side == "buy":
@@ -174,13 +202,21 @@ class LondonBreakoutStrategy:
         else:
             stop, target = hi, fill.price - width
         self._entry_qty = fill.qty
+        self._initial_risk = abs(fill.price - stop)
+        self._entry_day = self._day
         self._pos = engine.open_position(
             fill.side, fill.qty, fill.price, bar.ts, stop, target,
             self.tp_fraction, self._trail_dist)
 
-    def _book_if_closed(self, day, engine):
+    def _book_if_closed(self, engine):
         if self._pos is None or engine.position is self._pos:
             return
-        net_pips = self._pos.realized_pips / self.pip - self._rt_pips * self._entry_qty
-        self.day_pnl_pips[day] = self.day_pnl_pips.get(day, 0.0) + net_pips
+        self._book()
+
+    def _book(self):
+        pos = self._pos
+        exit_r = pos.realized_pips / (self._entry_qty * self._initial_risk)
+        rt_spread_r = (self._rt_pips * self.pip) / self._initial_risk
+        self.day_r[self._entry_day] = (
+            self.day_r.get(self._entry_day, 0.0) + exit_r - rt_spread_r)
         self._pos = None
