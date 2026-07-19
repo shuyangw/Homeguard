@@ -61,7 +61,8 @@ def _run_window(spec: Dict[str, Any]) -> Optional[Dict[str, Any]]:
 
     oos_1x, is_1x = one(1.0)
     oos_1_5x, _ = one(1.5)
-    return {"oos_1x": oos_1x, "oos_1_5x": oos_1_5x, "is_1x": is_1x}
+    oos_0_5x, _ = one(0.5)
+    return {"oos_1x": oos_1x, "oos_1_5x": oos_1_5x, "oos_0_5x": oos_0_5x, "is_1x": is_1x}
 
 
 def run(config_path: str, cadence_label: str, trial_count: int,
@@ -93,6 +94,8 @@ def run(config_path: str, cadence_label: str, trial_count: int,
     oos_1x = oos_1x[~oos_1x.index.duplicated(keep="first")]
     oos_1_5x = pd.concat([r["oos_1_5x"] for r in results]).sort_index(kind="stable")
     oos_1_5x = oos_1_5x[~oos_1_5x.index.duplicated(keep="first")]
+    oos_0_5x = pd.concat([r["oos_0_5x"] for r in results]).sort_index(kind="stable")
+    oos_0_5x = oos_0_5x[~oos_0_5x.index.duplicated(keep="first")]
     per_window_1x = [r["oos_1x"].to_numpy(dtype=float) for r in results]
 
     # _oos_returns_dated indexes with raw datetime.date objects (per its
@@ -102,11 +105,13 @@ def run(config_path: str, cadence_label: str, trial_count: int,
     # on dtype (date != Timestamp under Python's comparison rules).
     oos_1x.index = pd.DatetimeIndex(oos_1x.index)
     oos_1_5x.index = pd.DatetimeIndex(oos_1_5x.index)
+    oos_0_5x.index = pd.DatetimeIndex(oos_0_5x.index)
 
     arr = oos_1x.to_numpy(dtype=float)
     n = int(arr.size)
     sharpe = _annualized_sharpe(arr)
     sharpe_1_5x = _annualized_sharpe(oos_1_5x.to_numpy(dtype=float))
+    sharpe_0_5x = _annualized_sharpe(oos_0_5x.to_numpy(dtype=float))
     # IS/OOS overfit diagnostic: mean of per-window in-sample Sharpes (avoids
     # double-counting the heavily-overlapping train segments).
     per_window_is = [_annualized_sharpe(r["is_1x"].to_numpy(dtype=float))
@@ -137,6 +142,7 @@ def run(config_path: str, cadence_label: str, trial_count: int,
 
     return {"cadence": cadence_label, "n_oos_days": n, "n_windows": len(results),
             "oos_sharpe": sharpe, "oos_sharpe_1_5x": sharpe_1_5x,
+            "oos_sharpe_0_5x": sharpe_0_5x,
             "is_sharpe": is_sharpe, "is_oos_ratio": is_oos_ratio,
             "sp500_sharpe": sp_sharpe, "sp500_n_days": sp_n, "beats_sp500": beats,
             "correlation_sp500": corr, "information_ratio_sp500": ir,

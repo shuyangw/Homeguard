@@ -69,7 +69,8 @@ def _run_window_fx(universe: Sequence[str], train_start: date, test_end: date,
 
 
 def process_window(spec: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-    """Top-level (picklable) per-window worker: runs both cost legs, register=False."""
+    """Top-level (picklable) per-window worker: runs every cost leg in
+    spec["cost_mults"], register=False."""
     universe = spec["universe"]
     train_start, test_start, test_end = spec["train_start"], spec["test_start"], spec["test_end"]
     try:
@@ -79,17 +80,16 @@ def process_window(spec: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         return None
     window_universe = sorted({p for p, _ in panel.columns})
     dates = list(panel.index)
-    res_1x = _run_window_fx(window_universe, train_start, test_end, spec["capital"],
-                            spec["vol_target"], 1.0, spec["strategy_name"], spec["tier"],
-                            spec["idm"], spec["idm_cap"])
-    res_1_5x = _run_window_fx(window_universe, train_start, test_end, spec["capital"],
-                              spec["vol_target"], 1.5, spec["strategy_name"], spec["tier"],
+    oos_by_cost: Dict[float, np.ndarray] = {}
+    for cost_mult in spec["cost_mults"]:
+        res = _run_window_fx(window_universe, train_start, test_end, spec["capital"],
+                              spec["vol_target"], cost_mult, spec["strategy_name"], spec["tier"],
                               spec["idm"], spec["idm_cap"])
+        oos_by_cost[cost_mult] = _oos_returns(res["equity_curve"], dates, test_start)
     return {
         "train_start": train_start, "test_start": test_start, "test_end": test_end,
         "window_universe": window_universe,
-        "oos_1x": _oos_returns(res_1x["equity_curve"], dates, test_start),
-        "oos_1_5x": _oos_returns(res_1_5x["equity_curve"], dates, test_start),
+        "oos_by_cost": oos_by_cost,
     }
 
 
@@ -107,16 +107,22 @@ def walk_forward_fx(
     idm: bool = False,
     idm_cap: Optional[float] = None,
     max_workers: Optional[int] = None,
+    cost_mults: Sequence[float] = (1.0, 1.5),
 ) -> Dict[str, Any]:
     """Roll OOS test windows for a parameter-free FX strategy (trend/value).
 
     Returns a dict with `oos_sharpe`, `psr`, `dsr`, `pbo`,
-    `oos_sharpe_1_5x_cost`, `n_windows`, `n_oos_days`, `window_sharpes`,
-    `trial_count`, and `run_id` (registry append; None on failure).
+    `oos_sharpe_1_5x_cost`, `oos_sharpe_by_cost`, `n_windows`, `n_oos_days`,
+    `window_sharpes`, `trial_count`, and `run_id` (registry append; None on
+    failure). `oos_sharpe` and `oos_sharpe_1_5x_cost` are always the 1.0x and
+    1.5x legs respectively (requires 1.0 and 1.5 to be present in
+    `cost_mults`, the default). PSR/DSR/PBO/skew/kurtosis are always computed
+    on the 1.0x leg only, regardless of what other legs are requested.
     """
     universe = list(universe) if universe is not None else list(_DEFAULT_UNIVERSE)
     start_d = _as_date(start)
     end_d = _as_date(end)
+    cost_mults = list(cost_mults)
 
     windows = _build_windows(train_months, test_months, step_months, start_d, end_d)
     if len(windows) < 2:
@@ -125,8 +131,7 @@ def walk_forward_fx(
             f"for range {start}..{end} with train={train_months}m test={test_months}m step={step_months}m"
         )
 
-    per_window_returns_1x: List[np.ndarray] = []
-    per_window_returns_1_5x: List[np.ndarray] = []
+    per_window_returns_by_cost: Dict[float, List[np.ndarray]] = {c: [] for c in cost_mults}
     window_sharpes: List[float] = []
     window_universes: List[List[str]] = []
     used_windows: List[tuple[date, date, date]] = []
@@ -134,7 +139,7 @@ def walk_forward_fx(
     specs = [
         {"universe": universe, "train_start": ts, "test_start": tst, "test_end": te,
          "capital": capital, "vol_target": vol_target, "strategy_name": strategy_name,
-         "tier": tier, "idm": idm, "idm_cap": idm_cap}
+         "tier": tier, "idm": idm, "idm_cap": idm_cap, "cost_mults": cost_mults}
         for (ts, tst, te) in windows
     ]
     from src.backtesting.parallel import parallel_map
@@ -142,9 +147,9 @@ def walk_forward_fx(
     for r in results:
         if r is None:
             continue
-        per_window_returns_1x.append(r["oos_1x"])
-        per_window_returns_1_5x.append(r["oos_1_5x"])
-        window_sharpes.append(_annualized_sharpe(r["oos_1x"]))
+        for c in cost_mults:
+            per_window_returns_by_cost[c].append(r["oos_by_cost"][c])
+        window_sharpes.append(_annualized_sharpe(r["oos_by_cost"][1.0]))
         window_universes.append(r["window_universe"])
         used_windows.append((r["train_start"], r["test_start"], r["test_end"]))
 
@@ -155,12 +160,17 @@ def walk_forward_fx(
         )
     windows = used_windows
 
-    stitched_1x = np.concatenate(per_window_returns_1x)
-    stitched_1_5x = np.concatenate(per_window_returns_1_5x)
+    stitched_by_cost: Dict[float, np.ndarray] = {
+        c: np.concatenate(per_window_returns_by_cost[c]) for c in cost_mults
+    }
+    oos_sharpe_by_cost: Dict[float, float] = {
+        c: _annualized_sharpe(stitched_by_cost[c]) for c in cost_mults
+    }
 
+    stitched_1x = stitched_by_cost[1.0]
     n = int(stitched_1x.size)
-    oos_sharpe = _annualized_sharpe(stitched_1x)
-    oos_sharpe_1_5x_cost = _annualized_sharpe(stitched_1_5x)
+    oos_sharpe = oos_sharpe_by_cost[1.0]
+    oos_sharpe_1_5x_cost = oos_sharpe_by_cost[1.5]
 
     series = pd.Series(stitched_1x)
     skew = float(series.skew()) if n > 2 else 0.0
@@ -175,7 +185,7 @@ def walk_forward_fx(
     n_trials, trial_sharpes = get_campaign_trial_distribution()
     dsr_val = dsr(oos_sharpe, trial_sharpes, n, skew, kurt,
                    n_trials_project=n_trials)
-    pbo_val = _compute_pbo(per_window_returns_1x)
+    pbo_val = _compute_pbo(per_window_returns_by_cost[1.0])
 
     result: Dict[str, Any] = {
         "oos_sharpe": oos_sharpe,
@@ -183,6 +193,7 @@ def walk_forward_fx(
         "dsr": dsr_val,
         "pbo": pbo_val,
         "oos_sharpe_1_5x_cost": oos_sharpe_1_5x_cost,
+        "oos_sharpe_by_cost": oos_sharpe_by_cost,
         "n_windows": len(windows),
         "n_oos_days": n,
         "window_sharpes": window_sharpes,
