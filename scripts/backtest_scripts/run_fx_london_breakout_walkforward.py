@@ -99,7 +99,8 @@ def _bars_for_day(sub: pd.DataFrame) -> List[Bar]:
 
 
 def _pair_daily_returns(pair: str, start: dt.date, end: dt.date, releases: pd.DataFrame,
-                        risk_frac: float, tp_fraction: float, offset_pips: float) -> pd.Series:
+                        risk_frac: float, tp_fraction: float, offset_pips: float,
+                        override_pips: Optional[float] = None) -> pd.Series:
     bars = load_fx_1min(pair, start, end)
     if bars.empty:
         logger.warning(f"[london_wf] no 1m data for {pair}; contributing empty series")
@@ -112,7 +113,7 @@ def _pair_daily_returns(pair: str, start: dt.date, end: dt.date, releases: pd.Da
         trading_days.append(day)
         strat = LondonBreakoutStrategy(pair, atr_d1=atr_prior, risk_frac=risk_frac,
                                        tp_fraction=tp_fraction, offset_pips=offset_pips,
-                                       releases=releases)
+                                       releases=releases, override_pips=override_pips)
         eng = OrderEngine()
         day_bars = _bars_for_day(sub)
         eng.run(day_bars, strat)
@@ -128,11 +129,13 @@ def _pair_daily_returns(pair: str, start: dt.date, end: dt.date, releases: pd.Da
 
 def build_daily_returns(pairs: List[str], start: dt.date, end: dt.date,
                         risk_frac: float = 0.005, tp_fraction: float = 0.5,
-                        offset_pips: float = 3.0) -> pd.Series:
+                        offset_pips: float = 3.0,
+                        override_pips: Optional[float] = None) -> pd.Series:
     releases = generate_tier1_releases(start, end)
     per_pair = []
     for pair in pairs:
-        s = _pair_daily_returns(pair, start, end, releases, risk_frac, tp_fraction, offset_pips)
+        s = _pair_daily_returns(pair, start, end, releases, risk_frac, tp_fraction, offset_pips,
+                                override_pips=override_pips)
         if not s.empty:
             per_pair.append(s.rename(pair))
     if not per_pair:
@@ -172,10 +175,13 @@ def run(config_path: str, trial_count: int,
     params = dict(strat.get("params", {}))
     start_d, end_d = _as_date(dts["start"]), _as_date(dts["end"])
 
+    override_pips = params.get("override_pips")
     combined = build_daily_returns(pairs, start_d, end_d,
                                    risk_frac=float(params.get("risk_frac", 0.005)),
                                    tp_fraction=float(params.get("tp_fraction", 0.5)),
-                                   offset_pips=float(params.get("offset_pips", 3.0)))
+                                   offset_pips=float(params.get("offset_pips", 3.0)),
+                                   override_pips=(float(override_pips)
+                                                  if override_pips is not None else None))
     segs = _wf_segments(combined, train_months, test_months, step_months)
     if len(segs) < 2:
         raise ValueError(f"need >=2 usable OOS windows, got {len(segs)}")

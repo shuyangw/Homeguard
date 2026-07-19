@@ -29,7 +29,8 @@ _LONDON = EXCHANGE_TZ["LONDON"]
 
 class LondonBreakoutStrategy:
     def __init__(self, pair, atr_d1, risk_frac=0.005, tp_fraction=0.5,
-                 offset_pips=3.0, tier="major", releases=None):
+                 offset_pips=3.0, tier="major", releases=None,
+                 override_pips=None):
         self.pair = pair
         self.atr_d1 = atr_d1                # dict[date -> ATR(14) daily, price units]
         self.risk_frac = float(risk_frac)
@@ -38,8 +39,9 @@ class LondonBreakoutStrategy:
         self.offset = offset_pips * self.pip
         self.tier = tier
         self.releases = releases
+        self.override_pips = override_pips
         self.day_r: dict[dt.date, float] = {}
-        self._rt_pips = fx_round_trip_pips(tier, session="london")
+        self._rt_pips = fx_round_trip_pips(tier, session="london", override_pips=override_pips)
         self._day = None
         self._skip = False
         self._armed = False

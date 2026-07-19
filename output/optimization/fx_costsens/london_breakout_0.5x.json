@@ -1,0 +1,29 @@
+{
+  "n_oos_days": 3064,
+  "n_windows": 13,
+  "n_active_oos_days": 2228,
+  "oos_sharpe": -0.7483024596136586,
+  "is_sharpe": -0.42366554293344943,
+  "is_oos_ratio": NaN,
+  "sp500_sharpe": 0.6766950856912934,
+  "sp500_n_days": 3064,
+  "beats_sp500": false,
+  "correlation_sp500": -0.029207380930431764,
+  "information_ratio_sp500": -0.7643752687291362,
+  "psr": 2.0186429172982844e-307,
+  "dsr": 2.0186429172982844e-307,
+  "pbo": 0.7195027195027195,
+  "skew": -0.24407857197081848,
+  "kurtosis_pearson": 3.8921646947840003,
+  "trial_count": 1,
+  "pairs": [
+    "GBPUSD",
+    "EURUSD",
+    "EURGBP",
+    "GBPJPY"
+  ],
+  "full_days": 4267,
+  "oos_start": "2014-01-03",
+  "oos_end": "2026-04-01",
+  "override_pips": 0.5
+}
