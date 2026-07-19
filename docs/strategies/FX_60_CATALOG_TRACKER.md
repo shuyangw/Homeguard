@@ -56,8 +56,8 @@ Last updated: 2026-07-06
 |---|---|---|---|---|---|---|---|
 | 1 | Dual MA + ATR trail | OHLC | ATR trail needs OHLC; daily EMA-cross ~= existing FxTrend | - | - | - | |
 | 2 | Donchian breakout | BRACKET | OHLC channel + stop-entry/pyramid | - | - | - | |
-| 3 | TSMOM portfolio | READY | -- | BT | WF | FAIL-naive | OOS -0.02, DSR 0.20, PBO 0.85 (IDM on, 13 win); naive sign form fails gate. Enhanced/param-sweep untested |
-| 4 | Cross-sectional momentum | READY | currency_strength artifact | BT | WF | FAIL-naive | OOS -0.05, DSR 0.01, PBO 0.66; naive 63d form fails gate |
+| 3 | TSMOM portfolio | READY | -- | BT | WF | FAIL-naive | OOS -0.02, DSR 0.20, PBO 0.85 (IDM on, 13 win); naive sign form fails gate. Enhanced/param-sweep untested. **2026-07-19 cost re-gate: 0.5x-cost (IBKR-optimistic) OOS Sharpe +0.075 vs -0.02 base -- point estimate flips sign but PSR/DSR/PBO unchanged (still far outside gate); NOT a robustness rescue.** |
+| 4 | Cross-sectional momentum | READY | currency_strength artifact | BT | WF | FAIL-naive | OOS -0.05, DSR 0.01, PBO 0.66; naive 63d form fails gate. **2026-07-19 cost re-gate: 0.5x-cost OOS Sharpe +0.058 vs -0.05 base -- same caveat as #3, gate metrics unchanged, NOT a rescue.** |
 | 5 | Breakout-pullback | INTRADAY | M15 triggers | - | - | - | |
 | 6 | ADX-gated trend | OHLC | ADX needs high/low | - | - | - | |
 | 7 | Multi-TF momentum | INTRADAY | D1/H4/M15 stack | - | - | - | |
@@ -78,17 +78,17 @@ Last updated: 2026-07-06
 
 | # | Name | Status | Blocks / needs | BT | WF | Gate | Notes |
 |---|---|---|---|---|---|---|---|
-| 15 | Vol-targeted carry basket | READY | G10 FRED rates current | BT | WF | FAIL-naive | OOS -0.33, DSR 0, PBO 0.73; CONTINUOUS rate-diff form (not the ranked top-3 + crash-filter basket) fails gate |
-| 16 | Carry-momentum filter | READY | -- | BT | WF | FAIL-enh | Built as FxCarrySeatbelt (#16 swap+EMA50 filter + #19 veto/short), broad G10, daily+weekly. FAIL S&P bar: daily OOS -0.75 / weekly -0.11 vs S&P 0.68 (2014-2026, 3196d). DSR 0. Report FX_CARRY_SEATBELT_WALK_FORWARD.md; 1 deferred variant (12mo-TSMOM leg / graded sizing) remains per pre-reg |
+| 15 | Vol-targeted carry basket | READY | G10 FRED rates current | BT | WF | FAIL-naive | OOS -0.33, DSR 0, PBO 0.73; CONTINUOUS rate-diff form (not the ranked top-3 + crash-filter basket) fails gate. **2026-07-19 cost re-gate: 0.5x-cost OOS Sharpe -0.295 vs -0.33 base -- stays negative, not a rescue.** |
+| 16 | Carry-momentum filter | READY | -- | BT | WF | FAIL-enh | Built as FxCarrySeatbelt (#16 swap+EMA50 filter + #19 veto/short), broad G10, daily+weekly. FAIL S&P bar: daily OOS -0.75 / weekly -0.11 vs S&P 0.68 (2014-2026, 3196d). DSR 0. Report FX_CARRY_SEATBELT_WALK_FORWARD.md; 1 deferred variant (12mo-TSMOM leg / graded sizing) remains per pre-reg. **2026-07-19 cost re-gate: 0.5x-cost OOS Sharpe daily -0.491 / weekly +0.020 vs S&P 0.684 -- both still FAIL the S&P bar; weekly flips sign but stays ~34x below benchmark. Not a rescue.** |
 | 17 | Swap-aware swing bias | READY | overlay/tilt | - | - | - | carry PnL modeled |
 | 18 | EM carry (MXN) | DATA | USDMXN not in daily cache (on disk; MXN rate ready) | - | - | - | buildable via Dukascopy/Massive |
-| 19 | Carry-unwind detector | READY | AUD/NZD/JPY/CHF/XAU all present | BT | WF | FAIL-enh | Built as the veto + offensive-short leg of FxCarrySeatbelt. Short earned +1.4% in the Aug-2024 yen unwind (existence proof, N~4-6). Combined strategy FAILs S&P bar (see #16). carry_unwind score reusable (src/backtesting/signals/carry_unwind.py) |
+| 19 | Carry-unwind detector | READY | AUD/NZD/JPY/CHF/XAU all present | BT | WF | FAIL-enh | Built as the veto + offensive-short leg of FxCarrySeatbelt. Short earned +1.4% in the Aug-2024 yen unwind (existence proof, N~4-6). Combined strategy FAILs S&P bar (see #16). carry_unwind score reusable (src/backtesting/signals/carry_unwind.py). See #16 for the 2026-07-19 cost re-gate (same combined strategy). |
 
 ## Category D -- Session / Time-of-day (20-25)
 
 | # | Name | Status | Blocks / needs | BT | WF | Gate | Notes |
 |---|---|---|---|---|---|---|---|
-| 20 | London open breakout | READY | intraday engine BUILT | BT | WF | FAIL-enh | First gated INTRADAY result. Filtered Asian-range break (0.25-0.8x ATR width, tier-1 event skip), OCO bracket, conservative 1m fills, 1.2x London spread. FAIL S&P: OOS Sharpe -1.60 vs 0.68 (IS -0.99, DSR 0, 3064 same-dates OOS, 2014-2026). Dies after spread. Report FX_LONDON_BREAKOUT_WALK_FORWARD.md. Intraday engine (src/backtesting/engine/intraday_order_engine.py) now REUSABLE for #21-25 |
+| 20 | London open breakout | READY | intraday engine BUILT | BT | WF | FAIL-enh | First gated INTRADAY result. Filtered Asian-range break (0.25-0.8x ATR width, tier-1 event skip), OCO bracket, conservative 1m fills, 1.2x London spread. FAIL S&P: OOS Sharpe -1.60 vs 0.68 (IS -0.99, DSR 0, 3064 same-dates OOS, 2014-2026). Dies after spread. Report FX_LONDON_BREAKOUT_WALK_FORWARD.md. Intraday engine (src/backtesting/engine/intraday_order_engine.py) now REUSABLE for #21-25. **2026-07-19 cost re-gate: 0.5x-pip/side (IBKR-optimistic) OOS Sharpe -0.748 vs -1.60 base and S&P 0.677 -- big point improvement, still a hard FAIL. Not a rescue.** |
 | 21 | NY continuation | INTRADAY | session | - | - | - | |
 | 22 | Tokyo JPY-cross MR | INTRADAY | session + synth decomposition | - | - | - | |
 | 23 | WMR 16:00 fix | INTRADAY | intraday fix window | - | - | - | |
@@ -131,7 +131,7 @@ Last updated: 2026-07-06
 
 | # | Name | Status | Blocks / needs | BT | WF | Gate | Notes |
 |---|---|---|---|---|---|---|---|
-| 43 | Gold/silver ratio | READY | XAU/XAG clean | BT | WF | FAIL-naive | OOS -0.31, DSR 0, PBO 0.49; plain 756d z-reversion (no momentum-brake/vol-band) fails gate |
+| 43 | Gold/silver ratio | READY | XAU/XAG clean | BT | WF | FAIL-naive | OOS -0.31, DSR 0, PBO 0.49; plain 756d z-reversion (no momentum-brake/vol-band) fails gate. **2026-07-19 cost re-gate: 0.5x-cost OOS Sharpe -0.299 vs -0.31 base -- stays negative, not a rescue.** |
 | 44 | Non-USD gold momentum | READY | synth XAU crosses from FX legs | - | - | - | |
 | 45 | Metals-implied FX | INTRADAY | minute/diagnostic | - | - | - | |
 | 46 | Gold as risk filter | READY | overlay, computable | - | - | - | |
