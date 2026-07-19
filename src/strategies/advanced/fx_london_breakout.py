@@ -20,20 +20,11 @@ import pandas as pd
 
 from src.backtesting.costs.fx import _pip_size, fx_round_trip_pips
 from src.backtesting.engine.intraday_order_engine import Order
-from src.backtesting.sessions.fx_clock import EXCHANGE_TZ, in_session_mask
+from src.backtesting.sessions.fx_clock import EXCHANGE_TZ
 from src.backtesting.utils.indicators import Indicators
 from src.data.macro_calendar_tier1 import tier1_release_in_window
 
 _LONDON = EXCHANGE_TZ["LONDON"]
-
-
-def asian_range(bars_1m: pd.DataFrame, fx_day: dt.date):
-    mask = in_session_mask(bars_1m.index, "ASIAN_RANGE")
-    day_local = bars_1m.index.tz_convert(_LONDON).date
-    sel = bars_1m[mask.values & (day_local == fx_day)]
-    if sel.empty:
-        return None
-    return float(sel["high"].max()), float(sel["low"].min())
 
 
 class LondonBreakoutStrategy:
@@ -48,7 +39,7 @@ class LondonBreakoutStrategy:
         self.tier = tier
         self.releases = releases
         self.day_r: dict[dt.date, float] = {}
-        self._rt_pips = fx_round_trip_pips(tier)
+        self._rt_pips = fx_round_trip_pips(tier, session="london")
         self._day = None
         self._skip = False
         self._armed = False

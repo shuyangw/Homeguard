@@ -14,22 +14,22 @@ netted per trade in the R-multiple; no separate 1.5x cost leg is fabricated
 
 | Metric | Value |
 |---|---|
-| OOS Sharpe (net) | -1.2825 |
+| OOS Sharpe (net) | -1.5995 |
 | S&P Sharpe (aligned OOS dates) | 0.6767 |
 | S&P observation count | 3064 |
 | Beats S&P | False |
-| IS Sharpe (mean per-window) | -0.9917 |
+| IS Sharpe (mean per-window) | -1.2177 |
 | IS/OOS Sharpe ratio | nan |
-| Correlation to S&P | -0.0282 |
-| Information ratio vs S&P | -0.8426 |
+| Correlation to S&P | -0.0277 |
+| Information ratio vs S&P | -0.8738 |
 | PSR (diag) | 0.0000 |
 | DSR (diag, trials=1) | 0.0000 |
-| PBO (diag) | 0.6658 |
-| Skew / Kurtosis | -0.3545 / 4.4046 |
-| n_windows / n_oos_days | 13 / 3485 |
-| Active OOS days (>=1 trade) | 2286 |
+| PBO (diag) | 0.6441 |
+| Skew / Kurtosis | -0.3586 / 3.9343 |
+| n_windows / n_oos_days | 13 / 3064 |
+| Active OOS days (>=1 trade) | 2228 |
 | Full daily series length | 4267 |
-| OOS window | 2014-01-03 .. 2026-04-02 |
+| OOS window | 2014-01-03 .. 2026-04-01 |
 
 Limitations: conservative 1m fills (worst-of trigger/open, adverse
 both-in-one-bar); half-spread slippage is a floor; approximate tier-1

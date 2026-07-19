@@ -64,6 +64,17 @@ def test_oco_one_leg_fill_cancels_sibling():
     assert eng.resting_orders == []  # sibling cancelled
 
 
+def test_oco_wide_bar_spanning_both_legs_fills_only_one():
+    eng = OrderEngine()
+    eng.add_oco(
+        Order(side="buy", kind="stop", trigger=1.2500, qty=1.0),
+        Order(side="sell", kind="stop", trigger=1.2400, qty=1.0))
+    # one wide bar reaches BOTH triggers; OCO is atomic -> at most one leg fills
+    eng.match_resting_orders(_bar(1.2450, 1.2550, 1.2350, 1.2500))
+    assert len(eng.fills) == 1
+    assert eng.resting_orders == []  # both legs resolved (one filled, sibling cancelled)
+
+
 def test_bracket_partial_take_then_trail_closes_remainder():
     eng = OrderEngine()
     # long 1.0 @ 1.2500, stop 1.2450, target 1.2550, take half, trail 0.0030

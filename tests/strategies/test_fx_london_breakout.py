@@ -5,8 +5,7 @@ import pandas as pd
 
 from src.backtesting.costs.fx import _pip_size, fx_round_trip_pips
 from src.backtesting.engine.intraday_order_engine import OrderEngine, Bar
-from src.strategies.advanced.fx_london_breakout import (
-    LondonBreakoutStrategy, asian_range)
+from src.strategies.advanced.fx_london_breakout import LondonBreakoutStrategy
 
 _DAY = dt.date(2024, 1, 10)
 _PIP = _pip_size("GBPUSD")
@@ -32,7 +31,7 @@ def _blank_day(day, lo, hi, end="16:00"):
 
 
 def _rt_spread_r(initial_risk):
-    return (fx_round_trip_pips("major") * _PIP) / initial_risk
+    return (fx_round_trip_pips("major", session="london") * _PIP) / initial_risk
 
 
 def _long_stop_loss_day_r(width_pips):
@@ -114,19 +113,20 @@ def test_cancel_fires_when_0930_bar_is_missing():
     assert eng.fills == []                           # cancelled at 09:31, no fill
 
 
-def test_wide_bar_hitting_both_legs_opens_long_when_close_above_open():
+def test_wide_bar_spanning_both_oco_legs_fills_only_one_and_opens():
+    # A single bar wide enough to trigger BOTH OCO legs must fill only ONE
+    # (engine-level OCO atomicity): exactly one fill, one position opened.
     lo, hi = 1.2500, 1.2530
     df = _blank_day("2024-01-10", lo, hi, end="08:30")  # end before 16:00 flatten
     wide = (df.index.hour == 8) & (df.index.minute == 15)
     df.loc[wide, "high"] = hi + 5 * _PIP
     df.loc[wide, "low"] = lo - 5 * _PIP
     df.loc[wide, "open"] = (hi + lo) / 2.0
-    df.loc[wide, "close"] = (hi + lo) / 2.0 + 2 * _PIP  # close > open -> long
+    df.loc[wide, "close"] = (hi + lo) / 2.0 + 2 * _PIP
     strat, eng = _run(df, atr_d1={_DAY: 0.0050})
-    assert any(f.side == "buy" for f in eng.fills)
-    assert any(f.side == "sell" for f in eng.fills)
+    assert len(eng.fills) == 1  # atomic OCO: never both legs in one bar
     assert strat._pos is not None
-    assert strat._pos.side == "buy"
+    assert strat._pos.side == eng.fills[0].side
 
 
 def _london_day_1m(day, hi, lo):
@@ -139,12 +139,6 @@ def _london_day_1m(day, hi, lo):
     df.loc[asian, "high"] = hi
     df.loc[asian, "low"] = lo
     return df
-
-
-def test_asian_range_reads_0000_0700_london():
-    df = _london_day_1m("2024-01-10", 1.2550, 1.2500)
-    hi, lo = asian_range(df, dt.date(2024, 1, 10))
-    assert abs(hi - 1.2550) < 1e-9 and abs(lo - 1.2500) < 1e-9
 
 
 def test_width_filter_stands_down_when_too_wide():

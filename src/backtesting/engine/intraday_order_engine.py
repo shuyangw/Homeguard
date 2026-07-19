@@ -76,6 +76,8 @@ class OrderEngine:
         for o in list(self.resting_orders):
             if o.armed_at is not None and bar.ts <= o.armed_at:
                 continue  # armed this bar or later; not yet eligible
+            if o.oco_group is not None and o.oco_group in cancelled_groups:
+                continue  # sibling already filled this bar; OCO is atomic
             price = self._match_order(o, bar)
             if price is None:
                 continue

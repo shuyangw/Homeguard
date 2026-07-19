@@ -1,8 +1,8 @@
-"""1-minute spot-FX bar loader + OHLC resampler.
+"""1-minute spot-FX bar loader.
 
 Reads the canonical 8-column 1m parquet cache (tz-aware UTC) for a pair over a
-date range and resamples to coarser bars. Pure reads; no cleaning beyond sort +
-dedupe (the 1m cache is already spike-cleaned upstream).
+date range. Pure reads; no cleaning beyond sort + dedupe (the 1m cache is
+already spike-cleaned upstream).
 """
 from __future__ import annotations
 
@@ -33,9 +33,3 @@ def load_fx_1min(pair: str, start: dt.date, end: dt.date) -> pd.DataFrame:
     out = out[(out.index >= lo) & (out.index < hi)]
     out = out[~out.index.duplicated(keep="first")].sort_index()
     return out
-
-
-def resample_ohlc(bars: pd.DataFrame, freq: str) -> pd.DataFrame:
-    agg = {"open": "first", "high": "max", "low": "min", "close": "last", "volume": "sum"}
-    out = bars.resample(freq, label="right", closed="left").agg(agg)
-    return out.dropna(subset=["open"])

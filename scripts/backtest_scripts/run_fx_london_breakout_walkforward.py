@@ -113,7 +113,13 @@ def _pair_daily_returns(pair: str, start: dt.date, end: dt.date, releases: pd.Da
         strat = LondonBreakoutStrategy(pair, atr_d1=atr_prior, risk_frac=risk_frac,
                                        tp_fraction=tp_fraction, offset_pips=offset_pips,
                                        releases=releases)
-        OrderEngine().run(_bars_for_day(sub), strat)
+        eng = OrderEngine()
+        day_bars = _bars_for_day(sub)
+        eng.run(day_bars, strat)
+        if eng.position is not None and day_bars:
+            last = day_bars[-1]
+            eng.flatten(last.close, last.ts, reason="eod_safety")
+            strat._book_if_closed(eng)
         for k, v in strat.day_r.items():
             day_r[k] = day_r.get(k, 0.0) + v
     idx = sorted(set(trading_days) | set(day_r.keys()))
@@ -178,6 +184,13 @@ def run(config_path: str, trial_count: int,
     oos_dated = pd.concat([oos for _, oos in segs]).sort_index(kind="stable")
     oos_dated = oos_dated[~oos_dated.index.duplicated(keep="first")]
 
+    # Same-dates gate: restrict the headline strategy series to the dates the S&P
+    # also trades, so the strategy OOS Sharpe and the S&P Sharpe are computed over
+    # one identical date index ("beats S&P over the same OOS dates" literally).
+    sp = load_sp500_daily_returns()
+    common = oos_dated.index.intersection(sp.index)
+    oos_dated = oos_dated.loc[oos_dated.index.isin(common)]
+
     arr = oos_dated.to_numpy(dtype=float)
     n = int(arr.size)
     sharpe = _annualized_sharpe(arr)
@@ -195,7 +208,6 @@ def run(config_path: str, trial_count: int,
 
     n_trades = int((oos_dated != 0.0).sum())
 
-    sp = load_sp500_daily_returns()
     sp_sharpe = sp500_sharpe_over_dates(oos_dated.index, sp_returns=sp)
     sp_n = sp500_aligned_count(oos_dated.index, sp_returns=sp)
     if n > 0 and abs(sp_n - n) / n > 0.05:
