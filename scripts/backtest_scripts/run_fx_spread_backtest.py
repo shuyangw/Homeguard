@@ -75,10 +75,12 @@ def run_spread_backtest(strategy_name: str, universe: list[str], start: date,
                         end: date, vol_target: float = 0.10,
                         rebalance: str = "weekly",
                         initial_capital: float = _DEFAULT_CAPITAL,
-                        leverage_cap: float = _DEFAULT_LEVERAGE_CAP) -> pd.Series:
+                        leverage_cap: float = _DEFAULT_LEVERAGE_CAP,
+                        cost_mult: float = 1.0) -> pd.Series:
     with RunStatus("fx_spread_backtest",
                    meta={"strategy": strategy_name, "start": str(start),
-                         "end": str(end), "rebalance": rebalance}):
+                         "end": str(end), "rebalance": rebalance,
+                         "cost_mult": cost_mult}):
         load_universe = list(dict.fromkeys(universe + _conversion_legs(universe)))
         panel = load_fx_daily_panel(load_universe, start, end)
         panel_pairs = {c[0] for c in panel.columns}
@@ -91,6 +93,7 @@ def run_spread_backtest(strategy_name: str, universe: list[str], start: date,
 
         sim = FxSpreadPortfolioSimulator(initial_capital, _cost_fn_factory(),
                                          rebalance=rebalance,
+                                         cost_mult=cost_mult,
                                          leverage_cap=leverage_cap)
         res = sim.run_spreads(close, book, sigma, quote_usd, vol_target)
     return res.equity_curve.pct_change(fill_method=None).dropna()

@@ -6,6 +6,17 @@ and test progress. Update this file as strategies are tested or unblocked.
 
 Last updated: 2026-07-19
 
+**WAVE 2 RESOLUTION (2026-07-19): all 6 Wave 2 strategies (#33/#39/#42 Track A +
+#30/#35/#37 Track B) FAIL the combined statistical gate.** Per the pre-registered
+stopping rule (`docs/superpowers/specs/2026-07-19-fx-wave2-selection-design.md`
+Section 6), across Wave 1 + Wave 2 the campaign has now tested 8+ distinct
+mechanisms (trend, cross-sectional momentum, carry, filtered carry, session
+breakout, spread-RV, statistical residual, macro-regime, seasonal, metals
+ratio-reversion) spanning the full frequency/style spectrum, all failing after
+realistic costs. The campaign DECLARES the finding and STOPS: no Wave 3, no ML
+meta-labeling harness build (#48-53). See
+`docs/strategies/research/20260719_fx_wave2_resolution.md`.
+
 ## Status legend (what a strategy needs before it can be tested)
 
 | Tag | Meaning |
@@ -103,7 +114,7 @@ Last updated: 2026-07-19
 | 27 | Bandwidth squeeze | OHLC | Keltner/ATR (D1 form) | - | - | - | |
 | 28 | ATR-regime switch | OHLC | OHLC + regime artifact (ready) | - | - | - | allocation overlay |
 | 29 | Vol-spike fade | OHLC | daily RV form | - | - | - | |
-| 30 | Relative-vol pair | SPREAD | bracket + coupled legs | - | - | - | {XAU,XAG} set available |
+| 30 | Relative-vol pair | SPREAD | beta-weighted spread engine BUILT | BT | WF | REJECT | Wave 2 Track B. VolRatioPair, symmetric vol-ratio reversion on {EURNOK,EURSEK}/{AUDUSD,NZDUSD}/{XAUUSD,XAGUSD}, all 6 legs present in every window. OOS Sharpe -0.48 (1.5x: -0.54), PSR 0, DSR 0 (N=111), PBO 0.43, S&P corr 0.14. Non-positive OOS Sharpe -- no edge to deflate. Report: docs/reports/fx/fx_vol_ratio_pair_wave2_gate.md |
 
 ## Category F -- Seasonal / Calendar (31-34)
 
@@ -118,9 +129,9 @@ Last updated: 2026-07-19
 
 | # | Name | Status | Blocks / needs | BT | WF | Gate | Notes |
 |---|---|---|---|---|---|---|---|
-| 35 | AUD/NZD pairs | SPREAD | beta-weighted spread; cointegration artifact ready | - | - | - | AUD/NZD present |
-| 36 | Scandi triangle | SPREAD | spread + Brent oil | - | - | - | NOK/SEK present |
-| 37 | Cointegration scanner | SPREAD | spread engine; cointegration artifact ready | - | - | - | |
+| 35 | AUD/NZD pairs | SPREAD | beta-weighted spread engine BUILT | BT | WF | REJECT | Wave 2 Track B. AudNzdPairs, 120d OLS residual-z, RBA/RBNZ blackout. OOS Sharpe -0.24 (1.5x: -0.30), PSR 0, DSR 0 (N=109), PBO 0.82, S&P corr 0.04. Non-positive OOS Sharpe -- no edge to deflate. Report: docs/reports/fx/fx_audnzd_pairs_wave2_gate.md |
+| 36 | Scandi triangle | SPREAD | spread engine BUILT; still needs Brent oil | - | - | - | NOK/SEK present |
+| 37 | Cointegration scanner | SPREAD | beta-weighted spread engine BUILT | BT | WF | REJECT | Wave 2 Track B. CointScanner, monthly Engle-Granger scan over 22-pair G10, top-5 tradeable set, structural ADF-degradation exit. OOS Sharpe -0.24 (1.5x: -0.31), PSR 0, DSR 0 (N=110), PBO 0.45, S&P corr -0.01. Non-positive OOS Sharpe -- no edge to deflate. Report: docs/reports/fx/fx_coint_scanner_wave2_gate.md |
 | 38 | Synthetic cross divergence | INTRADAY | minute/diagnostic | - | - | - | |
 | 39 | PCA dollar-factor residual | READY | pca_dollar artifact + USD panel | BT | WF | REJECT | Wave 2 Track A. FxPcaDollarResidual, 22-pair weekly residual rank, major-tier tradeable. OOS Sharpe -0.12 (1.5x: -0.22), PSR 0, DSR 0 (N=105), PBO 0.38, S&P corr 0.02. Non-positive OOS Sharpe. Report: docs/reports/fx/fx_pca_dollar_residual_wave2_gate.md |
 | 40 | Correlation-breakdown | READY | daily rolling corr; overlay + pair | - | - | - | pair leg needs SPREAD |
@@ -167,7 +178,7 @@ Last updated: 2026-07-19
 | Subsystem | Unblocks | Prereqs met | Status |
 |---|---|---|---|
 | OHLC-into-forecast_panel | 8 (Cat: 1,6,8,12,27,28,29,47) | all | not started (trivial) |
-| Beta-weighted spread execution | 4 (30,35,36,37) + #40 pair leg | cointegration artifact | not started |
+| Beta-weighted spread execution | 4 (30,35,36,37) + #40 pair leg | cointegration artifact | BUILT (2026-07-19, `FxSpreadPortfolioSimulator`); gated #30/#35/#37 (all REJECT); #36 (needs Brent oil) and #40's pair leg still unbuilt |
 | Intraday engine | 22 | minute data, spread_model, vol_surface | not started (large) |
 | ML meta-label harness | 6 (48-53) | CPCV/DSR | not started |
 | EM spot pairs (data) | 2 (18,55) | on disk (Massive/Dukascopy) | not started |
