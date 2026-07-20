@@ -266,7 +266,9 @@ class WalkForwardValidator:
                 symbols=symbols,
                 start_date=window.train_start,
                 end_date=window.train_end,
-                metric=metric
+                metric=metric,
+                fill_sink=fill_sink,
+                base_window=window.window_number,
             )
 
             best_params = train_result['best_params']

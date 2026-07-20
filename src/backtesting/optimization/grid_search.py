@@ -279,6 +279,8 @@ class GridSearchOptimizer:
         end_date: str,
         metric: str = 'sharpe_ratio',
         on_trial_complete: Optional[TrialCallback] = None,
+        fill_sink=None,
+        base_window: int = 0,
     ) -> Dict[str, Any]:
         """
         Optimize strategy parameters over a grid.
@@ -395,6 +397,14 @@ class GridSearchOptimizer:
                     portfolio = self.engine._run_single_symbol_with_data(strategy, data, symbols[0], 'close')
                 else:
                     portfolio = self.engine._run_multiple_symbols_with_data(strategy, data, symbols, 'close')
+
+                if fill_sink is not None:
+                    import hashlib
+                    import json
+                    combo_hash = hashlib.sha1(
+                        json.dumps(params, sort_keys=True, default=str).encode()
+                    ).hexdigest()[:6]
+                    fill_sink.write_portfolio(portfolio, window=base_window, cfg_hash=combo_hash)
 
                 # Get performance statistics
                 stats = portfolio.stats()
