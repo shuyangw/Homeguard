@@ -53,8 +53,15 @@ def _cost_fn_factory(session: str = "ny"):
     return cost_fn
 
 
+def _route_fills(res, fill_sink, window):
+    extras = {"leverage_utilization": res.leverage_utilization.rename(
+        "leverage_utilization").reset_index()}
+    fill_sink.write_window(res.trades, window, extras=extras)
+
+
 def run_fx_backtest(config: Dict[str, Any], register: bool = True,
-                    log_trades: bool = False) -> Dict[str, Any]:
+                    log_trades: bool = False, fill_sink=None,
+                    window=None) -> Dict[str, Any]:
     strat_cfg = config.get("strategy", {})
     dates_cfg = config.get("dates", {})
     bt = config.get("backtest", {})
@@ -108,7 +115,11 @@ def run_fx_backtest(config: Dict[str, Any], register: bool = True,
         except Exception as e:
             logger.error(f"[fx_backtest] registry append_run failed (non-fatal): {e}")
 
-    trade_log_dir = _write_trade_log(res, strategy_name, start, end) if log_trades else None
+    if fill_sink is not None:
+        _route_fills(res, fill_sink, window if window is not None else 0)
+        trade_log_dir = str(fill_sink.run_dir)
+    else:
+        trade_log_dir = _write_trade_log(res, strategy_name, start, end) if log_trades else None
     return {
         "n_days": len(res.equity_curve),
         "metrics": report["overall_metrics"],
