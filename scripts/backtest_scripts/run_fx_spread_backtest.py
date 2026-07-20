@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 from datetime import date, datetime
+from pathlib import Path
 
 import pandas as pd
 
@@ -71,12 +72,22 @@ def _make_strategy(strategy_name: str, universe: list[str]):
     raise ValueError(f"unknown spread strategy: {strategy_name}")
 
 
+def _write_trade_log(res, strategy_name: str, start: date, end: date) -> str:
+    out = Path("output") / "backtests" / "fx" / strategy_name / f"{start}_to_{end}"
+    out.mkdir(parents=True, exist_ok=True)
+    res.trades.to_csv(out / "trades.csv", index=False)
+    res.equity_curve.rename("equity").to_frame().to_csv(out / "equity.csv", index_label="date")
+    logger.info(f"[fx_spread_backtest] wrote trade log ({len(res.trades)} fills) to {out}")
+    return str(out)
+
+
 def run_spread_backtest(strategy_name: str, universe: list[str], start: date,
                         end: date, vol_target: float = 0.10,
                         rebalance: str = "weekly",
                         initial_capital: float = _DEFAULT_CAPITAL,
                         leverage_cap: float = _DEFAULT_LEVERAGE_CAP,
-                        cost_mult: float = 1.0) -> pd.Series:
+                        cost_mult: float = 1.0,
+                        log_trades: bool = False) -> pd.Series:
     with RunStatus("fx_spread_backtest",
                    meta={"strategy": strategy_name, "start": str(start),
                          "end": str(end), "rebalance": rebalance,
@@ -96,6 +107,8 @@ def run_spread_backtest(strategy_name: str, universe: list[str], start: date,
                                          cost_mult=cost_mult,
                                          leverage_cap=leverage_cap)
         res = sim.run_spreads(close, book, sigma, quote_usd, vol_target)
+        if log_trades:
+            _write_trade_log(res, strategy_name, start, end)
     return res.equity_curve.pct_change(fill_method=None).dropna()
 
 
@@ -113,12 +126,15 @@ def main() -> None:
     parser.add_argument("--end", required=True, type=_as_date)
     parser.add_argument("--vol-target", type=float, default=0.10)
     parser.add_argument("--rebalance", default="weekly")
+    parser.add_argument("--log-trades", action="store_true",
+                        help="persist trades.csv/equity.csv under output/backtests/fx/")
     args = parser.parse_args()
 
     universe = [p.strip() for p in args.universe.split(",") if p.strip()]
     returns = run_spread_backtest(args.strategy, universe, args.start, args.end,
                                   vol_target=args.vol_target,
-                                  rebalance=args.rebalance)
+                                  rebalance=args.rebalance,
+                                  log_trades=args.log_trades)
     logger.info(f"[fx_spread_backtest] {args.strategy}: {len(returns)} daily "
                 f"returns, cumulative={float((1 + returns).prod() - 1):.4f}")
 
