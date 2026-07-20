@@ -4,7 +4,7 @@ Living tracker for the 60-strategy FX catalog (research docs: `~/Downloads/compa
 `~/Downloads/fx_strategy_deep_dive.md`). Tracks, per strategy: current viability, what blocks it,
 and test progress. Update this file as strategies are tested or unblocked.
 
-Last updated: 2026-07-06
+Last updated: 2026-07-19
 
 ## Status legend (what a strategy needs before it can be tested)
 
@@ -111,7 +111,7 @@ Last updated: 2026-07-06
 |---|---|---|---|---|---|---|---|
 | 31 | Day-of-week | READY | overlay/tilt | - | - | - | |
 | 32 | Month-end fix | INTRADAY | equity-index data + intraday fix | - | - | - | needs equity feed |
-| 33 | Turn-of-month USD | READY | AUDUSD present | - | - | - | calendar forecast |
+| 33 | Turn-of-month USD | READY | AUDUSD present | BT | WF | REJECT | Wave 2 Track A. FxTurnOfMonth, USD-major seasonal. OOS Sharpe -0.28 (1.5x: -0.36), PSR 0, DSR 0 (N=104), PBO 0.84, S&P corr 0.03. Non-positive OOS Sharpe -- no edge to deflate. Report: docs/reports/fx/fx_turn_of_month_wave2_gate.md |
 | 34 | Holiday / thin-liquidity | READY | holiday calendar (lib ready) | - | - | - | overlay |
 
 ## Category G -- Stat-arb / Relative Value (35-42)
@@ -122,10 +122,10 @@ Last updated: 2026-07-06
 | 36 | Scandi triangle | SPREAD | spread + Brent oil | - | - | - | NOK/SEK present |
 | 37 | Cointegration scanner | SPREAD | spread engine; cointegration artifact ready | - | - | - | |
 | 38 | Synthetic cross divergence | INTRADAY | minute/diagnostic | - | - | - | |
-| 39 | PCA dollar-factor residual | READY | pca_dollar artifact + USD panel | - | - | - | weekly residual rank |
+| 39 | PCA dollar-factor residual | READY | pca_dollar artifact + USD panel | BT | WF | REJECT | Wave 2 Track A. FxPcaDollarResidual, 22-pair weekly residual rank, major-tier tradeable. OOS Sharpe -0.12 (1.5x: -0.22), PSR 0, DSR 0 (N=105), PBO 0.38, S&P corr 0.02. Non-positive OOS Sharpe. Report: docs/reports/fx/fx_pca_dollar_residual_wave2_gate.md |
 | 40 | Correlation-breakdown | READY | daily rolling corr; overlay + pair | - | - | - | pair leg needs SPREAD |
 | 41 | HF lead-lag | INTRADAY | minute | - | - | - | |
-| 42 | RORO regime spread | READY | AUDJPY/CHFJPY/XAU present | - | - | - | spread as net forecast |
+| 42 | RORO regime spread | READY | AUDJPY/CHFJPY/XAU present | BT | WF | WEAK | Wave 2 Track A. FxRoroRegimeSpread, AUDJPY/CHFJPY beta-weighted, XAUUSD score-only. OOS Sharpe +0.06 (1.5x: -0.03 -- FAILS cost sensitivity), PSR 0.9993, DSR 0 (N=106), PBO 0.17, S&P corr 0.002 (genuinely market-neutral). Positive 1x edge does not survive realistic cost stress and shows no statistical evidence of skill once deflated for the 106-trial search. Report: docs/reports/fx/fx_roro_regime_spread_wave2_gate.md |
 
 ## Category H -- Metals (43-47)
 
