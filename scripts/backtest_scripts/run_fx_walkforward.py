@@ -7,7 +7,9 @@ Sharpe/PSR/DSR/PBO gate. Trial count = 1.
 """
 from __future__ import annotations
 
-from datetime import date
+import hashlib
+import json
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence
 
@@ -15,6 +17,7 @@ import numpy as np
 import pandas as pd
 
 from src.backtesting.data.fx_backtest_loader import load_fx_daily_panel
+from src.backtesting.engine.fill_sink import FillSink
 from src.backtesting.engine.fx_backtest import run_fx_backtest
 from src.backtesting.statistics.dsr import dsr
 from src.backtesting.statistics.psr import psr
@@ -56,7 +59,8 @@ def _config_to_kwargs(config: Dict[str, Any]) -> Dict[str, Any]:
 def _run_window_fx(universe: Sequence[str], train_start: date, test_end: date,
                     capital: float, vol_target: float, cost_mult: float,
                     strategy_name: str, tier: str, idm: bool,
-                    idm_cap: Optional[float]) -> Dict[str, Any]:
+                    idm_cap: Optional[float], fill_sink: Optional[FillSink] = None,
+                    window: Optional[int] = None) -> Dict[str, Any]:
     config = {
         "asset_class": "fx",
         "strategy": {"name": strategy_name, "universe": list(universe), "params": {}},
@@ -65,7 +69,7 @@ def _run_window_fx(universe: Sequence[str], train_start: date, test_end: date,
                      "rebalance": "weekly", "cost_mult": cost_mult, "leverage_cap": 10.0,
                      "tier": tier, "idm": idm, "idm_cap": idm_cap},
     }
-    return run_fx_backtest(config, register=False, log_trades=False)
+    return run_fx_backtest(config, register=False, fill_sink=fill_sink, window=window)
 
 
 def process_window(spec: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -82,9 +86,11 @@ def process_window(spec: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     dates = list(panel.index)
     oos_by_cost: Dict[float, np.ndarray] = {}
     for cost_mult in spec["cost_mults"]:
+        leg_sink = spec.get("fill_sink") if cost_mult == 1.0 else None
         res = _run_window_fx(window_universe, train_start, test_end, spec["capital"],
                               spec["vol_target"], cost_mult, spec["strategy_name"], spec["tier"],
-                              spec["idm"], spec["idm_cap"])
+                              spec["idm"], spec["idm_cap"], fill_sink=leg_sink,
+                              window=spec.get("window"))
         oos_by_cost[cost_mult] = _oos_returns(res["equity_curve"], dates, test_start)
     return {
         "train_start": train_start, "test_start": test_start, "test_end": test_end,
@@ -136,11 +142,21 @@ def walk_forward_fx(
     window_universes: List[List[str]] = []
     used_windows: List[tuple[date, date, date]] = []
 
+    _sink_cfg = {"universe": universe, "capital": capital, "vol_target": vol_target,
+                 "strategy_name": strategy_name, "tier": tier, "idm": idm, "idm_cap": idm_cap,
+                 "train_months": train_months, "test_months": test_months,
+                 "step_months": step_months, "start": str(start), "end": str(end),
+                 "cost_mults": cost_mults}
+    cfg_hash = hashlib.sha1(json.dumps(_sink_cfg, sort_keys=True, default=str).encode()).hexdigest()[:6]
+    sink = FillSink(strategy_name, FillSink.make_run_id(cfg_hash, datetime.now(timezone.utc)),
+                    {"kind": "walkforward", "start": str(start), "end": str(end)})
+
     specs = [
         {"universe": universe, "train_start": ts, "test_start": tst, "test_end": te,
          "capital": capital, "vol_target": vol_target, "strategy_name": strategy_name,
-         "tier": tier, "idm": idm, "idm_cap": idm_cap, "cost_mults": cost_mults}
-        for (ts, tst, te) in windows
+         "tier": tier, "idm": idm, "idm_cap": idm_cap, "cost_mults": cost_mults,
+         "window": i + 1, "fill_sink": sink}
+        for i, (ts, tst, te) in enumerate(windows)
     ]
     from src.backtesting.parallel import parallel_map
     results = parallel_map(process_window, specs, max_workers=max_workers)
@@ -152,6 +168,8 @@ def walk_forward_fx(
         window_sharpes.append(_annualized_sharpe(r["oos_by_cost"][1.0]))
         window_universes.append(r["window_universe"])
         used_windows.append((r["train_start"], r["test_start"], r["test_end"]))
+
+    sink.finalize(oos_windows=list(range(1, len(specs) + 1)))
 
     if len(used_windows) < 2:
         raise ValueError(

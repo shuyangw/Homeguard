@@ -7,6 +7,9 @@ IR, and per-episode attribution are computed and reported as diagnostics only.
 """
 from __future__ import annotations
 
+import hashlib
+import json
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -17,6 +20,7 @@ from src.backtesting.benchmark import (
     load_sp500_daily_returns, sp500_sharpe_over_dates, sp500_aligned_count,
     correlation_over_dates, information_ratio_vs_sp500)
 from src.backtesting.data.fx_backtest_loader import load_fx_daily_panel
+from src.backtesting.engine.fill_sink import FillSink
 from src.backtesting.engine.fx_backtest import run_fx_backtest
 from src.backtesting.statistics.dsr import dsr
 from src.backtesting.statistics.psr import psr
@@ -53,7 +57,8 @@ def _run_window(spec: Dict[str, Any]) -> Optional[Dict[str, Any]]:
                             "rebalance": spec["rebalance"], "cost_mult": cost_mult,
                             "leverage_cap": spec["leverage_cap"], "idm": spec["idm"],
                             "idm_cap": spec["idm_cap"]}}
-        res = run_fx_backtest(cfg, register=False, log_trades=False)
+        leg_sink = spec.get("fill_sink") if cost_mult == 1.0 else None
+        res = run_fx_backtest(cfg, register=False, fill_sink=leg_sink, window=spec.get("window"))
         eq = pd.Series(res["equity_curve"], index=pd.Index(dates))
         oos = _oos_returns_dated(res["equity_curve"], dates, test_start)
         is_ret = eq[eq.index < test_start].pct_change().dropna()
@@ -74,16 +79,22 @@ def run(config_path: str, cadence_label: str, trial_count: int,
     start_d, end_d = _as_date(dts["start"]), _as_date(dts["end"])
     windows = _build_windows(train_months, test_months, step_months, start_d, end_d)
 
+    cfg_hash = hashlib.sha1(json.dumps(cfg, sort_keys=True, default=str).encode()).hexdigest()[:6]
+    sink = FillSink("FxCarrySeatbelt", FillSink.make_run_id(cfg_hash, datetime.now(timezone.utc)),
+                    {"kind": "walkforward", "start": str(dts["start"]), "end": str(dts["end"])})
+
     specs = [{"universe": universe, "train_start": ts, "test_start": tst, "test_end": te,
               "capital": float(bt["initial_capital"]),
               "vol_target": float(bt["vol_target_per_instrument"]),
               "rebalance": bt.get("rebalance", "daily"),
               "leverage_cap": float(bt.get("leverage_cap", 4.0)),
-              "idm": bool(bt.get("idm", True)), "idm_cap": bt.get("idm_cap")}
-             for (ts, tst, te) in windows]
+              "idm": bool(bt.get("idm", True)), "idm_cap": bt.get("idm_cap"),
+              "window": i + 1, "fill_sink": sink}
+             for i, (ts, tst, te) in enumerate(windows)]
 
     from src.backtesting.parallel import parallel_map
     results = [r for r in parallel_map(_run_window, specs) if r is not None]
+    sink.finalize(oos_windows=list(range(1, len(specs) + 1)))
     if len(results) < 2:
         raise ValueError(f"need >=2 usable OOS windows, got {len(results)}")
 
