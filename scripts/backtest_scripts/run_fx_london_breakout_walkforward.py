@@ -127,6 +127,65 @@ def _pair_daily_returns(pair: str, start: dt.date, end: dt.date, releases: pd.Da
     return pd.Series({d: risk_frac * day_r.get(d, 0.0) for d in idx})
 
 
+def _pair_trade_log(pair: str, start: dt.date, end: dt.date, releases: pd.DataFrame,
+                    risk_frac: float, tp_fraction: float, offset_pips: float,
+                    override_pips: Optional[float] = None) -> List[Dict[str, Any]]:
+    """Per-pair entry-fill log, mirroring ``_pair_daily_returns``'s day loop.
+
+    Captures each day's ``eng.fills`` (the OCO breakout entry, if any) BEFORE the
+    next day's fresh ``OrderEngine`` discards them, tagged with that entry day's
+    resulting R-multiple (``strat.day_r``). Exit-level fills (stop/target/trail/EOD
+    flatten) are not recorded anywhere in ``OrderEngine`` -- only entries append to
+    ``eng.fills`` via ``match_resting_orders`` -- so this captures genuine
+    timestamped entry fills/position changes, not a reconstructed exit trail.
+    """
+    bars = load_fx_1min(pair, start, end)
+    if bars.empty:
+        logger.warning(f"[london_wf] no 1m data for {pair}; contributing empty trade log")
+        return []
+    atr_prior = _daily_atr_prior(pair, bars, start, end)
+    fxday = _fx_day_values(bars.index)
+    rows: List[Dict[str, Any]] = []
+    for day, sub in bars.groupby(fxday):
+        strat = LondonBreakoutStrategy(pair, atr_d1=atr_prior, risk_frac=risk_frac,
+                                       tp_fraction=tp_fraction, offset_pips=offset_pips,
+                                       releases=releases, override_pips=override_pips)
+        eng = OrderEngine()
+        day_bars = _bars_for_day(sub)
+        eng.run(day_bars, strat)
+        if eng.position is not None and day_bars:
+            last = day_bars[-1]
+            eng.flatten(last.close, last.ts, reason="eod_safety")
+            strat._book_if_closed(eng)
+        for fill in eng.fills:
+            rows.append({"date": day, "pair": pair, "ts": fill.ts, "side": fill.side,
+                        "price": fill.price, "qty": fill.qty,
+                        "day_r": strat.day_r.get(day)})
+    return rows
+
+
+def build_trade_log(pairs: List[str], start: dt.date, end: dt.date,
+                    risk_frac: float = 0.005, tp_fraction: float = 0.5,
+                    offset_pips: float = 3.0,
+                    override_pips: Optional[float] = None) -> pd.DataFrame:
+    """Fills-level trade log across pairs: one row per OCO breakout entry fill.
+
+    Artifact backfill only -- entries capture genuine timestamped position
+    changes (``OrderEngine.fills``); exits are not reconstructed (see
+    ``_pair_trade_log`` docstring). Not used by the walk-forward gate.
+    """
+    releases = generate_tier1_releases(start, end)
+    rows: List[Dict[str, Any]] = []
+    for pair in pairs:
+        rows.extend(_pair_trade_log(pair, start, end, releases, risk_frac, tp_fraction,
+                                    offset_pips, override_pips=override_pips))
+    cols = ["date", "pair", "ts", "side", "price", "qty", "day_r"]
+    if not rows:
+        return pd.DataFrame(columns=cols)
+    df = pd.DataFrame(rows, columns=cols)
+    return df.sort_values("date", kind="stable").reset_index(drop=True)
+
+
 def build_daily_returns(pairs: List[str], start: dt.date, end: dt.date,
                         risk_frac: float = 0.005, tp_fraction: float = 0.5,
                         offset_pips: float = 3.0,
@@ -274,6 +333,37 @@ def _write_report(r: Dict[str, Any], path: str = _REPORT_PATH) -> str:
     return str(out)
 
 
+def _run_trade_log_backfill(config_path: str, out_path: str) -> None:
+    """Artifact backfill (NOT a gate re-run): emit the fills-level entry log.
+
+    One primary/representative full-window pass via ``build_trade_log``, writing
+    the OCO breakout entry fills (tagged with each entry day's R-multiple) to
+    ``out_path``. Does not touch the walk-forward gate, PSR/DSR/PBO, or any
+    verdict/report file.
+    """
+    import yaml
+    from src.utils.run_status import RunStatus
+    cfg = yaml.safe_load(Path(config_path).read_text())
+    strat, dts = cfg["strategy"], cfg["dates"]
+    pairs = list(strat["pairs"])
+    params = dict(strat.get("params", {}))
+    start_d, end_d = _as_date(dts["start"]), _as_date(dts["end"])
+    override_pips = params.get("override_pips")
+
+    with RunStatus("fx_london_breakout_trade_log", meta={"config": config_path}):
+        trades = build_trade_log(pairs, start_d, end_d,
+                                 risk_frac=float(params.get("risk_frac", 0.005)),
+                                 tp_fraction=float(params.get("tp_fraction", 0.5)),
+                                 offset_pips=float(params.get("offset_pips", 3.0)),
+                                 override_pips=(float(override_pips)
+                                                if override_pips is not None else None))
+        out = Path(out_path)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        trades.to_csv(out, index=False)
+
+    logger.info(f"[london_wf] trade log backfill: {len(trades)} entry fills -> {out_path}")
+
+
 def main() -> None:
     import argparse
     from src.utils.run_status import RunStatus
@@ -286,7 +376,16 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="#20 London Breakout walk-forward + S&P gate")
     parser.add_argument("--config", default="config/backtesting/fx_london_breakout.yaml")
     parser.add_argument("--report", default=_REPORT_PATH)
+    parser.add_argument("--trade-log", default=None,
+                        help="Artifact backfill mode: skip the gate, write the fills-level "
+                             "entry log to this path instead (e.g. "
+                             "output/backtests/fx/LondonBreakout/2011-01-01_to_2026-04-01/"
+                             "trades.csv)")
     args = parser.parse_args()
+
+    if args.trade_log is not None:
+        _run_trade_log_backfill(args.config, args.trade_log)
+        return
 
     trial_count = base_trials + 1  # this walk-forward is one new project-wide trial
 
