@@ -212,7 +212,8 @@ class WalkForwardValidator:
         symbols: Union[str, List[str]],
         start_date: str,
         end_date: str,
-        metric: str = 'sharpe_ratio'
+        metric: str = 'sharpe_ratio',
+        fill_sink=None
     ) -> WalkForwardResults:
         """
         Run walk-forward validation.
@@ -316,6 +317,12 @@ class WalkForwardValidator:
             oos_returns = test_portfolio.returns()
             oos_returns_list.append(oos_returns)
 
+            if fill_sink is not None:
+                fill_sink.write_portfolio(train_result['best_portfolio'],
+                                          window=window.window_number, cfg_hash="is")
+                fill_sink.write_portfolio(test_portfolio,
+                                          window=window.window_number, cfg_hash="oos")
+
             # Calculate degradation
             degradation = ((oos_sharpe - is_sharpe) / is_sharpe * 100) if is_sharpe != 0 else 0
 
@@ -339,6 +346,10 @@ class WalkForwardValidator:
             })
 
             logger.blank()
+
+        if fill_sink is not None:
+            fill_sink.finalize(oos_windows=[w.window_number for w in windows],
+                               oos_cfg_hash="oos")
 
         # Aggregate results
         oos_returns_combined = pd.concat(oos_returns_list)
