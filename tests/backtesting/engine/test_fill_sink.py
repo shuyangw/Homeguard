@@ -51,3 +51,21 @@ def test_write_window_extras_sidecars(tmp_path):
     margin = pd.DataFrame({"margin": [0.3]})
     sink.write_window(trades, window=1, extras={"margin_utilization": margin})
     assert (sink.run_dir / "w01_margin_utilization.csv.gz").exists()
+
+
+def test_write_portfolio_delegates_to_tradelogger(tmp_path):
+    sink = FillSink("EqDemo", "rid", {}, root=tmp_path)
+
+    class FakePortfolio:
+        # custom-Portfolio shape TradeLogger understands: trades is a list of dicts
+        trades = [
+            {"type": "entry", "timestamp": "2020-01-02", "price": 10.0, "shares": 5},
+            {"type": "exit", "timestamp": "2020-01-05", "price": 11.0, "shares": 5,
+             "pnl": 5.0, "pnl_pct": 0.1, "exit_reason": "target"},
+        ]
+
+    path = sink.write_portfolio(FakePortfolio(), window=1, cfg_hash="cfg9", symbol="AAPL")
+    assert path.name == "w01_cfg9_trades.csv.gz"
+    back = pd.read_csv(path)
+    assert len(back) == 2  # one buy row + one sell row
+    assert (sink.run_dir / "w01_cfg9_trades.csv.gz").exists()

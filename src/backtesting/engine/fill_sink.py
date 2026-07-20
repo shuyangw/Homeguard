@@ -51,3 +51,21 @@ class FillSink:
                 "cfg_hash": cfg_hash or "", "row_count": len(extra_df),
             })
         return path
+
+    def write_portfolio(self, portfolio: Any, window: int,
+                        cfg_hash: Optional[str] = None, symbol: str = "") -> Path:
+        from src.backtesting.engine.trade_logger import TradeLogger
+        stem = self._stem(window, cfg_hash)
+        path = self.run_dir / f"{stem}_trades.csv.gz"
+        TradeLogger.export_trades_csv(portfolio, path, symbol=symbol)
+        row_count = 0
+        if path.exists():
+            try:
+                row_count = len(pd.read_csv(path))
+            except Exception:
+                row_count = 0
+        self._manifest_rows.append({
+            "file": path.name, "kind": "trades", "window": window,
+            "cfg_hash": cfg_hash or "", "row_count": row_count,
+        })
+        return path
