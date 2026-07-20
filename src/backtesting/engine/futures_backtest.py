@@ -44,7 +44,8 @@ def _as_date(value: Any) -> date:
 
 def run_futures_backtest(config: Dict[str, Any], register: bool = True,
                          log_trades: bool = False,
-                         validate_prereg: bool = True) -> Dict[str, Any]:
+                         validate_prereg: bool = True,
+                         fill_sink=None, window=None) -> Dict[str, Any]:
     """Run a config-driven Carver TSMOM futures backtest end-to-end.
 
     Returns a dict with `n_days`, `metrics` (StandardReportGenerator's
@@ -131,7 +132,11 @@ def run_futures_backtest(config: Dict[str, Any], register: bool = True,
         except Exception as e:
             logger.error(f"[futures_backtest] registry append_run failed (non-fatal): {e}")
 
-    trade_log_dir = _write_trade_log(res, strategy_name, start, end) if log_trades else None
+    trade_log_dir = None
+    if fill_sink is not None:
+        _route_fills(res, fill_sink, window or 0)
+    elif log_trades:
+        trade_log_dir = _write_trade_log(res, strategy_name, start, end)
 
     return {
         "n_days": len(res.equity_curve),
@@ -140,6 +145,17 @@ def run_futures_backtest(config: Dict[str, Any], register: bool = True,
         "run_id": run_id,
         "trade_log_dir": trade_log_dir,
     }
+
+
+def _route_fills(res, fill_sink, window) -> None:
+    """Route a window's fills to the run-scoped FillSink.
+
+    Carries the futures margin utilization series as an extras sidecar so the
+    per-window artifact set mirrors the plain-writer output.
+    """
+    extras = {"margin_utilization": res.margin_utilization.rename(
+        "margin_utilization").reset_index()}
+    fill_sink.write_window(res.trades, window, extras=extras)
 
 
 def _write_trade_log(res, strategy_name: str, start, end) -> str:
