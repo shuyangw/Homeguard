@@ -1163,6 +1163,8 @@ The five Tier-1 diagnostics below are mandatory. The backtest-driver produces th
 
 Every backtest engine MUST persist its simulated-trade log -- the per-fill / per-position-change records -- for EVERY asset class (equity, crypto, futures, options, and any new asset-class path). Persisting only aggregate metrics and the equity curve, and discarding the fills, is a violation: the trade log is the input to 12.1, 12.2, and Section 11.6, so a run without it cannot be diagnosed or gated. **The code-reviewer flags any backtest engine or runner that produces results without persisting a trade log** (in addition to the per-trade field checks in 11.9). When a new engine or asset-class path is added, wiring trade-log persistence is part of the definition of done, not a follow-up. (Reference wirings: equity/crypto via `backtest_runner` -> `TradeLogger`, gated on `output.save_trades` default True; futures via `run_futures_backtest(..., log_trades=True)`.)
 
+Every simulated run persists its fills -- per-window, per-config, and per inner optimizer probe -- across equity, crypto, futures, options, and FX; suppressing fills anywhere in the run is a violation. Runs write to a run-scoped sink (`output/backtests/<strategy>/runs/<run_id>/`, gzipped) with a `manifest.csv` and, for walk-forward runs, a `trades_oos.csv.gz` concatenation of the OOS windows -- the actual gated-verdict fills. The single-window verdict `output/backtests/<strategy>/<start>_to_<end>/trades.csv` remains plain (uncompressed). A run that discards its fills is incomplete and must be rejected in review.
+
 ### 12.1 Trade-level metrics alongside portfolio metrics
 
 Every backtest report includes both views:
