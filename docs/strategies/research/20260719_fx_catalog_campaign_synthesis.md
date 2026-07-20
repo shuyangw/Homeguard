@@ -1,10 +1,16 @@
 # FX 60-Strategy Catalog Campaign -- Synthesis (Wave 1) - 2026-07-19
 
 ## Status
-Interim synthesis after the first 6 gated strategies. NOT a close-out: the
-campaign continues selectively (see "Go-forward"). This document is the durable
-record of what has been established, what was built, and why the next wave is
-scoped the way it is.
+RESOLVED (2026-07-19): the campaign is CLOSED. This document was written as an
+interim synthesis after Wave 1; Wave 2 then ran and ALL 6 Wave 2 strategies also
+failed. Across two waves, 12 gated strategies spanning 8+ distinct mechanisms all
+fail the combined statistical gate net of realistic costs, robust to an
+IBKR-optimistic cost bound. Per the pre-registered stopping rule, the retail G10
+FX catalog is declared exhausted. STOP: no Wave 3, no ML-harness build. Final
+resolution: `20260719_fx_wave2_resolution.md`; Track B results:
+`20260719_fx_wave2_trackB_results.md`. The "Go-forward (Wave 2)" section below is
+retained as the historical record of how Wave 2 was scoped; it has now completed
+and failed.
 
 ## The finding so far
 Six strategies gated, all FAIL, and the failure is **robust to the cost
