@@ -174,6 +174,66 @@ def test_run_is_causal_order_placed_on_bar_fills_next():
     assert len(eng.fills) == 1 and eng.fills[0].ts.minute == 1
 
 
+def test_stop_out_records_entry_and_exit_fills():
+    eng = OrderEngine()
+    eng.add_order(Order(side="buy", kind="stop", trigger=1.2500, qty=1.0))
+    eng.match_resting_orders(_bar(1.2480, 1.2510, 1.2475, 1.2505))  # entry fill
+    entry = eng.fills[-1]
+    assert entry.side == "buy"
+    eng.open_position(side="buy", qty=1.0, entry_price=1.2500,
+                      entry_ts=dt.datetime(2024, 1, 2, 8, 5, tzinfo=dt.timezone.utc),
+                      stop=1.2450, target=1.2550, tp_fraction=0.5, trail_dist=None)
+    ev = eng.update_position(_bar(1.2455, 1.2460, 1.2440, 1.2445, minute=6))
+    assert any(r == "stop" for r, _, _ in ev)
+    exit_fill = eng.fills[-1]
+    assert len(eng.fills) == 2  # entry AND exit
+    assert exit_fill.side == "sell"  # opposite the long entry
+    assert abs(exit_fill.price - 1.2450) < 1e-12  # exit at stop price
+    assert abs(exit_fill.qty - 1.0) < 1e-12
+
+
+def test_target_take_records_entry_and_exit_fills():
+    eng = OrderEngine()
+    eng.add_order(Order(side="buy", kind="stop", trigger=1.2500, qty=1.0))
+    eng.match_resting_orders(_bar(1.2480, 1.2510, 1.2475, 1.2505))  # entry fill
+    eng.open_position(side="buy", qty=1.0, entry_price=1.2500,
+                      entry_ts=dt.datetime(2024, 1, 2, 8, 5, tzinfo=dt.timezone.utc),
+                      stop=1.2450, target=1.2550, tp_fraction=0.5, trail_dist=None)
+    ev = eng.update_position(_bar(1.2540, 1.2560, 1.2535, 1.2555, minute=6))
+    assert any(r == "target" for r, _, _ in ev)
+    exit_fill = eng.fills[-1]
+    assert len(eng.fills) == 2  # entry AND partial exit
+    assert exit_fill.side == "sell"  # opposite the long entry
+    assert abs(exit_fill.price - 1.2550) < 1e-12  # exit at target price
+    assert abs(exit_fill.qty - 0.5) < 1e-12  # partial (tp_fraction)
+
+
+def test_short_stop_out_exit_side_is_buy():
+    eng = OrderEngine()
+    eng.open_position(side="sell", qty=1.0, entry_price=1.2500,
+                      entry_ts=dt.datetime(2024, 1, 2, 8, 5, tzinfo=dt.timezone.utc),
+                      stop=1.2550, target=1.2450, tp_fraction=0.5, trail_dist=None)
+    ev = eng.update_position(_bar(1.2545, 1.2560, 1.2540, 1.2555, minute=6))
+    assert any(r == "stop" for r, _, _ in ev)
+    exit_fill = eng.fills[-1]
+    assert exit_fill.side == "buy"  # opposite the short entry
+    assert abs(exit_fill.price - 1.2550) < 1e-12
+
+
+def test_flatten_records_exit_fill():
+    eng = OrderEngine()
+    eng.open_position(side="buy", qty=1.0, entry_price=1.2500,
+                      entry_ts=dt.datetime(2024, 1, 2, 8, 5, tzinfo=dt.timezone.utc),
+                      stop=1.2450, target=1.2550, tp_fraction=0.5, trail_dist=None)
+    ts = dt.datetime(2024, 1, 2, 8, 30, tzinfo=dt.timezone.utc)
+    ev = eng.flatten(1.2520, ts, reason="eod")
+    assert any(r == "eod" for r, _, _ in ev)
+    exit_fill = eng.fills[-1]
+    assert exit_fill.side == "sell"  # opposite the long entry
+    assert abs(exit_fill.price - 1.2520) < 1e-12
+    assert exit_fill.ts == ts
+
+
 def test_cancel_all_and_flatten_from_strategy():
     eng = OrderEngine()
 

@@ -29,6 +29,9 @@ class Fill(NamedTuple):
     side: str
 
 
+EXIT_ORDER_ID = -1  # engine-managed position exit (not a resting order)
+
+
 @dataclass
 class Order:
     side: str            # "buy" | "sell"
@@ -136,18 +139,21 @@ def _update_position(self, bar: "Bar") -> list:
         return []
     events: list = []
     sign = _signed(p.side)
+    exit_side = "sell" if p.side == "buy" else "buy"
     hit_stop = (bar.low <= p.stop) if p.side == "buy" else (bar.high >= p.stop)
     hit_target = (bar.high >= p.target) if p.side == "buy" else (bar.low <= p.target)
     # Both-in-one-bar: adverse (stop) resolves first.
     if hit_stop:
         reason = "trail" if (p.took_partial and p.trail_dist is not None) else "stop"
         events.append((reason, p.stop, p.qty))
+        self._record_exit_fill(EXIT_ORDER_ID, bar.ts, p.stop, p.qty, exit_side)
         p.realized_pips += sign * (p.stop - p.entry_price) * p.qty
         self.position = None
         return events
     if hit_target and not p.took_partial:
         take = p.qty * p.tp_fraction
         events.append(("target", p.target, take))
+        self._record_exit_fill(EXIT_ORDER_ID, bar.ts, p.target, take, exit_side)
         p.realized_pips += sign * (p.target - p.entry_price) * take
         p.qty -= take
         if p.qty <= 1e-12:
@@ -163,6 +169,7 @@ def _update_position(self, bar: "Bar") -> list:
             breached = (bar.low <= p.stop) if p.side == "buy" else (bar.high >= p.stop)
             if breached:
                 events.append(("trail", p.stop, p.qty))
+                self._record_exit_fill(EXIT_ORDER_ID, bar.ts, p.stop, p.qty, exit_side)
                 p.realized_pips += sign * (p.stop - p.entry_price) * p.qty
                 self.position = None
                 return events
@@ -182,9 +189,15 @@ def _flatten(self, price: float, ts: dt.datetime, reason: str = "flat") -> list:
     if p is None:
         return []
     sign = _signed(p.side)
+    exit_side = "sell" if p.side == "buy" else "buy"
+    self._record_exit_fill(EXIT_ORDER_ID, ts, price, p.qty, exit_side)
     p.realized_pips += sign * (price - p.entry_price) * p.qty
     self.position = None
     return [(reason, price, p.qty)]
+
+
+def _record_exit_fill(self, order_id, ts, price, qty, side) -> None:
+    self.fills.append(Fill(order_id, ts, price, qty, side))
 
 
 def _cancel_all_resting(self) -> None:
@@ -204,5 +217,6 @@ OrderEngine.add_oco = _add_oco
 OrderEngine.open_position = _open_position
 OrderEngine.update_position = _update_position
 OrderEngine.flatten = _flatten
+OrderEngine._record_exit_fill = _record_exit_fill
 OrderEngine.cancel_all_resting = _cancel_all_resting
 OrderEngine.run = _run
