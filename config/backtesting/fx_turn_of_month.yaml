@@ -1,0 +1,18 @@
+asset_class: fx
+strategy:
+  name: FxTurnOfMonth
+  universe: [AUDUSD, USDJPY]
+  params: {}
+dates:
+  start: "2011-01-01"
+  end: "2026-04-01"
+backtest:
+  initial_capital: 100000.0
+  vol_target_per_instrument: 0.03
+  rebalance: daily
+  leverage_cap: 4.0
+  tier: major
+  idm: true
+  idm_cap: 2.5
+output:
+  save_trades: true
