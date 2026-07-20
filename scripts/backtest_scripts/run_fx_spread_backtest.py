@@ -45,15 +45,29 @@ def _conversion_legs(universe: list[str]) -> list[str]:
     return legs
 
 
+_VOL_RATIO_DECLARED_SETS = (("EURNOK", "EURSEK"), ("AUDUSD", "NZDUSD"),
+                            ("XAUUSD", "XAGUSD"))
+
+
+def _vol_ratio_coupled_sets(present: list[str]) -> tuple:
+    present_set = set(present)
+    surviving = []
+    for leg_a, leg_b in _VOL_RATIO_DECLARED_SETS:
+        if leg_a in present_set and leg_b in present_set:
+            surviving.append((leg_a, leg_b))
+        else:
+            logger.warning(f"[fx_spread_backtest] VolRatioPair dropping coupled "
+                           f"set ({leg_a}, {leg_b}): leg absent from cache")
+    return tuple(surviving)
+
+
 def _make_strategy(strategy_name: str, universe: list[str]):
     if strategy_name == "AudNzdPairs":
         return AudNzdPairs()
     if strategy_name == "CointScanner":
         return CointScanner(universe)
     if strategy_name == "VolRatioPair":
-        coupled = tuple((universe[i], universe[i + 1])
-                        for i in range(0, len(universe) - 1, 2))
-        return VolRatioPair(coupled_sets=coupled)
+        return VolRatioPair(coupled_sets=_vol_ratio_coupled_sets(universe))
     raise ValueError(f"unknown spread strategy: {strategy_name}")
 
 

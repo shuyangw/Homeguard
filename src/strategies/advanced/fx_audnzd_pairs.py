@@ -87,12 +87,13 @@ class AudNzdPairs(SpreadStrategy):
             beta, z = reg
             abs_z = abs(z)
 
+            exited = False
             if position != 0:
                 held = i - entry_idx
                 if abs_z < self.target_z or abs_z > self.stop_z or held >= self.max_days:
-                    position, entry_idx = 0, None
+                    position, entry_idx, exited = 0, None, True
 
-            if position == 0 and abs_z > self.entry_z and not self._in_blackout(d, blackout_dates):
+            if position == 0 and not exited and abs_z > self.entry_z and not self._in_blackout(d, blackout_dates):
                 position, entry_idx = -1 if z > 0 else 1, i
 
             if position == 0:
