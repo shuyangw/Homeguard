@@ -99,6 +99,18 @@ def test_finalize_writes_manifest_and_oos_concat(tmp_path):
     assert list(oos["units"]) == [1.0, 2.0]
 
 
+def test_zero_trade_window_writes_header_only_and_counts_zero(tmp_path):
+    sink = FillSink("FxDemo", "rid", {}, root=tmp_path)
+    empty = pd.DataFrame(columns=["date", "pair", "units"])
+    path = sink.write_window(empty, window=1)
+    back = pd.read_csv(path)
+    assert len(back) == 0
+    assert list(back.columns) == ["date", "pair", "units"]
+    manifest = pd.read_csv(sink.finalize())
+    row = manifest[manifest["file"] == "w01_trades.csv.gz"].iloc[0]
+    assert row["row_count"] == 0
+
+
 def test_finalize_without_oos_windows_skips_concat(tmp_path):
     sink = FillSink("FxDemo", "rid", {}, root=tmp_path)
     sink.write_window(pd.DataFrame({"units": [1.0]}), window=1)
