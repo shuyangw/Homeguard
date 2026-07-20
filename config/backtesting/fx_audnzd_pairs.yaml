@@ -1,0 +1,5 @@
+asset_class: fx
+strategy: {name: AudNzdPairs, universe: [AUDUSD, NZDUSD], params: {}}
+dates: {start: "2011-01-01", end: "2026-04-01"}
+backtest: {initial_capital: 100000.0, vol_target: 0.10, rebalance: weekly, leverage_cap: 4.0}
+output: {save_trades: true}
