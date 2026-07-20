@@ -23,12 +23,18 @@ class FillSink:
         self.run_dir = Path(root) / strategy / "runs" / run_id
         self.run_dir.mkdir(parents=True, exist_ok=True)
         self._manifest_rows: list[dict[str, Any]] = []
+        self._manifest_path = self.run_dir / "manifest_rows.jsonl"
         full_meta = {"strategy": strategy, "run_id": run_id, **meta}
         (self.run_dir / "meta.json").write_text(json.dumps(full_meta, indent=2, default=str))
 
     @staticmethod
     def make_run_id(cfg_hash: str, now: datetime) -> str:
         return f"{now.strftime('%Y%m%dT%H%M%SZ')}_{cfg_hash}"
+
+    def _record(self, row):
+        self._manifest_rows.append(row)
+        with open(self._manifest_path, "a") as f:
+            f.write(json.dumps(row, default=str) + "\n")
 
     def _stem(self, window: int, cfg_hash: Optional[str]) -> str:
         return f"w{window:02d}" + (f"_{cfg_hash}" if cfg_hash else "")
@@ -39,14 +45,14 @@ class FillSink:
         stem = self._stem(window, cfg_hash)
         path = self.run_dir / f"{stem}_trades.csv.gz"
         trades_df.to_csv(path, index=False, compression="gzip")
-        self._manifest_rows.append({
+        self._record({
             "file": path.name, "kind": "trades", "window": window,
             "cfg_hash": cfg_hash or "", "row_count": len(trades_df),
         })
         for name, extra_df in (extras or {}).items():
             epath = self.run_dir / f"{stem}_{name}.csv.gz"
             extra_df.to_csv(epath, index=False, compression="gzip")
-            self._manifest_rows.append({
+            self._record({
                 "file": epath.name, "kind": name, "window": window,
                 "cfg_hash": cfg_hash or "", "row_count": len(extra_df),
             })
@@ -75,31 +81,40 @@ class FillSink:
                     row_count = len(df)
             except Exception:
                 row_count = 0
-        self._manifest_rows.append({
+        self._record({
             "file": path.name, "kind": kind, "window": window,
             "cfg_hash": cfg_hash or "", "row_count": row_count,
         })
         return path
 
-    def finalize(self, oos_windows: Optional[list[int]] = None) -> Path:
+    def finalize(self, oos_windows=None, oos_cfg_hash=None):
         if oos_windows:
+            suffix = f"_{oos_cfg_hash}" if oos_cfg_hash else ""
             frames = []
             for w in sorted(oos_windows):
-                wpath = self.run_dir / f"w{w:02d}_trades.csv.gz"
+                wpath = self.run_dir / f"w{w:02d}{suffix}_trades.csv.gz"
                 if wpath.exists():
                     frames.append(pd.read_csv(wpath))
             if frames:
                 oos = pd.concat(frames, ignore_index=True)
                 oos.to_csv(self.run_dir / "trades_oos.csv.gz", index=False,
                            compression="gzip")
-                self._manifest_rows.append({
-                    "file": "trades_oos.csv.gz", "kind": "oos_concat",
-                    "window": -1, "cfg_hash": "", "row_count": len(oos),
-                })
+                self._record({"file": "trades_oos.csv.gz", "kind": "oos_concat",
+                              "window": -1, "cfg_hash": "", "row_count": len(oos)})
+        rows = []
+        if self._manifest_path.exists():
+            for line in self._manifest_path.read_text().splitlines():
+                if line.strip():
+                    rows.append(json.loads(line))
+        else:
+            rows = list(self._manifest_rows)
+        # dedup by file, keep last (idempotent re-runs / duplicate appends)
+        seen = {}
+        for r in rows:
+            seen[r["file"]] = r
+        rows = list(seen.values())
         manifest_path = self.run_dir / "manifest.csv"
-        pd.DataFrame(self._manifest_rows,
-                     columns=["file", "kind", "window", "cfg_hash", "row_count"]
+        pd.DataFrame(rows, columns=["file", "kind", "window", "cfg_hash", "row_count"]
                      ).to_csv(manifest_path, index=False)
-        logger.info(f"[fill_sink] finalized run {self.run_id}: "
-                    f"{len(self._manifest_rows)} artifacts in {self.run_dir}")
+        logger.info(f"[fill_sink] finalized run {self.run_id}: {len(rows)} artifacts in {self.run_dir}")
         return manifest_path

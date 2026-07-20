@@ -117,3 +117,25 @@ def test_finalize_without_oos_windows_skips_concat(tmp_path):
     sink.finalize()
     assert (sink.run_dir / "manifest.csv").exists()
     assert not (sink.run_dir / "trades_oos.csv.gz").exists()
+
+
+def test_manifest_survives_separate_sink_instance(tmp_path):
+    sink_a = FillSink("FxDemo", "rid", {}, root=tmp_path)
+    sink_a.write_window(pd.DataFrame({"date": ["2011-01-03"], "units": [1.0]}), window=1)
+
+    sink_b = FillSink("FxDemo", "rid", {}, root=tmp_path)
+    sink_b.write_window(pd.DataFrame({"date": ["2012-01-03"], "units": [2.0]}), window=2)
+
+    manifest = pd.read_csv(sink_a.finalize())
+    assert set(manifest["file"]) >= {"w01_trades.csv.gz", "w02_trades.csv.gz"}
+
+
+def test_finalize_oos_cfg_hash_selects_leg(tmp_path):
+    sink = FillSink("FxDemo", "rid", {}, root=tmp_path)
+    sink.write_window(pd.DataFrame({"date": ["2011-01-03"], "units": [1.0]}),
+                      window=1, cfg_hash="c1x")
+    sink.write_window(pd.DataFrame({"date": ["2011-01-03"], "units": [99.0]}),
+                      window=1, cfg_hash="c15x")
+    sink.finalize(oos_windows=[1], oos_cfg_hash="c1x")
+    oos = pd.read_csv(sink.run_dir / "trades_oos.csv.gz")
+    assert list(oos["units"]) == [1.0]
