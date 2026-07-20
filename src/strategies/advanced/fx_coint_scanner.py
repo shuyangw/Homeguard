@@ -7,8 +7,12 @@ sharing at most one 3-letter currency code and not forming a mechanical triangle
 A pair is tradeable when its ADF p-value clears ``adf_max``, its OU half-life
 lies in ``half_life_range``, and its spread vol is large enough that a 1.5-sigma
 move clears twice the nominal round-trip cost. Tradeable pairs are ranked by an
-edge/cost proxy (spread vol / cost) and the top ``top_n`` join a watchlist, each
-holding the hedge ratio fixed at first selection.
+edge/cost proxy (spread vol / cost) and the top ``top_n`` form the watchlist. On
+each monthly scan the watchlist is rebuilt from that scan's fresh top-N (meta --
+hedge, half-life, adf baseline -- recomputed so re-qualifying pairs enter on a
+current hedge and stale flat pairs age out), except a pair with an OPEN position
+is retained regardless of the fresh ranking, keeping its entry-time hedge fixed
+for the life of the trade so its structural exit stays manageable.
 
 Watchlist pairs run a per-date mean-reversion state machine on the current-date
 residual z-score: enter when ``|z| > entry_z`` (signed against the divergence,
@@ -47,6 +51,17 @@ def _is_mechanical_triangle(x: str, y: str) -> bool:
 
 
 def _candidate_pairs(pairs) -> list[tuple]:
+    """Candidate legs for the cointegration scan.
+
+    Scope note: this filter is NOT a general "reducible to a third pair"
+    exclusion. It excludes only cross-slot mechanical-triangle chains -- where
+    the shared currency is the BASE of one leg and the QUOTE of the other
+    (e.g. EURGBP + GBPUSD, which chains to EURUSD). It KEEPS same-slot
+    common-numeraire pairs, where the shared currency sits in the same slot of
+    both legs (both quote or both base it), e.g. EURCAD/AUDCAD (AUD-vs-CAD-vs-USD
+    relative value). Keeping same-numeraire crosses is the standard FX
+    relative-value convention, so it is intentional, not an oversight.
+    """
     out = []
     for x, y in combinations(pairs, 2):
         shared = {x[:3], x[3:]} & {y[:3], y[3:]}
@@ -67,7 +82,11 @@ class CointScanner(SpreadStrategy):
         self.target_z = float(target_z)
         self.stop_z = float(stop_z)
         self.candidates = _candidate_pairs(self.universe)
-        self._cost = 2.0 * fx_round_trip_pips("major") * 0.0001
+        # fx_round_trip_pips already returns the ROUND-TRIP cost (it doubles the
+        # per-side spread internally), so this is the round-trip cost in price
+        # terms. The tradeable gate below multiplies by 2 to require a 1.5-sigma
+        # move to clear TWICE round-trip; do not double it a second time here.
+        self._cost = fx_round_trip_pips("major") * 0.0001
 
     @staticmethod
     def _is_scan(d, prev_d) -> bool:
@@ -158,13 +177,22 @@ class CointScanner(SpreadStrategy):
 
         for i, d in enumerate(dates):
             if self._is_scan(d, prev_d):
-                # Refresh the watchlist: add newly tradeable pairs, holding the
-                # hedge fixed at first selection. Existing entries persist until
-                # the structural exit removes them.
-                for pair, meta in self._scan(close_panel, log_panel, i).items():
-                    if pair not in watch:
-                        watch[pair] = {**meta, "dir": 0, "entry_idx": None,
-                                       "degrade_streak": 0}
+                # Rebuild the watchlist from this scan's fresh top-N qualifying
+                # pairs with REFRESHED meta (hedge/half_life/adf_base recomputed
+                # now), so a re-qualifying pair enters on a current hedge and
+                # stale flat pairs age out (top-N enforced in steady state). Any
+                # pair with an OPEN position is retained regardless of the fresh
+                # ranking, keeping its position state and entry-time hedge so its
+                # structural exit stays manageable -- the hedge is held fixed for
+                # the life of an open trade (no mid-trade re-hedge).
+                fresh = self._scan(close_panel, log_panel, i)
+                new_watch = {pair: st for pair, st in watch.items()
+                             if st["dir"] != 0}
+                for pair, meta in fresh.items():
+                    if pair not in new_watch:
+                        new_watch[pair] = {**meta, "dir": 0, "entry_idx": None,
+                                           "degrade_streak": 0}
+                watch = new_watch
             prev_d = d
 
             day_spreads, day_sigma = [], {}
