@@ -58,14 +58,25 @@ class FillSink:
         stem = self._stem(window, cfg_hash)
         path = self.run_dir / f"{stem}_trades.csv.gz"
         TradeLogger.export_trades_csv(portfolio, path, symbol=symbol)
+        kind = "trades"
         row_count = 0
         if path.exists():
             try:
-                row_count = len(pd.read_csv(path))
+                df = pd.read_csv(path)
+                if list(df.columns) == ["Error"]:
+                    kind = "trades_error"
+                    row_count = 0
+                    logger.warning(
+                        f"TradeLogger export failed for strategy={self.strategy} "
+                        f"window={window} cfg_hash={cfg_hash or ''}; "
+                        f"recording manifest kind=trades_error, row_count=0"
+                    )
+                else:
+                    row_count = len(df)
             except Exception:
                 row_count = 0
         self._manifest_rows.append({
-            "file": path.name, "kind": "trades", "window": window,
+            "file": path.name, "kind": kind, "window": window,
             "cfg_hash": cfg_hash or "", "row_count": row_count,
         })
         return path

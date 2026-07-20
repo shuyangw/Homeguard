@@ -69,3 +69,17 @@ def test_write_portfolio_delegates_to_tradelogger(tmp_path):
     back = pd.read_csv(path)
     assert len(back) == 2  # one buy row + one sell row
     assert (sink.run_dir / "w01_cfg9_trades.csv.gz").exists()
+
+
+def test_write_portfolio_surfaces_export_failure(tmp_path):
+    sink = FillSink("EqDemo", "rid", {}, root=tmp_path)
+
+    class BrokenPortfolio:
+        @property
+        def trades(self):
+            raise RuntimeError("boom while reading trades")
+
+    sink.write_portfolio(BrokenPortfolio(), window=1, cfg_hash="x")
+    row = next(r for r in sink._manifest_rows if r["file"] == "w01_x_trades.csv.gz")
+    assert row["kind"] == "trades_error"
+    assert row["row_count"] == 0
