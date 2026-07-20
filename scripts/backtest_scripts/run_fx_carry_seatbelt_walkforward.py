@@ -37,6 +37,11 @@ _EPISODES = {
 }
 
 
+def _leg_tag(mult: float) -> str:
+    s = ("%g" % float(mult)).replace(".", "")
+    return f"c{s}x"
+
+
 def _run_window(spec: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     universe = spec["universe"]
     train_start, test_start, test_end = spec["train_start"], spec["test_start"], spec["test_end"]
@@ -57,8 +62,8 @@ def _run_window(spec: Dict[str, Any]) -> Optional[Dict[str, Any]]:
                             "rebalance": spec["rebalance"], "cost_mult": cost_mult,
                             "leverage_cap": spec["leverage_cap"], "idm": spec["idm"],
                             "idm_cap": spec["idm_cap"]}}
-        leg_sink = spec.get("fill_sink") if cost_mult == 1.0 else None
-        res = run_fx_backtest(cfg, register=False, fill_sink=leg_sink, window=spec.get("window"))
+        res = run_fx_backtest(cfg, register=False, fill_sink=spec.get("fill_sink"),
+                              window=spec.get("window"), fill_cfg_hash=_leg_tag(cost_mult))
         eq = pd.Series(res["equity_curve"], index=pd.Index(dates))
         oos = _oos_returns_dated(res["equity_curve"], dates, test_start)
         is_ret = eq[eq.index < test_start].pct_change().dropna()
@@ -94,7 +99,7 @@ def run(config_path: str, cadence_label: str, trial_count: int,
 
     from src.backtesting.parallel import parallel_map
     results = [r for r in parallel_map(_run_window, specs) if r is not None]
-    sink.finalize(oos_windows=list(range(1, len(specs) + 1)))
+    sink.finalize(oos_windows=list(range(1, len(specs) + 1)), oos_cfg_hash=_leg_tag(1.0))
     if len(results) < 2:
         raise ValueError(f"need >=2 usable OOS windows, got {len(results)}")
 

@@ -38,6 +38,11 @@ _DEFAULT_VOL_TARGET = 0.20
 _REPORT_PATH = "docs/reports/fx/FX_WALK_FORWARD.md"
 
 
+def _leg_tag(mult: float) -> str:
+    s = ("%g" % float(mult)).replace(".", "")
+    return f"c{s}x"
+
+
 def _config_to_kwargs(config: Dict[str, Any]) -> Dict[str, Any]:
     """Extract walk_forward_fx kwargs from an FX backtest YAML dict."""
     strat = config.get("strategy", {})
@@ -60,7 +65,8 @@ def _run_window_fx(universe: Sequence[str], train_start: date, test_end: date,
                     capital: float, vol_target: float, cost_mult: float,
                     strategy_name: str, tier: str, idm: bool,
                     idm_cap: Optional[float], fill_sink: Optional[FillSink] = None,
-                    window: Optional[int] = None) -> Dict[str, Any]:
+                    window: Optional[int] = None,
+                    fill_cfg_hash: Optional[str] = None) -> Dict[str, Any]:
     config = {
         "asset_class": "fx",
         "strategy": {"name": strategy_name, "universe": list(universe), "params": {}},
@@ -69,7 +75,8 @@ def _run_window_fx(universe: Sequence[str], train_start: date, test_end: date,
                      "rebalance": "weekly", "cost_mult": cost_mult, "leverage_cap": 10.0,
                      "tier": tier, "idm": idm, "idm_cap": idm_cap},
     }
-    return run_fx_backtest(config, register=False, fill_sink=fill_sink, window=window)
+    return run_fx_backtest(config, register=False, fill_sink=fill_sink, window=window,
+                           fill_cfg_hash=fill_cfg_hash)
 
 
 def process_window(spec: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -86,11 +93,10 @@ def process_window(spec: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     dates = list(panel.index)
     oos_by_cost: Dict[float, np.ndarray] = {}
     for cost_mult in spec["cost_mults"]:
-        leg_sink = spec.get("fill_sink") if cost_mult == 1.0 else None
         res = _run_window_fx(window_universe, train_start, test_end, spec["capital"],
                               spec["vol_target"], cost_mult, spec["strategy_name"], spec["tier"],
-                              spec["idm"], spec["idm_cap"], fill_sink=leg_sink,
-                              window=spec.get("window"))
+                              spec["idm"], spec["idm_cap"], fill_sink=spec.get("fill_sink"),
+                              window=spec.get("window"), fill_cfg_hash=_leg_tag(cost_mult))
         oos_by_cost[cost_mult] = _oos_returns(res["equity_curve"], dates, test_start)
     return {
         "train_start": train_start, "test_start": test_start, "test_end": test_end,
@@ -169,7 +175,7 @@ def walk_forward_fx(
         window_universes.append(r["window_universe"])
         used_windows.append((r["train_start"], r["test_start"], r["test_end"]))
 
-    sink.finalize(oos_windows=list(range(1, len(specs) + 1)))
+    sink.finalize(oos_windows=list(range(1, len(specs) + 1)), oos_cfg_hash=_leg_tag(1.0))
 
     if len(used_windows) < 2:
         raise ValueError(
