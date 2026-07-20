@@ -55,3 +55,40 @@ def test_empty_book_holds_flat():
     sim = FxSpreadPortfolioSimulator(100000.0, _flat_cost, rebalance="weekly")
     res = sim.run_spreads(close, book, sigma, q, vol_target=0.10)
     assert (res.equity_curve == 100000.0).all()  # never traded
+
+
+def test_nan_gap_does_not_poison_equity():
+    # A held spread with a NaN close on a mid-run non-rebalance day must be
+    # forward-held for that pair (0 P&L that day), not poison the equity sum.
+    pairs = ["AUDUSD", "NZDUSD"]
+    close = _panel(pairs)
+    q = pd.DataFrame({p: 1.0 for p in pairs}, index=close.index)
+    book = {d: [Spread("AUDUSD", "NZDUSD", 1.0, 10.0)] for d in close.index}
+    sigma = {d: {("AUDUSD", "NZDUSD"): 0.01} for d in close.index}
+    # Pick a mid-week day that is NOT a weekly rebalance boundary and blank one leg.
+    gap_day = close.index[12]
+    close.loc[gap_day, "AUDUSD"] = np.nan
+    sim = FxSpreadPortfolioSimulator(100000.0, _flat_cost, rebalance="weekly")
+    res = sim.run_spreads(close, book, sigma, q, vol_target=0.10)
+    assert len(res.equity_curve) == len(close.index)  # run completed
+    assert np.isfinite(res.equity_curve.to_numpy()).all()  # no NaN poisoning
+
+
+def test_bankruptcy_from_cost_flattens_same_day():
+    # Thin equity + a cost that debits a large fraction of notional on a
+    # rebalance drives equity <= 0; the book must flatten that same day and
+    # equity must floor at 0 (never recorded negative afterward).
+    pairs = ["AUDUSD", "NZDUSD"]
+    close = _panel(pairs)
+    q = pd.DataFrame({p: 1.0 for p in pairs}, index=close.index)
+    book = {d: [Spread("AUDUSD", "NZDUSD", 1.0, 10.0)] for d in close.index}
+    sigma = {d: {("AUDUSD", "NZDUSD"): 0.01} for d in close.index}
+
+    def _ruinous_cost(pair, units, price, qv):
+        return abs(units) * price * qv * 10.0  # 1000% of traded notional
+
+    sim = FxSpreadPortfolioSimulator(1000.0, _ruinous_cost, rebalance="weekly")
+    res = sim.run_spreads(close, book, sigma, q, vol_target=0.10)
+    assert (res.equity_curve >= 0.0).all()  # equity floored at 0
+    assert res.equity_curve.iloc[-1] == 0.0  # blown and stayed flat
+    assert (res.leverage_utilization.iloc[-1] == 0.0)  # book is flat

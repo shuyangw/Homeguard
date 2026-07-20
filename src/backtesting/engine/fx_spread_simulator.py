@@ -8,8 +8,6 @@ the spot simulator's MTM/leverage/bankruptcy pattern.
 """
 from __future__ import annotations
 
-import datetime as dt
-
 import pandas as pd
 
 from src.backtesting.engine.fx_spot_portfolio_simulator import FxBacktestResult
@@ -55,29 +53,43 @@ class FxSpreadPortfolioSimulator:
             row_close = {p: float(close_panel.loc[d, p]) for p in pairs}
             row_q = {p: float(quote_usd_panel.loc[d, p]) for p in pairs}
             # 1. MTM: pnl from close-to-close on held units (USD).
+            # A pair with a NaN current/prior close or quote is forward-held
+            # (0 P&L that day), not allowed to poison the whole sum.
             if prev_close is not None and not blown:
-                pnl = sum(current[p] * (row_close[p] - prev_close[p]) * row_q[p]
-                          for p in pairs)
+                pnl = 0.0
+                for p in pairs:
+                    u = current[p]
+                    if u == 0.0:
+                        continue
+                    px, ppx, q = row_close[p], prev_close[p], row_q[p]
+                    if pd.notna(px) and pd.notna(ppx) and pd.notna(q):
+                        pnl += u * (px - ppx) * q
                 equity_val += pnl
             if not blown and equity_val <= 0:
                 current = {p: 0.0 for p in pairs}
                 equity_val, blown = 0.0, True
-            # 2. Rebalance to spread targets.
+            # 2. Rebalance to spread targets. Pairs with a NaN close or quote
+            # this day are excluded from targets, so they are forward-held.
             if not blown and self._is_rebalance(d, prev_d):
                 spreads = spread_book.get(d, [])
                 sigma = sigma_panel.get(d, {})
-                targets = spread_leg_targets(spreads, sigma, row_close, row_q,
-                                             equity_val, vol_target, idm)
-                targets = {p: targets.get(p, 0.0) for p in pairs}
+                raw = spread_leg_targets(spreads, sigma, row_close, row_q,
+                                         equity_val, vol_target, idm)
+                targets = {p: raw.get(p, 0.0) for p in pairs
+                           if pd.notna(row_close[p]) and pd.notna(row_q[p])}
                 targets = self._scale_leverage(targets, row_close, row_q, equity_val)
-                for p in pairs:
+                for p in targets:
                     diff = targets[p] - current[p]
                     if diff != 0.0:
                         c = self.cost_fn(p, diff, row_close[p], row_q[p]) * self.cost_mult
                         equity_val -= c
                         trade_rows.append({"date": d, "pair": p, "units": diff, "cost": c})
                         current[p] = targets[p]
-            gross = sum(abs(current[p] * row_close[p] * row_q[p]) for p in pairs)
+            if not blown and equity_val <= 0:
+                current = {p: 0.0 for p in pairs}
+                equity_val, blown = 0.0, True
+            gross = sum(abs(current[p] * row_close[p] * row_q[p]) for p in pairs
+                        if pd.notna(row_close[p]) and pd.notna(row_q[p]))
             util.append(gross / equity_val if equity_val > 0 else 0.0)
             equity.append(equity_val)
             prev_close, prev_d = row_close, d

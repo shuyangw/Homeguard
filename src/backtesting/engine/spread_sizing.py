@@ -27,7 +27,11 @@ def spread_leg_targets(spreads, sigma_s, close_row, quote_usd_row,
             continue
         pa, pb = close_row.get(sp.leg_a), close_row.get(sp.leg_b)
         qa, qb = quote_usd_row.get(sp.leg_a), quote_usd_row.get(sp.leg_b)
-        if None in (pa, pb, qa, qb) or pa <= 0 or pb <= 0:
+        if None in (pa, pb, qa, qb):
+            continue
+        if not all(math.isfinite(x) for x in (pa, pb, qa, qb)):
+            continue
+        if pa <= 0 or pb <= 0:
             continue
         # notional_A (USD) so spread annualized vol == vol_target, scaled by strength/10 and idm.
         scale = (sp.strength / 10.0) * idm
