@@ -80,3 +80,26 @@ class FillSink:
             "cfg_hash": cfg_hash or "", "row_count": row_count,
         })
         return path
+
+    def finalize(self, oos_windows: Optional[list[int]] = None) -> Path:
+        if oos_windows:
+            frames = []
+            for w in sorted(oos_windows):
+                wpath = self.run_dir / f"w{w:02d}_trades.csv.gz"
+                if wpath.exists():
+                    frames.append(pd.read_csv(wpath))
+            if frames:
+                oos = pd.concat(frames, ignore_index=True)
+                oos.to_csv(self.run_dir / "trades_oos.csv.gz", index=False,
+                           compression="gzip")
+                self._manifest_rows.append({
+                    "file": "trades_oos.csv.gz", "kind": "oos_concat",
+                    "window": -1, "cfg_hash": "", "row_count": len(oos),
+                })
+        manifest_path = self.run_dir / "manifest.csv"
+        pd.DataFrame(self._manifest_rows,
+                     columns=["file", "kind", "window", "cfg_hash", "row_count"]
+                     ).to_csv(manifest_path, index=False)
+        logger.info(f"[fill_sink] finalized run {self.run_id}: "
+                    f"{len(self._manifest_rows)} artifacts in {self.run_dir}")
+        return manifest_path

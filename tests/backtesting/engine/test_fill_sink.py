@@ -83,3 +83,25 @@ def test_write_portfolio_surfaces_export_failure(tmp_path):
     row = next(r for r in sink._manifest_rows if r["file"] == "w01_x_trades.csv.gz")
     assert row["kind"] == "trades_error"
     assert row["row_count"] == 0
+
+
+def test_finalize_writes_manifest_and_oos_concat(tmp_path):
+    sink = FillSink("FxDemo", "rid", {}, root=tmp_path)
+    sink.write_window(pd.DataFrame({"date": ["2011-01-03"], "units": [1.0]}), window=1)
+    sink.write_window(pd.DataFrame({"date": ["2012-01-03"], "units": [2.0]}), window=2)
+    manifest_path = sink.finalize(oos_windows=[1, 2])
+
+    manifest = pd.read_csv(manifest_path)
+    assert set(manifest["file"]) >= {"w01_trades.csv.gz", "w02_trades.csv.gz"}
+
+    oos = pd.read_csv(sink.run_dir / "trades_oos.csv.gz")
+    assert len(oos) == 2
+    assert list(oos["units"]) == [1.0, 2.0]
+
+
+def test_finalize_without_oos_windows_skips_concat(tmp_path):
+    sink = FillSink("FxDemo", "rid", {}, root=tmp_path)
+    sink.write_window(pd.DataFrame({"units": [1.0]}), window=1)
+    sink.finalize()
+    assert (sink.run_dir / "manifest.csv").exists()
+    assert not (sink.run_dir / "trades_oos.csv.gz").exists()
