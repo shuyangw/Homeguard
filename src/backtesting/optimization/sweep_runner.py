@@ -10,11 +10,12 @@ import pandas as pd
 from typing import Dict, List, Optional, Any, Callable
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime
+from datetime import datetime, timezone
 from itertools import product
 
 from src.backtesting.base.strategy import BaseStrategy
 from src.backtesting.engine.backtest_engine import BacktestEngine
+from src.backtesting.engine.fill_sink import FillSink
 from src.backtesting.engine.portfolio_simulator import Portfolio
 from src.backtesting.engine.results_aggregator import ResultsAggregator
 from src.backtesting.engine.trade_logger import TradeLogger
@@ -361,6 +362,12 @@ class SweepRunner:
                 trades_dir = output_dir / "trades"
                 trades_dir.mkdir(exist_ok=True)
 
+                sink = FillSink(
+                    strategy_name,
+                    FillSink.make_run_id("sweep", datetime.now(timezone.utc)),
+                    {"kind": "sweep", "start": str(start_date), "end": str(end_date)},
+                )
+
                 for symbol, portfolio in self._portfolios.items():
                     logger.info(f"Processing {symbol}...")
                     if portfolio is None:
@@ -368,9 +375,8 @@ class SweepRunner:
 
                     symbol_prefix = f"{timestamp}_{symbol}"
 
-                    # Export trades CSV
-                    trades_csv = trades_dir / f"{symbol_prefix}_trades.csv"
-                    TradeLogger.export_trades_csv(portfolio, trades_csv, symbol=symbol)
+                    # Export trades through the shared run-scoped fill sink
+                    sink.write_portfolio(portfolio, window=0, cfg_hash=symbol, symbol=symbol)
 
                     # Export equity curve (bar-by-bar portfolio value)
                     equity_csv = trades_dir / f"{symbol_prefix}_equity_curve.csv"
@@ -380,6 +386,7 @@ class SweepRunner:
                     state_csv = trades_dir / f"{symbol_prefix}_portfolio_state.csv"
                     TradeLogger.export_portfolio_state_csv(portfolio, state_csv, symbol=symbol)
 
+                sink.finalize()
                 logger.success(f"Trade logs exported to: {trades_dir}")
                 logger.blank()
 
