@@ -39,12 +39,15 @@ _COMPILE_ONLY = re.compile(
 def _invokes_python_execution(cmd: str) -> bool:
     """True only if the command actually runs a python/pytest interpreter in a
     way that could execute a strategy backtest. A command that invokes no
-    interpreter (git, grep, cat, sed, file edits) cannot run one even if it
-    names a runner. A single unchained `python -m py_compile ...` only
-    byte-compiles the target and never executes it."""
-    if not re.search(r"\bpython[0-9.]*\b|\bpytest\b", cmd):
+    interpreter (git, grep, cat, file edits) cannot run one even if it
+    names a runner. A command whose SOLE interpreter invocation is an unchained
+    `python -m py_compile ...` only byte-compiles the target and never runs it."""
+    interp = re.findall(r"\bpython[0-9.]*\b|\bpytest\b", cmd)
+    if not interp:
         return False
-    if _COMPILE_ONLY.match(cmd) and not re.search(r"[;&|]|\s-c\b", cmd):
+    if (len(interp) == 1
+            and _COMPILE_ONLY.match(cmd)
+            and not re.search(r"[;&|\n\r]|\s-c\b", cmd)):
         return False
     return True
 

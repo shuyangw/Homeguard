@@ -32,6 +32,12 @@ spec.loader.exec_module(gate)
     ("PYTHONPATH=/x python scripts/backtest_scripts/run_fx_walkforward.py", False, True),
     # BLOCK: chained compile then real run
     ("python -m py_compile a.py && PYTHONPATH=/x python scripts/backtest_scripts/run_carver_walkforward.py", False, True),
+    # BLOCK: newline-chained compile then real run (bash treats \n like ;)
+    ("python -m py_compile a.py\npython scripts/backtest_scripts/run_fx_walkforward.py", False, True),
+    # BLOCK: carriage-return + newline chained compile then real run
+    ("python -m py_compile a.py\r\npython scripts/backtest_scripts/run_carver_walkforward.py", False, True),
+    # BLOCK: compile then `python -c` importing a runner
+    ("python -m py_compile a.py\npython -c 'import run_fx_walkforward'", False, True),
     # NOT BLOCK when sentinel present (strategy-lead owns the phase)
     ("python -m src.backtest_runner --config x", True, False),
     # NOT BLOCK when no runner-name token at all
