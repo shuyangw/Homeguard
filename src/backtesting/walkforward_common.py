@@ -180,6 +180,18 @@ def _oos_returns(equity_curve: List[float], dates: List[date], test_start: date)
     return _oos_returns_dated(equity_curve, dates, test_start).to_numpy(dtype=float)
 
 
+def _stitch_oos_dedup(per_window: List[pd.Series]) -> np.ndarray:
+    """Concatenate per-window dated OOS return series, drop the calendar day
+    shared by adjacent windows (keep-first), and return a bare float array.
+    Mirrors the dedup in the seatbelt walk-forward runner so the generic FX
+    runner does not double-count a boundary trading day."""
+    if not per_window:
+        return np.array([], dtype=float)
+    s = pd.concat(per_window).sort_index(kind="stable")
+    s = s[~s.index.duplicated(keep="first")]
+    return s.to_numpy(dtype=float)
+
+
 def _annualized_sharpe(returns: np.ndarray) -> float:
     if returns.size < 2:
         return float("nan")

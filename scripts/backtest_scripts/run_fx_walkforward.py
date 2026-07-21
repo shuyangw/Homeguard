@@ -26,7 +26,8 @@ from src.backtesting.walkforward_common import (
     _as_date,
     _build_windows,
     _compute_pbo,
-    _oos_returns,
+    _oos_returns_dated,
+    _stitch_oos_dedup,
     _verdict as _verdict_fx,
     get_campaign_trial_distribution,
 )
@@ -91,13 +92,13 @@ def process_window(spec: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         return None
     window_universe = sorted({p for p, _ in panel.columns})
     dates = list(panel.index)
-    oos_by_cost: Dict[float, np.ndarray] = {}
+    oos_by_cost: Dict[float, pd.Series] = {}
     for cost_mult in spec["cost_mults"]:
         res = _run_window_fx(window_universe, train_start, test_end, spec["capital"],
                               spec["vol_target"], cost_mult, spec["strategy_name"], spec["tier"],
                               spec["idm"], spec["idm_cap"], fill_sink=spec.get("fill_sink"),
                               window=spec.get("window"), fill_cfg_hash=_leg_tag(cost_mult))
-        oos_by_cost[cost_mult] = _oos_returns(res["equity_curve"], dates, test_start)
+        oos_by_cost[cost_mult] = _oos_returns_dated(res["equity_curve"], dates, test_start)
     return {
         "train_start": train_start, "test_start": test_start, "test_end": test_end,
         "window_universe": window_universe,
@@ -143,7 +144,7 @@ def walk_forward_fx(
             f"for range {start}..{end} with train={train_months}m test={test_months}m step={step_months}m"
         )
 
-    per_window_returns_by_cost: Dict[float, List[np.ndarray]] = {c: [] for c in cost_mults}
+    per_window_returns_by_cost: Dict[float, List[pd.Series]] = {c: [] for c in cost_mults}
     window_sharpes: List[float] = []
     window_universes: List[List[str]] = []
     used_windows: List[tuple[date, date, date]] = []
@@ -171,7 +172,7 @@ def walk_forward_fx(
             continue
         for c in cost_mults:
             per_window_returns_by_cost[c].append(r["oos_by_cost"][c])
-        window_sharpes.append(_annualized_sharpe(r["oos_by_cost"][1.0]))
+        window_sharpes.append(_annualized_sharpe(r["oos_by_cost"][1.0].to_numpy(dtype=float)))
         window_universes.append(r["window_universe"])
         used_windows.append((r["train_start"], r["test_start"], r["test_end"]))
 
@@ -187,7 +188,7 @@ def walk_forward_fx(
     windows = used_windows
 
     stitched_by_cost: Dict[float, np.ndarray] = {
-        c: np.concatenate(per_window_returns_by_cost[c]) for c in cost_mults
+        c: _stitch_oos_dedup(per_window_returns_by_cost[c]) for c in cost_mults
     }
     oos_sharpe_by_cost: Dict[float, float] = {
         c: _annualized_sharpe(stitched_by_cost[c]) for c in cost_mults
@@ -211,7 +212,7 @@ def walk_forward_fx(
     n_trials, trial_sharpes = get_campaign_trial_distribution()
     dsr_val = dsr(oos_sharpe, trial_sharpes, n, skew, kurt,
                    n_trials_project=n_trials)
-    pbo_val = _compute_pbo(per_window_returns_by_cost[1.0])
+    pbo_val = _compute_pbo([s.to_numpy(dtype=float) for s in per_window_returns_by_cost[1.0]])
 
     result: Dict[str, Any] = {
         "oos_sharpe": oos_sharpe,
