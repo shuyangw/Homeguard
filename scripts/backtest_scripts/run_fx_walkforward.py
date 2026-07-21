@@ -175,6 +175,8 @@ def walk_forward_fx(
         window_universes.append(r["window_universe"])
         used_windows.append((r["train_start"], r["test_start"], r["test_end"]))
 
+    for s in specs:
+        sink.set_oos_range(s["window"], s["test_start"], s["test_end"])
     sink.finalize(oos_windows=list(range(1, len(specs) + 1)), oos_cfg_hash=_leg_tag(1.0))
 
     if len(used_windows) < 2:

@@ -99,6 +99,8 @@ def run(config_path: str, cadence_label: str, trial_count: int,
 
     from src.backtesting.parallel import parallel_map
     results = [r for r in parallel_map(_run_window, specs) if r is not None]
+    for s in specs:
+        sink.set_oos_range(s["window"], s["test_start"], s["test_end"])
     sink.finalize(oos_windows=list(range(1, len(specs) + 1)), oos_cfg_hash=_leg_tag(1.0))
     if len(results) < 2:
         raise ValueError(f"need >=2 usable OOS windows, got {len(results)}")
