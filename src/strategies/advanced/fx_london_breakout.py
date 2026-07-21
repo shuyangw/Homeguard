@@ -19,7 +19,7 @@ import datetime as dt
 import pandas as pd
 
 from src.backtesting.costs.fx import _pip_size, fx_round_trip_pips
-from src.backtesting.engine.intraday_order_engine import Order
+from src.backtesting.engine.intraday_order_engine import EXIT_ORDER_ID, Order
 from src.backtesting.sessions.fx_clock import EXCHANGE_TZ
 from src.backtesting.utils.indicators import Indicators
 from src.data.macro_calendar_tier1 import tier1_release_in_window
@@ -183,11 +183,14 @@ class LondonBreakoutStrategy:
             return
         new_fills = engine.fills[self._fill_cursor:]
         self._fill_cursor = len(engine.fills)
+        entry_fills = [f for f in new_fills if f.order_id != EXIT_ORDER_ID]
+        if not entry_fills:
+            return
         if engine.position is not None or self._pos is not None:
             return
         if not isinstance(self._range, tuple):
             return
-        fill = self._pick_fill(new_fills, bar)
+        fill = self._pick_fill(entry_fills, bar)
         hi, lo = self._range
         width = hi - lo
         if fill.side == "buy":
