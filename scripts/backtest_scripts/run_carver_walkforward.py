@@ -18,7 +18,9 @@ Section 2 statistical gate) futures result.
 """
 from __future__ import annotations
 
-from datetime import date
+import hashlib
+import json
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence
 
@@ -26,6 +28,7 @@ import numpy as np
 import pandas as pd
 
 from src.backtesting.data.futures_backtest_loader import load_daily_panel
+from src.backtesting.engine.fill_sink import FillSink
 from src.backtesting.engine.futures_backtest import run_futures_backtest
 from src.backtesting.statistics.dsr import dsr
 from src.backtesting.statistics.psr import psr
@@ -34,8 +37,8 @@ from src.backtesting.walkforward_common import (
     _as_date,
     _build_windows,
     _compute_pbo,
-    _oos_returns,
     _oos_returns_dated,
+    _stitch_oos_dedup,
     _verdict,
     get_campaign_trial_distribution,
 )
@@ -48,6 +51,11 @@ _DEFAULT_CAPITAL = 100_000.0
 _DEFAULT_VOL_TARGET = 0.20
 
 _REPORT_PATH = "docs/reports/futures/CARVER_TSMOM_READINESS.md"
+
+
+def _leg_tag(mult: float) -> str:
+    s = ("%g" % float(mult)).replace(".", "")
+    return f"c{s}x"
 
 
 def _config_to_kwargs(config: Dict[str, Any]) -> Dict[str, Any]:
@@ -83,7 +91,10 @@ def _run_window(universe: Sequence[str], train_start: date, test_end: date,
                  idm: bool = False,
                  idm_cap: float | None = None,
                  rebalance: str = "weekly",
-                 register: bool = True) -> Dict[str, Any]:
+                 register: bool = True,
+                 fill_sink: Optional[FillSink] = None,
+                 window: Optional[int] = None,
+                 fill_cfg_hash: Optional[str] = None) -> Dict[str, Any]:
     config = {
         "strategy": {"name": strategy_name, "universe": list(universe),
                      "params": strategy_params or {}},
@@ -97,7 +108,9 @@ def _run_window(universe: Sequence[str], train_start: date, test_end: date,
             "idm_cap": idm_cap,
         },
     }
-    return run_futures_backtest(config, register=register, validate_prereg=False)
+    return run_futures_backtest(config, register=register, validate_prereg=False,
+                               fill_sink=fill_sink, window=window,
+                               fill_cfg_hash=fill_cfg_hash)
 
 
 def process_window(spec: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -123,20 +136,21 @@ def process_window(spec: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     res_1x = _run_window(window_universe, train_start, test_end, capital, vol_target,
                          cost_mult=1.0, strategy_name=strategy_name,
                          strategy_params=strategy_params, idm=idm, idm_cap=idm_cap,
-                         rebalance=rebalance, register=False)
+                         rebalance=rebalance, register=False,
+                         fill_sink=spec.get("fill_sink"), window=spec.get("window"),
+                         fill_cfg_hash=_leg_tag(1.0))
     res_1_5x = _run_window(window_universe, train_start, test_end, capital, vol_target,
                            cost_mult=1.5, strategy_name=strategy_name,
                            strategy_params=strategy_params, idm=idm, idm_cap=idm_cap,
-                           rebalance=rebalance, register=False)
-    result = {
+                           rebalance=rebalance, register=False,
+                           fill_sink=spec.get("fill_sink"), window=spec.get("window"),
+                           fill_cfg_hash=_leg_tag(1.5))
+    return {
         "train_start": train_start, "test_start": test_start, "test_end": test_end,
         "window_universe": window_universe,
-        "oos_1x": _oos_returns(res_1x["equity_curve"], dates, test_start),
-        "oos_1_5x": _oos_returns(res_1_5x["equity_curve"], dates, test_start),
+        "oos_1x": _oos_returns_dated(res_1x["equity_curve"], dates, test_start),
+        "oos_1_5x": _oos_returns_dated(res_1_5x["equity_curve"], dates, test_start),
     }
-    if spec.get("return_dated"):
-        result["oos_1x_dated"] = _oos_returns_dated(res_1x["equity_curve"], dates, test_start)
-    return result
 
 
 def walk_forward_carver(
@@ -173,12 +187,22 @@ def walk_forward_carver(
             f"for range {start}..{end} with train={train_months}m test={test_months}m step={step_months}m"
         )
 
-    per_window_returns_1x: List[np.ndarray] = []
-    per_window_returns_1_5x: List[np.ndarray] = []
+    per_window_returns_1x: List[pd.Series] = []
+    per_window_returns_1_5x: List[pd.Series] = []
     window_sharpes: List[float] = []
     window_universes: List[List[str]] = []
     used_windows: List[tuple[date, date, date]] = []
     per_window_oos: List[pd.Series] = []
+
+    _sink_cfg = {"universe": universe, "capital": capital, "vol_target": vol_target,
+                 "strategy_name": strategy_name, "strategy_params": strategy_params or {},
+                 "idm": idm, "idm_cap": idm_cap, "rebalance": rebalance,
+                 "train_months": train_months, "test_months": test_months,
+                 "step_months": step_months, "start": str(start), "end": str(end),
+                 "cost_mults": [1.0, 1.5]}
+    cfg_hash = hashlib.sha1(json.dumps(_sink_cfg, sort_keys=True, default=str).encode()).hexdigest()[:6]
+    sink = FillSink(strategy_name, FillSink.make_run_id(cfg_hash, datetime.now(timezone.utc)),
+                    {"kind": "walkforward", "start": str(start), "end": str(end)})
 
     # Each window is independent (own panel load + two cost-leg backtests), so
     # windows are mapped across worker processes; `parallel_map` preserves
@@ -189,8 +213,8 @@ def walk_forward_carver(
          "capital": capital, "vol_target": vol_target,
          "strategy_name": strategy_name, "strategy_params": strategy_params or {},
          "idm": idm, "idm_cap": idm_cap, "rebalance": rebalance,
-         "return_dated": return_window_returns}
-        for (ts, tst, te) in windows
+         "window": i + 1, "fill_sink": sink}
+        for i, (ts, tst, te) in enumerate(windows)
     ]
     from src.backtesting.parallel import parallel_map
     results = parallel_map(process_window, specs, max_workers=max_workers)
@@ -199,11 +223,15 @@ def walk_forward_carver(
             continue
         per_window_returns_1x.append(r["oos_1x"])
         per_window_returns_1_5x.append(r["oos_1_5x"])
-        window_sharpes.append(_annualized_sharpe(r["oos_1x"]))
+        window_sharpes.append(_annualized_sharpe(r["oos_1x"].to_numpy(dtype=float)))
         window_universes.append(r["window_universe"])
         used_windows.append((r["train_start"], r["test_start"], r["test_end"]))
-        if return_window_returns and r.get("oos_1x_dated") is not None:
-            per_window_oos.append(r["oos_1x_dated"])
+        if return_window_returns:
+            per_window_oos.append(r["oos_1x"])
+
+    for s in specs:
+        sink.set_oos_range(s["window"], s["test_start"], s["test_end"])
+    sink.finalize(oos_windows=list(range(1, len(specs) + 1)), oos_cfg_hash=_leg_tag(1.0))
 
     if len(used_windows) < 2:
         raise ValueError(
@@ -212,8 +240,8 @@ def walk_forward_carver(
         )
     windows = used_windows
 
-    stitched_1x = np.concatenate(per_window_returns_1x)
-    stitched_1_5x = np.concatenate(per_window_returns_1_5x)
+    stitched_1x = _stitch_oos_dedup(per_window_returns_1x)
+    stitched_1_5x = _stitch_oos_dedup(per_window_returns_1_5x)
 
     n = int(stitched_1x.size)
     oos_sharpe = _annualized_sharpe(stitched_1x)
@@ -235,7 +263,7 @@ def walk_forward_carver(
     n_trials, trial_sharpes = get_campaign_trial_distribution()
     dsr_val = dsr(oos_sharpe, trial_sharpes, n, skew, kurt,
                    n_trials_project=n_trials)
-    pbo_val = _compute_pbo(per_window_returns_1x)
+    pbo_val = _compute_pbo([s.to_numpy(dtype=float) for s in per_window_returns_1x])
 
     result: Dict[str, Any] = {
         "oos_sharpe": oos_sharpe,
