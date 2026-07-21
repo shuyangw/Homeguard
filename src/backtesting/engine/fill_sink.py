@@ -24,6 +24,7 @@ class FillSink:
         self.run_dir.mkdir(parents=True, exist_ok=True)
         self._manifest_rows: list[dict[str, Any]] = []
         self._manifest_path = self.run_dir / "manifest_rows.jsonl"
+        self._oos_ranges: dict[int, tuple] = {}
         full_meta = {"strategy": strategy, "run_id": run_id, **meta}
         (self.run_dir / "meta.json").write_text(json.dumps(full_meta, indent=2, default=str))
 
@@ -38,6 +39,9 @@ class FillSink:
 
     def _stem(self, window: int, cfg_hash: Optional[str]) -> str:
         return f"w{window:02d}" + (f"_{cfg_hash}" if cfg_hash else "")
+
+    def set_oos_range(self, window, start, end):
+        self._oos_ranges[window] = (pd.Timestamp(start), pd.Timestamp(end))
 
     def write_window(self, trades_df: pd.DataFrame, window: int,
                      cfg_hash: Optional[str] = None,
@@ -90,11 +94,22 @@ class FillSink:
     def finalize(self, oos_windows=None, oos_cfg_hash=None):
         if oos_windows:
             suffix = f"_{oos_cfg_hash}" if oos_cfg_hash else ""
+            global_max_end = max((e for (_, e) in self._oos_ranges.values()), default=None)
             frames = []
             for w in sorted(oos_windows):
                 wpath = self.run_dir / f"w{w:02d}{suffix}_trades.csv.gz"
-                if wpath.exists():
-                    frames.append(pd.read_csv(wpath))
+                if not wpath.exists():
+                    continue
+                df = pd.read_csv(wpath)
+                rng = self._oos_ranges.get(w)
+                if rng is not None and "date" in df.columns:
+                    lo, hi = rng
+                    d = pd.to_datetime(df["date"])
+                    if global_max_end is not None and hi == global_max_end:
+                        df = df[(d >= lo) & (d <= hi)]
+                    else:
+                        df = df[(d >= lo) & (d < hi)]
+                frames.append(df)
             if frames:
                 oos = pd.concat(frames, ignore_index=True)
                 oos.to_csv(self.run_dir / "trades_oos.csv.gz", index=False,
