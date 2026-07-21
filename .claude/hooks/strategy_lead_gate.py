@@ -32,6 +32,28 @@ _PATTERNS = re.compile(
     r"|scripts/backtest_scripts/sp_"
 )
 
+_COMPILE_ONLY = re.compile(
+    r"^\s*(?:[A-Za-z_][A-Za-z0-9_]*=\S+\s+)*python[0-9.]*\s+-m\s+py_compile\b")
+
+
+def _invokes_python_execution(cmd: str) -> bool:
+    """True only if the command actually runs a python/pytest interpreter in a
+    way that could execute a strategy backtest. A command that invokes no
+    interpreter (git, grep, cat, sed, file edits) cannot run one even if it
+    names a runner. A single unchained `python -m py_compile ...` only
+    byte-compiles the target and never executes it."""
+    if not re.search(r"\bpython[0-9.]*\b|\bpytest\b", cmd):
+        return False
+    if _COMPILE_ONLY.match(cmd) and not re.search(r"[;&|]|\s-c\b", cmd):
+        return False
+    return True
+
+
+def _should_block(cmd: str, sentinel_exists: bool) -> bool:
+    return (bool(_PATTERNS.search(cmd))
+            and _invokes_python_execution(cmd)
+            and not sentinel_exists)
+
 
 def main() -> None:
     try:
@@ -40,13 +62,11 @@ def main() -> None:
         return  # unparseable input -> do not block
 
     cmd = (data.get("tool_input") or {}).get("command", "") or ""
-    if not _PATTERNS.search(cmd):
-        return  # not a strategy-verdict command -> allow
-
     root = os.environ.get("CLAUDE_PROJECT_DIR") or os.getcwd()
     sentinel = os.path.join(root, ".claude", ".strategy-lead-active")
-    if os.path.exists(sentinel):
-        return  # strategy-lead owns a testing phase -> allow
+    sentinel_exists = os.path.exists(sentinel)
+    if not _should_block(cmd, sentinel_exists):
+        return  # not a real backtest execution outside strategy-lead -> allow
 
     reason = (
         "BLOCKED: strategy backtest/gate/verdict command detected outside "
