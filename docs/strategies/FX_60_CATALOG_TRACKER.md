@@ -6,6 +6,24 @@ and test progress. Update this file as strategies are tested or unblocked.
 
 Last updated: 2026-07-22
 
+**COT WAVE RESOLUTION (2026-07-22): all 3 pre-registered COT/positioning trials
+(COT-CONTRARIAN-TS, COT-MOMENTUM-TS, COT-CONTRARIAN-XS) FAIL the pre-registered
+gate.** Both documented COT mechanisms (crowded-positioning mean-reversion and
+positioning-flow momentum), fixed-sign a priori, plus both a per-pair time-series
+and a cross-sectional construction of the contrarian leg, all produce non-positive
+OOS Sharpe (-0.10 to -0.13) that WIDENS negative at 1.5x cost stress -- a genuine
+cost-sensitivity failure, not a marginal edge nudged under by friction. This is the
+first NON-price-factor signal family tested against the daily-spot-taker engine
+(distinct from the price/rate/carry factors already exhausted by Wave 1/2 and the
+EM wave). Per the pre-registration's stopping rule
+(`docs/strategies/research/20260722_fx_cot_positioning_preregistration.md` Section 6),
+this scoped slice STOPS: no further COT specs, no parameter sweep, no ML variant.
+This is NOT a claim that CFTC positioning data has no predictive value in FX (see
+SCOPE banner below) -- only that this weekly-net%OI-z-score construction, D+7
+publication-lagged, on the daily-spot-taker engine, does not clear the gate. See
+`docs/strategies/research/20260722_fx_cot_wave_results.md` and
+`docs/reports/fx/cot_wave_gate.md`.
+
 **SCOPE OF THE NEGATIVE FINDINGS (read before quoting "exhausted").** Every "FAIL"
 and "RESOLUTION" below is bounded by the SPECIFICATION tested, not by the FX asset
 class (see CLAUDE.md North Star, "A negative bounds the specification you tested,
@@ -13,11 +31,15 @@ not the asset class"). What has actually been shown to die after realistic costs
 is one specific slice: RETAIL-accessible, DAILY/session frequency, SPOT, standard
 PRICE/RATE + CARRY factor signals, executed as a SPREAD-TAKER. That is the corner
 LEAST likely to hold edge, and it does not. It does NOT establish that FX has no
-edge. Untested families that are where much real FX edge lives -- earning the
-spread as a liquidity PROVIDER/maker (adverse-selection-modeled, needs tick/L2
-data), MICROSTRUCTURE frequency, and non-price SIGNAL families (order-flow,
-positioning/COT, options-implied risk-reversals, cross-venue/triangular) -- remain
-LIVE hypotheses, not "exhausted." Read "catalog exhausted" below as "this retail
+edge. As of 2026-07-22, the same slice has also been tested for one non-price
+signal family -- speculative COT positioning (weekly net%OI, D+7-lagged; see COT
+WAVE RESOLUTION above) -- and failed in the same daily-taker construction; that is
+now a tested-and-failed corner too, scoped identically. Untested families that are
+where much real FX edge lives -- earning the spread as a liquidity PROVIDER/maker
+(adverse-selection-modeled, needs tick/L2 data), MICROSTRUCTURE frequency, and
+other non-price SIGNAL families (order-flow, options-implied risk-reversals,
+cross-venue/triangular) -- remain LIVE hypotheses, not "exhausted." Read "catalog
+exhausted" below as "this retail
 daily/session taker-factor slice is exhausted."
 
 **EM WAVE RESOLUTION (2026-07-21): all 7 pre-registered EM7 trials (EM-CARRY
