@@ -95,6 +95,56 @@ class FxGoldSilverStrategy:
         return pd.DataFrame(out).fillna(0.0)
 
 
+class FxCarryMomStrategy:
+    """Carry + time-series-momentum blend (#5). Equal-weight sum of the FxCarry
+    and FxTSMOM Carver-scale forecasts -- the classic carry+momentum
+    diversification (the two factors are near-uncorrelated). Sizing is the
+    engine's vol-target on the blended forecast.
+    """
+
+    def __init__(self, universe, carry_scale: float = 500.0, carry_cap: float = 20.0,
+                 lookback_short: int = 63, lookback_long: int = 252, **params):
+        self.universe = list(universe)
+        self._carry = FxCarryStrategy(universe, scale=carry_scale, cap=carry_cap)
+        self._mom = FxTSMOMStrategy(universe, lookback_short=lookback_short,
+                                    lookback_long=lookback_long)
+
+    def forecast_panel(self, close_panel: pd.DataFrame) -> pd.DataFrame:
+        fc_c = self._carry.forecast_panel(close_panel)
+        fc_m = self._mom.forecast_panel(close_panel)
+        cols = [c for c in fc_c.columns if c in fc_m.columns]
+        blend = 0.5 * fc_c[cols] + 0.5 * fc_m[cols]
+        return blend.fillna(0.0)
+
+
+class FxMeanRevStrategy:
+    """Single-instrument close-only mean reversion (#8/#12/#29 daily form).
+    Fade the z-score of price vs its rolling mean: forecast = -z, so the position
+    is short when price is stretched high and long when stretched low. Continuous
+    Carver-scale forecast (the standard stateless form); vol-target sizing applies.
+    """
+
+    def __init__(self, universe, lookback: int = 60, scale: float = 4.0,
+                 cap: float = 20.0, **params):
+        self.universe = list(universe)
+        self.lookback = int(lookback)
+        self.scale = float(scale)
+        self.cap = float(cap)
+
+    def forecast_panel(self, close_panel: pd.DataFrame) -> pd.DataFrame:
+        out = {}
+        for root in self.universe:
+            if root not in close_panel.columns:
+                continue
+            c = close_panel[root].astype(float)
+            m = c.rolling(self.lookback).mean()
+            sd = c.rolling(self.lookback).std()
+            z = (c - m) / sd.replace(0, np.nan)
+            out[root] = (-z * self.scale).clip(-self.cap, self.cap).fillna(0.0)
+        cols = [r for r in self.universe if r in out]
+        return pd.DataFrame(out)[cols]
+
+
 class FxXSectMomStrategy:
     """Cross-sectional momentum (#4). Rank pairs by trailing risk-adjusted return
     each day; long the strongest, short the weakest (cross-sectional z of

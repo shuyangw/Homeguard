@@ -57,6 +57,23 @@ def fx_round_trip_pips(
 
 _METALS_BASES = {"XAU", "XAG"}
 
+# Per-SIDE half-spread in bps of USD notional for emerging-market currencies.
+# EM pairs are far wider than the G10 major/minor pip tiers and the pip path
+# under-costs them (a 1-pip major spread on USDMXN is ~0.5bp vs the ~3bp reality).
+# Priced in bps of notional (like metals), not pips. Values pre-registered in
+# docs/superpowers/specs/2026-07-21-fx-em-wave-preregistration.md Section 4.
+_EM_HALF_SPREAD_BPS: dict[str, float] = {
+    "MXN": 3.0, "ZAR": 6.0, "PLN": 4.0, "HUF": 5.0,
+    "CNH": 5.0, "TRY": 15.0, "INR": 8.0, "BRL": 10.0,
+}
+
+
+def _em_half_bps(pair: str) -> Optional[float]:
+    """Per-side half-spread bps if either leg is an EM currency, else None.
+    Both-EM crosses take the wider (max) leg."""
+    legs = [b for b in (pair[:3], pair[3:]) if b in _EM_HALF_SPREAD_BPS]
+    return max(_EM_HALF_SPREAD_BPS[b] for b in legs) if legs else None
+
 
 def _pip_size(pair: str) -> float:
     """0.01 for JPY-quoted pairs, 0.0001 otherwise."""
@@ -76,5 +93,9 @@ def fx_round_trip_usd(pair: str, units_traded: float, price: float,
     if pair[:3] in _METALS_BASES:
         notional_usd = qty * price * quote_to_usd
         return notional_usd * metals_bps / 10_000.0
+    em_half = _em_half_bps(pair)
+    if em_half is not None:
+        notional_usd = qty * price * quote_to_usd
+        return notional_usd * (2.0 * em_half) / 10_000.0  # round trip = 2 x per-side
     rt_pips = fx_round_trip_pips(tier, session)
     return rt_pips * _pip_size(pair) * qty * quote_to_usd

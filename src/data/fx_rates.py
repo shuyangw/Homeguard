@@ -41,6 +41,11 @@ CURRENCY_FRED_SERIES: dict[str, str] = {
     "SEK": "IR3TIB01SEM156N",
     "MXN": "IR3TIB01MXM156N",
     "ZAR": "IR3TIB01ZAM156N",
+    "PLN": "IR3TIB01PLM156N",
+    "HUF": "IR3TIB01HUM156N",
+    "CNH": "IR3TIB01CNM156N",   # onshore China 3M interbank as offshore-CNH proxy
+    "TRY": "INTDSRTRM193N",     # CBRT discount rate (OECD interbank stale since 2008)
+    "INR": "IRSTCI01INM156N",   # India call money (OECD interbank absent)
 }
 _METALS = {"XAU", "XAG"}
 
