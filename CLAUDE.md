@@ -199,7 +199,7 @@ Uses clientId=99 by default (the running `homeguard-multi` service holds clientI
 | **RAMP** | `homeguard-multi` | Rebalance 3:55 PM | Regime-aware momentum protection on S&P 500 (IBKR paper, enabled) |
 | **CSCM** | `homeguard-cscm` | Weekly (Sunday 0:00 UTC) | Cross-sectional crypto momentum with BTC regime filter |
 
-`homeguard-multi` runs `scripts/trading/run_live_paper_trading.py --strategy ramp`, which creates the RAMP adapter and routes it to its broker per `config/trading/broker_routing.yaml` (IBKR paper, port 4002). The standalone `homeguard-omr` / `homeguard-ramp` unit files still exist but are `disabled` and should not be enabled — they have been superseded by `homeguard-multi`.
+`homeguard-multi` runs `scripts/trading/run_live_paper_trading.py --strategy ramp`, which creates the RAMP adapter and routes it to its broker per `config/trading/broker_routing.yaml` (IBKR paper, port 4002). The standalone `homeguard-omr` / `homeguard-ramp` unit files still exist but are `disabled` and should not be enabled -- they have been superseded by `homeguard-multi`.
 
 Note: `--strategy multi` mode exists in the runner but only launches one strategy (priority order: OMR > MP > RAMP) since true concurrent multi-strategy support is not yet implemented. Until that lands, use `--strategy ramp` (or another explicit strategy name) so the unit is explicit about what it runs, independent of `strategy_toggle.yaml` state.
 
