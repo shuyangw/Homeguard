@@ -44,8 +44,12 @@ meta-labeling harness build (#48-53). See
 - Sizing calibration (2026-07-06): vol_target ~0.03/instrument -> ~17% portfolio vol for the 22-pair book
   (8-pair configs' 0.20 over-leverages the correlated FX book -> blowup). FX pairs are highly correlated;
   a portfolio-level vol cap is a candidate infra improvement.
-- NOT built: OHLC-into-forecast_panel wiring; intraday engine; spread execution; ML harness;
-  oil/equity/full-CB-calendar feeds; EM spot pairs (USDMXN/USDZAR/USDCNH on disk, not in daily cache).
+- NOT built: OHLC-into-forecast_panel wiring; intraday engine; spread execution; ML harness.
+- EM daily cache BUILT (2026-07-21): 8 USD-EM pairs in `fx_daily/` (MXN/ZAR/CNH/TRY/BRL/PLN/HUF/INR,
+  2011-2026). 6 are G10-grade gap-free via Dukascopy backfill (99.3-100% cov, 0 significant gaps);
+  BRL/INR retain small Massive-only holes (~23-bday, not on Dukascopy). See
+  `docs/progress/20260721_fx_em_cache_backfill.md`. EM carry still needs a FRED EM-rate check.
+- oil (Brent) one keyless `fetch_brent()` away; equity-index + macro-calendar feeds already cached on disk.
 
 ## Summary counts
 
@@ -92,7 +96,7 @@ meta-labeling harness build (#48-53). See
 | 15 | Vol-targeted carry basket | READY | G10 FRED rates current | BT | WF | FAIL-naive | OOS -0.33, DSR 0, PBO 0.73; CONTINUOUS rate-diff form (not the ranked top-3 + crash-filter basket) fails gate. **2026-07-19 cost re-gate: 0.5x-cost OOS Sharpe -0.295 vs -0.33 base -- stays negative, not a rescue.** |
 | 16 | Carry-momentum filter | READY | -- | BT | WF | FAIL-enh | Built as FxCarrySeatbelt (#16 swap+EMA50 filter + #19 veto/short), broad G10, daily+weekly. FAIL S&P bar: daily OOS -0.75 / weekly -0.11 vs S&P 0.68 (2014-2026, 3196d). DSR 0. Report FX_CARRY_SEATBELT_WALK_FORWARD.md; 1 deferred variant (12mo-TSMOM leg / graded sizing) remains per pre-reg. **2026-07-19 cost re-gate: 0.5x-cost OOS Sharpe daily -0.491 / weekly +0.020 vs S&P 0.684 -- both still FAIL the S&P bar; weekly flips sign but stays ~34x below benchmark. Not a rescue.** |
 | 17 | Swap-aware swing bias | READY | overlay/tilt | - | - | - | carry PnL modeled |
-| 18 | EM carry (MXN) | DATA | USDMXN not in daily cache (on disk; MXN rate ready) | - | - | - | buildable via Dukascopy/Massive |
+| 18 | EM carry (MXN) | READY* | daily cache BUILT 2026-07-21 (MXN/ZAR/CNH/TRY/PLN/HUF G10-grade); *needs FRED EM-rate check | - | - | - | data unblocked; see 20260721_fx_em_cache_backfill.md |
 | 19 | Carry-unwind detector | READY | AUD/NZD/JPY/CHF/XAU all present | BT | WF | FAIL-enh | Built as the veto + offensive-short leg of FxCarrySeatbelt. Short earned +1.4% in the Aug-2024 yen unwind (existence proof, N~4-6). Combined strategy FAILs S&P bar (see #16). carry_unwind score reusable (src/backtesting/signals/carry_unwind.py). See #16 for the 2026-07-19 cost re-gate (same combined strategy). |
 
 ## Category D -- Session / Time-of-day (20-25)
@@ -164,7 +168,7 @@ meta-labeling harness build (#48-53). See
 | # | Name | Status | Blocks / needs | BT | WF | Gate | Notes |
 |---|---|---|---|---|---|---|---|
 | 54 | Cross-sectional intraday strength | INTRADAY | currency_strength ready; needs intraday | - | - | - | |
-| 55 | USDCNH PBOC fix | DATA | USDCNH spot + fix history | - | - | - | on disk, not built |
+| 55 | USDCNH PBOC fix | DATA | USDCNH daily cache BUILT 2026-07-21 (G10-grade); still needs PBOC fix history | - | - | - | spot unblocked; fix-history feed still missing |
 | 56 | EM local-open effects | INTRADAY | EM pairs + session | - | - | - | |
 | 57 | NOKSEK microstructure | INTRADAY | intraday | - | - | - | |
 | 58 | Vol-spillover network | INTRADAY | minute VAR | - | - | - | |
@@ -181,7 +185,7 @@ meta-labeling harness build (#48-53). See
 | Beta-weighted spread execution | 4 (30,35,36,37) + #40 pair leg | cointegration artifact | BUILT (2026-07-19, `FxSpreadPortfolioSimulator`); gated #30/#35/#37 (all REJECT); #36 (needs Brent oil) and #40's pair leg still unbuilt |
 | Intraday engine | 22 | minute data, spread_model, vol_surface | not started (large) |
 | ML meta-label harness | 6 (48-53) | CPCV/DSR | not started |
-| EM spot pairs (data) | 2 (18,55) | on disk (Massive/Dukascopy) | not started |
+| EM spot pairs (data) | 2 (18,55) | on disk (Massive/Dukascopy) | BUILT 2026-07-21: 6 pairs G10-grade daily cache; #18 needs FRED EM-rate check, #55 needs PBOC fix history |
 
 ## Findings
 
