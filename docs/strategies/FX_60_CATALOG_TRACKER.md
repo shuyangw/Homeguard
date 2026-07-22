@@ -4,7 +4,21 @@ Living tracker for the 60-strategy FX catalog (research docs: `~/Downloads/compa
 `~/Downloads/fx_strategy_deep_dive.md`). Tracks, per strategy: current viability, what blocks it,
 and test progress. Update this file as strategies are tested or unblocked.
 
-Last updated: 2026-07-19
+Last updated: 2026-07-21
+
+**EM WAVE RESOLUTION (2026-07-21): all 7 pre-registered EM7 trials (EM-CARRY
+weekly+daily, EM-CARRY-SEATBELT, EM-TSMOM, EM-XSMOM, EM-CARRY-MOM (blend of
+#15/#3), EM-MEANREV -- EM-universe variants of #18/#16/#19/#3/#4/#8) FAIL the
+pre-registered gate.**
+Every trial fails on at least two independent legs (sign at 1.5x EM cost, PSR,
+DSR, or PBO). EM's larger carry differentials and structurally different
+trend/reversion dynamics do NOT survive realistic EM transaction costs (MXN
+3bp/ZAR 6bp/PLN 4bp/HUF 5bp/CNH 5bp/TRY 15bp/INR 8bp half-spread, x1.5
+sensitivity) or crash risk. Per the pre-registration's stopping rule
+(`docs/strategies/research/20260721_fx_em_wave_preregistration.md` Section 6),
+the EM catalog extension is declared exhausted: STOP, no wave-2 EM, no ML. See
+`docs/strategies/research/20260721_fx_em_wave_results.md` and
+`docs/reports/fx/em_wave_gate.md`.
 
 **WAVE 2 RESOLUTION (2026-07-19): all 6 Wave 2 strategies (#33/#39/#42 Track A +
 #30/#35/#37 Track B) FAIL the combined statistical gate.** Per the pre-registered
@@ -57,12 +71,12 @@ meta-labeling harness build (#48-53). See
 
 | Status | Count | Strategies |
 |---|---|---|
-| READY (test now) | 15 | 3,4,15,16,17,19,31,33,34,39,40,42,43,44,46 |
+| READY (test now) | 16 | 3,4,15,16,17,18,19,31,33,34,39,40,42,43,44,46 |
 | OHLC (trivial change) | 8 | 1,6,8,12,27,28,29,47 |
 | SPREAD | 4 | 30,35,36,37 |
 | BRACKET | 3 | 2,26,60 |
 | ML | 6 | 48,49,50,51,52,53 |
-| DATA | 2 | 18,55 |
+| DATA | 1 | 55 |
 | INTRADAY | 22 | 5,7,9,10,11,13,14,20,21,22,23,24,25,32,38,41,45,54,56,57,58,59 |
 
 ---
@@ -73,8 +87,8 @@ meta-labeling harness build (#48-53). See
 |---|---|---|---|---|---|---|---|
 | 1 | Dual MA + ATR trail | OHLC | ATR trail needs OHLC; daily EMA-cross ~= existing FxTrend | - | - | - | |
 | 2 | Donchian breakout | BRACKET | OHLC channel + stop-entry/pyramid | - | - | - | |
-| 3 | TSMOM portfolio | READY | -- | BT | WF | FAIL-naive | OOS -0.02, DSR 0.20, PBO 0.85 (IDM on, 13 win); naive sign form fails gate. Enhanced/param-sweep untested. **2026-07-19 cost re-gate: 0.5x-cost (IBKR-optimistic) OOS Sharpe +0.075 vs -0.02 base -- point estimate flips sign but PSR/DSR/PBO unchanged (still far outside gate); NOT a robustness rescue.** |
-| 4 | Cross-sectional momentum | READY | currency_strength artifact | BT | WF | FAIL-naive | OOS -0.05, DSR 0.01, PBO 0.66; naive 63d form fails gate. **2026-07-19 cost re-gate: 0.5x-cost OOS Sharpe +0.058 vs -0.05 base -- same caveat as #3, gate metrics unchanged, NOT a rescue.** |
+| 3 | TSMOM portfolio | READY | -- | BT | WF | FAIL-naive | OOS -0.02, DSR 0.20, PBO 0.85 (IDM on, 13 win); naive sign form fails gate. Enhanced/param-sweep untested. **2026-07-19 cost re-gate: 0.5x-cost (IBKR-optimistic) OOS Sharpe +0.075 vs -0.02 base -- point estimate flips sign but PSR/DSR/PBO unchanged (still far outside gate); NOT a robustness rescue.** **EM7 variant (EM-TSMOM, 2026-07-21): OOS Sharpe -0.31 (1x) / -0.52 (1.5x), PSR/DSR 0, PBO 0.52 -- FAIL, worse than G10 form. See `docs/strategies/research/20260721_fx_em_wave_results.md`.** |
+| 4 | Cross-sectional momentum | READY | currency_strength artifact | BT | WF | FAIL-naive | OOS -0.05, DSR 0.01, PBO 0.66; naive 63d form fails gate. **2026-07-19 cost re-gate: 0.5x-cost OOS Sharpe +0.058 vs -0.05 base -- same caveat as #3, gate metrics unchanged, NOT a rescue.** **EM7 variant (EM-XSMOM, 2026-07-21): OOS Sharpe -1.12 (1x) / -1.48 (1.5x), PSR/DSR 0, PBO 0.54 -- FAIL, the worst result of the EM wave. See `docs/strategies/research/20260721_fx_em_wave_results.md`.** |
 | 5 | Breakout-pullback | INTRADAY | M15 triggers | - | - | - | |
 | 6 | ADX-gated trend | OHLC | ADX needs high/low | - | - | - | |
 | 7 | Multi-TF momentum | INTRADAY | D1/H4/M15 stack | - | - | - | |
@@ -83,7 +97,7 @@ meta-labeling harness build (#48-53). See
 
 | # | Name | Status | Blocks / needs | BT | WF | Gate | Notes |
 |---|---|---|---|---|---|---|---|
-| 8 | Bollinger reversion | OHLC | daily z-reversion runs; ADX/news extra | - | - | - | test on EURCHF/EURJPY/CHFJPY |
+| 8 | Bollinger reversion | OHLC | daily z-reversion runs; ADX/news extra | - | - | - | test on EURCHF/EURJPY/CHFJPY. **EM7 close-only variant (EM-MEANREV, 2026-07-21): OOS Sharpe -0.69 (1x) / -1.01 (1.5x), PSR/DSR 0, PBO 0.48 -- FAIL. See `docs/strategies/research/20260721_fx_em_wave_results.md`.** |
 | 9 | RSI(2) fade | INTRADAY | H1 | - | - | - | |
 | 10 | Asian range fade | INTRADAY | session | - | - | - | |
 | 11 | Hourly z-reversion | INTRADAY | H1 + vol filter (vol_surface ready) | - | - | - | |
@@ -98,8 +112,8 @@ meta-labeling harness build (#48-53). See
 | 15 | Vol-targeted carry basket | READY | G10 FRED rates current | BT | WF | FAIL-naive | OOS -0.33, DSR 0, PBO 0.73; CONTINUOUS rate-diff form (not the ranked top-3 + crash-filter basket) fails gate. **2026-07-19 cost re-gate: 0.5x-cost OOS Sharpe -0.295 vs -0.33 base -- stays negative, not a rescue.** |
 | 16 | Carry-momentum filter | READY | -- | BT | WF | FAIL-enh | Built as FxCarrySeatbelt (#16 swap+EMA50 filter + #19 veto/short), broad G10, daily+weekly. FAIL S&P bar: daily OOS -0.75 / weekly -0.11 vs S&P 0.68 (2014-2026, 3196d). DSR 0. Report FX_CARRY_SEATBELT_WALK_FORWARD.md; 1 deferred variant (12mo-TSMOM leg / graded sizing) remains per pre-reg. **2026-07-19 cost re-gate: 0.5x-cost OOS Sharpe daily -0.491 / weekly +0.020 vs S&P 0.684 -- both still FAIL the S&P bar; weekly flips sign but stays ~34x below benchmark. Not a rescue.** |
 | 17 | Swap-aware swing bias | READY | overlay/tilt | - | - | - | carry PnL modeled |
-| 18 | EM carry (MXN) | READY* | daily cache BUILT 2026-07-21 (MXN/ZAR/CNH/TRY/PLN/HUF G10-grade); *needs FRED EM-rate check | - | - | - | data unblocked; see 20260721_fx_em_cache_backfill.md |
-| 19 | Carry-unwind detector | READY | AUD/NZD/JPY/CHF/XAU all present | BT | WF | FAIL-enh | Built as the veto + offensive-short leg of FxCarrySeatbelt. Short earned +1.4% in the Aug-2024 yen unwind (existence proof, N~4-6). Combined strategy FAILs S&P bar (see #16). carry_unwind score reusable (src/backtesting/signals/carry_unwind.py). See #16 for the 2026-07-19 cost re-gate (same combined strategy). |
+| 18 | EM carry (EM7: MXN/ZAR/PLN/HUF/CNH/TRY/INR) | READY | FRED EM rates wired + validated (2026-07-21) | BT | WF | FAIL | **2026-07-21 gate (EM-CARRY-weekly + EM-CARRY-daily): weekly OOS Sharpe 0.0245 (1x) / -0.0774 (1.5x), PSR 0.916, DSR 0, PBO 0.136; daily OOS Sharpe 0.0586 (1x) / -0.0988 (1.5x), PSR 0.9995, DSR 0, PBO 0.101. Both sign-flip negative at the mandatory 1.5x EM-cost leg -> FAIL despite passing PSR on the daily cadence.** EM's larger rate differentials do not survive EM's wider (3-15bp) transaction costs. See `docs/strategies/research/20260721_fx_em_wave_results.md`. |
+| 19 | Carry-unwind detector | READY | AUD/NZD/JPY/CHF/XAU all present | BT | WF | FAIL-enh | Built as the veto + offensive-short leg of FxCarrySeatbelt. Short earned +1.4% in the Aug-2024 yen unwind (existence proof, N~4-6). Combined strategy FAILs S&P bar (see #16). carry_unwind score reusable (src/backtesting/signals/carry_unwind.py). See #16 for the 2026-07-19 cost re-gate (same combined strategy). **EM7 variant (EM-CARRY-SEATBELT, 2026-07-21): the unwind score's JPY/CHF/AUDJPY/XAUUSD terms are ALL absent from EM7, so `compute_unwind_score` returns identically 0.0 across the full history -- the crash filter never generalized to EM and never engaged (0/3993 nonzero days). The trial ran as a degenerate long-only carry+momentum-gate book (106 fills OOS, monthly win rate 11.5%): OOS Sharpe 0.0775 (1x, near-zero-activity artifact) / -0.0025 (1.5x), PSR 1.0, PBO 0.5633 (>0.5) -- FAIL. A genuine EM crash filter needs EM-native risk-off proxies, not reused G10 JPY/CHF/AUDJPY/XAUUSD terms. See `docs/strategies/research/20260721_fx_em_wave_results.md`.** |
 
 ## Category D -- Session / Time-of-day (20-25)
 
@@ -187,7 +201,7 @@ meta-labeling harness build (#48-53). See
 | Beta-weighted spread execution | 4 (30,35,36,37) + #40 pair leg | cointegration artifact | BUILT (2026-07-19, `FxSpreadPortfolioSimulator`); gated #30/#35/#37 (all REJECT); #36 (needs Brent oil) and #40's pair leg still unbuilt |
 | Intraday engine | 22 | minute data, spread_model, vol_surface | not started (large) |
 | ML meta-label harness | 6 (48-53) | CPCV/DSR | not started |
-| EM spot pairs (data) | 2 (18,55) | on disk (Massive/Dukascopy) | BUILT 2026-07-21: 6 pairs G10-grade daily cache; #18 needs FRED EM-rate check, #55 needs PBOC fix history |
+| EM spot pairs (data) | 2 (18,55) | on disk (Massive/Dukascopy) | BUILT 2026-07-21: 6 pairs G10-grade daily cache. #18 gated 2026-07-21 (EM-CARRY + EM-CARRY-SEATBELT + EM-TSMOM + EM-XSMOM + EM-CARRY-MOM + EM-MEANREV, all 7 trials FAIL -- see EM WAVE RESOLUTION above); #55 still needs PBOC fix history. |
 
 ## Findings
 
