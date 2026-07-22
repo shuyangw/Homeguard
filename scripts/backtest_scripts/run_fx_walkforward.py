@@ -59,6 +59,7 @@ def _config_to_kwargs(config: Dict[str, Any]) -> Dict[str, Any]:
         "tier": bt.get("tier", "major"),
         "idm": bool(bt.get("idm", False)),
         "idm_cap": bt.get("idm_cap", None),
+        "rebalance": bt.get("rebalance", "weekly"),
     }
 
 
@@ -67,13 +68,14 @@ def _run_window_fx(universe: Sequence[str], train_start: date, test_end: date,
                     strategy_name: str, tier: str, idm: bool,
                     idm_cap: Optional[float], fill_sink: Optional[FillSink] = None,
                     window: Optional[int] = None,
-                    fill_cfg_hash: Optional[str] = None) -> Dict[str, Any]:
+                    fill_cfg_hash: Optional[str] = None,
+                    rebalance: str = "weekly") -> Dict[str, Any]:
     config = {
         "asset_class": "fx",
         "strategy": {"name": strategy_name, "universe": list(universe), "params": {}},
         "dates": {"start": str(train_start), "end": str(test_end)},
         "backtest": {"initial_capital": capital, "vol_target_per_instrument": vol_target,
-                     "rebalance": "weekly", "cost_mult": cost_mult, "leverage_cap": 10.0,
+                     "rebalance": rebalance, "cost_mult": cost_mult, "leverage_cap": 10.0,
                      "tier": tier, "idm": idm, "idm_cap": idm_cap},
     }
     return run_fx_backtest(config, register=False, fill_sink=fill_sink, window=window,
@@ -97,7 +99,8 @@ def process_window(spec: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         res = _run_window_fx(window_universe, train_start, test_end, spec["capital"],
                               spec["vol_target"], cost_mult, spec["strategy_name"], spec["tier"],
                               spec["idm"], spec["idm_cap"], fill_sink=spec.get("fill_sink"),
-                              window=spec.get("window"), fill_cfg_hash=_leg_tag(cost_mult))
+                              window=spec.get("window"), fill_cfg_hash=_leg_tag(cost_mult),
+                              rebalance=spec.get("rebalance", "weekly"))
         oos_by_cost[cost_mult] = _oos_returns_dated(res["equity_curve"], dates, test_start)
     return {
         "train_start": train_start, "test_start": test_start, "test_end": test_end,
@@ -121,6 +124,7 @@ def walk_forward_fx(
     idm_cap: Optional[float] = None,
     max_workers: Optional[int] = None,
     cost_mults: Sequence[float] = (1.0, 1.5),
+    rebalance: str = "weekly",
 ) -> Dict[str, Any]:
     """Roll OOS test windows for a parameter-free FX strategy (trend/value).
 
@@ -153,7 +157,7 @@ def walk_forward_fx(
                  "strategy_name": strategy_name, "tier": tier, "idm": idm, "idm_cap": idm_cap,
                  "train_months": train_months, "test_months": test_months,
                  "step_months": step_months, "start": str(start), "end": str(end),
-                 "cost_mults": cost_mults}
+                 "cost_mults": cost_mults, "rebalance": rebalance}
     cfg_hash = hashlib.sha1(json.dumps(_sink_cfg, sort_keys=True, default=str).encode()).hexdigest()[:6]
     sink = FillSink(strategy_name, FillSink.make_run_id(cfg_hash, datetime.now(timezone.utc)),
                     {"kind": "walkforward", "start": str(start), "end": str(end)})
@@ -162,7 +166,7 @@ def walk_forward_fx(
         {"universe": universe, "train_start": ts, "test_start": tst, "test_end": te,
          "capital": capital, "vol_target": vol_target, "strategy_name": strategy_name,
          "tier": tier, "idm": idm, "idm_cap": idm_cap, "cost_mults": cost_mults,
-         "window": i + 1, "fill_sink": sink}
+         "rebalance": rebalance, "window": i + 1, "fill_sink": sink}
         for i, (ts, tst, te) in enumerate(windows)
     ]
     from src.backtesting.parallel import parallel_map
@@ -396,6 +400,7 @@ def main() -> None:
             tier=kw.get("tier", "major"),
             idm=kw.get("idm", False),
             idm_cap=kw.get("idm_cap"),
+            rebalance=kw.get("rebalance", "weekly"),
             max_workers=args.jobs,
         )
         st.heartbeat(note=f"gate computed: oos_sharpe={result['oos_sharpe']:.4f} n_windows={result['n_windows']}")
