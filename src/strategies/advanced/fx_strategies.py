@@ -166,3 +166,57 @@ class FxXSectMomStrategy:
         radj = mom / vol.replace(0, np.nan)
         z = radj.sub(radj.mean(axis=1), axis=0).div(radj.std(axis=1), axis=0)
         return (z * self.scale).clip(-20, 20).fillna(0.0)
+
+
+class FxCotPositioningStrategy:
+    """CFTC speculative-positioning (COT) signal. Forecast from weekly net%OI (signed
+    bullish-the-pair, publication-lagged), computed on the weekly panel and forward-
+    filled to daily. FORM selects the pre-registered mechanism (signs fixed a priori):
+    contrarian_ts (fade crowded level), momentum_ts (follow positioning flow),
+    contrarian_xs (cross-sectional fade the most-crowded). Vol-target sizing applies.
+    """
+
+    FORM = "contrarian_ts"
+
+    def __init__(self, universe, z_window: int = 156, mom_horizon: int = 4,
+                 scale: float = 5.0, cap: float = 20.0, **params):
+        self.universe = list(universe)
+        self.z_window = int(z_window)
+        self.mom_horizon = int(mom_horizon)
+        self.scale = float(scale)
+        self.cap = float(cap)
+
+    def _weekly_forecast(self, w: pd.DataFrame) -> pd.DataFrame:
+        if self.FORM == "contrarian_ts":
+            z = (w - w.rolling(self.z_window).mean()) / w.rolling(self.z_window).std()
+            return -z.clip(-2, 2) * self.scale
+        if self.FORM == "momentum_ts":
+            chg = w - w.shift(self.mom_horizon)
+            z = (chg - chg.rolling(self.z_window).mean()) / chg.rolling(self.z_window).std()
+            return z.clip(-2, 2) * self.scale
+        if self.FORM == "contrarian_xs":
+            z = w.sub(w.mean(axis=1), axis=0).div(w.std(axis=1).replace(0, np.nan), axis=0)
+            return -z.clip(-2, 2) * self.scale
+        raise ValueError(f"unknown COT form {self.FORM!r}")
+
+    def forecast_panel(self, close_panel: pd.DataFrame) -> pd.DataFrame:
+        from src.data.cot import load_cot_weekly_panel, to_daily
+        present = [p for p in self.universe if p in close_panel.columns]
+        weekly = load_cot_weekly_panel(present)
+        if weekly.empty:
+            return pd.DataFrame(0.0, index=close_panel.index, columns=present)
+        cols = [c for c in present if c in weekly.columns]
+        fc = to_daily(self._weekly_forecast(weekly[cols]), close_panel.index)
+        return fc[cols].clip(-self.cap, self.cap).fillna(0.0)
+
+
+class FxCotContrarianTS(FxCotPositioningStrategy):
+    FORM = "contrarian_ts"
+
+
+class FxCotMomentumTS(FxCotPositioningStrategy):
+    FORM = "momentum_ts"
+
+
+class FxCotContrarianXS(FxCotPositioningStrategy):
+    FORM = "contrarian_xs"
