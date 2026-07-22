@@ -45,9 +45,11 @@ meta-labeling harness build (#48-53). See
   (8-pair configs' 0.20 over-leverages the correlated FX book -> blowup). FX pairs are highly correlated;
   a portfolio-level vol cap is a candidate infra improvement.
 - NOT built: OHLC-into-forecast_panel wiring; intraday engine; spread execution; ML harness.
-- EM daily cache BUILT (2026-07-21): 8 USD-EM pairs in `fx_daily/` (MXN/ZAR/CNH/TRY/BRL/PLN/HUF/INR,
-  2011-2026). 6 are G10-grade gap-free via Dukascopy backfill (99.3-100% cov, 0 significant gaps);
-  BRL/INR retain small Massive-only holes (~23-bday, not on Dukascopy). See
+- EM daily cache BUILT + VALIDATED (2026-07-21): 8 USD-EM pairs in `fx_daily/` (MXN/ZAR/CNH/TRY/BRL/PLN/HUF/INR,
+  2011-2026). 6 are G10-grade gap-free via Dukascopy backfill (99.3-100% cov, 0 significant gaps). Validated
+  vs yfinance + FRED H.10 (indep. of both feeds): corr 0.997-0.99996, med|d| 0.08-0.60%. ZAR had 25 sprinkled
+  bad Massive closes (2023-2025) -> FIXED by Dukascopy re-fetch (now 1 residual). MXN/CNH/TRY/PLN/HUF/INR clean.
+  BRL usable-with-caveat (Massive-only holiday thin prints, not backfillable). See
   `docs/progress/20260721_fx_em_cache_backfill.md`. EM carry still needs a FRED EM-rate check.
 - oil (Brent) one keyless `fetch_brent()` away; equity-index + macro-calendar feeds already cached on disk.
 

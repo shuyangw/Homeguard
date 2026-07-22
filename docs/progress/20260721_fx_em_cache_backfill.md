@@ -46,8 +46,41 @@ run; this is data plumbing only.
     lira crises, USDZAR 12.8% = real selloffs); reverting artifacts nulled
     (ZAR 13, PLN 1).
 
+## Independent validation (ultrathink pass)
+Validated all 8 pairs on the CLEANED series strategies use (clean_spikes=True)
+against sources independent of BOTH Massive and Dukascopy: yfinance (=X) and
+FRED H.10 (DEXMXUS/DEXSFUS/DEXCHUS/DEXINUS). Four checks: structural integrity
+(OHLC/NaN/dup/monotonic/weekday), price convention/level bounds, seam continuity
+at the 38 backfill boundaries, and independent-source agreement overall AND
+restricted to backfilled months.
+
+- Structural: all clean. Seams: all clean (0 boundary returns > 99th pct; backfill
+  joins Massive with no discontinuity). Convention: all correct (no inversion).
+- Independent agreement (cleaned series): corr 0.997-0.99996; median |diff|
+  0.08-0.60%; backfilled-months diff on par with overall -> backfill validated.
+- Real crisis days (not errors), confirmed against both sources: USDTRY 2018-08 /
+  2021-11-12 lira collapse (residuals are time-of-day sampling on 15-20% days);
+  USDHUF 444.98 (2022-10-12) is the real forint record low.
+
+### Data-quality issue caught and FIXED: USDZAR sprinkled bad closes
+The independent check exposed 25 ZAR daily closes (1 in 2011, 6 in 2023, 16 in
+2024, 2 in 2025; 9 of them >8%) sitting ~10-13% BELOW FRED -- spurious end-of-day
+low-spike ticks in the Massive ZAR minute feed that the spike-cleaner misses
+(multi-day runs, not single-day reverts). Structural checks and the one-month
+cross-check did NOT catch this; only the independent full-history comparison did.
+Fixed by replacing the 14 artifact-affected months with clean Dukascopy data
+(2011-09 unreachable -- Dukascopy ZAR history starts later). Post-fix: residual
+>4% dropped 25 -> 1 (the lone 2011-09-21 day), >8% 9 -> 0, med|d| 0.19%. ZAR now
+gate-grade.
+
+### Remaining caveat: USDBRL holiday prints
+USDBRL (Massive-only, not on Dukascopy) has ~12 residual days incl Christmas-2024
+thin prints (6.73 vs real ~6.19). Not backfillable; a BRL strategy needs a
+holiday filter. Flagged, not fixed (no BRL strategy planned; anti-YAGNI).
+
 ## Commits
 - `1ebf47e` feat(fx-data): EM daily cache via Dukascopy backfill (6 G10-grade pairs)
+- ZAR artifact re-fetch (13 months) + revalidation: local data only, no code change.
 
 ## Known Issues / Remaining Work
 - USDBRL / USDINR are not gate-grade (Massive-only holes; no Dukascopy source).
