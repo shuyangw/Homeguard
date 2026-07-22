@@ -45,6 +45,23 @@ def test_to_canonical_schema_and_vwap():
     assert out["timestamp"].dt.tz is not None
 
 
+def test_to_canonical_empty_returns_empty():
+    # Some instruments (restricted EM) return an empty, all-object frame for a
+    # month Dukascopy lacks; to_canonical must yield an empty canonical frame,
+    # not crash on volume.round().astype(int).
+    out = to_canonical(pd.DataFrame(columns=["open", "high", "low", "close", "volume"]))
+    assert list(out.columns) == CANONICAL_OHLCV_SCHEMA
+    assert len(out) == 0
+
+
+def test_to_canonical_coerces_object_volume():
+    idx = pd.date_range("2020-11-16", periods=2, freq="min", tz="UTC")
+    ohlc = _ohlc(idx, [1.10, 1.11])
+    ohlc["volume"] = ohlc["volume"].astype(object)
+    out = to_canonical(ohlc)
+    assert list(out["volume"]) == [1, 1]
+
+
 def test_derived_crosses_use_available_legs():
     # The 3 non-direct crosses must derive from instruments that ARE in the map.
     for x in ("NOKSEK", "NOKJPY", "SEKJPY"):

@@ -49,6 +49,12 @@ DUKA_MAP: dict[str, object] = {
     "NZDJPY": ins.INSTRUMENT_FX_CROSSES_NZD_JPY,
     "XAUUSD": ins.INSTRUMENT_FX_METALS_XAU_USD,
     "XAGUSD": ins.INSTRUMENT_FX_METALS_XAG_USD,
+    "USDMXN": ins.INSTRUMENT_FX_CROSSES_USD_MXN,
+    "USDZAR": ins.INSTRUMENT_FX_CROSSES_USD_ZAR,
+    "USDCNH": ins.INSTRUMENT_FX_CROSSES_USD_CNH,
+    "USDTRY": ins.INSTRUMENT_FX_CROSSES_USD_TRY,
+    "USDPLN": ins.INSTRUMENT_FX_CROSSES_USD_PLN,
+    "USDHUF": ins.INSTRUMENT_FX_CROSSES_USD_HUF,
     "NOKSEK": ("derive", ins.INSTRUMENT_FX_CROSSES_USD_SEK, ins.INSTRUMENT_FX_CROSSES_USD_NOK),
     "NOKJPY": ("derive", ins.INSTRUMENT_FX_MAJORS_USD_JPY, ins.INSTRUMENT_FX_CROSSES_USD_NOK),
     "SEKJPY": ("derive", ins.INSTRUMENT_FX_MAJORS_USD_JPY, ins.INSTRUMENT_FX_CROSSES_USD_SEK),
@@ -75,13 +81,17 @@ def derive_ohlc(num: pd.DataFrame, den: pd.DataFrame) -> pd.DataFrame:
 
 def to_canonical(ohlc: pd.DataFrame) -> pd.DataFrame:
     """Map a timestamp-indexed OHLC(+volume) frame to the canonical 8 columns."""
+    if ohlc.empty:
+        return pd.DataFrame(columns=CANONICAL_OHLCV_SCHEMA)
+    vol = pd.to_numeric(ohlc.get("volume", pd.Series(0.0, index=ohlc.index)),
+                        errors="coerce").fillna(0.0)
     out = pd.DataFrame({
         "timestamp": pd.to_datetime(ohlc.index, utc=True),
         "open": ohlc["open"].astype(float).to_numpy(),
         "high": ohlc["high"].astype(float).to_numpy(),
         "low": ohlc["low"].astype(float).to_numpy(),
         "close": ohlc["close"].astype(float).to_numpy(),
-        "volume": ohlc.get("volume", pd.Series(0.0, index=ohlc.index)).round().astype(int).to_numpy(),
+        "volume": vol.round().astype(int).to_numpy(),
         "trade_count": 0,
         "vwap": ohlc["close"].astype(float).to_numpy(),
     })
