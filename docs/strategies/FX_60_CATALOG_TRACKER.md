@@ -4,7 +4,21 @@ Living tracker for the 60-strategy FX catalog (research docs: `~/Downloads/compa
 `~/Downloads/fx_strategy_deep_dive.md`). Tracks, per strategy: current viability, what blocks it,
 and test progress. Update this file as strategies are tested or unblocked.
 
-Last updated: 2026-07-21
+Last updated: 2026-07-22
+
+**SCOPE OF THE NEGATIVE FINDINGS (read before quoting "exhausted").** Every "FAIL"
+and "RESOLUTION" below is bounded by the SPECIFICATION tested, not by the FX asset
+class (see CLAUDE.md North Star, "A negative bounds the specification you tested,
+not the asset class"). What has actually been shown to die after realistic costs
+is one specific slice: RETAIL-accessible, DAILY/session frequency, SPOT, standard
+PRICE/RATE + CARRY factor signals, executed as a SPREAD-TAKER. That is the corner
+LEAST likely to hold edge, and it does not. It does NOT establish that FX has no
+edge. Untested families that are where much real FX edge lives -- earning the
+spread as a liquidity PROVIDER/maker (adverse-selection-modeled, needs tick/L2
+data), MICROSTRUCTURE frequency, and non-price SIGNAL families (order-flow,
+positioning/COT, options-implied risk-reversals, cross-venue/triangular) -- remain
+LIVE hypotheses, not "exhausted." Read "catalog exhausted" below as "this retail
+daily/session taker-factor slice is exhausted."
 
 **EM WAVE RESOLUTION (2026-07-21): all 7 pre-registered EM7 trials (EM-CARRY
 weekly+daily, EM-CARRY-SEATBELT, EM-TSMOM, EM-XSMOM, EM-CARRY-MOM (blend of
@@ -16,7 +30,9 @@ trend/reversion dynamics do NOT survive realistic EM transaction costs (MXN
 3bp/ZAR 6bp/PLN 4bp/HUF 5bp/CNH 5bp/TRY 15bp/INR 8bp half-spread, x1.5
 sensitivity) or crash risk. Per the pre-registration's stopping rule
 (`docs/strategies/research/20260721_fx_em_wave_preregistration.md` Section 6),
-the EM catalog extension is declared exhausted: STOP, no wave-2 EM, no ML. See
+the EM extension of the retail daily/taker-factor slice is declared exhausted:
+STOP that slice (no wave-2 EM daily factors, no ML on it) -- NOT a claim that EM FX
+has no edge (see SCOPE banner above). See
 `docs/strategies/research/20260721_fx_em_wave_results.md` and
 `docs/reports/fx/em_wave_gate.md`.
 
@@ -26,9 +42,11 @@ stopping rule (`docs/superpowers/specs/2026-07-19-fx-wave2-selection-design.md`
 Section 6), across Wave 1 + Wave 2 the campaign has now tested 8+ distinct
 mechanisms (trend, cross-sectional momentum, carry, filtered carry, session
 breakout, spread-RV, statistical residual, macro-regime, seasonal, metals
-ratio-reversion) spanning the full frequency/style spectrum, all failing after
-realistic costs. The campaign DECLARES the finding and STOPS: no Wave 3, no ML
-meta-labeling harness build (#48-53). See
+ratio-reversion) spanning the DAILY/session price-factor style space (NOT the full
+frequency spectrum -- microstructure and maker/liquidity-provision were never
+tested), all failing after realistic taker costs. The campaign DECLARES the finding
+and STOPS this slice: no Wave 3 of daily price factors, no ML on it (#48-53). This
+is NOT a claim FX has no edge (see SCOPE banner above). See
 `docs/strategies/research/20260719_fx_wave2_resolution.md`.
 
 ## Status legend (what a strategy needs before it can be tested)
