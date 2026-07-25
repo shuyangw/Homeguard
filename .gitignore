@@ -131,6 +131,9 @@ artifacts/
 !src/data/artifacts/**
 !tests/data/artifacts/
 !tests/data/artifacts/**
+# ...but the ** re-include above overrides the global __pycache__/ rule
+src/data/artifacts/__pycache__/
+tests/data/artifacts/__pycache__/
 
 # Legacy output dir names (in case old paths are still used locally)
 logs/
