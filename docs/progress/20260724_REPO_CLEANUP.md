@@ -77,6 +77,11 @@ Tracked removals (branch `chore/repo-cleanup`):
   `test_dukascopy_fx` (dukascopy_python), `test_holidays_calendar` (holidays)
 
 ## Known Issues / Remaining Work
+- TEST-HYGIENE BUG (pre-existing, surfaced during validation): running
+  `tests/trading`/`tests/data` writes stray logger files named
+  `scripts.data.build_*` into the repo root and rewrites the REAL
+  `config/trading/strategy_toggle.yaml` (metadata only, flags unchanged --
+  restored). Tests should redirect both to tmp_path.
 - `.superpowers/sdd/progress.md` modified by another in-flight session -- left alone
 - `settings.ini` still tracked despite machine-local paths (user call)
 - `docs/planning/` vs `docs/plans/` consolidation not done (user call)
