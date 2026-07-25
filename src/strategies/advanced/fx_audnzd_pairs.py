@@ -16,6 +16,7 @@ from __future__ import annotations
 import numpy as np
 
 from src.backtesting.engine.spread_sizing import Spread
+from src.backtesting.signals.kalman_beta import causal_dynamic_beta
 from src.data.macro_calendar import load_cb_decisions
 from src.strategies.advanced.fx_spread_base import SpreadStrategy
 
@@ -106,3 +107,58 @@ class AudNzdPairs(SpreadStrategy):
             sigma[d] = {(_LEG_A, _LEG_B): sig}
 
         return book, sigma
+
+
+class AudNzdPairsKalman(AudNzdPairs):
+    """ARM B of the Kalman hedge-ratio scoping diagnostic (pre-registration:
+    docs/strategies/research/20260722_fx_kalman_hedge_ratio_preregistration.md).
+
+    Identical to AudNzdPairs in every respect -- universe, weekly rebalance, entry/
+    target/stop z, max_days, RBA/RBNZ blackout, strength scaling, spread sigma --
+    EXCEPT that the hedge ratio comes from a causal Kalman filter (time-varying
+    beta) instead of a trailing-window OLS. The z-score is then built the SAME way
+    as Arm A (residual over the same trailing window, standardized), so any
+    difference in results is attributable to the estimator alone.
+
+    Q and R are FIXED per the pre-registration and must not be tuned: Q from
+    delta=1e-4, R from the OLS residual variance over the first `lookback` rows of
+    the supplied panel (the start of the walk-forward TRAINING window).
+    """
+
+    delta = 1e-4
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._beta_cache: dict[int, np.ndarray] = {}
+
+    def _beta_path(self, ln_a, ln_b):
+        key = (len(ln_a), float(ln_a[0]), float(ln_a[-1]))
+        cached = self._beta_cache.get(key)
+        if cached is not None:
+            return cached
+        y0, x0 = ln_a[:self.lookback], ln_b[:self.lookback]
+        r_var = np.nan
+        if np.all(np.isfinite(y0)) and np.all(np.isfinite(x0)):
+            s0, i0 = np.polyfit(x0, y0, 1)
+            r_var = float(np.var(y0 - (s0 * x0 + i0)))
+        paths = causal_dynamic_beta(ln_a, ln_b, self.delta, r_var, self.lookback)
+        self._beta_cache[key] = paths
+        return paths
+
+    def _regression_z(self, ln_a, ln_b, i):
+        lo = i - self.lookback + 1
+        if lo < 0:
+            return None
+        y, x = ln_a[lo:i + 1], ln_b[lo:i + 1]
+        if not (np.all(np.isfinite(y)) and np.all(np.isfinite(x))):
+            return None
+        alpha_path, beta_path = self._beta_path(ln_a, ln_b)
+        slope, intercept = beta_path[i], alpha_path[i]
+        if not (np.isfinite(slope) and np.isfinite(intercept)):
+            return None
+        resid = y - (slope * x + intercept)
+        sd = resid.std()
+        if not np.isfinite(sd) or sd <= 0:
+            return None
+        z = (resid[-1] - resid.mean()) / sd
+        return (float(slope), float(z)) if np.isfinite(z) else None

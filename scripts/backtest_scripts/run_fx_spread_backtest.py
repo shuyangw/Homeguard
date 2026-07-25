@@ -22,7 +22,7 @@ from src.backtesting.data.fx_backtest_loader import (
 )
 from src.backtesting.engine.fx_backtest import _cost_fn_factory
 from src.backtesting.engine.fx_spread_simulator import FxSpreadPortfolioSimulator
-from src.strategies.advanced.fx_audnzd_pairs import AudNzdPairs
+from src.strategies.advanced.fx_audnzd_pairs import AudNzdPairs, AudNzdPairsKalman
 from src.strategies.advanced.fx_coint_scanner import CointScanner
 from src.strategies.advanced.fx_vol_ratio_pair import VolRatioPair
 from src.utils import logger
@@ -65,6 +65,8 @@ def _vol_ratio_coupled_sets(present: list[str]) -> tuple:
 def _make_strategy(strategy_name: str, universe: list[str]):
     if strategy_name == "AudNzdPairs":
         return AudNzdPairs()
+    if strategy_name == "AudNzdPairsKalman":
+        return AudNzdPairsKalman()
     if strategy_name == "CointScanner":
         return CointScanner(universe)
     if strategy_name == "VolRatioPair":
@@ -119,7 +121,7 @@ def _as_date(value: str) -> date:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run an FX spread backtest.")
     parser.add_argument("--strategy", required=True,
-                        choices=["AudNzdPairs", "CointScanner", "VolRatioPair"])
+                        choices=["AudNzdPairs", "AudNzdPairsKalman", "CointScanner", "VolRatioPair"])
     parser.add_argument("--universe", required=True,
                         help="comma-separated pair list")
     parser.add_argument("--start", required=True, type=_as_date)
