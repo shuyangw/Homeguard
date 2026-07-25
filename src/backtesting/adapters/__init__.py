@@ -23,27 +23,4 @@ Usage:
     results = run_backtest(portfolio, strategy, historical_data)
     ```
 
-NautilusTrader Adapters:
-    ```python
-    from src.backtesting.adapters.nautilus import (
-        NAUTILUS_AVAILABLE,
-        NautilusStrategyConfig,
-        BarAccumulator,
-        HomeguardOrderFactory,
-        homeguard_to_nautilus_catalog,
-    )
-
-    if NAUTILUS_AVAILABLE:
-        from src.backtesting.adapters.nautilus import (
-            NautilusStrategyAdapter,
-            RAMPAdapter,
-            OMRAdapter,
-            ORBAdapter,
-        )
-    ```
 """
-
-# Import nautilus module (optional dependency)
-from src.backtesting.adapters.nautilus import NAUTILUS_AVAILABLE
-
-__all__ = ['NAUTILUS_AVAILABLE']
