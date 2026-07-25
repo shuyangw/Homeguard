@@ -35,6 +35,31 @@ def test_kalman_arm_produces_a_book_and_differs_from_ols():
     assert all(np.isfinite(x) for x in betas_b)
 
 
+def test_kalman_arm_survives_a_leading_nan_block():
+    """Regression test for the window-1/window-13 defect: a panel that opens
+    before real price history begins (leading NaN block on one leg) must not
+    silently zero out the whole window's trading (previously: a literal
+    ln_a[:lookback]/ln_b[:lookback] R-seed slice went NaN, poisoning the
+    entire causal recursion and producing an empty book for the whole
+    window). With the finite-aligned-observation seed fix, the strategy
+    should still find a defined beta path -- and a non-empty book -- once
+    enough finite history has accumulated."""
+    panel = _panel(n=500, seed=7)
+    panel_leading_nan = panel.copy()
+    panel_leading_nan.iloc[:107, panel_leading_nan.columns.get_loc("AUDUSD")] = np.nan
+
+    strat = AudNzdPairsKalman()
+    ln_a = np.log(panel_leading_nan["AUDUSD"].astype(float).values)
+    ln_b = np.log(panel_leading_nan["NZDUSD"].astype(float).values)
+    alpha_path, beta_path = strat._beta_path(ln_a, ln_b)
+    assert np.any(np.isfinite(beta_path)), "beta path must not be all-NaN despite the leading NaN block"
+    assert np.all(np.isnan(beta_path[:226]))        # still NaN through the 120th finite row
+    assert np.isfinite(beta_path[226])
+
+    book, _ = strat.spread_book(panel_leading_nan)
+    assert len(book) > 0, "strategy must still be able to trade once finite history accumulates"
+
+
 def test_kalman_beta_is_causal_within_the_strategy():
     """Perturbing prices AFTER a date must not change the beta the strategy used
     on or before that date."""

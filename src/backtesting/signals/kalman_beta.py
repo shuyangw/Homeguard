@@ -20,6 +20,20 @@ from __future__ import annotations
 import numpy as np
 
 
+def select_warmup_indices(y: np.ndarray, x: np.ndarray, size: int) -> np.ndarray | None:
+    """Indices of the first `size` FINITE, aligned (y, x) observations.
+
+    Robust to leading or interior non-finite rows (e.g. a panel that starts
+    before real price history begins, or a handful of nulled data-quality
+    bars) -- unlike a literal `[:size]` slice, which is poisoned by a single
+    NaN anywhere in the first `size` rows. Returns None if fewer than `size`
+    finite, aligned pairs exist anywhere in the input.
+    """
+    finite = np.isfinite(y) & np.isfinite(x)
+    idx = np.flatnonzero(finite)
+    return idx[:size] if len(idx) >= size else None
+
+
 def causal_dynamic_beta(y: np.ndarray, x: np.ndarray, delta: float, r_var: float,
                         warmup: int) -> tuple[np.ndarray, np.ndarray]:
     """Filtered (alpha, beta) paths for y ~ alpha + beta*x.
@@ -29,12 +43,14 @@ def causal_dynamic_beta(y: np.ndarray, x: np.ndarray, delta: float, r_var: float
         delta: random-walk process-noise parameter; Q = delta/(1-delta) * I.
             Smaller = a more slowly-varying (smoother) beta.
         r_var: observation-noise variance R (> 0), estimated on training data only.
-        warmup: number of leading observations used to seed theta_0 by OLS. The
-            returned paths are NaN before `warmup`.
+        warmup: number of leading FINITE, aligned observations used to seed
+            theta_0 by OLS (via `select_warmup_indices`, robust to leading/
+            interior NaNs). The returned paths are NaN before the warmup
+            completes -- i.e. before the last of those `warmup` observations.
 
     Returns:
-        (alpha_path, beta_path), each length len(y), NaN before `warmup`.
-        Entry t is conditioned on observations 0..t only.
+        (alpha_path, beta_path), each length len(y), NaN before warmup
+        completes. Entry t is conditioned on observations 0..t only.
     """
     n = len(y)
     alpha_path = np.full(n, np.nan)
@@ -42,18 +58,20 @@ def causal_dynamic_beta(y: np.ndarray, x: np.ndarray, delta: float, r_var: float
     if n <= warmup or warmup < 2 or not np.isfinite(r_var) or r_var <= 0:
         return alpha_path, beta_path
 
-    y0, x0 = y[:warmup], x[:warmup]
-    if not (np.all(np.isfinite(y0)) and np.all(np.isfinite(x0))):
+    seed_idx = select_warmup_indices(y, x, warmup)
+    if seed_idx is None:
         return alpha_path, beta_path
+    y0, x0 = y[seed_idx], x[seed_idx]
     slope, intercept = np.polyfit(x0, y0, 1)
 
     theta = np.array([float(intercept), float(slope)])
     P = np.eye(2) * 1e-3
     Q = np.eye(2) * (delta / (1.0 - delta))
-    alpha_path[warmup - 1] = theta[0]
-    beta_path[warmup - 1] = theta[1]
+    seed_end = int(seed_idx[-1])
+    alpha_path[seed_end] = theta[0]
+    beta_path[seed_end] = theta[1]
 
-    for t in range(warmup, n):
+    for t in range(seed_end + 1, n):
         if not (np.isfinite(y[t]) and np.isfinite(x[t])):
             alpha_path[t], beta_path[t] = theta[0], theta[1]
             continue

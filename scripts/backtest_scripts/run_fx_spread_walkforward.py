@@ -28,7 +28,9 @@ project-wide DSR trial count.
 from __future__ import annotations
 
 import argparse
-from datetime import date
+import hashlib
+import json
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence
 
@@ -40,6 +42,7 @@ from src.backtesting.benchmark import (
     correlation_over_dates, information_ratio_vs_sp500, load_sp500_daily_returns,
     sp500_aligned_count, sp500_sharpe_over_dates)
 from src.backtesting.data.fx_backtest_loader import build_quote_usd_panel, load_fx_daily_panel
+from src.backtesting.engine.fill_sink import FillSink
 from src.backtesting.engine.fx_backtest import _cost_fn_factory
 from src.backtesting.engine.fx_spread_simulator import FxSpreadPortfolioSimulator
 from src.backtesting.statistics.dsr import dsr
@@ -55,6 +58,11 @@ from src.utils.run_status import RunStatus
 _REPORT_DIR = Path("docs/reports/fx")
 _DEFAULT_CAPITAL = 100_000.0
 _COST_LEGS = (1.0, 1.5)
+
+
+def _leg_tag(mult: float) -> str:
+    s = ("%g" % float(mult)).replace(".", "")
+    return f"c{s}x"
 
 
 def _run_window_spread(spec: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -84,6 +92,9 @@ def _run_window_spread(spec: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     strategy = _make_strategy(strategy_name, present)
     book, sigma = strategy.spread_book(close)
 
+    fill_sink = spec.get("fill_sink")
+    window = spec.get("window")
+
     oos_by_cost: Dict[float, pd.Series] = {}
     for cost_mult in _COST_LEGS:
         sim = FxSpreadPortfolioSimulator(spec["capital"], _cost_fn_factory(),
@@ -92,6 +103,10 @@ def _run_window_spread(spec: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         res = sim.run_spreads(close, book, sigma, quote_usd, spec["vol_target"])
         returns = res.equity_curve.pct_change(fill_method=None).dropna()
         oos_by_cost[cost_mult] = returns[returns.index >= test_start]
+        if fill_sink is not None and window is not None:
+            extras = {"leverage_utilization": res.leverage_utilization.rename(
+                "leverage_utilization").reset_index()}
+            fill_sink.write_window(res.trades, window, cfg_hash=_leg_tag(cost_mult), extras=extras)
 
     if oos_by_cost[1.0].empty:
         return None
@@ -113,6 +128,7 @@ def walk_forward_fx_spread(
     test_months: int = 12,
     step_months: int = 12,
     max_workers: Optional[int] = None,
+    register: bool = True,
 ) -> Dict[str, Any]:
     universe = list(universe)
     start_d, end_d = _as_date(start), _as_date(end)
@@ -123,14 +139,39 @@ def walk_forward_fx_spread(
             f"for range {start}..{end} with train={train_months}m test={test_months}m step={step_months}m"
         )
 
+    # Run-scoped fill logging (methodology Section 12 / CLAUDE.md): every
+    # simulated run persists its fills. Per-window, per-cost-leg trade files
+    # go under output/backtests/<strategy>/runs/<run_id>/, plus a
+    # manifest.csv and a trades_oos.csv.gz (1.0x leg sliced to each window's
+    # OOS segment) -- mirrors run_fx_walkforward.py's FillSink wiring.
+    _sink_cfg = {"strategy_name": strategy_name, "universe": universe, "start": str(start),
+                 "end": str(end), "vol_target": vol_target, "rebalance": rebalance,
+                 "capital": capital, "leverage_cap": leverage_cap,
+                 "train_months": train_months, "test_months": test_months,
+                 "step_months": step_months, "cost_legs": list(_COST_LEGS)}
+    cfg_hash = hashlib.sha1(json.dumps(_sink_cfg, sort_keys=True, default=str).encode()).hexdigest()[:6]
+    sink = FillSink(strategy_name, FillSink.make_run_id(cfg_hash, datetime.now(timezone.utc)),
+                    {"kind": "walkforward_spread", "start": str(start), "end": str(end)})
+
     specs = [
         {"strategy_name": strategy_name, "universe": universe, "train_start": ts,
          "test_start": tst, "test_end": te, "vol_target": vol_target,
-         "rebalance": rebalance, "capital": capital, "leverage_cap": leverage_cap}
-        for (ts, tst, te) in windows
+         "rebalance": rebalance, "capital": capital, "leverage_cap": leverage_cap,
+         "window": i + 1, "fill_sink": sink}
+        for i, (ts, tst, te) in enumerate(windows)
     ]
     from src.backtesting.parallel import parallel_map
-    results = [r for r in parallel_map(_run_window_spread, specs, max_workers=max_workers) if r is not None]
+    raw_results = parallel_map(_run_window_spread, specs, max_workers=max_workers)
+    # raw_results is in input order (parallel_map contract), so it pairs 1:1
+    # with specs; None entries are windows dropped for data-availability.
+    oos_windows: List[int] = []
+    for s, r in zip(specs, raw_results):
+        if r is not None:
+            sink.set_oos_range(s["window"], s["test_start"], s["test_end"])
+            oos_windows.append(s["window"])
+    sink.finalize(oos_windows=oos_windows, oos_cfg_hash=_leg_tag(1.0))
+
+    results = [r for r in raw_results if r is not None]
     if len(results) < 2:
         raise ValueError(
             f"walk-forward requires >=2 usable OOS windows after data-availability filtering, "
@@ -196,33 +237,39 @@ def walk_forward_fx_spread(
         "capital": capital,
         "vol_target": vol_target,
         "rebalance": rebalance,
+        "fill_run_id": sink.run_id,
+        "fill_run_dir": str(sink.run_dir),
     }
     result["verdict"] = _verdict(result)
 
     run_id = None
-    try:
-        from src.experiments import append_run
+    if register:
+        try:
+            from src.experiments import append_run
 
-        run_id = append_run(
-            strategy_name=strategy_name,
-            agent_name="fx-spread-walkforward",
-            metrics={k: v for k, v in result.items()
-                     if k not in ("universe", "present_universe", "missing_universe")},
-            asset_class="fx",
-            data_frequency="daily",
-            params={
-                "train_months": train_months, "test_months": test_months,
-                "step_months": step_months, "universe": universe,
-                "vol_target": vol_target, "initial_capital": capital,
-                "rebalance": rebalance, "leverage_cap": leverage_cap,
-                "trial_count_project_wide": n_trials,
-            },
-            window_start=result["window_start"],
-            window_end=result["window_end"],
-            phase="walk_forward",
-        )
-    except Exception as e:
-        logger.error(f"[fx_spread_wf] registry append_run failed (non-fatal): {e}")
+            run_id = append_run(
+                strategy_name=strategy_name,
+                agent_name="fx-spread-walkforward",
+                metrics={k: v for k, v in result.items()
+                         if k not in ("universe", "present_universe", "missing_universe")},
+                asset_class="fx",
+                data_frequency="daily",
+                params={
+                    "train_months": train_months, "test_months": test_months,
+                    "step_months": step_months, "universe": universe,
+                    "vol_target": vol_target, "initial_capital": capital,
+                    "rebalance": rebalance, "leverage_cap": leverage_cap,
+                    "trial_count_project_wide": n_trials,
+                },
+                window_start=result["window_start"],
+                window_end=result["window_end"],
+                phase="walk_forward",
+            )
+        except Exception as e:
+            logger.error(f"[fx_spread_wf] registry append_run failed (non-fatal): {e}")
+    else:
+        logger.info("[fx_spread_wf] register=False: skipping experiment-registry append_run "
+                    "(diagnostic re-simulation, not a new trial)")
 
     result["run_id"] = run_id
     return result
@@ -304,7 +351,7 @@ def write_report(result: Dict[str, Any], strategy_display_name: str, config_path
 
 def run_gate(config_path: str, strategy_display_name: str,
              train_months: int = 36, test_months: int = 12, step_months: int = 12,
-             max_workers: Optional[int] = None) -> Dict[str, Any]:
+             max_workers: Optional[int] = None, register: bool = True) -> Dict[str, Any]:
     cfg = yaml.safe_load(Path(config_path).read_text())
     strat, bt, dts = cfg["strategy"], cfg.get("backtest", {}), cfg["dates"]
 
@@ -323,7 +370,7 @@ def run_gate(config_path: str, strategy_display_name: str,
         capital=float(bt.get("initial_capital", _DEFAULT_CAPITAL)),
         leverage_cap=float(bt.get("leverage_cap", 4.0)),
         train_months=train_months, test_months=test_months, step_months=step_months,
-        max_workers=max_workers,
+        max_workers=max_workers, register=register,
     )
     return {"strategy_display_name": strategy_display_name, "config_path": config_path, **result}
 
@@ -337,14 +384,18 @@ def main() -> None:
     parser.add_argument("--test-months", type=int, default=12)
     parser.add_argument("--step-months", type=int, default=12)
     parser.add_argument("--jobs", type=int, default=None)
+    parser.add_argument("--no-register", dest="register", action="store_false", default=True,
+                        help="Skip the experiment-registry append_run (for re-simulating an "
+                             "already-counted, deterministic spec for diagnostics only -- does "
+                             "NOT increment the project-wide trial count). Default: register.")
     args = parser.parse_args()
 
     report_path = args.report or str(_REPORT_DIR / f"{Path(args.config).stem}_wave2_gate.md")
 
-    meta = {"config": args.config, "name": args.name}
+    meta = {"config": args.config, "name": args.name, "register": args.register}
     with RunStatus("fx_spread_walkforward", meta=meta) as st:
         result = run_gate(args.config, args.name, args.train_months, args.test_months,
-                          args.step_months, max_workers=args.jobs)
+                          args.step_months, max_workers=args.jobs, register=args.register)
         st.heartbeat(note=f"gate computed: oos_sharpe={result['oos_sharpe']:.4f} verdict={result['verdict'][:40]}")
         out = write_report(result, args.name, args.config, report_path)
 
