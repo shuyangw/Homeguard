@@ -415,8 +415,10 @@ an improvement-focused prompt (NOT the greenfield-blueprint prompt).
   rolling-OLS estimate, evaluate whether a causal state-space / Kalman FILTER formulation is the
   better estimator, and say why from the diagnostics (e.g. beta drift, lookback sensitivity). If
   you propose it, you MUST state: filter-only (never a smoother), how Q/R are set (a-priori or
-  training-window-only estimation), and the initialization. If none of the diagnostics point at
-  the estimator, do NOT propose it -- an estimator upgrade is not a default."
+  training-window-only estimation), the initialization, and the PAIRED-COMPARISON design (both
+  arms reported, adoption rule pre-committed, expected turnover/cost delta). If none of the
+  diagnostics point at the estimator, do NOT propose it -- an estimator upgrade is not a default,
+  and it is not universally better than the rolling-OLS estimator it would replace."
 
 Expected shape of a good diagnosis: ">70% of returns from one regime -> add a regime filter
 (STRUCTURAL)"; "cost drag exceeds gross at realized turnover -> weekly rebalance (STRUCTURAL)";
@@ -456,6 +458,26 @@ Applies to any asset class, not just FX.
    there, a better estimate of nothing is still nothing.
 4. **Initialization must not peek** (diffuse or training-window prior only), and the filter must
    be warmed up inside the training window, never across the train/test boundary.
+5. **It is a PAIRED A/B, never a silent swap -- and the winner is NOT chosen after the fact.**
+   Kalman is not universally better: on a genuinely STABLE relationship it adds estimation noise
+   and lag and usually raises turnover (a beta that moves every day re-hedges every day), while
+   on a DRIFTING one a rolling-OLS window is both stale and jumpy (an outlier leaving the window
+   causes a discrete beta jump the filter would smooth). Which wins is an empirical, per-strategy
+   question, so run BOTH arms -- identical mechanism, identical universe/windows/costs, the ONLY
+   difference being the estimator -- and:
+   - **Report BOTH arms, always.** Reporting only the better arm is selective reporting: it
+     undercounts N and is the exact p-hacking move Section 2.2 forbids. Both arms appear in the
+     results doc even when one is embarrassing.
+   - **Pre-commit the adoption rule BEFORE running** (in the round doc): which arm is PRIMARY,
+     and what margin the challenger must clear to displace it. Absent a pre-committed rule,
+     "we tried both and Kalman was better" is a specification search, not a finding.
+   - **Count the trials honestly.** A newly-run arm is a trial. If the static-estimator baseline
+     already exists, cite its exact prior numbers rather than re-running it, and count only the
+     new arm.
+   - **Report the turnover and cost delta between arms**, not just Sharpe. An estimator that
+     improves gross Sharpe but raises turnover enough to lose after costs has NOT improved the
+     strategy -- and for a strategy whose failure mode was already cost sensitivity, this is the
+     single most likely outcome. Say so up front rather than discovering it at the gate.
 
 **On completion (orchestrator does these):**
 - Write the improvement plan to `docs/agent-learnings/<strategy>/06b_improvements_round<N>.md`.
