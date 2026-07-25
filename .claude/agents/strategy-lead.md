@@ -209,14 +209,23 @@ The strategy spec declares its required data frequency. Mismatches between strat
 
 ## Agent roster
 
+Models below are the ACTUAL `model:` frontmatter of each agent file (verified 2026-07-22).
+Keep this table in sync with those files -- they had drifted apart, and the drift is
+silent: an agent documented as Opus still runs on whatever its frontmatter says unless
+the dispatch passes an explicit model override.
+
 | Agent | Can write? | Model | Pipeline role |
 |-------|-----------|-------|---------------|
-| **code-explorer** | No | Haiku | Strategy #1: map infra patterns |
-| **code-architect** | No | Opus | Strategy #1: design blueprint → becomes a skill. Also **Phase 6.5**: diagnose marginal backtests and design structural improvements |
-| **code-reviewer** | No | Opus | Every strategy: backtest integrity review |
-| **backtest-driver** | Yes | Haiku | Runs backtests, writes reports to `docs/reports/<strategy>/` |
-| **backtest-optimizer** | Yes | Haiku | Parameter optimization, writes chronicles to `output/optimization/<strategy>/` |
+| **code-explorer** | No | Sonnet | Strategy #1: map infra patterns |
+| **code-architect** | No | **Opus** | Strategy #1: design blueprint → becomes a skill. Also **Phase 6.5**: diagnose marginal backtests and design structural improvements. Opus because this is the design/diagnosis brain -- the one role that must INVENT a structural hypothesis rather than execute a specified one |
+| **code-reviewer** | No | **Opus** | Every strategy: backtest integrity review. Opus because this is the adversarial gate that must catch lookahead, mis-specification, and p-hacking that the executing agent did not see |
+| **backtest-driver** | Yes | Sonnet | Runs backtests, writes reports to `docs/reports/<strategy>/` |
+| **backtest-optimizer** | Yes | Sonnet | Parameter optimization, writes chronicles to `output/optimization/<strategy>/` |
 | *general-purpose* | Yes | (inherited) | Implementation, testing |
+
+Execution agents (driver/optimizer/explorer) are Sonnet, not Haiku: they must ENFORCE
+methodology (cost realism, full-data coverage, fills persistence), and a role that
+enforces rules is a poor fit for the cheapest tier. Do not downgrade them without cause.
 
 ## Critical dispatch rules
 
@@ -400,11 +409,53 @@ an improvement-focused prompt (NOT the greenfield-blueprint prompt).
   -> Phase 3) or PARAMETRIC (new tunable -> Phase 7), (d) the expected mechanism of improvement.
   RANK them. Do NOT propose parameter ranges for existing parameters -- that is the optimizer's
   job. Do NOT propose more than 3."
+- "Consider THREE improvement categories, not two: a new FEATURE/signal, an OVERLAY (regime,
+  sizing, turnover), and an ESTIMATOR upgrade. For ESTIMATOR: if the strategy estimates a
+  time-varying quantity (hedge ratio, factor loading, latent level/trend) with a static or
+  rolling-OLS estimate, evaluate whether a causal state-space / Kalman FILTER formulation is the
+  better estimator, and say why from the diagnostics (e.g. beta drift, lookback sensitivity). If
+  you propose it, you MUST state: filter-only (never a smoother), how Q/R are set (a-priori or
+  training-window-only estimation), and the initialization. If none of the diagnostics point at
+  the estimator, do NOT propose it -- an estimator upgrade is not a default."
 
 Expected shape of a good diagnosis: ">70% of returns from one regime -> add a regime filter
 (STRUCTURAL)"; "cost drag exceeds gross at realized turnover -> weekly rebalance (STRUCTURAL)";
 "winners' MAE p75 breaches the stop -> widen the stop to the MAE-derived level (PARAMETRIC, only
 with Section 11.6 backing)".
+
+**ESTIMATOR upgrades (a third improvement category -- consider explicitly, do not default to it).**
+Besides new FEATURES and new OVERLAYS, a marginal strategy is sometimes limited by the ESTIMATOR
+of a relationship it already uses, not by the economic idea. The canonical case is a static or
+rolling-OLS estimate of a quantity that is genuinely TIME-VARYING. When the diagnostics show the
+estimate itself is the weakness, a state-space / **Kalman filter** formulation is the
+theory-justified upgrade. Consider it when the report shows any of:
+- **Pairs / cointegration / spread strategies with a rolling-OLS hedge ratio** whose beta drifts,
+  or whose performance degrades as the lookback grows/shrinks (a lookback-sensitivity symptom).
+  A Kalman-filtered dynamic hedge ratio is the standard estimator here and is a genuinely
+  different ESTIMATOR of the SAME pre-registered economic relationship -- not a new signal.
+- **Time-varying beta / factor loadings** (e.g. a dollar-factor or risk-factor exposure) where a
+  fixed-window loading is stale by construction.
+- **Level/trend extraction from a noisy observable** where the rolling mean is a lagging proxy
+  for an unobserved state.
+Applies to any asset class, not just FX.
+
+**Kalman guardrails (NON-NEGOTIABLE if this upgrade is chosen):**
+1. **FILTER, never SMOOTHER.** Only the causal forward pass (filtered state at time t using data
+   up to t) is admissible. The RTS/fixed-interval SMOOTHER revises past states using FUTURE
+   observations and is a catastrophic lookahead -- it will manufacture a spectacular, entirely
+   fake backtest. Any use of a smoother in a return-generating path is an automatic REJECT, the
+   same as any other Section 2.1 leak.
+2. **Q/R are a p-hacking surface, not free parameters.** The process- and observation-noise
+   covariances control how fast the state adapts and can be tuned to fit anything. Either fix
+   them a priori from theory/literature, or estimate them (EM/MLE) on the TRAINING window only,
+   re-estimated per walk-forward window -- NEVER on the full sample and NEVER tuned until the
+   gate passes. Report which was done. An unreported Q/R choice invalidates the run.
+3. **It is a TRIAL like any other** specification variation: increment the project-wide count,
+   pre-commit the hypothesis before the re-backtest, and re-run all Section 2 gates. Swapping in
+   a fancier estimator does not exempt a dead mechanism -- if the economic relationship is not
+   there, a better estimate of nothing is still nothing.
+4. **Initialization must not peek** (diffuse or training-window prior only), and the filter must
+   be warmed up inside the training window, never across the train/test boundary.
 
 **On completion (orchestrator does these):**
 - Write the improvement plan to `docs/agent-learnings/<strategy>/06b_improvements_round<N>.md`.

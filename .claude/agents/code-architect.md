@@ -2,7 +2,7 @@
 name: code-architect
 description: Senior software architect that analyzes codebases to deliver comprehensive architecture blueprints with decisive choices aligned to existing patterns
 tools: Glob, Grep, LS, Read, NotebookRead, WebFetch, TodoWrite, WebSearch, KillShell, BashOutput
-model: sonnet
+model: opus
 color: green
 ---
 
