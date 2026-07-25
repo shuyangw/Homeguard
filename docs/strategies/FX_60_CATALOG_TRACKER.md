@@ -4,7 +4,7 @@ Living tracker for the 60-strategy FX catalog (research docs: `~/Downloads/compa
 `~/Downloads/fx_strategy_deep_dive.md`). Tracks, per strategy: current viability, what blocks it,
 and test progress. Update this file as strategies are tested or unblocked.
 
-Last updated: 2026-07-22
+Last updated: 2026-07-25
 
 **COT WAVE RESOLUTION (2026-07-22): all 3 pre-registered COT/positioning trials
 (COT-CONTRARIAN-TS, COT-MOMENTUM-TS, COT-CONTRARIAN-XS) FAIL the pre-registered
@@ -189,7 +189,7 @@ is NOT a claim FX has no edge (see SCOPE banner above). See
 
 | # | Name | Status | Blocks / needs | BT | WF | Gate | Notes |
 |---|---|---|---|---|---|---|---|
-| 35 | AUD/NZD pairs | SPREAD | beta-weighted spread engine BUILT | BT | WF | REJECT | Wave 2 Track B. AudNzdPairs, 120d OLS residual-z, RBA/RBNZ blackout. OOS Sharpe -0.24 (1.5x: -0.30), PSR 0, DSR 0 (N=109), PBO 0.82, S&P corr 0.04. Non-positive OOS Sharpe -- no edge to deflate. Report: docs/reports/fx/fx_audnzd_pairs_wave2_gate.md |
+| 35 | AUD/NZD pairs | SPREAD | beta-weighted spread engine BUILT | BT | WF | REJECT | Wave 2 Track B. AudNzdPairs, 120d OLS residual-z, RBA/RBNZ blackout. OOS Sharpe -0.24 (1.5x: -0.30), PSR 0, DSR 0 (N=109), PBO 0.82, S&P corr 0.04. Non-positive OOS Sharpe -- no edge to deflate. Report: docs/reports/fx/fx_audnzd_pairs_wave2_gate.md. FOLLOW-UP SCOPING DIAGNOSTIC (2026-07-25, adversarial-reviewed, no lookahead): tested whether the -0.24 was an artifact of the STATIC hedge-ratio estimator by swapping in a causal Kalman/regularized dynamic beta (delta=1e-4, same universe/entry-exit/costs/windows) -- AudNzdPairsKalman OOS Sharpe +0.42 (1.5x: +0.35), PSR 1.00, DSR ~0 (9.96e-186, N=133), PBO 0.89 -- FAILS the combined gate (DSR and PBO each independently decisive; PSR/Sharpe pass alone). The swing is explained (not a leak): Arm A's rolling-OLS beta is a near-unidentified near-collinear fit (range [0.01,1.66]); the Kalman filter at this delta acts as shrinkage/regularization (range [0.50,0.93]), not genuine time-variation. Result: hedge-ratio mis-specification is ELIMINATED as the explanation for this pair's Wave 2 failure -- both a static and a regularized dynamic hedge ratio fail net of costs. Scope unchanged from the banner above (RETAIL/DAILY/SPOT/SPREAD-TAKER, zero execution lag, one pair, one delta); does NOT extend to other pairs, other deltas, other frequencies, or maker/liquidity-provision execution. Reports: docs/reports/fx/kalman_hedge_ratio_gate.md, docs/strategies/research/20260722_fx_kalman_hedge_ratio_results.md |
 | 36 | Scandi triangle | SPREAD | spread engine BUILT; still needs Brent oil | - | - | - | NOK/SEK present |
 | 37 | Cointegration scanner | SPREAD | beta-weighted spread engine BUILT | BT | WF | REJECT | Wave 2 Track B. CointScanner, monthly Engle-Granger scan over 22-pair G10, top-5 tradeable set, structural ADF-degradation exit. OOS Sharpe -0.24 (1.5x: -0.31), PSR 0, DSR 0 (N=110), PBO 0.45, S&P corr -0.01. Non-positive OOS Sharpe -- no edge to deflate. Report: docs/reports/fx/fx_coint_scanner_wave2_gate.md |
 | 38 | Synthetic cross divergence | INTRADAY | minute/diagnostic | - | - | - | |
