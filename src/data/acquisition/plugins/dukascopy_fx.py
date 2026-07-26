@@ -38,7 +38,19 @@ _OHLC = ["open", "high", "low", "close"]
 # hg_symbol -> Dukascopy instrument, OR ("derive", numerator, denominator).
 # Cross = numerator / denominator (e.g. NOKSEK = USDSEK / USDNOK).
 DUKA_MAP: dict[str, object] = {
+    # Majors added 2026-07-25 for SPREAD MEASUREMENT. The original backfill only
+    # mapped pairs the Massive/Polygon source was missing, so the three biggest
+    # majors were absent -- which is fine for gap-filling and useless for
+    # measuring quotes.
+    "EURUSD": ins.INSTRUMENT_FX_MAJORS_EUR_USD,
+    "USDJPY": ins.INSTRUMENT_FX_MAJORS_USD_JPY,
+    "GBPUSD": ins.INSTRUMENT_FX_MAJORS_GBP_USD,
     "NZDUSD": ins.INSTRUMENT_FX_MAJORS_NZD_USD,
+    "USDCAD": ins.INSTRUMENT_FX_MAJORS_USD_CAD,
+    "AUDUSD": ins.INSTRUMENT_FX_MAJORS_AUD_USD,
+    "EURJPY": ins.INSTRUMENT_FX_CROSSES_EUR_JPY,
+    "CHFJPY": ins.INSTRUMENT_FX_CROSSES_CHF_JPY,
+    "AUDJPY": ins.INSTRUMENT_FX_CROSSES_AUD_JPY,
     "USDCHF": ins.INSTRUMENT_FX_MAJORS_USD_CHF,
     "EURCHF": ins.INSTRUMENT_FX_CROSSES_EUR_CHF,
     "EURNOK": ins.INSTRUMENT_FX_CROSSES_EUR_NOK,
@@ -108,6 +120,34 @@ def _fetch_mid(instrument: str, start: datetime, end: datetime) -> pd.DataFrame:
     bid = dk.fetch(instrument, dk.INTERVAL_MIN_1, dk.OFFER_SIDE_BID, start, end)
     ask = dk.fetch(instrument, dk.INTERVAL_MIN_1, dk.OFFER_SIDE_ASK, start, end)
     return mid_ohlc(bid, ask)
+
+
+def _pip_size(symbol: str) -> float:
+    """0.01 for JPY-quoted pairs, 0.0001 otherwise (mirrors costs/fx.py)."""
+    return 0.01 if symbol[3:] == "JPY" else 0.0001
+
+
+def fetch_pair_month_quotes(symbol: str, year: int, month: int) -> pd.DataFrame:
+    """Bid, ask and SPREAD for one (symbol, year, month) at 1-minute resolution.
+
+    `_fetch_mid` pulls both sides already and throws the spread away; this keeps
+    it. Returns a frame indexed by timestamp with columns bid/ask/spread_pips.
+    Derived instruments (the "derive" triangulated crosses) have no directly
+    quoted spread and are not supported.
+    """
+    spec = DUKA_MAP[symbol]
+    if isinstance(spec, tuple):
+        raise ValueError(f"{symbol} is a derived cross; it has no quoted spread")
+    start, end = _month_bounds(year, month)
+    bid = dk.fetch(spec, dk.INTERVAL_MIN_1, dk.OFFER_SIDE_BID, start, end)
+    ask = dk.fetch(spec, dk.INTERVAL_MIN_1, dk.OFFER_SIDE_ASK, start, end)
+    idx = bid.index.intersection(ask.index)
+    if len(idx) == 0:
+        return pd.DataFrame(columns=["bid", "ask", "spread_pips"])
+    b = bid.loc[idx, "close"].astype(float)
+    a = ask.loc[idx, "close"].astype(float)
+    return pd.DataFrame({"bid": b, "ask": a,
+                         "spread_pips": (a - b) / _pip_size(symbol)}, index=idx)
 
 
 def fetch_pair_month(symbol: str, year: int, month: int) -> pd.DataFrame:
