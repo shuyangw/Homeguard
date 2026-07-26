@@ -108,7 +108,8 @@ def run_spread_backtest(strategy_name: str, universe: list[str], start: date,
                                          rebalance=rebalance,
                                          cost_mult=cost_mult,
                                          leverage_cap=leverage_cap)
-        res = sim.run_spreads(close, book, sigma, quote_usd, vol_target)
+        res = sim.run_spreads(close, book, sigma, quote_usd, vol_target,
+                              exit_reasons=getattr(strategy, "exit_reasons", None))
         if log_trades:
             _write_trade_log(res, strategy_name, start, end)
     return res.equity_curve.pct_change(fill_method=None).dropna()

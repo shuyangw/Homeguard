@@ -135,3 +135,41 @@ def test_purge_days_inserts_a_gap_before_test_start():
     for (t0, ts, _), (p0, ps, _) in zip(base, purged):
         assert p0 == t0
         assert ps == ts + _td(days=10)
+
+
+# ------------------------------------------------- exit reasons (methodology 11.9)
+
+def test_trade_log_carries_action_and_exit_reason():
+    from src.strategies.advanced.fx_audnzd_pairs import AudNzdPairs
+    from src.backtesting.engine.fx_spread_simulator import FxSpreadPortfolioSimulator
+    rng = np.random.default_rng(5)
+    n = 800
+    idx = list(pd.date_range("2015-01-01", periods=n, freq="B").date)
+    close = pd.DataFrame(
+        {"AUDUSD": np.exp(np.cumsum(rng.normal(0, .005, n))) * 0.70,
+         "NZDUSD": np.exp(np.cumsum(rng.normal(0, .005, n))) * 0.65}, index=idx)
+    q = pd.DataFrame(1.0, index=idx, columns=close.columns)
+    s = AudNzdPairs()
+    book, sig = s.spread_book(close)
+    tr = FxSpreadPortfolioSimulator(100_000.0, lambda *a: 0.0).run_spreads(
+        close, book, sig, q, vol_target=0.10, exit_reasons=s.exit_reasons).trades
+
+    for col in ("action", "exit_reason", "price"):
+        assert col in tr.columns
+    assert set(tr["action"]) <= {"entry", "exit", "rebalance"}
+    exits = tr[tr["action"] == "exit"]
+    assert len(exits) > 0
+    # REGRESSION: reasons are keyed to the SIGNAL date, fills land at signal+lag.
+    # If they are not shifted together every exit logs a blank reason.
+    assert (exits["exit_reason"] != "").all(), "exit reasons must survive the execution lag"
+    assert set(exits["exit_reason"]) <= {
+        "target_hit", "stop_hit", "time_expired", "signal_unavailable", "sigma_unavailable"}
+
+
+def test_shift_keys_keeps_mappings_aligned():
+    from src.backtesting.engine.fx_spread_simulator import _shift_keys
+    dates = list(pd.date_range("2020-01-01", periods=4).date)
+    m = {dates[0]: "a", dates[3]: "dropped"}
+    assert _shift_keys(m, dates, 1) == {dates[1]: "a"}
+    assert _shift_keys(m, dates, 0) == m
+    assert _shift_keys(None, dates, 1) == {}

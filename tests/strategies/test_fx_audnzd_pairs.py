@@ -58,7 +58,14 @@ def test_stop_is_a_real_exit_no_same_bar_reentry():
     # stop_z while still > entry_z, the stop must genuinely flatten the book --
     # the bar must NOT re-enter on the same bar (the old bug reset the clock and
     # re-entered, so the stop never flattened).
+    #
+    # The RBA/RBNZ calendar was backfilled 2026-07-25, which made the +-7d entry
+    # blackout genuinely active (it was previously a no-op with one date per
+    # bank). The engineered entry bar here happens to sit 6 days after an RBA
+    # meeting, so the blackout now legitimately blocks it. This test is about
+    # STOP semantics, not the calendar, so isolate it from the blackout.
     strat = AudNzdPairs()
+    strat._blackout_dates = lambda: []
     close = _stop_panel().sort_index()
     dates = list(close.index)
     ln_a = np.log(close["AUDUSD"].astype(float).values)

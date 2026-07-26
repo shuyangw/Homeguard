@@ -73,8 +73,15 @@ class AudNzdPairs(SpreadStrategy):
         blackout_dates = self._blackout_dates()
 
         book, sigma = {}, {}
+        # {date: {pair: reason}} for methodology Section 11.9 exit attribution;
+        # read by FxSpreadPortfolioSimulator.run_spreads(exit_reasons=...).
+        self.exit_reasons: dict = {}
         position, entry_idx = 0, None
         prev_d = None
+
+        def _record_exit(day, reason):
+            self.exit_reasons.setdefault(day, {})[_LEG_A] = reason
+            self.exit_reasons.setdefault(day, {})[_LEG_B] = reason
 
         for i, d in enumerate(dates):
             is_reb = self._is_rebalance(d, prev_d)
@@ -89,6 +96,8 @@ class AudNzdPairs(SpreadStrategy):
                 # Leaving `position` set here caused a phantom re-entry (a
                 # SECOND round trip) with `held` still measured from the
                 # ORIGINAL entry -- the silent-skip defect.
+                if position != 0:
+                    _record_exit(d, "signal_unavailable")
                 position, entry_idx = 0, None
                 continue
             beta, z = reg
@@ -97,7 +106,11 @@ class AudNzdPairs(SpreadStrategy):
             exited = False
             if position != 0:
                 held = i - entry_idx
-                if abs_z < self.target_z or abs_z > self.stop_z or held >= self.max_days:
+                reason = ("target_hit" if abs_z < self.target_z else
+                          "stop_hit" if abs_z > self.stop_z else
+                          "time_expired" if held >= self.max_days else None)
+                if reason is not None:
+                    _record_exit(d, reason)
                     position, entry_idx, exited = 0, None, True
 
             if position == 0 and not exited and abs_z > self.entry_z and not self._in_blackout(d, blackout_dates):
@@ -108,6 +121,8 @@ class AudNzdPairs(SpreadStrategy):
 
             sig = self._spread_sigma(close_panel, _LEG_A, _LEG_B, beta, i)
             if sig is None:
+                if position != 0:
+                    _record_exit(d, "sigma_unavailable")
                 position, entry_idx = 0, None   # same silent-skip fix as above
                 continue
             book[d] = [Spread(_LEG_A, _LEG_B, beta, self._strength(z))]

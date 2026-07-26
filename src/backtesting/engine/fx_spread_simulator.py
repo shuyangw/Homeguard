@@ -26,17 +26,29 @@ def _lag_book(spread_book: dict, sigma_panel: dict, dates: list, lag: int):
     """
     if lag <= 0:
         return spread_book, sigma_panel
+    return _shift_keys(spread_book, dates, lag), _shift_keys(sigma_panel, dates, lag)
+
+
+def _shift_keys(mapping: dict | None, dates: list, lag: int) -> dict:
+    """Move a date-keyed mapping forward by `lag` positions in `dates`.
+
+    Everything keyed to the SIGNAL date must be shifted together -- book, sigma,
+    AND exit reasons. Shifting only some of them silently decouples them: exit
+    reasons keyed at d never match a fill that now lands at d+lag, so every
+    trade logs a blank reason.
+    """
+    if not mapping or lag <= 0:
+        return dict(mapping or {})
     pos = {d: i for i, d in enumerate(dates)}
-    shifted_book, shifted_sigma = {}, {}
-    for src, dst in ((spread_book, shifted_book), (sigma_panel, shifted_sigma)):
-        for d, payload in (src or {}).items():
-            i = pos.get(d)
-            if i is None:
-                continue
-            j = i + lag
-            if j < len(dates):
-                dst[dates[j]] = payload
-    return shifted_book, shifted_sigma
+    out = {}
+    for d, payload in mapping.items():
+        i = pos.get(d)
+        if i is None:
+            continue
+        j = i + lag
+        if j < len(dates):
+            out[dates[j]] = payload
+    return out
 
 
 class FxSpreadPortfolioSimulator:
@@ -78,11 +90,22 @@ class FxSpreadPortfolioSimulator:
         return targets
 
     def run_spreads(self, close_panel, spread_book, sigma_panel, quote_usd_panel,
-                    vol_target: float, idm: float = 1.0) -> FxBacktestResult:
+                    vol_target: float, idm: float = 1.0,
+                    exit_reasons: dict | None = None) -> FxBacktestResult:
+        """Simulate the spread book.
+
+        `exit_reasons` is an optional {date: {pair: reason}} map produced by the
+        strategy (methodology Section 11.9 requires an exit reason per trade).
+        Fills are tagged with `action` (entry / exit / rebalance) and, on exits,
+        the strategy's `reason` when supplied. NOTE: entry/exit PAIRING and
+        MAE/MFE are still not emitted -- this records the reason on the closing
+        fill, which is what unblocks exit-reason attribution, not full 11.9.
+        """
         pairs = list(close_panel.columns)
         dates = list(close_panel.index)
         spread_book, sigma_panel = _lag_book(spread_book, sigma_panel, dates,
                                              self.execution_lag)
+        exit_reasons = _shift_keys(exit_reasons, dates, self.execution_lag)
         # The action grid must shift with the book. Gating on the UNSHIFTED
         # rebalance schedule would silently drop every lagged signal (a book
         # entry moved to d+1 lands on a non-rebalance day and is never read),
@@ -135,7 +158,19 @@ class FxSpreadPortfolioSimulator:
                     if diff != 0.0:
                         c = self.cost_fn(p, diff, row_close[p], row_q[p]) * self.cost_mult
                         equity_val -= c
-                        trade_rows.append({"date": d, "pair": p, "units": diff, "cost": c})
+                        was, now = current[p], targets[p]
+                        if was == 0.0:
+                            action = "entry"
+                        elif now == 0.0:
+                            action = "exit"
+                        else:
+                            action = "rebalance"
+                        reason = ""
+                        if action == "exit" and exit_reasons:
+                            reason = exit_reasons.get(d, {}).get(p, "")
+                        trade_rows.append({"date": d, "pair": p, "units": diff, "cost": c,
+                                           "action": action, "exit_reason": reason,
+                                           "price": row_close[p]})
                         current[p] = targets[p]
             if not blown and equity_val <= 0:
                 current = {p: 0.0 for p in pairs}
@@ -148,5 +183,7 @@ class FxSpreadPortfolioSimulator:
 
         eq = pd.Series(equity, index=dates, name="equity")
         lu = pd.Series(util, index=dates, name="leverage_utilization")
-        trades = pd.DataFrame(trade_rows, columns=["date", "pair", "units", "cost"])
+        trades = pd.DataFrame(
+            trade_rows,
+            columns=["date", "pair", "units", "cost", "action", "exit_reason", "price"])
         return FxBacktestResult(equity_curve=eq, trades=trades, leverage_utilization=lu)
