@@ -1,6 +1,6 @@
 # FX Tier B -- Commodity Terms-of-Trade Wave: Pre-Registration
 
-**Date:** 2026-07-25 | **Status:** DRAFT (awaiting approval to lock) | **Owner:** main-loop -> strategy-lead for the verdict
+**Date:** 2026-07-25 | **Status:** LOCKED 2026-07-25 (approved; no post-hoc edits to specs/params/signs/gate) | **Owner:** main-loop -> strategy-lead for the verdict
 
 Pre-registration per the North Star: hypotheses, universe, specs, signs, gate,
 trial count and PASS/FAIL fixed BEFORE any backtest. Once locked this set IS the

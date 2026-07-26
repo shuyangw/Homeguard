@@ -89,7 +89,15 @@ def run_fx_backtest(config: Dict[str, Any], register: bool = True,
     rate_panel = load_fx_rate_panel(currencies_for_pairs(present), close.index)
     rate_diff = build_rate_diff_panel(present, rate_panel)
 
-    forecasts = strategy.forecast_panel(close)[present]
+    # Strategies receive CLOSE only by default. A strategy that needs the
+    # intraday range (ATR, ADX, true range, Parkinson vol -- i.e. Keltner
+    # bands, squeeze, ATR-regime, ADX gating) sets `wants_ohlc = True` and
+    # receives the full MultiIndex (pair, field) panel instead. The loader has
+    # always carried open/high/low; the engine simply discarded them here.
+    if getattr(strategy, "wants_ohlc", False):
+        forecasts = strategy.forecast_panel(panel[present])[present]
+    else:
+        forecasts = strategy.forecast_panel(close)[present]
     returns = close.pct_change(fill_method=None)
     daily_vol = returns.apply(lambda col: close_to_close_rv(col, 25, annualization_factor=1), axis=0)
 

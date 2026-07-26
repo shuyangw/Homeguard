@@ -168,6 +168,66 @@ class FxXSectMomStrategy:
         return (z * self.scale).clip(-20, 20).fillna(0.0)
 
 
+class FxTermsOfTradeStrategy:
+    """Commodity terms-of-trade (Tier B, pre-registration 2026-07-25).
+
+    An EXOGENOUS signal: the price of the commodity a country EXPORTS, not a
+    pattern in the currency itself. Oil drives CAD/NOK, gold drives AUD/NZD.
+    Per-leg signs are FIXED a priori in `COMMODITY_LEGS` and must not be flipped
+    after seeing results.
+
+    FORM selects the pre-registered spec: `oil` (USDCAD/USDNOK only), `gold`
+    (AUDUSD/NZDUSD only), or `xs` (cross-sectional across all four).
+    """
+
+    FORM = "oil"
+
+    def __init__(self, universe, momentum: int = 63, z_window: int = 252,
+                 scale: float = 5.0, cap: float = 20.0, **params):
+        self.universe = list(universe)
+        self.momentum = int(momentum)
+        self.z_window = int(z_window)
+        self.scale = float(scale)
+        self.cap = float(cap)
+
+    def _signed_z(self, close_panel, legs):
+        """sign * z(commodity momentum) per leg, causal throughout."""
+        from src.data.commodities import COMMODITY_LEGS, load_commodity_panel
+        comm = load_commodity_panel(legs, close_panel.index)
+        mom = comm.pct_change(self.momentum, fill_method=None)
+        z = (mom - mom.rolling(self.z_window).mean()) / mom.rolling(self.z_window).std()
+        signs = pd.Series({p: COMMODITY_LEGS[p][1] for p in comm.columns})
+        return z.clip(-2, 2).mul(signs, axis=1)
+
+    def forecast_panel(self, close_panel: pd.DataFrame) -> pd.DataFrame:
+        from src.data.commodities import COMMODITY_LEGS
+        wanted = {"oil": {"USDCAD", "USDNOK"},
+                  "gold": {"AUDUSD", "NZDUSD"},
+                  "xs": set(COMMODITY_LEGS)}[self.FORM]
+        legs = [p for p in self.universe if p in wanted and p in close_panel.columns]
+        if not legs:
+            return pd.DataFrame(0.0, index=close_panel.index, columns=self.universe)
+        sz = self._signed_z(close_panel, legs)
+        if self.FORM == "xs":
+            # Two commodities across four legs, so this is a 2-group relative
+            # tilt (gold currencies vs oil currencies), not a 4-way rank.
+            sz = sz.sub(sz.mean(axis=1), axis=0)
+        fc = (sz * self.scale).clip(-self.cap, self.cap)
+        return fc.reindex(columns=[p for p in self.universe if p in fc.columns]).fillna(0.0)
+
+
+class FxTotOil(FxTermsOfTradeStrategy):
+    FORM = "oil"
+
+
+class FxTotGold(FxTermsOfTradeStrategy):
+    FORM = "gold"
+
+
+class FxTotXS(FxTermsOfTradeStrategy):
+    FORM = "xs"
+
+
 class FxCotPositioningStrategy:
     """CFTC speculative-positioning (COT) signal. Forecast from weekly net%OI (signed
     bullish-the-pair, publication-lagged), computed on the weekly panel and forward-
