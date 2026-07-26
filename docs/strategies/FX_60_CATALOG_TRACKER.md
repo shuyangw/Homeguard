@@ -4,7 +4,36 @@ Living tracker for the 60-strategy FX catalog (research docs: `~/Downloads/compa
 `~/Downloads/fx_strategy_deep_dive.md`). Tracks, per strategy: current viability, what blocks it,
 and test progress. Update this file as strategies are tested or unblocked.
 
-Last updated: 2026-07-25
+Last updated: 2026-07-25 (Tier B commodity terms-of-trade wave closed)
+
+**TIER B RESOLUTION -- COMMODITY TERMS-OF-TRADE (2026-07-25): all 3 pre-registered
+trials (TOT-OIL, TOT-GOLD, TOT-XS) FAIL the pre-registered gate.** This wave tested
+the first genuinely EXOGENOUS signal family in the campaign -- not a pattern in FX
+itself, nor FX positioning, but the price of the commodity a country EXPORTS (Brent
+for CAD/NOK, gold for AUD/NZD), with per-leg signs fixed a priori. The macroeconomic
+transmission is demonstrably present and correctly signed on real data (pre-check:
+corr(oil momentum, USDCAD forecast) = -0.7937; corr(gold momentum, AUDUSD forecast) =
++0.8114; the XS form is market-neutral to 5.3e-15) -- yet it does not survive the
+gate. TOT-OIL is the only positive spec (+0.0505 OOS Sharpe, still +0.0385 at 1.5x
+cost) and fails decisively on DSR = 0.0000 against a deflated bar of SR_zero = 1.126
+at N=134: the edge is economically TRIVIAL rather than cost-destroyed. TOT-GOLD
+(-0.4903) and TOT-XS (-0.1702) are non-positive and widen negative at 1.5x cost. All
+three are near-uncorrelated with the S&P (|corr| 0.03-0.15) but carry IR vs S&P of
+approximately -0.71, so marginal book contribution is negative for all three; none
+proceeds to book-level evaluation. Cumulative N went 134 -> 137. NOTE: no sign was
+flipped post-hoc; for the record the counterfactual flipped-gold (+0.4903) also fails
+(DSR = 4.4e-109). Per the pre-registration stopping rule
+(`docs/strategies/research/20260725_fx_tierb_commodity_preregistration.md` Section 6),
+this scoped slice STOPS: no sweep, no alternative momentum/z-window, no ML variant.
+This is NOT a claim that commodity currencies have no edge or that terms-of-trade is
+not a real channel (see SCOPE banner below) -- only that this 63d-momentum/252d-z
+construction, daily spot, spread-TAKER, weekly-rebalanced, does not clear the gate.
+An apparatus defect was found and filed during this wave (PSR computed in mismatched
+units in `run_fx_walkforward.py:212`, inflating z by sqrt(252)); it cannot have
+manufactured a false pass here since nothing passed, but it must be fixed before any
+future near-miss is gated. See
+`docs/strategies/research/20260725_fx_tierb_commodity_results.md` and
+`docs/reports/fx/tierb_commodity_gate.md`.
 
 **COT WAVE RESOLUTION (2026-07-22): all 3 pre-registered COT/positioning trials
 (COT-CONTRARIAN-TS, COT-MOMENTUM-TS, COT-CONTRARIAN-XS) FAIL the pre-registered
@@ -31,11 +60,16 @@ not the asset class"). What has actually been shown to die after realistic costs
 is one specific slice: RETAIL-accessible, DAILY/session frequency, SPOT, standard
 PRICE/RATE + CARRY factor signals, executed as a SPREAD-TAKER. That is the corner
 LEAST likely to hold edge, and it does not. It does NOT establish that FX has no
-edge. As of 2026-07-22, the same slice has also been tested for one non-price
-signal family -- speculative COT positioning (weekly net%OI, D+7-lagged; see COT
-WAVE RESOLUTION above) -- and failed in the same daily-taker construction; that is
-now a tested-and-failed corner too, scoped identically. Untested families that are
-where much real FX edge lives -- earning the spread as a liquidity PROVIDER/maker
+edge. As of 2026-07-25, the same slice has also been tested for TWO non-price
+signal families -- speculative COT positioning (weekly net%OI, D+7-lagged; see COT
+WAVE RESOLUTION above) and EXOGENOUS commodity terms-of-trade (Brent/gold momentum
+transmitted to CAD/NOK/AUD/NZD; see TIER B RESOLUTION above) -- and both failed in
+the same daily-taker construction; those are now tested-and-failed corners too,
+scoped identically. The terms-of-trade result is the sharpest illustration of the
+scoping rule on record: the economic channel was VERIFIED present and correctly
+signed (corr -0.79 / +0.81) and STILL produced no deflated edge, which bounds the
+daily-momentum-taker EXPRESSION of the channel, not the channel itself. Untested
+families that are where much real FX edge lives -- earning the spread as a liquidity PROVIDER/maker
 (adverse-selection-modeled, needs tick/L2 data), MICROSTRUCTURE frequency, and
 other non-price SIGNAL families (order-flow, options-implied risk-reversals,
 cross-venue/triangular) -- remain LIVE hypotheses, not "exhausted." Read "catalog
