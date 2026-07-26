@@ -14,14 +14,51 @@ from src.backtesting.engine.fx_spot_portfolio_simulator import FxBacktestResult
 from src.backtesting.engine.spread_sizing import spread_leg_targets
 
 
+def _lag_book(spread_book: dict, sigma_panel: dict, dates: list, lag: int):
+    """Shift a signal book forward by `lag` trading days.
+
+    A book entry keyed to date d was computed from data through the CLOSE of d,
+    so executing it at d's close is a same-bar fill: the strategy trades on
+    information it could not have acted on until the bar was over. Shifting the
+    keys to d+lag makes the fill convention honest (signal at close of d, filled
+    at close of d+lag). Entries whose shifted date falls past the end of the
+    sample are DROPPED (the signal never became tradeable).
+    """
+    if lag <= 0:
+        return spread_book, sigma_panel
+    pos = {d: i for i, d in enumerate(dates)}
+    shifted_book, shifted_sigma = {}, {}
+    for src, dst in ((spread_book, shifted_book), (sigma_panel, shifted_sigma)):
+        for d, payload in (src or {}).items():
+            i = pos.get(d)
+            if i is None:
+                continue
+            j = i + lag
+            if j < len(dates):
+                dst[dates[j]] = payload
+    return shifted_book, shifted_sigma
+
+
 class FxSpreadPortfolioSimulator:
+    """Beta-weighted spread simulator.
+
+    `execution_lag` defaults to 1 bar: a book built from data through the close
+    of day i is filled at the close of day i+1. This is the honest convention
+    and is deliberately the DEFAULT so a run is realistic unless someone opts
+    out explicitly. Results produced before 2026-07-25 used lag=0 (same-bar
+    fills) and are therefore optimistic -- see
+    docs/progress/20260725_fx_kalman_hedge_ratio.md.
+    """
+
     def __init__(self, initial_capital: float, cost_fn, rebalance: str = "weekly",
-                 cost_mult: float = 1.0, leverage_cap: float = 4.0):
+                 cost_mult: float = 1.0, leverage_cap: float = 4.0,
+                 execution_lag: int = 1):
         self.capital = float(initial_capital)
         self.cost_fn = cost_fn
         self.rebalance = rebalance
         self.cost_mult = float(cost_mult)
         self.leverage_cap = float(leverage_cap)
+        self.execution_lag = int(execution_lag)
 
     def _is_rebalance(self, d, prev_d) -> bool:
         if self.rebalance == "daily" or prev_d is None:
@@ -44,12 +81,27 @@ class FxSpreadPortfolioSimulator:
                     vol_target: float, idm: float = 1.0) -> FxBacktestResult:
         pairs = list(close_panel.columns)
         dates = list(close_panel.index)
+        spread_book, sigma_panel = _lag_book(spread_book, sigma_panel, dates,
+                                             self.execution_lag)
+        # The action grid must shift with the book. Gating on the UNSHIFTED
+        # rebalance schedule would silently drop every lagged signal (a book
+        # entry moved to d+1 lands on a non-rebalance day and is never read),
+        # turning execution_lag into "trade nothing" instead of "trade later".
+        reb_positions = []
+        _prev = None
+        for i, d in enumerate(dates):
+            if self._is_rebalance(d, _prev):
+                reb_positions.append(i)
+            _prev = d
+        lag = self.execution_lag
+        action_positions = {i + lag for i in reb_positions if i + lag < len(dates)}
+
         current: dict[str, float] = {p: 0.0 for p in pairs}
         equity_val = self.capital
         equity, util, trade_rows = [], [], []
         prev_close, prev_d, blown = None, None, False
 
-        for d in dates:
+        for idx_d, d in enumerate(dates):
             row_close = {p: float(close_panel.loc[d, p]) for p in pairs}
             row_q = {p: float(quote_usd_panel.loc[d, p]) for p in pairs}
             # 1. MTM: pnl from close-to-close on held units (USD).
@@ -70,7 +122,7 @@ class FxSpreadPortfolioSimulator:
                 equity_val, blown = 0.0, True
             # 2. Rebalance to spread targets. Pairs with a NaN close or quote
             # this day are excluded from targets, so they are forward-held.
-            if not blown and self._is_rebalance(d, prev_d):
+            if not blown and idx_d in action_positions:
                 spreads = spread_book.get(d, [])
                 sigma = sigma_panel.get(d, {})
                 raw = spread_leg_targets(spreads, sigma, row_close, row_q,

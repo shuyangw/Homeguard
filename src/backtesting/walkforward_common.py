@@ -15,6 +15,7 @@ import pandas as pd
 from src.backtesting.statistics.dsr import dsr
 from src.backtesting.statistics.pbo import pbo
 from src.backtesting.statistics.psr import psr
+from src.utils import logger
 
 # Honest cumulative count of distinct pre-registered trials run across the
 # futures campaign (SP-A/E/B/C ledgers + the pre-campaign carry/crypto sweep),
@@ -202,7 +203,8 @@ def _annualized_sharpe(returns: np.ndarray) -> float:
     return mean / std * np.sqrt(_TRADING_DAYS_PER_YEAR)
 
 
-def _compute_pbo(per_window_returns: List[np.ndarray]) -> float:
+def _compute_pbo(per_window_returns: List[np.ndarray],
+                 min_frac_of_median: float = 0.5) -> float:
     """PBO across windows-as-columns (CSCV on the OOS return series per window).
 
     Each window's stitched-eligible OOS return series is treated as one
@@ -217,13 +219,39 @@ def _compute_pbo(per_window_returns: List[np.ndarray]) -> float:
     old `>= s` filter yet still NaN the whole PBO once folded. Returns NaN
     honestly only if fewer than 2 windows of length >= 2*s survive (genuinely
     insufficient).
+
+    STUB-WINDOW GUARD (fixed 2026-07-25): CSCV needs equal-length columns, so
+    every column is truncated to the SHORTEST surviving one. A single short
+    stub window (typically the final partial walk-forward window) therefore
+    used to silently discard most of every other window's OOS data -- in the
+    #35 Kalman diagnostic a 65-day stub truncated all 13 columns from ~260
+    days to 65, so the reported PBO described 25% of the sample. Windows
+    shorter than `min_frac_of_median` of the median surviving length are now
+    dropped as stubs so the bulk of the data survives, and the retained/
+    discarded row counts are LOGGED (never a silent cap). If that filter would
+    leave fewer than 2 columns, it is abandoned and the old behaviour is kept
+    so the function still returns a number rather than NaN.
     """
     s = 16
     usable = [r for r in per_window_returns if r.size >= 2 * s]
     if len(usable) < 2:
         return float("nan")
-    min_len = min(r.size for r in usable)
-    matrix = np.column_stack([r[:min_len] for r in usable])
+
+    sizes = [r.size for r in usable]
+    median_len = float(np.median(sizes))
+    kept = [r for r in usable if r.size >= min_frac_of_median * median_len]
+    if len(kept) < 2:
+        kept = usable
+
+    min_len = min(r.size for r in kept)
+    dropped = len(usable) - len(kept)
+    used = min_len * len(kept)
+    available = sum(r.size for r in usable)
+    logger.info(
+        f"[pbo] {len(kept)} columns x {min_len} rows = {used} of {available} "
+        f"OOS rows used ({100.0 * used / max(available, 1):.0f}%); "
+        f"{dropped} stub window(s) dropped; column sizes {sorted(sizes)}")
+    matrix = np.column_stack([r[:min_len] for r in kept])
     return pbo(matrix, s=s)
 
 
