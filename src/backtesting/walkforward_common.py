@@ -100,11 +100,17 @@ def get_campaign_trial_distribution(db_path: Any = None) -> tuple[int, List[floa
     worktree checkout where `output/` is gitignored and not yet created).
     """
     try:
-        from src.experiments.registry import DEFAULT_DB_PATH, _connect_with_retry, init_db
+        from src.experiments.registry import DEFAULT_DB_PATH, _connect_with_retry
         import json as _json
 
         path = db_path or DEFAULT_DB_PATH
-        init_db(path)
+        # Deliberately NOT init_db(): that opens the registry READ-WRITE, and a
+        # write lock held by anything else (a concurrent session, Dropbox's
+        # indexer, an earlier read-only connection in this process) sent this
+        # read-only query into the except branch below -- silently shrinking N
+        # from 141 to 40 and the bar from 1.1372 to 0.7331. Reading needs no
+        # write lock. A registry that does not exist yet is a genuine fallback,
+        # which is reported loudly rather than swallowed.
         con = _connect_with_retry(path, read_only=True)
         try:
             rows = con.execute("SELECT metrics FROM runs WHERE metrics IS NOT NULL").fetchall()
@@ -120,7 +126,15 @@ def get_campaign_trial_distribution(db_path: Any = None) -> tuple[int, List[floa
             if isinstance(val, (int, float)) and not (isinstance(val, float) and np.isnan(val)):
                 extra.append(float(val))
         return CAMPAIGN_CUMULATIVE_TRIALS + len(extra), list(CAMPAIGN_TRIAL_SHARPES) + extra
-    except Exception:
+    except Exception as e:
+        # Never silent: falling back SOFTENS the gate, so a run that takes this
+        # path must say so. The caller can still proceed, but the report and the
+        # log now show which N the verdict was actually deflated against.
+        logger.error(
+            f"[walkforward] registry unreadable ({type(e).__name__}: {e}); "
+            f"trial count FELL BACK to the static baseline "
+            f"N={CAMPAIGN_CUMULATIVE_TRIALS}. Any DSR computed from this is "
+            "deflated against a LOWER bar than the true project-wide count.")
         return CAMPAIGN_CUMULATIVE_TRIALS, list(CAMPAIGN_TRIAL_SHARPES)
 
 
