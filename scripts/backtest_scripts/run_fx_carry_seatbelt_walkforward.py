@@ -76,6 +76,7 @@ def _run_window(spec: Dict[str, Any]) -> Optional[Dict[str, Any]]:
 
 
 def run(config_path: str, cadence_label: str, trial_count: int,
+        campaign_sharpes: list,
         train_months: int = 36, test_months: int = 12, step_months: int = 12) -> Dict[str, Any]:
     import yaml
     cfg = yaml.safe_load(Path(config_path).read_text())
@@ -141,7 +142,7 @@ def run(config_path: str, cadence_label: str, trial_count: int,
     skew = float(ser.skew()) if n > 2 else 0.0
     kurt = float(ser.kurtosis()) + 3.0 if n > 3 else 3.0
     psr_val = psr(sharpe, 0.0, n, skew, kurt, periods_per_year=252)
-    dsr_val = dsr(sharpe, [sharpe], n, skew, kurt, n_trials_project=trial_count,
+    dsr_val = dsr(sharpe, campaign_sharpes, n, skew, kurt, n_trials_project=trial_count,
                   periods_per_year=252)
     pbo_val = _compute_pbo(per_window_1x)
 
@@ -211,11 +212,13 @@ def _write_report(results: List[Dict[str, Any]], path: str = _REPORT_PATH) -> st
 def main() -> None:
     import argparse
     from src.utils.run_status import RunStatus
-    try:
-        from src.experiments import n_trials_project_wide
-        base_trials = int(n_trials_project_wide())
-    except Exception:
-        base_trials = 0
+    # n_trials_project_wide() sums combinations_in_run for backtest-optimizer rows
+    # only, which is 0 for this campaign -- deflating against SR_zero=0.0000, i.e.
+    # no bar at all. get_campaign_trial_distribution() is the growing project-wide
+    # count (141 -> SR_zero 1.1372) and also supplies the trial-Sharpe dispersion
+    # that DSR needs.
+    from src.backtesting.walkforward_common import get_campaign_trial_distribution
+    base_trials, campaign_sharpes = get_campaign_trial_distribution()
 
     parser = argparse.ArgumentParser(description="FxCarrySeatbelt walk-forward + S&P gate")
     parser.add_argument("--report", default=_REPORT_PATH)
@@ -227,7 +230,8 @@ def main() -> None:
     trial_count = base_trials + len(configs)
 
     with RunStatus("fx_carry_seatbelt_walkforward", meta={"configs": [c for c, _ in configs]}):
-        results = [run(path, label, trial_count) for path, label in configs]
+        results = [run(path, label, trial_count, campaign_sharpes)
+                   for path, label in configs]
         report_path = _write_report(results, args.report)
 
     for r in results:

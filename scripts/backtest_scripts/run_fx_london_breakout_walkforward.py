@@ -252,7 +252,7 @@ def _wf_segments(returns: pd.Series, train_m: int, test_m: int,
     return segs
 
 
-def run(config_path: str, trial_count: int,
+def run(config_path: str, trial_count: int, campaign_sharpes: list,
         train_months: int = 36, test_months: int = 12, step_months: int = 12) -> Dict[str, Any]:
     import yaml
     cfg = yaml.safe_load(Path(config_path).read_text())
@@ -296,7 +296,7 @@ def run(config_path: str, trial_count: int,
     skew = float(ser.skew()) if n > 2 else 0.0
     kurt = float(ser.kurtosis()) + 3.0 if n > 3 else 3.0
     psr_val = psr(sharpe, 0.0, n, skew, kurt, periods_per_year=252)
-    dsr_val = dsr(sharpe, [sharpe], n, skew, kurt, n_trials_project=trial_count,
+    dsr_val = dsr(sharpe, campaign_sharpes, n, skew, kurt, n_trials_project=trial_count,
                   periods_per_year=252)
     pbo_val = _compute_pbo(per_window_oos)
 
@@ -398,11 +398,13 @@ def _run_trade_log_backfill(config_path: str, out_path: str) -> None:
 def main() -> None:
     import argparse
     from src.utils.run_status import RunStatus
-    try:
-        from src.experiments import n_trials_project_wide
-        base_trials = int(n_trials_project_wide())
-    except Exception:
-        base_trials = 0
+    # n_trials_project_wide() sums combinations_in_run for backtest-optimizer rows
+    # only, which is 0 for this campaign -- deflating against SR_zero=0.0000, i.e.
+    # no bar at all. get_campaign_trial_distribution() is the growing project-wide
+    # count (141 -> SR_zero 1.1372) and also supplies the trial-Sharpe dispersion
+    # that DSR needs.
+    from src.backtesting.walkforward_common import get_campaign_trial_distribution
+    base_trials, campaign_sharpes = get_campaign_trial_distribution()
 
     parser = argparse.ArgumentParser(description="#20 London Breakout walk-forward + S&P gate")
     parser.add_argument("--config", default="config/backtesting/fx_london_breakout.yaml")
@@ -421,7 +423,7 @@ def main() -> None:
     trial_count = base_trials + 1  # this walk-forward is one new project-wide trial
 
     with RunStatus("fx_london_breakout_walkforward", meta={"config": args.config}):
-        result = run(args.config, trial_count)
+        result = run(args.config, trial_count, campaign_sharpes)
         report_path = _write_report(result, args.report)
 
     logger.info(f"[london_wf] oos_sharpe={result['oos_sharpe']:.4f} "
