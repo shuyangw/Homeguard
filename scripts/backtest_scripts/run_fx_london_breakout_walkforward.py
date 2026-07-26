@@ -136,7 +136,9 @@ def _pair_daily_returns(pair: str, start: dt.date, end: dt.date, releases: pd.Da
     return pd.Series({d: risk_frac * day_r.get(d, 0.0) for d in idx})
 
 
-_TRADE_LOG_COLS = ["pair", "ts", "side", "price", "qty", "order_id", "day_r"]
+_TRADE_LOG_COLS = ["pair", "ts", "side", "price", "qty", "order_id", "day_r",
+                   "reason", "trade_id", "entry_ts", "entry_price",
+                   "mae", "mfe", "bars_held"]
 
 
 def build_trade_log(pair: str, fills, day_r: Optional[float] = None) -> pd.DataFrame:
@@ -144,9 +146,17 @@ def build_trade_log(pair: str, fills, day_r: Optional[float] = None) -> pd.DataF
 
     Emits every fill in ``fills`` with no entry-only filter, tagged with the
     entry day's qty-independent R-multiple ``day_r``.
+
+    Exit rows additionally carry the methodology Section 11.9 diagnostics:
+    exit reason, MAE/MFE, bars held, and the entry ts/price, so a round trip is
+    reconstructable from the exit row alone. Entry rows leave these blank or
+    NaN rather than zero.
     """
     rows = [{"pair": pair, "ts": f.ts, "side": f.side, "price": f.price,
-             "qty": f.qty, "order_id": f.order_id, "day_r": day_r} for f in fills]
+             "qty": f.qty, "order_id": f.order_id, "day_r": day_r,
+             "reason": f.reason, "trade_id": f.trade_id, "entry_ts": f.entry_ts,
+             "entry_price": f.entry_price, "mae": f.mae, "mfe": f.mfe,
+             "bars_held": f.bars_held} for f in fills]
     return pd.DataFrame(rows, columns=_TRADE_LOG_COLS)
 
 

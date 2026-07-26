@@ -27,6 +27,17 @@ class Fill(NamedTuple):
     price: float
     qty: float
     side: str
+    # Exit-side diagnostics (methodology Section 11.9). Defaulted so the
+    # five-field positional construction used for entries keeps working.
+    # Entries carry reason="" and NaN excursions: zero would be a claim about
+    # the excursion, NaN says the field does not apply.
+    reason: str = ""
+    trade_id: int = -1
+    entry_ts: Optional[dt.datetime] = None
+    entry_price: float = float("nan")
+    mae: float = float("nan")
+    mfe: float = float("nan")
+    bars_held: int = -1
 
 
 EXIT_ORDER_ID = -1  # engine-managed position exit (not a resting order)
@@ -108,6 +119,13 @@ class Position:
     took_partial: bool = False
     extreme: Optional[float] = None  # high-water (buy) / low-water (sell) for trailing
     realized_pips: float = 0.0
+    trade_id: int = -1
+    # Excursions in price units, signed so favourable is POSITIVE for both
+    # sides. Seeded at 0.0: at entry the position has been neither ahead nor
+    # behind, and a NaN seed would poison the running max/min.
+    mfe: float = 0.0
+    mae: float = 0.0
+    bars_held: int = 0
 
 
 def _add_oco(self, a: "Order", b: "Order") -> int:  # noqa: E301  (attached below)
@@ -122,10 +140,11 @@ def _add_oco(self, a: "Order", b: "Order") -> int:  # noqa: E301  (attached belo
 
 def _open_position(self, side, qty, entry_price, entry_ts, stop, target,
                    tp_fraction, trail_dist):
+    self._next_id += 1
     self.position = Position(side=side, qty=qty, entry_price=entry_price,
                              entry_ts=entry_ts, stop=stop, target=target,
                              tp_fraction=tp_fraction, trail_dist=trail_dist,
-                             extreme=entry_price)
+                             extreme=entry_price, trade_id=self._next_id)
     return self.position
 
 
@@ -137,6 +156,7 @@ def _update_position(self, bar: "Bar") -> list:
     p = self.position
     if p is None:
         return []
+    _track_excursion(p, bar)
     events: list = []
     sign = _signed(p.side)
     exit_side = "sell" if p.side == "buy" else "buy"
@@ -146,14 +166,14 @@ def _update_position(self, bar: "Bar") -> list:
     if hit_stop:
         reason = "trail" if (p.took_partial and p.trail_dist is not None) else "stop"
         events.append((reason, p.stop, p.qty))
-        self._record_exit_fill(EXIT_ORDER_ID, bar.ts, p.stop, p.qty, exit_side)
+        self._record_exit_fill(EXIT_ORDER_ID, bar.ts, p.stop, p.qty, exit_side, reason)
         p.realized_pips += sign * (p.stop - p.entry_price) * p.qty
         self.position = None
         return events
     if hit_target and not p.took_partial:
         take = p.qty * p.tp_fraction
         events.append(("target", p.target, take))
-        self._record_exit_fill(EXIT_ORDER_ID, bar.ts, p.target, take, exit_side)
+        self._record_exit_fill(EXIT_ORDER_ID, bar.ts, p.target, take, exit_side, "target")
         p.realized_pips += sign * (p.target - p.entry_price) * take
         p.qty -= take
         if p.qty <= 1e-12:
@@ -169,7 +189,7 @@ def _update_position(self, bar: "Bar") -> list:
             breached = (bar.low <= p.stop) if p.side == "buy" else (bar.high >= p.stop)
             if breached:
                 events.append(("trail", p.stop, p.qty))
-                self._record_exit_fill(EXIT_ORDER_ID, bar.ts, p.stop, p.qty, exit_side)
+                self._record_exit_fill(EXIT_ORDER_ID, bar.ts, p.stop, p.qty, exit_side, "trail")
                 p.realized_pips += sign * (p.stop - p.entry_price) * p.qty
                 self.position = None
                 return events
@@ -190,14 +210,32 @@ def _flatten(self, price: float, ts: dt.datetime, reason: str = "flat") -> list:
         return []
     sign = _signed(p.side)
     exit_side = "sell" if p.side == "buy" else "buy"
-    self._record_exit_fill(EXIT_ORDER_ID, ts, price, p.qty, exit_side)
+    self._record_exit_fill(EXIT_ORDER_ID, ts, price, p.qty, exit_side, reason)
     p.realized_pips += sign * (price - p.entry_price) * p.qty
     self.position = None
     return [(reason, price, p.qty)]
 
 
-def _record_exit_fill(self, order_id, ts, price, qty, side) -> None:
-    self.fills.append(Fill(order_id, ts, price, qty, side))
+def _record_exit_fill(self, order_id, ts, price, qty, side, reason="") -> None:
+    p = self.position
+    self.fills.append(Fill(
+        order_id, ts, price, qty, side, reason=reason,
+        trade_id=(p.trade_id if p else -1),
+        entry_ts=(p.entry_ts if p else None),
+        entry_price=(p.entry_price if p else float("nan")),
+        mae=(p.mae if p else float("nan")),
+        mfe=(p.mfe if p else float("nan")),
+        bars_held=(p.bars_held if p else -1)))
+
+
+def _track_excursion(p: "Position", bar: "Bar") -> None:
+    """Update MAE/MFE, signed so favourable is POSITIVE for both sides."""
+    sign = _signed(p.side)
+    p.bars_held += 1
+    best = sign * ((bar.high if p.side == "buy" else bar.low) - p.entry_price)
+    worst = sign * ((bar.low if p.side == "buy" else bar.high) - p.entry_price)
+    p.mfe = max(p.mfe, best)
+    p.mae = min(p.mae, worst)
 
 
 def _cancel_all_resting(self) -> None:
