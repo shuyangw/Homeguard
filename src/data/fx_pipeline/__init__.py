@@ -7,12 +7,10 @@ from src.data.artifacts.daily_ohlc_cache import DailyOhlcCache
 from src.data.artifacts.event_registries import EventRegistries
 from src.data.artifacts.pca_dollar import PcaDollar
 from src.data.artifacts.regime import Regime
-from src.data.artifacts.spread_model import SpreadModel
 from src.data.artifacts.vol_surface import VolSurface
 
 # Register all builders as they are implemented (append in later phases).
 registry.register(DailyOhlcCache())
-registry.register(SpreadModel())
 registry.register(VolSurface())
 registry.register(CurrencyStrength())
 registry.register(PcaDollar())
