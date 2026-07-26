@@ -1,6 +1,6 @@
 # FX OHLC / Range-Based Wave: Pre-Registration
 
-**Date:** 2026-07-25 | **Status:** DRAFT (awaiting approval to lock) | **Owner:** main-loop -> strategy-lead for the verdict
+**Date:** 2026-07-25 | **Status:** LOCKED 2026-07-25 (approved; no post-hoc edits to specs/params/universe/gate) | **Owner:** main-loop -> strategy-lead for the verdict
 
 Pre-registration per the North Star: hypotheses, universe, specs, params, gate,
 trial count and PASS/FAIL fixed BEFORE any backtest. Once locked this set IS the

@@ -1,0 +1,12 @@
+strategy:
+  name: FxOhlcKeltner
+  universe: [EURUSD, USDJPY, USDCHF, EURJPY, EURCHF, CHFJPY, XAUUSD, XAGUSD, GBPUSD, USDCAD, AUDUSD, NZDUSD, AUDNZD, AUDJPY, NZDJPY, EURNOK, EURSEK, USDNOK, USDSEK, NOKSEK, NOKJPY, SEKJPY]
+  params: {}
+dates:
+  start: "2011-01-01"
+  end: "2026-04-30"
+backtest:
+  initial_capital: 1000000
+  vol_target_per_instrument: 0.03
+  idm: true
+  rebalance: weekly

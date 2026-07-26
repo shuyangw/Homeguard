@@ -168,6 +168,102 @@ class FxXSectMomStrategy:
         return (z * self.scale).clip(-20, 20).fillna(0.0)
 
 
+class FxOhlcStrategy:
+    """Base for range-based specs (pre-registration 2026-07-25 OHLC wave).
+
+    Sets `wants_ohlc = True`, so the engine hands `forecast_panel` the FULL
+    (pair, field) panel instead of close-only. Params are the locked textbook
+    defaults and must not be swept.
+    """
+
+    wants_ohlc = True
+    FORM = "keltner"
+
+    def __init__(self, universe, ema: int = 20, atr_n: int = 10, keltner_k: float = 2.0,
+                 squeeze_k: float = 1.5, boll_n: int = 20, boll_k: float = 2.0,
+                 park_n: int = 10, z_window: int = 252, adx_n: int = 14,
+                 adx_min: float = 25.0, horizon: int = 20,
+                 scale: float = 5.0, cap: float = 20.0, **params):
+        self.universe = list(universe)
+        self.ema, self.atr_n, self.keltner_k = int(ema), int(atr_n), float(keltner_k)
+        self.squeeze_k, self.boll_n, self.boll_k = float(squeeze_k), int(boll_n), float(boll_k)
+        self.park_n, self.z_window = int(park_n), int(z_window)
+        self.adx_n, self.adx_min = int(adx_n), float(adx_min)
+        self.horizon, self.scale, self.cap = int(horizon), float(scale), float(cap)
+
+    def _pair_forecast(self, h, l, c):
+        raise NotImplementedError
+
+    def forecast_panel(self, panel: pd.DataFrame) -> pd.DataFrame:
+        from src.features.range_indicators import pair_ohlc
+        pairs = sorted({p for p, _ in panel.columns})
+        out = {}
+        for pair in self.universe:
+            if pair not in pairs:
+                continue
+            h, l, c = pair_ohlc(panel, pair)
+            out[pair] = self._pair_forecast(h, l, c).clip(-self.cap, self.cap).fillna(0.0)
+        cols = [p for p in self.universe if p in out]
+        return pd.DataFrame(out)[cols] if cols else pd.DataFrame(index=panel.index)
+
+
+class FxOhlcKeltner(FxOhlcStrategy):
+    """#12: mean reversion against ATR bands (band width tracks intraday RANGE)."""
+    FORM = "keltner"
+
+    def _pair_forecast(self, h, l, c):
+        from src.features.range_indicators import atr
+        center = c.ewm(span=self.ema, adjust=False, min_periods=self.ema).mean()
+        band = self.keltner_k * atr(h, l, c, self.atr_n)
+        return (-(c - center) / band.replace(0, np.nan)).clip(-2, 2) * self.scale
+
+
+class FxOhlcSqueeze(FxOhlcStrategy):
+    """#27: Bollinger inside Keltner = volatility compression; trade the release."""
+    FORM = "squeeze"
+
+    def _pair_forecast(self, h, l, c):
+        from src.features.range_indicators import atr
+        ma = c.rolling(self.boll_n, min_periods=self.boll_n).mean()
+        sd = c.rolling(self.boll_n, min_periods=self.boll_n).std()
+        kel = self.squeeze_k * atr(h, l, c, self.atr_n)
+        squeezed = (self.boll_k * sd) < kel          # Bollinger inside Keltner
+        direction = np.sign(c.pct_change(self.horizon, fill_method=None))
+        return pd.Series(np.where(squeezed.fillna(False), 0.0,
+                                  direction.fillna(0.0) * self.scale), index=c.index)
+
+
+class FxOhlcVolSpike(FxOhlcStrategy):
+    """#29: fade the move after a Parkinson range-volatility spike."""
+    FORM = "volspike"
+
+    def _pair_forecast(self, h, l, c):
+        from src.features.range_indicators import parkinson_rv
+        rv = parkinson_rv(h, l, self.park_n)
+        z = (rv - rv.rolling(self.z_window).mean()) / rv.rolling(self.z_window).std()
+        fade = -np.sign(c.pct_change(self.horizon, fill_method=None))
+        return pd.Series(np.where(z.fillna(0.0) > 2.0, fade.fillna(0.0) * self.scale, 0.0),
+                         index=c.index)
+
+
+class FxOhlcAdxTrend(FxOhlcStrategy):
+    """#6: FxTrend (Carver EWMAC) gated to zero when ADX < 25.
+
+    NOTE: an ENHANCEMENT of the already-failed #3/FxTrend, not a new mechanism.
+    Labelled as such in the pre-registration; still costs a full trial.
+    """
+    FORM = "adx_trend"
+
+    def _pair_forecast(self, h, l, c):
+        from src.features.range_indicators import adx
+        from src.features.volatility import close_to_close_rv
+        from src.strategies.advanced.carver_indicators import combined_forecast
+        vol = close_to_close_rv(c.pct_change(fill_method=None), 25, annualization_factor=1)
+        trend = combined_forecast(c, vol * c, [(4, 16), (16, 64), (64, 256)], self.cap)
+        gate = (adx(h, l, c, self.adx_n) >= self.adx_min).astype(float)
+        return trend * gate
+
+
 class FxTermsOfTradeStrategy:
     """Commodity terms-of-trade (Tier B, pre-registration 2026-07-25).
 
