@@ -12,6 +12,8 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
+from src.backtesting.validation.degenerate_signal import assert_not_degenerate
+
 
 def _trailing_zscore(s: pd.Series, window: int) -> pd.Series:
     mean = s.rolling(window, min_periods=max(window // 2, 2)).mean()
@@ -62,5 +64,10 @@ def compute_unwind_score(close_panel: pd.DataFrame, z_window: int = 252) -> pd.S
         gold_ret = pd.Series(0.0, index=idx)
     gold_term = _trailing_zscore(gold_ret, z_window)
 
-    score = jpy_term + chf_term + vol_term + gold_term
-    return score.fillna(0.0)
+    score = (jpy_term + chf_term + vol_term + gold_term).fillna(0.0)
+    # Every term above degrades to a zero series when its currency or pair is
+    # absent, so on a universe without JPY/CHF/AUDJPY/XAUUSD the whole score is
+    # identically zero and any strategy gating on it silently becomes unfiltered.
+    # That is exactly what happened to the EM carry seatbelt trial.
+    assert_not_degenerate(score, "carry_unwind_score")
+    return score

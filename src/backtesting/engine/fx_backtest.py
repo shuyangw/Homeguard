@@ -17,6 +17,7 @@ from src.backtesting.data.fx_backtest_loader import load_fx_daily_panel, build_q
 from src.backtesting.engine.fx_spot_portfolio_simulator import FxSpotPortfolioSimulator
 from src.backtesting.reporting.standard_report import StandardReportGenerator
 from src.backtesting.utils.idm_weights import compute_div_mult
+from src.backtesting.validation.degenerate_signal import assert_not_degenerate
 from src.data.fx.clusters import fx_cluster_for
 from src.data.fx_rates import load_fx_rate_panel, build_rate_diff_panel, currencies_for_pairs
 from src.features.volatility import close_to_close_rv
@@ -98,6 +99,11 @@ def run_fx_backtest(config: Dict[str, Any], register: bool = True,
         forecasts = strategy.forecast_panel(panel[present])[present]
     else:
         forecasts = strategy.forecast_panel(close)[present]
+    # A forecast panel that never varies means the strategy took no position on
+    # any pair on any date, yet the run would still produce an equity curve and a
+    # verdict. Halt instead: that is a code defect, not a result.
+    assert_not_degenerate(forecasts, f"{strategy_name}.forecast_panel")
+
     returns = close.pct_change(fill_method=None)
     daily_vol = returns.apply(lambda col: close_to_close_rv(col, 25, annualization_factor=1), axis=0)
 
