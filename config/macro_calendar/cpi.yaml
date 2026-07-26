@@ -1,6 +1,10 @@
 event_type: cpi
 description: CPI release proxy dates 2010-2026 (10th of each month). Real BLS release
   varies by 1-3 days; treat as approximate signal-window center, not exact timestamp.
+  DO NOT USE FOR EVENT-TIME WORK. Measured against the real schedule over
+  2011-2026 this proxy is exact in 14% of months. Use
+  config/macro_calendar/cpi_actual.yaml via src/data/macro_calendar_us.py,
+  which carries the authoritative dates and validated release times.
 dates:
 - '2010-01-10'
 - '2010-02-10'
