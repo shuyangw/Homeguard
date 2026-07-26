@@ -23,6 +23,8 @@ from typing import Any, Callable, Dict, Mapping, Optional
 import duckdb
 import pandas as pd
 
+from src.utils import logger
+
 DEFAULT_DB_PATH = Path("output/experiments.duckdb")
 _SCHEMA_PATH = Path(__file__).parent / "schema.sql"
 
@@ -126,6 +128,57 @@ def _to_date(value: Any) -> Optional[date]:
     return pd.to_datetime(value).date()
 
 
+_SPEC_IDENTITY = ("strategy_name", "params", "window_start", "window_end",
+                  "asset_class", "data_frequency")
+
+
+def _spec_identity_sql(alias: str = "") -> str:
+    p = f"{alias}." if alias else ""
+    return ", ".join(f"{p}{c}" for c in _SPEC_IDENTITY)
+
+
+def duplicate_spec_run_ids(db_path: Path = DEFAULT_DB_PATH) -> list[dict]:
+    """Groups of runs sharing an identical spec identity, most recent first.
+
+    Audit helper. Duplicates are NOT removed: they inflate the trial count N,
+    which is the safe direction, and N never shrinks. Surfacing them lets a
+    reviewer decide whether a re-run was intentional.
+
+    Rows with NULL params are EXCLUDED. Without params there is no recoverable
+    spec identity, and grouping on the null would merge genuinely different runs:
+    RAMP-V31 has 47 such rows carrying 45 distinct metric sets, so treating them
+    as one repeated spec would be plainly wrong.
+    """
+    con = _connect_with_retry(db_path, read_only=True)
+    try:
+        rows = con.execute(
+            f"SELECT {_spec_identity_sql()}, list(run_id) AS run_ids, count(*) AS n "
+            f"FROM runs WHERE params IS NOT NULL GROUP BY {_spec_identity_sql()} "
+            "HAVING count(*) > 1 ORDER BY n DESC").fetchall()
+        cols = list(_SPEC_IDENTITY) + ["run_ids", "n"]
+        return [dict(zip(cols, r)) for r in rows]
+    finally:
+        con.close()
+
+
+def _warn_if_duplicate_spec(con, row: Mapping[str, Any]) -> None:
+    if row.get("params") is None:
+        # No params, no recoverable identity. Claiming a duplicate here would be
+        # a guess, and a wrong one 45 times out of 47 on the existing RAMP rows.
+        return
+    where = " AND ".join(
+        f"{c} IS NOT DISTINCT FROM ?" for c in _SPEC_IDENTITY)
+    prior = con.execute(f"SELECT run_id FROM runs WHERE {where}",
+                        [row[c] for c in _SPEC_IDENTITY]).fetchall()
+    if prior:
+        logger.error(
+            f"[registry] DUPLICATE spec: {row['strategy_name']!r} over "
+            f"{row['window_start']}..{row['window_end']} with identical params "
+            f"already exists as {[p[0] for p in prior]}. The row is still being "
+            "inserted (N never shrinks); confirm the re-run was intentional "
+            "before counting it as a new trial.")
+
+
 def append_run(
     *,
     strategy_name: str,
@@ -220,6 +273,7 @@ def append_run(
     con = _connect_with_retry(db_path)
     try:
         con.begin()
+        _warn_if_duplicate_spec(con, row)
         con.execute(insert_sql, [row[c] for c in columns])
         if return_stream is not None and len(return_stream):
             _insert_return_stream(con, run_id, return_stream)

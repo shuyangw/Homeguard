@@ -6,6 +6,7 @@ optimization run appends. The portfolio-integrator queries.
 from src.experiments.registry import (
     DEFAULT_DB_PATH,
     append_run,
+    duplicate_spec_run_ids,
     incumbent_return_streams,
     init_db,
     make_trial_callback,
@@ -15,6 +16,7 @@ from src.experiments.registry import (
 __all__ = [
     "DEFAULT_DB_PATH",
     "append_run",
+    "duplicate_spec_run_ids",
     "incumbent_return_streams",
     "init_db",
     "make_trial_callback",
