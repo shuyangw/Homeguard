@@ -71,7 +71,7 @@ def blend_books(
     # single-element list.
     n_trials, trial_sharpes = get_campaign_trial_distribution()
     dsr_val = dsr(oos_sharpe, trial_sharpes, n, skew, kurt,
-                   n_trials_project=n_trials)
+                   n_trials_project=n_trials, periods_per_year=252)
     pbo_val = _compute_pbo(per_window_blended)
 
     return {

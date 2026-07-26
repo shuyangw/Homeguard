@@ -262,7 +262,7 @@ def walk_forward_carver(
     # (and growing) campaign search.
     n_trials, trial_sharpes = get_campaign_trial_distribution()
     dsr_val = dsr(oos_sharpe, trial_sharpes, n, skew, kurt,
-                   n_trials_project=n_trials)
+                   n_trials_project=n_trials, periods_per_year=252)
     pbo_val = _compute_pbo([s.to_numpy(dtype=float) for s in per_window_returns_1x])
 
     result: Dict[str, Any] = {

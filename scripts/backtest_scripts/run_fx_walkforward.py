@@ -215,14 +215,44 @@ def walk_forward_fx(
     # single-element list.
     n_trials, trial_sharpes = get_campaign_trial_distribution()
     dsr_val = dsr(oos_sharpe, trial_sharpes, n, skew, kurt,
-                   n_trials_project=n_trials)
+                   n_trials_project=n_trials, periods_per_year=252)
     pbo_val = _compute_pbo([s.to_numpy(dtype=float) for s in per_window_returns_by_cost[1.0]])
+
+    # S&P BENCHMARK LEG (added 2026-07-25). The pre-registered gate REQUIRES a
+    # benchmark / marginal-contribution check, but this runner previously
+    # returned none -- it silently depended on the adjudicator remembering to
+    # compute it separately. A near-miss gated through this runner alone would
+    # have skipped a required gate leg. On failure the fields are NaN and an
+    # ERROR is logged, so the omission is visible rather than absent.
+    dated_1x = pd.concat(per_window_returns_by_cost[1.0]).sort_index(kind="stable")
+    dated_1x = dated_1x[~dated_1x.index.duplicated(keep="first")]
+    try:
+        from src.backtesting.benchmark import (
+            correlation_over_dates, information_ratio_vs_sp500,
+            load_sp500_daily_returns, sp500_aligned_count, sp500_sharpe_over_dates)
+        _sp = load_sp500_daily_returns()
+        _corr = correlation_over_dates(dated_1x, sp_returns=_sp)
+        bench = {
+            "sp500_sharpe": sp500_sharpe_over_dates(dated_1x.index, sp_returns=_sp),
+            "sp500_aligned_days": sp500_aligned_count(dated_1x.index, sp_returns=_sp),
+            "correlation_sp500": _corr,
+            "information_ratio_sp500": information_ratio_vs_sp500(dated_1x, sp_returns=_sp),
+            "marginal_deflated_contribution_proxy": (
+                dsr_val * (1.0 - _corr ** 2) if not np.isnan(_corr) else float("nan")),
+        }
+    except Exception as e:
+        logger.error(f"[fx_walk_forward] S&P benchmark leg FAILED ({e}); "
+                     "gate is INCOMPLETE -- the benchmark check is required")
+        bench = {k: float("nan") for k in
+                 ("sp500_sharpe", "sp500_aligned_days", "correlation_sp500",
+                  "information_ratio_sp500", "marginal_deflated_contribution_proxy")}
 
     result: Dict[str, Any] = {
         "oos_sharpe": oos_sharpe,
         "psr": psr_val,
         "dsr": dsr_val,
         "pbo": pbo_val,
+        **bench,
         "oos_sharpe_1_5x_cost": oos_sharpe_1_5x_cost,
         "oos_sharpe_by_cost": oos_sharpe_by_cost,
         "n_windows": len(windows),
@@ -363,8 +393,12 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="FX trend/value walk-forward + gate")
     parser.add_argument("--config", default=None,
                         help="FX backtest YAML; drives universe/capital/vol-target/dates")
-    parser.add_argument("--report", default=_REPORT_PATH,
-                        help="Output readiness-report path (defaults to the baseline path)")
+    # Default is per-strategy (resolved after the config is read) so back-to-back
+    # gate runs cannot clobber each other -- or the FxTrend baseline report, which
+    # the old shared default overwrote on every run.
+    parser.add_argument("--report", default=None,
+                        help="Output readiness-report path (default: per-strategy under "
+                             "docs/reports/fx/, so runs never clobber each other)")
     parser.add_argument("--jobs", type=int, default=None,
                         help="Max worker processes for the per-window map (default: auto-parallel)")
     parser.add_argument("--json", default=None,
@@ -381,6 +415,9 @@ def main() -> None:
         kw = {"universe": list(_DEFAULT_UNIVERSE), "capital": _DEFAULT_CAPITAL,
               "vol_target": _DEFAULT_VOL_TARGET, "start": "2011-01-01", "end": "2025-12-31",
               "strategy_name": "FxTrend", "tier": "major", "idm": True, "idm_cap": 2.5}
+
+    if args.report is None:
+        args.report = f"docs/reports/fx/{kw.get('strategy_name', 'FxTrend')}_walk_forward.md"
 
     # Run-status logging survives a SIGKILL: if this run is killed, the status
     # file is frozen at RUNNING with the last heartbeat, so a stale RUNNING file
