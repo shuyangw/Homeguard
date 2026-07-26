@@ -6,7 +6,7 @@ and the FX walk-forward (`scripts/backtest_scripts/run_fx_walkforward.py`).
 """
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Any, Dict, List
 
 import numpy as np
@@ -138,12 +138,36 @@ def _add_months(d: date, months: int) -> date:
 
 
 def _build_windows(train_months: int, test_months: int, step_months: int,
-                    start: date, end: date) -> List[tuple[date, date, date]]:
-    """Return (train_start, test_start, test_end) triples, non-overlapping in OOS."""
+                    start: date, end: date, purge_days: int = 0) -> List[tuple[date, date, date]]:
+    """Return (train_start, test_start, test_end) triples, non-overlapping in OOS.
+
+    `purge_days` inserts a gap between the end of the training segment and
+    `test_start` (methodology Section 3 purging). It defaults to 0, and 0 is
+    CORRECT ONLY when nothing is FITTED or SELECTED on the training segment.
+
+    When 0 is correct: the parameter-free FX/futures specs, where the training
+    segment is pure WARMUP -- it only fills rolling windows and seeds recursive
+    estimators (e.g. the Kalman R/theta_0 seed), and every feature is computed
+    causally, so no training-period label can leak into an OOS decision.
+
+    When a NON-ZERO value is REQUIRED: any strategy whose parameters are fitted,
+    optimized, or selected on the training segment, and any ML/meta-labelled
+    setup where a training label's horizon overlaps the test period. There,
+    `purge_days` must be at least the label horizon (plus the feature lookback
+    if labels are built from forward returns), or training labels that resolve
+    inside the test window leak.
+
+    Callers that claim "walk-forward with purge/embargo" in a pre-registration
+    MUST pass a non-zero value or correct the claim -- the #35 diagnostic
+    recorded exactly that mismatch (documented claim vs contiguous windows).
+    OOS embargo is not needed here because consecutive OOS segments are
+    non-overlapping by construction (`test_end` of window k <= `test_start` of
+    window k+1), so the stitched OOS return series has no duplicated dates.
+    """
     windows: List[tuple[date, date, date]] = []
     train_start = start
     while True:
-        test_start = _add_months(train_start, train_months)
+        test_start = _add_months(train_start, train_months) + timedelta(days=int(purge_days))
         if test_start >= end:
             break
         test_end = min(_add_months(test_start, test_months), end)

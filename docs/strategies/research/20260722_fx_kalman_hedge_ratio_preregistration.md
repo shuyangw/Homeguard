@@ -77,7 +77,14 @@ being slipped in later as "we also tried"): the standardized-innovation z
 3. **BOTH arms reported**, always, including in the summary line. Reporting only the
    better arm is selective reporting.
 4. **Mandatory fills** (run-scoped FillSink -> non-empty `trades_oos.csv.gz`).
-5. Full walk-forward with purge/embargo, same windows as Arm A.
+5. Full walk-forward, same windows as Arm A. **CORRECTION (2026-07-25): this line
+   originally read "with purge/embargo". `_build_windows` in fact emitted
+   CONTIGUOUS train/test windows with no purge gap, so the claim was wrong. No
+   result changes: for this design 0 purge is CORRECT, because the training
+   segment is warmup-only (it seeds R/theta_0 and fills rolling windows, nothing
+   is fitted or selected on it) and every feature is causal. `purge_days` now
+   exists on `_build_windows` and MUST be set non-zero by any spec that fits,
+   optimizes, or selects parameters on the training segment.**
 
 ## 5. Pre-committed decision rule
 

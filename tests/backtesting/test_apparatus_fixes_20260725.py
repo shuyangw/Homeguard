@@ -114,3 +114,24 @@ def test_lagged_run_still_trades():
 def test_lag_materially_changes_results():
     r0, r1 = _run(0), _run(1)
     assert abs(float(r0.equity_curve.iloc[-1]) - float(r1.equity_curve.iloc[-1])) > 1e-6
+
+
+# ------------------------------------------------------------- purge support
+
+def test_purge_days_defaults_to_zero_and_is_behaviour_neutral():
+    from datetime import date as _d
+    from src.backtesting.walkforward_common import _build_windows
+    a = _build_windows(36, 12, 12, _d(2011, 1, 1), _d(2026, 4, 1))
+    b = _build_windows(36, 12, 12, _d(2011, 1, 1), _d(2026, 4, 1), purge_days=0)
+    assert a == b and len(a) > 2
+
+
+def test_purge_days_inserts_a_gap_before_test_start():
+    from datetime import date as _d, timedelta as _td
+    from src.backtesting.walkforward_common import _build_windows
+    base = _build_windows(36, 12, 12, _d(2011, 1, 1), _d(2026, 4, 1))
+    purged = _build_windows(36, 12, 12, _d(2011, 1, 1), _d(2026, 4, 1), purge_days=10)
+    # every window's test_start moves later by exactly the purge
+    for (t0, ts, _), (p0, ps, _) in zip(base, purged):
+        assert p0 == t0
+        assert ps == ts + _td(days=10)
