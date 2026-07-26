@@ -12,11 +12,13 @@ def test_em_leg_detected():
 
 def test_em_pair_priced_in_round_trip_bps():
     # USDMXN, 1M base units at price 18, quote_to_usd 1/18 -> $1M notional.
-    # 3 bps/side -> 6 bps round trip -> $600.
+    # Updated 2026-07-26: the assumed 3 bps/side was replaced by the MEASURED
+    # 4.32 bps round-trip plus 2 x 0.20 bps commission.
+    from src.backtesting.costs.fx import _DEFAULT_COMMISSION_BPS_PER_SIDE, _MEASURED_RT_BPS
     cost = fx_round_trip_usd("USDMXN", 1_000_000, 18.0, 1 / 18.0)
     notional = 1_000_000 * 18.0 * (1 / 18.0)
-    assert abs(cost - notional * 6.0 / 1e4) < 1e-6
-    assert abs(cost - 600.0) < 1e-6
+    want_bps = _MEASURED_RT_BPS["USDMXN"] + 2 * _DEFAULT_COMMISSION_BPS_PER_SIDE
+    assert abs(cost - notional * want_bps / 1e4) < 1e-6
 
 
 def test_em_wider_than_g10_major():

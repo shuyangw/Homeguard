@@ -57,6 +57,41 @@ def fx_round_trip_pips(
 
 _METALS_BASES = {"XAU", "XAG"}
 
+# MEASURED round-trip spreads in BPS OF NOTIONAL (2026-07-26). Source: real
+# Dukascopy bid/ask, 25 pairs x Jun 2015/2020/2024, ~30k quotes per pair-month;
+# see docs/strategies/research/20260726_fx_measured_spreads.md and rebuild with
+# scripts/data/measure_fx_spreads.py. Baked in as constants rather than read from
+# the artifact because the artifact lives in gitignored local storage, and a cost
+# model that silently changes with local data is not reproducible.
+#
+# These REPLACE the pip-tier model, which charged in PIPS -- a different fraction
+# of price at different price levels (0.92bps on EURUSD at 1.08 versus 0.086bps on
+# EURNOK at 11.67). That systematically UNDER-charged high-priced crosses: the
+# Nordic block was 14-20x too cheap and silver 2.6x too cheap, while majors were
+# 2.4-7x too expensive.
+_MEASURED_RT_BPS: dict[str, float] = {
+    "EURUSD": 0.32, "USDJPY": 0.33, "EURJPY": 0.61, "USDCNH": 0.73,
+    "GBPUSD": 0.80, "USDCAD": 0.95, "AUDJPY": 0.98, "CHFJPY": 1.20,
+    "USDCHF": 1.41, "EURCHF": 1.53, "AUDUSD": 1.62, "XAUUSD": 1.63,
+    "USDTRY": 1.69, "NZDJPY": 1.79, "NZDUSD": 2.05, "AUDNZD": 2.15,
+    "USDSEK": 3.43, "EURSEK": 3.70, "USDNOK": 3.96, "EURNOK": 4.32,
+    "USDMXN": 4.32, "USDPLN": 4.90, "USDZAR": 5.54, "USDHUF": 5.65,
+    "XAGUSD": 10.41,
+}
+
+# Fallback for pairs with no direct quote (the triangulated Nordic crosses, and
+# EM pairs Dukascopy does not carry). Set at the measured median of comparable
+# pairs rather than a pip constant.
+_UNMEASURED_RT_BPS = 4.0
+
+# Commission charged ON TOP of the spread, per side, in bps of notional.
+# UNVERIFIED: the IBKR published schedule could not be retrieved (both pricing
+# URLs return HTTP 403 to automated fetches on 2026-07-26). 0.20 bps/side is the
+# widely-cited IDEALPRO figure and is used as a documented DEFAULT, not a checked
+# fact. Verify against the current schedule before relying on a marginal result,
+# and override via `commission_bps_per_side` rather than editing this constant.
+_DEFAULT_COMMISSION_BPS_PER_SIDE = 0.20
+
 # Per-SIDE half-spread in bps of USD notional for emerging-market currencies.
 # EM pairs are far wider than the G10 major/minor pip tiers and the pip path
 # under-costs them (a 1-pip major spread on USDMXN is ~0.5bp vs the ~3bp reality).
@@ -82,20 +117,19 @@ def _pip_size(pair: str) -> float:
 
 def fx_round_trip_usd(pair: str, units_traded: float, price: float,
                       quote_to_usd: float, tier: FxTier = "major",
-                      session: Session = "ny", metals_bps: float = 4.0) -> float:
+                      session: Session = "ny", metals_bps: float = 4.0,
+                      commission_bps_per_side: Optional[float] = None) -> float:
     """Total round-trip USD cost for trading abs(units_traded) base units.
 
-    Currency pairs: spread (pips) x pip_size x units x quote->USD. Metals
-    (XAU/XAG) have no standard pip -> priced as metals_bps of USD notional,
-    which is scale-invariant and how metal spreads are actually quoted.
+    Cost = (MEASURED round-trip spread + 2 x commission) bps of USD notional.
+    Both legs are in bps so the model is scale-invariant across price levels --
+    the failure of the old pip-based tier model. `tier`, `session` and
+    `metals_bps` are retained for signature compatibility and are UNUSED.
     """
     qty = abs(units_traded)
-    if pair[:3] in _METALS_BASES:
-        notional_usd = qty * price * quote_to_usd
-        return notional_usd * metals_bps / 10_000.0
-    em_half = _em_half_bps(pair)
-    if em_half is not None:
-        notional_usd = qty * price * quote_to_usd
-        return notional_usd * (2.0 * em_half) / 10_000.0  # round trip = 2 x per-side
-    rt_pips = fx_round_trip_pips(tier, session)
-    return rt_pips * _pip_size(pair) * qty * quote_to_usd
+    notional_usd = qty * price * quote_to_usd
+    if commission_bps_per_side is None:
+        commission_bps_per_side = _DEFAULT_COMMISSION_BPS_PER_SIDE
+    spread_rt = _MEASURED_RT_BPS.get(pair, _UNMEASURED_RT_BPS)
+    total_rt_bps = spread_rt + 2.0 * float(commission_bps_per_side)
+    return notional_usd * total_rt_bps / 10_000.0
