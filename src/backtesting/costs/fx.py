@@ -5,7 +5,11 @@ commission in the spread.
 """
 from __future__ import annotations
 
-from typing import Literal, Optional
+from pathlib import Path
+from typing import TYPE_CHECKING, Literal, Optional
+
+if TYPE_CHECKING:
+    import pandas as pd
 
 FxTier = Literal["major", "minor", "exotic"]
 Session = Literal["london_ny_overlap", "london", "ny", "asia", "weekend"]
@@ -113,6 +117,64 @@ def _em_half_bps(pair: str) -> Optional[float]:
 def _pip_size(pair: str) -> float:
     """0.01 for JPY-quoted pairs, 0.0001 otherwise."""
     return 0.01 if pair[3:] == "JPY" else 0.0001
+
+
+# MEASURED hour-of-week spread SHAPE, as a multiplier on the per-pair level in
+# _MEASURED_RT_BPS (quote-weighted mean multiplier = 1.0, so the level above is
+# unchanged in aggregate). Committed to the repo, not read from local storage, for
+# the same reproducibility reason the levels are baked in; rebuild with
+# scripts/data/build_fx_hour_of_week_cost.py.
+#
+# This REPLACES the hour-blind intraday path. A flat spread is wrong for any
+# strategy that concentrates its trades in particular hours, and real dispersion
+# is large: 10-19x across the week on the majors.
+_HOW_SURFACE_PATH = Path(__file__).resolve().parents[3] / "config" / "costs" / "fx_hour_of_week_spread.csv"
+_HOW_CACHE: dict[str, dict[int, float]] = {}
+_HOW_WIDEST: dict[str, float] = {}
+_HOURS_PER_WEEK = 168
+
+
+def load_hour_of_week_surface() -> "pd.DataFrame":
+    import pandas as pd
+    return pd.read_csv(_HOW_SURFACE_PATH)
+
+
+def _how_tables() -> tuple[dict[str, dict[int, float]], dict[str, float]]:
+    if not _HOW_CACHE:
+        surf = load_hour_of_week_surface()
+        for pair, grp in surf.groupby("pair"):
+            _HOW_CACHE[pair] = dict(zip(grp["hour_of_week"], grp["spread_multiplier"]))
+            _HOW_WIDEST[pair] = float(grp["spread_multiplier"].max())
+    return _HOW_CACHE, _HOW_WIDEST
+
+
+def hour_of_week_multiplier(pair: str, hour_of_week: int) -> float:
+    """Spread multiplier for `pair` at `hour_of_week` (Monday 00:00 UTC = 0).
+
+    Unquoted hours (the weekend close) charge the pair's WIDEST observed hour:
+    a strategy trading into a market with no measured quotes should not be
+    handed the average. Unmeasured pairs get a flat 1.0 -- no shape information,
+    stated rather than invented.
+    """
+    if not 0 <= int(hour_of_week) < _HOURS_PER_WEEK:
+        raise ValueError(f"hour_of_week must be in [0, {_HOURS_PER_WEEK}), got {hour_of_week}")
+    by_pair, widest = _how_tables()
+    if pair not in by_pair:
+        return 1.0
+    return float(by_pair[pair].get(int(hour_of_week), widest[pair]))
+
+
+def fx_round_trip_bps_at(pair: str, hour_of_week: int,
+                         commission_bps_per_side: Optional[float] = None) -> float:
+    """Round-trip cost in bps of notional at a specific hour of the week.
+
+    Only the spread scales with the hour; commission is flat per side.
+    """
+    if commission_bps_per_side is None:
+        commission_bps_per_side = _DEFAULT_COMMISSION_BPS_PER_SIDE
+    spread_rt = _MEASURED_RT_BPS.get(pair, _UNMEASURED_RT_BPS)
+    spread_rt *= hour_of_week_multiplier(pair, hour_of_week)
+    return spread_rt + 2.0 * float(commission_bps_per_side)
 
 
 def fx_round_trip_usd(pair: str, units_traded: float, price: float,

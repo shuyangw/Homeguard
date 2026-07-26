@@ -122,6 +122,7 @@ equities_*/
 !examples/**/*.csv
 !tests/**/*.csv
 !config/universes/**/*.csv
+!config/costs/**/*.csv
 
 # Artifacts - all generated/runtime output (machine-local, not committed)
 # Consolidates: logs, cache, models, output, charts, optimization, backtest_logs, gui_config
