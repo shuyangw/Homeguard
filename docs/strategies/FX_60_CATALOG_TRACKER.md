@@ -4,7 +4,49 @@ Living tracker for the 60-strategy FX catalog (research docs: `~/Downloads/compa
 `~/Downloads/fx_strategy_deep_dive.md`). Tracks, per strategy: current viability, what blocks it,
 and test progress. Update this file as strategies are tested or unblocked.
 
-Last updated: 2026-07-25 (Tier B commodity terms-of-trade wave closed)
+Last updated: 2026-07-25 (OHLC range-based wave closed)
+
+**OHLC WAVE RESOLUTION -- RANGE-BASED SIGNALS (2026-07-25): all 4 pre-registered
+trials (OHLC-KELTNER #12, OHLC-SQUEEZE #27, OHLC-VOLSPIKE #29, OHLC-ADX-TREND #6)
+FAIL the pre-registered gate.** This wave tested the first FX signals in the campaign
+that require the intraday RANGE -- true range / ATR, ADX directional movement, and
+Parkinson high-low volatility -- which were literally unexpressible before the
+`wants_ohlc` engine change of 2026-07-25 (the engine previously discarded open/high/low
+before calling the strategy). Specs #12/#27/#29 are GENUINELY NEW mechanisms; #6 is
+explicitly an ENHANCEMENT of the already-failed #3/FxTrend and is recorded as such,
+not as a fresh mechanism. The indicators are demonstrably correct on real data
+(ATR(10) = 0.00712, ~71 pips EURUSD; ADX(14) = 27.8; Parkinson RV = 5.5% annualized)
+and no-lookahead was confirmed end-to-end by perturbation -- yet none survives the
+gate. Three of four are directionally NEGATIVE and widen further negative at 1.5x cost
+(Keltner -0.4762 -> -0.6621; Squeeze -0.4783 -> -0.6573; ADX-trend -0.3089 -> -0.4234).
+OHLC-VOLSPIKE is the only positive spec (+0.0873 OOS Sharpe, still +0.0114 at 1.5x
+cost) and fails decisively on DSR = 0.0000 against a deflated bar of SR_zero = 1.129
+at N=137: the edge is economically TRIVIAL rather than cost-destroyed, built from only
+594 OOS fills (it gates on Parkinson-RV z > 2 and fires on ~13% of days by design) with
+per-window Sharpe spanning -1.90 to +1.93 -- i.e. noise, and it is NOT reported as a
+lead. The ADX(14) < 25 gate made the trend mechanism WORSE, not better (-0.31 vs the
+-0.02 FxTrend baseline in row #3, DSR 0.20 -> 0.0000); its PBO improvement (0.85 ->
+0.27) reflects suppressed exposure, not performance, and per the pre-registration we do
+NOT try another ADX threshold. All four are near-uncorrelated with the S&P (|corr|
+0.11-0.14) but carry IR vs S&P of -0.60 to -0.88 against an S&P Sharpe of 0.6842 over
+the same OOS dates, so marginal book contribution is negative for all four; none
+proceeds to book-level evaluation. Cumulative N went 137 -> 141. Two apparatus defects
+were filed during this wave (`run_fx_walkforward.py` omits the S&P benchmark leg that
+`run_fx_wave2_gate.py` computes, so it cannot adjudicate the full gate alone; and its
+`--report` default clobbers the shared FxTrend baseline report path); neither can have
+manufactured a false pass since nothing passed, but both should be fixed. Per the
+pre-registration stopping rule
+(`docs/strategies/research/20260725_fx_ohlc_wave_preregistration.md` Section 7), this
+scoped slice STOPS: no sweep, no alternative ATR multiple / ADX threshold / z-window,
+no ML variant. This is NOT a claim that range-based signals have no edge or that
+ATR/ADX/Parkinson are uninformative (see SCOPE banner below) -- only that these four
+constructions, daily spot, spread-TAKER, weekly-rebalanced on G10-22, do not clear the
+gate. The frequency objection bites hardest here of any wave so far: a range sampled
+once per DAY discards essentially all of the intraday path the mechanism is about.
+With this wave the remaining catalog blockers are INTRADAY (21) and ML (6), both
+substantial builds. See
+`docs/strategies/research/20260725_fx_ohlc_wave_results.md` and
+`docs/reports/fx/ohlc_wave_gate.md`.
 
 **TIER B RESOLUTION -- COMMODITY TERMS-OF-TRADE (2026-07-25): all 3 pre-registered
 trials (TOT-OIL, TOT-GOLD, TOT-XS) FAIL the pre-registered gate.** This wave tested
@@ -145,13 +187,25 @@ is NOT a claim FX has no edge (see SCOPE banner above). See
 
 | Status | Count | Strategies |
 |---|---|---|
-| READY (test now) | 16 | 3,4,15,16,17,18,19,31,33,34,39,40,42,43,44,46 |
-| OHLC (trivial change) | 8 | 1,6,8,12,27,28,29,47 |
+| READY (test now) | 20 | 3,4,6,12,15,16,17,18,19,27,29,31,33,34,39,40,42,43,44,46 |
+| OHLC (trivial change) | 4 | 1,8,28,47 |
 | SPREAD | 4 | 30,35,36,37 |
 | BRACKET | 3 | 2,26,60 |
 | ML | 6 | 48,49,50,51,52,53 |
 | DATA | 1 | 55 |
 | INTRADAY | 22 | 5,7,9,10,11,13,14,20,21,22,23,24,25,32,38,41,45,54,56,57,58,59 |
+
+The 2026-07-25 `wants_ohlc` engine change unblocked the OHLC category, and the OHLC
+wave gated 4 of them (#6, #12, #27, #29 -- all FAIL, moved to READY with Gate=FAIL).
+The remaining 4 were EXPLICITLY EXCLUDED from that wave with stated reasons
+(pre-registration Section 4), NOT merely left untested: **#28** ATR-regime switch is an
+allocation OVERLAY and there is no profitable base to modulate; **#1** Dual MA + ATR
+trail needs a stateful TRAILING STOP the continuous-forecast engine cannot express (a
+build gap, not a signal); **#8** Bollinger's base form is a close-based z-score, i.e.
+materially what EM-MEANREV already tested and failed, and its only new part (the ADX
+filter) is what #6 tested; **#47** Silver beta amplification is a substitution layer on
+#43 GoldSilver, which already failed (OOS -0.31). Per the OHLC stopping rule none of
+these is a live daily-spot lead.
 
 ---
 
@@ -164,7 +218,7 @@ is NOT a claim FX has no edge (see SCOPE banner above). See
 | 3 | TSMOM portfolio | READY | -- | BT | WF | FAIL-naive | OOS -0.02, DSR 0.20, PBO 0.85 (IDM on, 13 win); naive sign form fails gate. Enhanced/param-sweep untested. **2026-07-19 cost re-gate: 0.5x-cost (IBKR-optimistic) OOS Sharpe +0.075 vs -0.02 base -- point estimate flips sign but PSR/DSR/PBO unchanged (still far outside gate); NOT a robustness rescue.** **EM7 variant (EM-TSMOM, 2026-07-21): OOS Sharpe -0.31 (1x) / -0.52 (1.5x), PSR/DSR 0, PBO 0.52 -- FAIL, worse than G10 form. See `docs/strategies/research/20260721_fx_em_wave_results.md`.** |
 | 4 | Cross-sectional momentum | READY | currency_strength artifact | BT | WF | FAIL-naive | OOS -0.05, DSR 0.01, PBO 0.66; naive 63d form fails gate. **2026-07-19 cost re-gate: 0.5x-cost OOS Sharpe +0.058 vs -0.05 base -- same caveat as #3, gate metrics unchanged, NOT a rescue.** **EM7 variant (EM-XSMOM, 2026-07-21): OOS Sharpe -1.12 (1x) / -1.48 (1.5x), PSR/DSR 0, PBO 0.54 -- FAIL, the worst result of the EM wave. See `docs/strategies/research/20260721_fx_em_wave_results.md`.** |
 | 5 | Breakout-pullback | INTRADAY | M15 triggers | - | - | - | |
-| 6 | ADX-gated trend | OHLC | ADX needs high/low | - | - | - | |
+| 6 | ADX-gated trend | READY | -- (unblocked 2026-07-25 by `wants_ohlc`) | BT | WF | FAIL | **OHLC wave 2026-07-25 (OHLC-ADX-TREND, N=140):** OOS Sharpe -0.3089 (1x) / -0.4234 (1.5x), PSR 0.1357, DSR 0.0000, PBO 0.2727, 13 win, S&P corr -0.118, IR vs S&P -0.605. FAIL. This is an ENHANCEMENT of #3/FxTrend, not a new mechanism: gating the Carver EWMAC forecast to zero when ADX(14) < 25 made it WORSE (-0.31 vs the -0.02 baseline; DSR 0.20 -> 0.0000). PBO improved 0.85 -> 0.27 only because suppressed exposure stabilizes the window ranking. Baseline CITED not re-run (different apparatus vintage, so not a controlled A/B). Per pre-reg, no alternative ADX threshold will be tried. See `docs/strategies/research/20260725_fx_ohlc_wave_results.md`. |
 | 7 | Multi-TF momentum | INTRADAY | D1/H4/M15 stack | - | - | - | |
 
 ## Category B -- Mean Reversion (8-14)
@@ -175,7 +229,7 @@ is NOT a claim FX has no edge (see SCOPE banner above). See
 | 9 | RSI(2) fade | INTRADAY | H1 | - | - | - | |
 | 10 | Asian range fade | INTRADAY | session | - | - | - | |
 | 11 | Hourly z-reversion | INTRADAY | H1 + vol filter (vol_surface ready) | - | - | - | |
-| 12 | Keltner reversion | OHLC | ATR | - | - | - | |
+| 12 | Keltner reversion | READY | -- (unblocked 2026-07-25 by `wants_ohlc`) | BT | WF | FAIL | **OHLC wave 2026-07-25 (OHLC-KELTNER, N=137):** OOS Sharpe -0.4762 (1x) / -0.6621 (1.5x), PSR 0.0459, DSR 0.0000, PBO 0.6806 (worst of the wave), 13 win, S&P corr +0.141, IR vs S&P -0.877. FAIL -- directionally negative and widening under cost stress, negative in 10 of 13 windows. GENUINELY NEW mechanism (EMA(20) center, 2.0 x ATR(10) bands; the band width tracks the intraday RANGE, unlike the close-only EM-MEANREV). Per pre-reg, no alternative ATR multiple will be tried. See `docs/strategies/research/20260725_fx_ohlc_wave_results.md`. |
 | 13 | EOD reversal | INTRADAY | session | - | - | - | |
 | 14 | Weekend gap fade | INTRADAY | Sunday-open + intraday | - | - | - | |
 
@@ -205,9 +259,9 @@ is NOT a claim FX has no edge (see SCOPE banner above). See
 | # | Name | Status | Blocks / needs | BT | WF | Gate | Notes |
 |---|---|---|---|---|---|---|---|
 | 26 | NR7 squeeze | BRACKET | OHLC range + OCO bracket | - | - | - | |
-| 27 | Bandwidth squeeze | OHLC | Keltner/ATR (D1 form) | - | - | - | |
+| 27 | Bandwidth squeeze | READY | -- (unblocked 2026-07-25 by `wants_ohlc`) | BT | WF | FAIL | **OHLC wave 2026-07-25 (OHLC-SQUEEZE, N=138):** OOS Sharpe -0.4783 (1x) / -0.6573 (1.5x), PSR 0.0437, DSR 0.0000, PBO 0.6352, 13 win, S&P corr -0.105, IR vs S&P -0.783. FAIL -- negative in 9 of 13 windows and widening under cost stress. GENUINELY NEW mechanism (Bollinger(20,2.0) inside Keltner(20, 1.5 x ATR10) = squeeze ON, forecast 0 while squeezed, sign of 20d close change on release). Compression does precede expansion, but the DIRECTION of the release is not predicted by trailing 20d sign -- a coin flip paid for with spread. See `docs/strategies/research/20260725_fx_ohlc_wave_results.md`. |
 | 28 | ATR-regime switch | OHLC | OHLC + regime artifact (ready) | - | - | - | allocation overlay |
-| 29 | Vol-spike fade | OHLC | daily RV form | - | - | - | |
+| 29 | Vol-spike fade | READY | -- (unblocked 2026-07-25 by `wants_ohlc`) | BT | WF | FAIL | **OHLC wave 2026-07-25 (OHLC-VOLSPIKE, N=139):** OOS Sharpe +0.0873 (1x) / +0.0114 (1.5x), PSR 0.6235, DSR 0.0000, PBO 0.2448, 13 win, S&P corr +0.116, IR vs S&P -0.684. FAIL -- the ONLY positive spec of the wave and it does survive 1.5x cost, but PSR 0.62 < 0.95 and DSR 0.0000 against a bar of SR_zero = 1.131: the edge is economically TRIVIAL, not cost-destroyed. Built from only 594 OOS fills (gates on Parkinson-RV(10) z > 2 over 252d, fires ~13% of days by design) with per-window Sharpe from -1.90 to +1.93 and one undefined window -- noise, explicitly NOT a lead. GENUINELY NEW mechanism (high-low range estimator, not close-to-close). Per pre-reg, no alternative z-window will be tried. See `docs/strategies/research/20260725_fx_ohlc_wave_results.md`. |
 | 30 | Relative-vol pair | SPREAD | beta-weighted spread engine BUILT | BT | WF | REJECT | Wave 2 Track B. VolRatioPair, symmetric vol-ratio reversion on {EURNOK,EURSEK}/{AUDUSD,NZDUSD}/{XAUUSD,XAGUSD}, all 6 legs present in every window. OOS Sharpe -0.48 (1.5x: -0.54), PSR 0, DSR 0 (N=111), PBO 0.43, S&P corr 0.14. Non-positive OOS Sharpe -- no edge to deflate. Report: docs/reports/fx/fx_vol_ratio_pair_wave2_gate.md |
 
 ## Category F -- Seasonal / Calendar (31-34)
