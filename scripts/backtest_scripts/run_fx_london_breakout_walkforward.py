@@ -8,11 +8,18 @@ FX walk-forward (36m/12m/12m) and evaluates the primary criterion: stitched OOS
 Sharpe > S&P 500 Sharpe over the same OOS dates. PSR/DSR/PBO, correlation, IR,
 and IS/OOS degradation are computed and reported as diagnostics only.
 
-Cost note: the intraday fills embed a single fixed round-trip spread (major
-tier) netted per trade inside the R-multiple, so a separate 1.5x cost leg is not
-re-run (it cannot be cleanly rescaled from the summed daily R without a
-strategy-level cost multiplier). A single cost leg is reported honestly, per the
-2026-07-19 pre-registration.
+Cost note: fills are charged the MEASURED hour-of-week spread at the hour each
+fill lands on (half the round trip at entry, half at exit), replacing the flat
+major-tier constant used through 2026-07-25. The flat model over-charged the
+London window it trades by roughly 2-3.7x, so the earlier OOS -1.60 is biased
+against the strategy -- the only apparatus defect in this campaign running in
+the pessimistic direction.
+
+The 1.5x cost-stress leg the methodology requires is now buildable and was not
+before: `cost_mult` scales the charge at the strategy level, which is what the
+summed daily R could not be rescaled from. Pass `cost_mult` in the config
+params. Any re-gate on this changed cost model is verdict work and belongs to
+strategy-lead.
 """
 from __future__ import annotations
 
@@ -100,7 +107,8 @@ def _bars_for_day(sub: pd.DataFrame) -> List[Bar]:
 
 def _pair_daily_returns(pair: str, start: dt.date, end: dt.date, releases: pd.DataFrame,
                         risk_frac: float, tp_fraction: float, offset_pips: float,
-                        override_pips: Optional[float] = None) -> pd.Series:
+                        override_pips: Optional[float] = None,
+                        cost_mult: float = 1.0) -> pd.Series:
     bars = load_fx_1min(pair, start, end)
     if bars.empty:
         logger.warning(f"[london_wf] no 1m data for {pair}; contributing empty series")
@@ -113,7 +121,8 @@ def _pair_daily_returns(pair: str, start: dt.date, end: dt.date, releases: pd.Da
         trading_days.append(day)
         strat = LondonBreakoutStrategy(pair, atr_d1=atr_prior, risk_frac=risk_frac,
                                        tp_fraction=tp_fraction, offset_pips=offset_pips,
-                                       releases=releases, override_pips=override_pips)
+                                       releases=releases, override_pips=override_pips,
+                                       cost_mult=cost_mult)
         eng = OrderEngine()
         day_bars = _bars_for_day(sub)
         eng.run(day_bars, strat)
@@ -143,7 +152,8 @@ def build_trade_log(pair: str, fills, day_r: Optional[float] = None) -> pd.DataF
 
 def _pair_trade_log(pair: str, start: dt.date, end: dt.date, releases: pd.DataFrame,
                     risk_frac: float, tp_fraction: float, offset_pips: float,
-                    override_pips: Optional[float] = None) -> pd.DataFrame:
+                    override_pips: Optional[float] = None,
+                    cost_mult: float = 1.0) -> pd.DataFrame:
     """Per-pair fills log, mirroring ``_pair_daily_returns``'s day loop.
 
     Runs a fresh ``OrderEngine`` per FX trading day and passes that day's FULL
@@ -163,7 +173,8 @@ def _pair_trade_log(pair: str, start: dt.date, end: dt.date, releases: pd.DataFr
     for day, sub in bars.groupby(fxday):
         strat = LondonBreakoutStrategy(pair, atr_d1=atr_prior, risk_frac=risk_frac,
                                        tp_fraction=tp_fraction, offset_pips=offset_pips,
-                                       releases=releases, override_pips=override_pips)
+                                       releases=releases, override_pips=override_pips,
+                                       cost_mult=cost_mult)
         eng = OrderEngine()
         day_bars = _bars_for_day(sub)
         eng.run(day_bars, strat)
@@ -182,7 +193,8 @@ def _pair_trade_log(pair: str, start: dt.date, end: dt.date, releases: pd.DataFr
 def build_all_pairs_trade_log(pairs: List[str], start: dt.date, end: dt.date,
                               risk_frac: float = 0.005, tp_fraction: float = 0.5,
                               offset_pips: float = 3.0,
-                              override_pips: Optional[float] = None) -> pd.DataFrame:
+                              override_pips: Optional[float] = None,
+                              cost_mult: float = 1.0) -> pd.DataFrame:
     """Fills-level trade log across pairs: one row per ``OrderEngine`` fill
     (entries AND exits), assembled from each pair's per-day ``build_trade_log``
     frames. Artifact backfill only -- not used by the walk-forward gate.
@@ -190,7 +202,7 @@ def build_all_pairs_trade_log(pairs: List[str], start: dt.date, end: dt.date,
     releases = generate_tier1_releases(start, end)
     cols = ["date"] + _TRADE_LOG_COLS
     frames = [_pair_trade_log(pair, start, end, releases, risk_frac, tp_fraction,
-                              offset_pips, override_pips=override_pips)
+                              offset_pips, override_pips=override_pips, cost_mult=cost_mult)
               for pair in pairs]
     if not frames:
         return pd.DataFrame(columns=cols)
@@ -203,12 +215,13 @@ def build_all_pairs_trade_log(pairs: List[str], start: dt.date, end: dt.date,
 def build_daily_returns(pairs: List[str], start: dt.date, end: dt.date,
                         risk_frac: float = 0.005, tp_fraction: float = 0.5,
                         offset_pips: float = 3.0,
-                        override_pips: Optional[float] = None) -> pd.Series:
+                        override_pips: Optional[float] = None,
+                        cost_mult: float = 1.0) -> pd.Series:
     releases = generate_tier1_releases(start, end)
     per_pair = []
     for pair in pairs:
         s = _pair_daily_returns(pair, start, end, releases, risk_frac, tp_fraction, offset_pips,
-                                override_pips=override_pips)
+                                override_pips=override_pips, cost_mult=cost_mult)
         if not s.empty:
             per_pair.append(s.rename(pair))
     if not per_pair:
@@ -254,7 +267,8 @@ def run(config_path: str, trial_count: int,
                                    tp_fraction=float(params.get("tp_fraction", 0.5)),
                                    offset_pips=float(params.get("offset_pips", 3.0)),
                                    override_pips=(float(override_pips)
-                                                  if override_pips is not None else None))
+                                                  if override_pips is not None else None),
+                                   cost_mult=float(params.get("cost_mult", 1.0)))
     segs = _wf_segments(combined, train_months, test_months, step_months)
     if len(segs) < 2:
         raise ValueError(f"need >=2 usable OOS windows, got {len(segs)}")
@@ -317,9 +331,10 @@ def _write_report(r: Dict[str, Any], path: str = _REPORT_PATH) -> str:
              f"## Verdict vs S&P: {verdict}", "",
              f"Pairs: {', '.join(r['pairs'])} (equal-risk, combined daily return).",
              "",
-             "Single cost leg: the 1m fills embed a fixed major-tier round-trip spread",
-             "netted per trade in the R-multiple; no separate 1.5x cost leg is fabricated",
-             "(pre-registration known limitation).", "",
+             "Costs: 1m fills are charged the MEASURED hour-of-week spread at the hour",
+             "each fill lands on (half the round trip at entry, half at exit), from",
+             "config/costs/fx_hour_of_week_spread.csv. Scale the stress leg with the",
+             "`cost_mult` param.", "",
              "| Metric | Value |", "|---|---|",
              f"| OOS Sharpe (net) | {r['oos_sharpe']:.4f} |",
              f"| S&P Sharpe (aligned OOS dates) | {r['sp500_sharpe']:.4f} |",
@@ -371,7 +386,8 @@ def _run_trade_log_backfill(config_path: str, out_path: str) -> None:
                                            tp_fraction=float(params.get("tp_fraction", 0.5)),
                                            offset_pips=float(params.get("offset_pips", 3.0)),
                                            override_pips=(float(override_pips)
-                                                          if override_pips is not None else None))
+                                                          if override_pips is not None else None),
+                                           cost_mult=float(params.get("cost_mult", 1.0)))
         out = Path(out_path)
         out.parent.mkdir(parents=True, exist_ok=True)
         trades.to_csv(out, index=False)

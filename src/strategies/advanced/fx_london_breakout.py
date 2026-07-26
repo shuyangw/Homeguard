@@ -18,7 +18,8 @@ import datetime as dt
 
 import pandas as pd
 
-from src.backtesting.costs.fx import _pip_size, fx_round_trip_pips
+from src.backtesting.costs.fx import (_pip_size, fx_round_trip_bps_at,
+                                      fx_round_trip_pips)
 from src.backtesting.engine.intraday_order_engine import EXIT_ORDER_ID, Order
 from src.backtesting.sessions.fx_clock import EXCHANGE_TZ
 from src.backtesting.utils.indicators import Indicators
@@ -30,7 +31,7 @@ _LONDON = EXCHANGE_TZ["LONDON"]
 class LondonBreakoutStrategy:
     def __init__(self, pair, atr_d1, risk_frac=0.005, tp_fraction=0.5,
                  offset_pips=3.0, tier="major", releases=None,
-                 override_pips=None):
+                 override_pips=None, cost_mult=1.0):
         self.pair = pair
         self.atr_d1 = atr_d1                # dict[date -> ATR(14) daily, price units]
         self.risk_frac = float(risk_frac)
@@ -40,8 +41,15 @@ class LondonBreakoutStrategy:
         self.tier = tier
         self.releases = releases
         self.override_pips = override_pips
+        self.cost_mult = float(cost_mult)
         self.day_r: dict[dt.date, float] = {}
-        self._rt_pips = fx_round_trip_pips(tier, session="london", override_pips=override_pips)
+        # Default: MEASURED hour-of-week spread, charged at the hours the fills
+        # actually land on. override_pips keeps the legacy flat tier charge as an
+        # explicit escape hatch so a flat-cost leg stays reproducible.
+        self._flat_rt_pips = (
+            fx_round_trip_pips(tier, session="london", override_pips=override_pips)
+            if override_pips is not None else None)
+        self._entry_how = None
         self._day = None
         self._skip = False
         self._armed = False
@@ -64,13 +72,29 @@ class LondonBreakoutStrategy:
     def _local(self, ts):
         return pd.Timestamp(ts).tz_convert(_LONDON)
 
+    @staticmethod
+    def _hour_of_week(ts) -> int:
+        """Monday 00:00 UTC = 0, matching the measured spread surface."""
+        t = pd.Timestamp(ts).tz_convert("UTC")
+        return int(t.dayofweek * 24 + t.hour)
+
+    def _round_trip_r(self, entry_price, exit_ts) -> float:
+        """Round-trip cost in R. Half the spread is paid at each fill's own hour."""
+        if self._flat_rt_pips is not None:
+            rt_price = self._flat_rt_pips * self.pip
+        else:
+            bps = 0.5 * (fx_round_trip_bps_at(self.pair, self._entry_how)
+                         + fx_round_trip_bps_at(self.pair, self._hour_of_week(exit_ts)))
+            rt_price = bps / 1e4 * entry_price
+        return rt_price * self.cost_mult / self._initial_risk
+
     def on_bar(self, bar, engine):
         lt = self._local(bar.ts)
         day = lt.date()
         if day != self._day:
             self._start_day(day, bar, engine)
         self._accumulate(bar, lt)
-        self._book_if_closed(engine)
+        self._book_if_closed(engine, bar)
         self._maybe_open(bar, engine)
         if self._skip:
             return
@@ -78,13 +102,13 @@ class LondonBreakoutStrategy:
         self._maybe_cancel(lt, engine)
         if lt.hour >= 16 and engine.position is not None:
             engine.flatten(bar.close, bar.ts, reason="flat_1600")
-            self._book_if_closed(engine)
+            self._book_if_closed(engine, bar)
 
     def _start_day(self, day, bar, engine):
         if self._pos is not None:
             if engine.position is self._pos:
                 engine.flatten(bar.open, bar.ts, reason="stale_close")
-            self._book()
+            self._book(bar)
         self._day = day
         self._armed = False
         self._cancelled = False
@@ -200,19 +224,20 @@ class LondonBreakoutStrategy:
         self._entry_qty = fill.qty
         self._initial_risk = abs(fill.price - stop)
         self._entry_day = self._day
+        self._entry_how = self._hour_of_week(bar.ts)
         self._pos = engine.open_position(
             fill.side, fill.qty, fill.price, bar.ts, stop, target,
             self.tp_fraction, self._trail_dist)
 
-    def _book_if_closed(self, engine):
+    def _book_if_closed(self, engine, bar):
         if self._pos is None or engine.position is self._pos:
             return
-        self._book()
+        self._book(bar)
 
-    def _book(self):
+    def _book(self, bar):
         pos = self._pos
         exit_r = pos.realized_pips / (self._entry_qty * self._initial_risk)
-        rt_spread_r = (self._rt_pips * self.pip) / self._initial_risk
+        rt_spread_r = self._round_trip_r(pos.entry_price, bar.ts)
         self.day_r[self._entry_day] = (
             self.day_r.get(self._entry_day, 0.0) + exit_r - rt_spread_r)
         self._pos = None

@@ -3,7 +3,7 @@ import datetime as dt
 import numpy as np
 import pandas as pd
 
-from src.backtesting.costs.fx import _pip_size, fx_round_trip_pips
+from src.backtesting.costs.fx import _pip_size, fx_round_trip_bps_at
 from src.backtesting.engine.intraday_order_engine import OrderEngine, Bar
 from src.strategies.advanced.fx_london_breakout import LondonBreakoutStrategy
 
@@ -30,8 +30,10 @@ def _blank_day(day, lo, hi, end="16:00"):
     return df
 
 
-def _rt_spread_r(initial_risk):
-    return (fx_round_trip_pips("major", session="london") * _PIP) / initial_risk
+def _rt_spread_r(initial_risk, entry_price):
+    """Measured hour-of-week charge. Entry and exit both land in hour 8 UTC."""
+    how = _DAY.weekday() * 24 + 8
+    return (fx_round_trip_bps_at("GBPUSD", how) / 1e4 * entry_price) / initial_risk
 
 
 def _long_stop_loss_day_r(width_pips):
@@ -45,7 +47,8 @@ def _long_stop_loss_day_r(width_pips):
     atr = 2 * width_pips * _PIP
     strat, _ = _run(df, atr_d1={_DAY: atr})
     initial_risk = width_pips * _PIP + _OFFSET_PIPS * _PIP
-    return strat.day_r[_DAY], _rt_spread_r(initial_risk)
+    entry_price = hi + _OFFSET_PIPS * _PIP
+    return strat.day_r[_DAY], _rt_spread_r(initial_risk, entry_price)
 
 
 def test_full_stop_loss_books_minus_one_r_qty_and_pip_independent():
@@ -69,7 +72,8 @@ def test_short_full_stop_loss_books_minus_one_r():
     df.loc[stp, ["open", "high", "low", "close"]] = hi + 1 * _PIP
     strat, _ = _run(df, atr_d1={_DAY: 2 * width_pips * _PIP})
     initial_risk = width_pips * _PIP + _OFFSET_PIPS * _PIP
-    assert abs(strat.day_r[_DAY] - (-1.0 - _rt_spread_r(initial_risk))) < 1e-9
+    entry_price = lo - _OFFSET_PIPS * _PIP
+    assert abs(strat.day_r[_DAY] - (-1.0 - _rt_spread_r(initial_risk, entry_price))) < 1e-9
 
 
 def test_target_then_trail_win_books_positive_r():
