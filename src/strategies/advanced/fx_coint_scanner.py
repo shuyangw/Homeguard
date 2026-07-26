@@ -200,6 +200,10 @@ class CointScanner(SpreadStrategy):
                 a, b = pair
                 z = self._resid_z(log_panel[a], log_panel[b], st["hedge"], i)
                 if z is None:
+                    # Emitting nothing for this pair makes the simulator flatten
+                    # it and charge a round trip; keep the state machine in sync
+                    # or it phantom-re-enters later (silent-skip defect).
+                    st["dir"], st["entry_idx"], st["degrade_streak"] = 0, None, 0
                     continue
 
                 if st["dir"] != 0:
@@ -217,6 +221,7 @@ class CointScanner(SpreadStrategy):
 
                 sig = self._spread_sigma(close_panel, a, b, st["hedge"], i)
                 if sig is None:
+                    st["dir"], st["entry_idx"], st["degrade_streak"] = 0, None, 0
                     continue
                 day_spreads.append(Spread(a, b, st["hedge"], self._strength(z)))
                 day_sigma[(a, b)] = sig

@@ -84,6 +84,12 @@ class AudNzdPairs(SpreadStrategy):
 
             reg = self._regression_z(ln_a, ln_b, i)
             if reg is None:
+                # Emitting nothing makes the simulator flatten and charge a
+                # round trip, so the state machine must agree it is flat.
+                # Leaving `position` set here caused a phantom re-entry (a
+                # SECOND round trip) with `held` still measured from the
+                # ORIGINAL entry -- the silent-skip defect.
+                position, entry_idx = 0, None
                 continue
             beta, z = reg
             abs_z = abs(z)
@@ -102,6 +108,7 @@ class AudNzdPairs(SpreadStrategy):
 
             sig = self._spread_sigma(close_panel, _LEG_A, _LEG_B, beta, i)
             if sig is None:
+                position, entry_idx = 0, None   # same silent-skip fix as above
                 continue
             book[d] = [Spread(_LEG_A, _LEG_B, beta, self._strength(z))]
             sigma[d] = {(_LEG_A, _LEG_B): sig}

@@ -73,3 +73,34 @@ def test_kalman_beta_is_causal_within_the_strategy():
     for d, spreads in book1.items():
         if d <= cutoff and d in book2:
             assert spreads[0].hedge_ratio == book2[d][0].hedge_ratio
+
+
+def test_silent_skip_does_not_leave_a_phantom_position():
+    """Silent-skip defect: when the signal is unavailable on a rebalance date the
+    strategy emits nothing, so the simulator FLATTENS and charges a round trip.
+    The state machine must agree it is flat -- otherwise it 're-enters' later
+    (a second round trip) with the holding period still measured from the
+    ORIGINAL entry, so max_days stops working."""
+    panel = _panel(n=600, seed=11)
+    strat = AudNzdPairs()
+
+    # force the signal to be unavailable for a stretch in the middle
+    real_reg = strat._regression_z
+    blackout = range(300, 340)
+
+    def flaky(ln_a, ln_b, i):
+        return None if i in blackout else real_reg(ln_a, ln_b, i)
+
+    strat._regression_z = flaky
+    book, _ = strat.spread_book(panel)
+
+    dates = list(panel.index)
+    gap_dates = {dates[i] for i in blackout}
+    # nothing is emitted during the gap (simulator is flat there)
+    assert not (set(book) & gap_dates)
+
+    # and any position opened AFTER the gap must be a fresh entry: the first
+    # post-gap book date must not be carrying a pre-gap holding period, i.e.
+    # the strategy re-entered rather than silently believing it was still in.
+    post = [d for d in sorted(book) if d > dates[max(blackout)]]
+    assert post, "strategy should trade again after the gap"

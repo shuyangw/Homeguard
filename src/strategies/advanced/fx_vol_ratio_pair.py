@@ -102,6 +102,10 @@ class VolRatioPair(SpreadStrategy):
             for (a, b), st in data.items():
                 z = self._ratio_z(st["r"], i)
                 if z is None:
+                    # Emitting nothing for this pair makes the simulator flatten
+                    # it and charge a round trip; keep the state machine in sync
+                    # or it phantom-re-enters later (silent-skip defect).
+                    st["pos"] = 0
                     continue
                 abs_z = abs(z)
 
@@ -115,6 +119,7 @@ class VolRatioPair(SpreadStrategy):
                 beta = self._hedge_ratio(st["ln_a"], st["ln_b"], i)
                 sig = self._spread_sigma(close_panel, a, b, beta, i)
                 if sig is None:
+                    st["pos"] = 0       # same silent-skip fix as above
                     continue
                 day_spreads.append(Spread(a, b, beta, self._strength(z)))
                 day_sigma[(a, b)] = sig
