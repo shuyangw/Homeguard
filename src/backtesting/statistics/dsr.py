@@ -60,6 +60,7 @@ def dsr(
     skew: float,
     kurt: float,
     n_trials_project: int,
+    periods_per_year: float = 1.0,
 ) -> float:
     """Deflated Sharpe Ratio.
 
@@ -77,5 +78,7 @@ def dsr(
         expected maximum under the null. Section 2.5 sets the pass threshold
         at 0.95.
     """
+    # sr_zero inherits the units of `trial_sharpes`, so sr_hat and sr_zero are
+    # consistent; psr() de-annualizes BOTH via periods_per_year.
     sr_zero = expected_max_sharpe(trial_sharpes, n_trials_project)
-    return psr(sr_hat, sr_zero, n, skew, kurt)
+    return psr(sr_hat, sr_zero, n, skew, kurt, periods_per_year=periods_per_year)

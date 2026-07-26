@@ -65,7 +65,7 @@ def blend_books(
     skew = float(series.skew()) if n > 2 else 0.0
     kurt = float(series.kurtosis()) + 3.0 if n > 3 else 3.0
 
-    psr_val = psr(oos_sharpe, 0.0, n, skew, kurt)
+    psr_val = psr(oos_sharpe, 0.0, n, skew, kurt, periods_per_year=252)
     # Gate 0.1/0.2: deflate against the real, growing project-wide
     # trial-Sharpe distribution (mirrors gate_return_stream), not a
     # single-element list.

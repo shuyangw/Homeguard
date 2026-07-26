@@ -281,8 +281,9 @@ def run(config_path: str, trial_count: int,
     ser = pd.Series(arr)
     skew = float(ser.skew()) if n > 2 else 0.0
     kurt = float(ser.kurtosis()) + 3.0 if n > 3 else 3.0
-    psr_val = psr(sharpe, 0.0, n, skew, kurt)
-    dsr_val = dsr(sharpe, [sharpe], n, skew, kurt, n_trials_project=trial_count)
+    psr_val = psr(sharpe, 0.0, n, skew, kurt, periods_per_year=252)
+    dsr_val = dsr(sharpe, [sharpe], n, skew, kurt, n_trials_project=trial_count,
+                  periods_per_year=252)
     pbo_val = _compute_pbo(per_window_oos)
 
     n_trades = int((oos_dated != 0.0).sum())

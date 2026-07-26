@@ -198,8 +198,9 @@ def walk_forward_fx_spread(
     kurt = float(ser.kurtosis()) + 3.0 if n > 3 else 3.0
 
     n_trials, trial_sharpes = get_campaign_trial_distribution()
-    psr_val = psr(sharpe, 0.0, n, skew, kurt)
-    dsr_val = dsr(sharpe, trial_sharpes, n, skew, kurt, n_trials_project=n_trials)
+    psr_val = psr(sharpe, 0.0, n, skew, kurt, periods_per_year=252)
+    dsr_val = dsr(sharpe, trial_sharpes, n, skew, kurt, n_trials_project=n_trials,
+                  periods_per_year=252)
     pbo_val = _compute_pbo(per_window_1x)
 
     sp = load_sp500_daily_returns()
