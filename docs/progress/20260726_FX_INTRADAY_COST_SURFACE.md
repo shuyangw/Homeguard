@@ -128,12 +128,64 @@ Still missing for full event coverage: non-US central banks (ECB/BoE/BoJ/BoC/SNB
 have only a 2025-2026 starter set, and RBA/RBNZ are rule-generated dates that
 their own config header marks as unusable for event-time work).
 
+## Phase 0 item 4: apparatus close-outs
+
+**Degenerate-signal tripwire** (`src/backtesting/validation/degenerate_signal.py`).
+Raises when a declared signal never varies. Wired into `compute_unwind_score`,
+which retro-catches the exact EM seatbelt bug (all four terms fall back to a zero
+series when their currency is absent, so on EM7 the filter was identically zero
+and the strategy silently became plain carry), and onto the forecast panel in
+`run_fx_backtest`. A DataFrame is degenerate only when EVERY column is constant;
+one flat pair is a legitimate state and is logged instead.
+
+**Registry duplicate detection.** Surfaces identical spec identities without
+dropping them (duplicates inflate N, the safe direction, and N never shrinks).
+The first version over-flagged and had to be corrected: grouping on NULL params
+merged RAMP-V31's 47 rows, which carry 45 distinct metric sets and are plainly
+different runs whose params were never recorded. Rows with NULL params are now
+excluded.
+
+Audit results, which contradict the post-mortem's assumption:
+
+| finding | value |
+|---|---|
+| FX duplicate groups | **0** (the named RORO/PCA/Seatbelt cases do not reproduce) |
+| All duplicate groups | 55, entirely futures, 167 extra rows |
+| Test stubs in the PRODUCTION registry | 31 rows (ZeroForecastStub 16, ParamForecastStub 15) |
+| Rows with no params at all | 150 of 496 (30%), spec identity unrecoverable |
+
+**Trial-count migration.** The last two runners (FxCarrySeatbelt, #20 London
+Breakout) sourced N from `n_trials_project_wide()`, which sums
+`combinations_in_run` over `agent_name='backtest-optimizer'` rows. This campaign
+logged none, so it returns **0**:
+
+| | SR_zero |
+|---|---:|
+| what those two runners used | **0.0000** (the DSR gate reduced to "is the Sharpe positive") |
+| correct campaign bar | **1.1382** (N = 141 + 1) |
+
+Both also passed `[sharpe]`, a single-element list, as the trial-Sharpe
+distribution instead of the campaign's 130 observed Sharpes; the dispersion was
+degenerate. Both fixed together, since either alone leaves DSR meaningless. No
+verdict is at risk (both strategies failed by wide margins) but any future run
+through those runners faced no bar at all.
+
+**Exit-side fill schema.** `Fill` now carries reason, trade_id, entry_ts,
+entry_price, mae, mfe, bars_held. The engine was already computing the exit
+reason and discarding it at the Fill boundary. Exits carry entry_ts/entry_price
+so a round trip is reconstructable from the exit row alone; entries carry NaN
+excursions rather than zero, because zero would be a claim.
+
 ## Commits
 
 - `d98eb35` feat(fx): measured hour-of-week spread surface for the intraday cost path
 - `73e1ade` refactor(fx): delete the synthetic spread_model artifact, superseded by measurement
 - `19c1488` feat(fx): charge #20 London Breakout the measured hour-of-week spread
 - `f8f4b01` feat(fx): authoritative US macro release calendar with validated timestamps
+- `3c89460` feat(backtesting): degenerate-signal tripwire
+- `fee7d85` feat(experiments): duplicate-spec detection for the registry
+- `098d085` fix(fx): the last two runners deflated against a zero trial count
+- `4ff0113` feat(backtesting): exit-side fill schema for the intraday engine
 
 ## Validation
 
@@ -165,8 +217,11 @@ their own config header marks as unusable for event-time work).
    ECB/BoE/BoJ/BoC/SNB have only a 2025-2026 starter set; RBA/RBNZ are
    rule-generated dates their own config header marks as approximate. The doc's
    CB-DRIFT spec spans 8 central banks and only FOMC is currently stamped.
-4. Remaining Phase 0 close-outs: degenerate-signal tripwire, registry dedup
-   guard, trial-count migration, exit schema in the intraday fills path.
+4. **Registry hygiene, newly surfaced and NOT fixed:** 31 test-stub rows
+   (ZeroForecastStub, ParamForecastStub) sit in the production registry, and 30%
+   of all rows carry no params. Any project-wide N drawn from raw row counts
+   includes the stubs. Deciding what to do with them is a trial-accounting
+   question, not a code change, so it is left for review.
 5. Metals (XAUUSD/XAGUSD) show only 1.3-1.6x hour-of-week dispersion against
    10-19x for FX majors. Plausible for a broker-set metals spread, but it is
    unverified and worth a look before any metals intraday spec.
