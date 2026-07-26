@@ -33,11 +33,18 @@ def _write_fred(root, series_id, dates, values):
 
 
 def test_load_fx_rate_panel_percent_to_decimal(monkeypatch, tmp_path):
+    """Percent -> decimal, now under the publication lag added 2026-07-25.
+
+    DFF for day T publishes on T+1, so the value stamped 2024-01-02 is NOT
+    visible on 2024-01-02 (this assertion previously encoded same-day
+    visibility, i.e. a 1-day lookahead) and becomes usable on 2024-01-03.
+    """
     monkeypatch.setattr(fx_rates, "get_local_storage_dir", lambda: str(tmp_path))
     idx = pd.Index([dt.date(2024, 1, 2), dt.date(2024, 1, 3)])
     _write_fred(tmp_path, "DFF", [dt.date(2024, 1, 2), dt.date(2024, 1, 3)], [5.33, 5.33])
     panel = load_fx_rate_panel(["USD"], idx)
-    assert panel["USD"].iloc[0] == pytest.approx(0.0533)  # percent -> decimal
+    assert pd.isna(panel["USD"].iloc[0])                    # not yet published
+    assert panel["USD"].iloc[1] == pytest.approx(0.0533)    # percent -> decimal
 
 
 def test_load_fx_rate_panel_metals_zero(monkeypatch, tmp_path):

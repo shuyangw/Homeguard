@@ -49,6 +49,26 @@ CURRENCY_FRED_SERIES: dict[str, str] = {
 }
 _METALS = {"XAU", "XAG"}
 
+# Publication lag applied before a FRED observation may be used (added 2026-07-25).
+# FRED stamps a MONTHLY series at the FIRST of the month, but the value dated
+# 2026-05-01 is May's AVERAGE -- unknowable until May ends, and OECD/CBRT publish
+# it weeks later still. Forward-filling from the stamp date therefore let a carry
+# backtest see the current month's rate from day 1 of that month: a 1-2 month
+# lookahead on the CARRY SIGNAL ITSELF. Monthly observations are now delayed by
+# 60 days (month completes ~30d, publication ~30d). Daily policy rates (DFF,
+# ECBDFR) publish next-day and take a 1-day lag.
+_MONTHLY_PUBLICATION_LAG_DAYS = 60
+_DAILY_PUBLICATION_LAG_DAYS = 1
+
+
+def _publication_lag_days(idx: pd.DatetimeIndex) -> int:
+    """Lag for a FRED series, inferred from its observation spacing."""
+    if len(idx) < 2:            # one observation: no spacing to infer, be conservative
+        return _MONTHLY_PUBLICATION_LAG_DAYS
+    spacing = pd.Series(idx).diff().dt.days.median()
+    return (_MONTHLY_PUBLICATION_LAG_DAYS if spacing > 20
+            else _DAILY_PUBLICATION_LAG_DAYS)
+
 
 def load_fx_rate_panel(currencies: list[str], index: pd.Index) -> pd.DataFrame:
     base = Path(get_local_storage_dir()) / "alt_data" / "fred"
@@ -70,7 +90,9 @@ def load_fx_rate_panel(currencies: list[str], index: pd.Index) -> pd.DataFrame:
             continue
         raw = pd.read_parquet(fp)
         s = pd.Series(raw["value"].values, index=pd.to_datetime(raw["date"].values)) / 100.0
-        s = s.sort_index().reindex(idx_dt.union(s.index)).ffill().reindex(idx_dt)
+        s = s.sort_index()
+        s.index = s.index + pd.to_timedelta(_publication_lag_days(s.index), unit="D")
+        s = s.reindex(idx_dt.union(s.index)).ffill().reindex(idx_dt)
         s.index = index
         out[ccy] = s
     return pd.DataFrame(out)
