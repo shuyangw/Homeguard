@@ -86,11 +86,54 @@ trustworthy and the re-gate is owed.
 - **Deleted** `src/data/artifacts/spread_model.py` and its test; dropped from
   the `fx_pipeline` registry (8 builders to 7, resolves cleanly).
 
+## Phase 0 item 3: event calendar (the event-time gate)
+
+The event-time strategy class was blocked on having real release instants. It
+is now unblocked for US releases.
+
+Measured error in the calendars that existed, over 2011-2026:
+
+| calendar | rule | exact | mean error |
+|---|---|---:|---:|
+| `cpi.yaml` | 10th of each month | 14% | 3.93 days |
+| `nfp.yaml` | first Friday | 83% | 1.15 days |
+
+NFP's 24 bad months are off by exactly +7 days, i.e. the rule picked the wrong
+Friday. Tolerable for a +-7d blackout, fatal for a T+2min entry, and silent.
+
+Dates now come from the FRED releases API (BLS returns HTTP 403 to automated
+fetches). Same-month duplicates are resolved STRUCTURALLY, never by market
+outcome: selecting the bigger-moving date would bias exactly the event study the
+calendar serves. CPI's February duplicate is the annual seasonal-adjustment
+revision, 2 days before the main release in all 12 sample years.
+
+Release times are verified against our own 1-minute data, not assumed. EURUSD
+|return| in the release minute vs the same day's median minute, 2018-2023:
+
+| event | events | release | background | ratio |
+|---|---:|---:|---:|---:|
+| NFP | 69 | 17.05 bps | 0.657 | 26x |
+| CPI | 68 | 17.10 bps | 0.638 | 27x |
+| FOMC | 47 | 15.13 bps | 0.636 | 24x |
+
+The NFP profile confirms DST handling exactly: peak at 13:30 UTC in EST months,
+12:30 UTC in EDT months, both 08:30 ET.
+
+FOMC is scoped to 2013+ deliberately. Before that the statement alternated
+between 12:30 ET on press-conference meetings and ~14:15 ET otherwise, with no
+per-meeting flag available; the data shows that split, so one assumed time would
+be wrong for about half of those 13 meetings. Left out rather than mis-stamped.
+
+Still missing for full event coverage: non-US central banks (ECB/BoE/BoJ/BoC/SNB
+have only a 2025-2026 starter set, and RBA/RBNZ are rule-generated dates that
+their own config header marks as unusable for event-time work).
+
 ## Commits
 
 - `d98eb35` feat(fx): measured hour-of-week spread surface for the intraday cost path
 - `73e1ade` refactor(fx): delete the synthetic spread_model artifact, superseded by measurement
 - `19c1488` feat(fx): charge #20 London Breakout the measured hour-of-week spread
+- `f8f4b01` feat(fx): authoritative US macro release calendar with validated timestamps
 
 ## Validation
 
@@ -118,8 +161,10 @@ trustworthy and the re-gate is owed.
    multi-pair strategy that trades crosses. Same defect class as the daily cost
    model replaced on 2026-07-25, but on a path that computes its own cost
    instead of going through `fx_round_trip_usd`. Its verdict was FAIL (-0.24).
-3. **Event calendar with real timestamps** (Phase 0 item 3) is the gate on
-   whether the event-time strategy class is testable at all. Not started.
+3. **Non-US central bank calendars remain unusable for event-time work.**
+   ECB/BoE/BoJ/BoC/SNB have only a 2025-2026 starter set; RBA/RBNZ are
+   rule-generated dates their own config header marks as approximate. The doc's
+   CB-DRIFT spec spans 8 central banks and only FOMC is currently stamped.
 4. Remaining Phase 0 close-outs: degenerate-signal tripwire, registry dedup
    guard, trial-count migration, exit schema in the intraday fills path.
 5. Metals (XAUUSD/XAGUSD) show only 1.3-1.6x hour-of-week dispersion against
