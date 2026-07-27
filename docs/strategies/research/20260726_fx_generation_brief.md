@@ -61,9 +61,12 @@ Roughly 50 specs. For each:
   timestamps (FOMC from 2013). Non-US central banks do NOT. A spec depending on
   ECB / BoE / BoJ / BoC / SNB / RBA / RBNZ event times cannot be run and must
   either be dropped or scoped to the US calendar.
-- **Cost caveats**: EURGBP and GBPJPY are unmeasured and take a conservative
-  fallback; any pair outside the measured 25 gets a flat hourly shape. A spec
-  leaning on those pairs inherits real cost uncertainty and should say so.
+- **Cost caveats**: EURGBP and GBPJPY are not directly quoted in any source we
+  hold, so their cost is DERIVED from their measured USD legs (a synthetic cross
+  is the sum of its legs). That errs toward over-charging, since a
+  directly-quoted cross is tighter than crossing both legs. Any pair outside
+  those 27 gets a flat hourly shape and real cost uncertainty; a spec leaning on
+  one should say so.
 - **Data**: no options-implied, no order-book, no order-flow, no consensus
   economic forecasts. None of it is held.
 - **ML slots are NOT runnable**: the meta-label harness (triple-barrier +

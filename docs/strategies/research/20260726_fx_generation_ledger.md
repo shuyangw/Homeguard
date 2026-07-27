@@ -112,9 +112,11 @@ Facts about capability, not about results.
   2011-2026, on local disk.
 - **Costs**: MEASURED hour-of-week round-trip spread surface for 25
   pairs. Majors in liquid hours are far cheaper than the retired pip-tier
-  model assumed, and illiquid hours far dearer. Two caveats: EURGBP and
-  GBPJPY are NOT measured and take a conservative fallback, and any pair
-  outside the 25 gets a flat shape.
+  model assumed, and illiquid hours far dearer. EURGBP and GBPJPY are not
+  directly quoted anywhere we hold, so they are DERIVED from their measured
+  USD legs (a synthetic cross is the sum of its legs); that over-charges
+  slightly, since a directly-quoted cross is tighter. Any pair outside
+  those 27 gets a flat hourly shape.
 - **Events**: authoritative US CPI / NFP / FOMC release timestamps,
   DST-correct, validated against our own 1m data. FOMC covers 2013+ only.
   Non-US central banks are NOT stamped and cannot support event-time work.

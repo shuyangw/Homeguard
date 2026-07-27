@@ -88,6 +88,26 @@ _MEASURED_RT_BPS: dict[str, float] = {
 # pairs rather than a pip constant.
 _UNMEASURED_RT_BPS = 4.0
 
+# Crosses with no direct quotes in either source, DERIVED from their measured USD
+# legs. A synthetic cross is the sum of its legs, so the legs bound the cross.
+#
+# The bound errs in the safe direction: a bank quoting EURGBP directly quotes
+# TIGHTER than someone crossing EURUSD and GBPUSD, so these over-charge rather
+# than under-charge. They are still far better than the blanket 4.0 fallback,
+# which the #20 re-gate showed is not a harmless default -- GBPJPY was its
+# largest leg at 1888 entries and the fallback charged roughly 3.5x this.
+#
+# Kept in a SEPARATE table from _MEASURED_RT_BPS so provenance stays legible: a
+# derived number must never be mistaken for, or shadow, a measured one.
+DERIVED_CROSS_LEGS: dict[str, tuple[str, str]] = {
+    "EURGBP": ("EURUSD", "GBPUSD"),
+    "GBPJPY": ("GBPUSD", "USDJPY"),
+}
+_DERIVED_RT_BPS: dict[str, float] = {
+    cross: _MEASURED_RT_BPS[a] + _MEASURED_RT_BPS[b]
+    for cross, (a, b) in DERIVED_CROSS_LEGS.items()
+}
+
 # Commission charged ON TOP of the spread, per side, in bps of notional.
 # UNVERIFIED: the IBKR published schedule could not be retrieved (both pricing
 # URLs return HTTP 403 to automated fetches on 2026-07-26). 0.20 bps/side is the
@@ -148,6 +168,15 @@ def _how_tables() -> tuple[dict[str, dict[int, float]], dict[str, float]]:
     return _HOW_CACHE, _HOW_WIDEST
 
 
+def _spread_rt_bps(pair: str) -> float:
+    """Round-trip spread level, measured where possible, then derived, then flat."""
+    if pair in _MEASURED_RT_BPS:
+        return _MEASURED_RT_BPS[pair]
+    if pair in _DERIVED_RT_BPS:
+        return _DERIVED_RT_BPS[pair]
+    return _UNMEASURED_RT_BPS
+
+
 def hour_of_week_multiplier(pair: str, hour_of_week: int) -> float:
     """Spread multiplier for `pair` at `hour_of_week` (Monday 00:00 UTC = 0).
 
@@ -155,13 +184,24 @@ def hour_of_week_multiplier(pair: str, hour_of_week: int) -> float:
     a strategy trading into a market with no measured quotes should not be
     handed the average. Unmeasured pairs get a flat 1.0 -- no shape information,
     stated rather than invented.
+
+    A derived cross inherits a spread-weighted blend of its legs' shapes, which
+    is exact given the synthetic construction: the cross spread at hour h is the
+    sum of the leg spreads at hour h. Both leg multipliers are already
+    normalised to mean 1.0 and the weights sum to 1, so the blend is too.
     """
     if not 0 <= int(hour_of_week) < _HOURS_PER_WEEK:
         raise ValueError(f"hour_of_week must be in [0, {_HOURS_PER_WEEK}), got {hour_of_week}")
     by_pair, widest = _how_tables()
-    if pair not in by_pair:
-        return 1.0
-    return float(by_pair[pair].get(int(hour_of_week), widest[pair]))
+    if pair in by_pair:
+        return float(by_pair[pair].get(int(hour_of_week), widest[pair]))
+    if pair in DERIVED_CROSS_LEGS:
+        a, b = DERIVED_CROSS_LEGS[pair]
+        lvl_a, lvl_b = _MEASURED_RT_BPS[a], _MEASURED_RT_BPS[b]
+        return ((lvl_a * hour_of_week_multiplier(a, hour_of_week)
+                 + lvl_b * hour_of_week_multiplier(b, hour_of_week))
+                / (lvl_a + lvl_b))
+    return 1.0
 
 
 def fx_round_trip_bps_at(pair: str, hour_of_week: int,
@@ -172,8 +212,7 @@ def fx_round_trip_bps_at(pair: str, hour_of_week: int,
     """
     if commission_bps_per_side is None:
         commission_bps_per_side = _DEFAULT_COMMISSION_BPS_PER_SIDE
-    spread_rt = _MEASURED_RT_BPS.get(pair, _UNMEASURED_RT_BPS)
-    spread_rt *= hour_of_week_multiplier(pair, hour_of_week)
+    spread_rt = _spread_rt_bps(pair) * hour_of_week_multiplier(pair, hour_of_week)
     return spread_rt + 2.0 * float(commission_bps_per_side)
 
 
@@ -192,6 +231,5 @@ def fx_round_trip_usd(pair: str, units_traded: float, price: float,
     notional_usd = qty * price * quote_to_usd
     if commission_bps_per_side is None:
         commission_bps_per_side = _DEFAULT_COMMISSION_BPS_PER_SIDE
-    spread_rt = _MEASURED_RT_BPS.get(pair, _UNMEASURED_RT_BPS)
-    total_rt_bps = spread_rt + 2.0 * float(commission_bps_per_side)
+    total_rt_bps = _spread_rt_bps(pair) + 2.0 * float(commission_bps_per_side)
     return notional_usd * total_rt_bps / 10_000.0
