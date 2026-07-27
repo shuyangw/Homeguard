@@ -129,7 +129,7 @@ def _pair_daily_returns(pair: str, start: dt.date, end: dt.date, releases: pd.Da
         if eng.position is not None and day_bars:
             last = day_bars[-1]
             eng.flatten(last.close, last.ts, reason="eod_safety")
-            strat._book_if_closed(eng)
+            strat._book_if_closed(eng, last)
         for k, v in strat.day_r.items():
             day_r[k] = day_r.get(k, 0.0) + v
     idx = sorted(set(trading_days) | set(day_r.keys()))
@@ -191,7 +191,7 @@ def _pair_trade_log(pair: str, start: dt.date, end: dt.date, releases: pd.DataFr
         if eng.position is not None and day_bars:
             last = day_bars[-1]
             eng.flatten(last.close, last.ts, reason="eod_safety")
-            strat._book_if_closed(eng)
+            strat._book_if_closed(eng, last)
         frame = build_trade_log(pair, eng.fills, day_r=strat.day_r.get(day))
         frame.insert(0, "date", day)
         frames.append(frame)
@@ -263,7 +263,8 @@ def _wf_segments(returns: pd.Series, train_m: int, test_m: int,
 
 
 def run(config_path: str, trial_count: int, campaign_sharpes: list,
-        train_months: int = 36, test_months: int = 12, step_months: int = 12) -> Dict[str, Any]:
+        train_months: int = 36, test_months: int = 12, step_months: int = 12,
+        cost_mult: Optional[float] = None) -> Dict[str, Any]:
     import yaml
     cfg = yaml.safe_load(Path(config_path).read_text())
     strat, dts = cfg["strategy"], cfg["dates"]
@@ -272,13 +273,15 @@ def run(config_path: str, trial_count: int, campaign_sharpes: list,
     start_d, end_d = _as_date(dts["start"]), _as_date(dts["end"])
 
     override_pips = params.get("override_pips")
+    resolved_cost_mult = (float(cost_mult) if cost_mult is not None
+                          else float(params.get("cost_mult", 1.0)))
     combined = build_daily_returns(pairs, start_d, end_d,
                                    risk_frac=float(params.get("risk_frac", 0.005)),
                                    tp_fraction=float(params.get("tp_fraction", 0.5)),
                                    offset_pips=float(params.get("offset_pips", 3.0)),
                                    override_pips=(float(override_pips)
                                                   if override_pips is not None else None),
-                                   cost_mult=float(params.get("cost_mult", 1.0)))
+                                   cost_mult=resolved_cost_mult)
     segs = _wf_segments(combined, train_months, test_months, step_months)
     if len(segs) < 2:
         raise ValueError(f"need >=2 usable OOS windows, got {len(segs)}")
@@ -326,6 +329,7 @@ def run(config_path: str, trial_count: int, campaign_sharpes: list,
             "correlation_sp500": corr, "information_ratio_sp500": ir,
             "psr": psr_val, "dsr": dsr_val, "pbo": pbo_val, "skew": skew,
             "kurtosis_pearson": kurt, "trial_count": trial_count,
+            "cost_mult": resolved_cost_mult,
             "pairs": pairs, "full_days": int(combined.size),
             "oos_start": str(oos_dated.index.min().date()),
             "oos_end": str(oos_dated.index.max().date())}
@@ -346,6 +350,7 @@ def _write_report(r: Dict[str, Any], path: str = _REPORT_PATH) -> str:
              "config/costs/fx_hour_of_week_spread.csv. Scale the stress leg with the",
              "`cost_mult` param.", "",
              "| Metric | Value |", "|---|---|",
+             f"| Cost multiplier (leg) | {r['cost_mult']:.2f}x |",
              f"| OOS Sharpe (net) | {r['oos_sharpe']:.4f} |",
              f"| S&P Sharpe (aligned OOS dates) | {r['sp500_sharpe']:.4f} |",
              f"| S&P observation count | {r['sp500_n_days']} |",
@@ -424,6 +429,9 @@ def main() -> None:
                              "entry log to this path instead (e.g. "
                              "output/backtests/fx/LondonBreakout/2011-01-01_to_2026-04-01/"
                              "trades.csv)")
+    parser.add_argument("--cost-mult", type=float, default=None,
+                        help="Override the config's cost_mult for a cost-stress leg "
+                             "(e.g. 1.5). Default: use the config value.")
     args = parser.parse_args()
 
     if args.trade_log is not None:
@@ -433,7 +441,7 @@ def main() -> None:
     trial_count = base_trials + 1  # this walk-forward is one new project-wide trial
 
     with RunStatus("fx_london_breakout_walkforward", meta={"config": args.config}):
-        result = run(args.config, trial_count, campaign_sharpes)
+        result = run(args.config, trial_count, campaign_sharpes, cost_mult=args.cost_mult)
         report_path = _write_report(result, args.report)
 
     logger.info(f"[london_wf] oos_sharpe={result['oos_sharpe']:.4f} "
