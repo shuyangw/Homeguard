@@ -22,16 +22,16 @@ hour-of-week spread surface for the pairs and hours you name.
 
 ## Slot status
 
-- OPEN (never tested): **43**
+- OPEN (never tested): **42**
 - TESTED-NAIVE-ONLY (naive form failed; an enhanced form is still open): **4**
-- TESTED-FAIL / TESTED-DEAD (do not re-propose): **13**
+- TESTED-FAIL / TESTED-DEAD (do not re-propose): **14**
 
 ### OPEN slots by capability needed
 
 | capability | open slots |
 |---|---:|
 | INTRADAY | 21 |
-| READY | 7 |
+| READY | 6 |
 | ML | 6 |
 | OHLC | 4 |
 | BRACKET | 3 |
@@ -61,7 +61,7 @@ hour-of-week spread surface for the pairs and hours you name.
 | 17 | Swap-aware swing bias | READY | OPEN |
 | 18 | EM carry (EM7: MXN/ZAR/PLN/HUF/CNH/TRY/INR) | READY | TESTED-FAIL |
 | 19 | Carry-unwind detector | READY | TESTED-FAIL |
-| 20 | London open breakout | READY | OPEN |
+| 20 | London open breakout | READY | TESTED-FAIL |
 | 21 | NY continuation | INTRADAY | OPEN |
 | 22 | Tokyo JPY-cross MR | INTRADAY | OPEN |
 | 23 | WMR 16:00 fix | INTRADAY | OPEN |

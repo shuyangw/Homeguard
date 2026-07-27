@@ -43,6 +43,7 @@ _GRADE = {
     "REJECT": "TESTED-DEAD",        # killed across forms
     "FAIL": "TESTED-FAIL",
     "FAIL(cost-robust)": "TESTED-FAIL",
+    "FAIL (cost-robust)": "TESTED-FAIL",
     "FAIL-enh": "TESTED-FAIL",      # enhanced form tried and failed
     "FAIL-NAIVE": "TESTED-NAIVE-ONLY",
     "FAIL-naive": "TESTED-NAIVE-ONLY",
@@ -59,9 +60,15 @@ def parse_rows(text: str) -> list[dict]:
         cells = [c.strip() for c in line.strip().strip("|").split("|")]
         if len(cells) < 8 or not re.fullmatch(r"\d+", cells[0]):
             continue
-        grade = _GRADE.get(cells[6], "OPEN")
+        raw = cells[6]
+        if raw not in _GRADE:
+            raise ValueError(
+                f"row {cells[0]}: unrecognized gate grade {raw!r}. Defaulting an "
+                "unknown grade to OPEN silently re-opens a tested slot and invites "
+                "the generator to re-propose a dead spec. Add the token to _GRADE."
+            )
         rows.append({"id": int(cells[0]), "name": cells[1], "capability": cells[2],
-                     "needs": cells[3], "status": grade})
+                     "needs": cells[3], "status": _GRADE[raw]})
     return sorted(rows, key=lambda r: r["id"])
 
 
