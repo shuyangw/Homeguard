@@ -22,12 +22,20 @@ Cash spot, 1x, at the 1.5x cost gate against a bar of 1.1807:
 
 | capital | notional/order | cost RT | #18 Month-end | #21 Quarter-end |
 |---:|---:|---:|---:|---:|
-| $25,000 | $4,167 | 10.28 bps | -4.00 | -1.57 |
-| $50,000 | $8,333 | 5.48 bps | -0.94 | 0.19 |
-| $100,000 | $16,667 | 3.08 bps | 0.59 | 1.07 |
+| $25,000 | $4,167 | 10.28 bps | -4.00 | -0.68 |
+| $50,000 | $8,333 | 5.48 bps | -0.94 | 0.76 |
+| $100,000 | $16,667 | 3.08 bps | 0.59 | 1.48 |
 
-Capital required to clear on cash spot: **$163,855** for #18, **$113,931** for
-#21. At $50k of cash spot, commission alone exceeds the entire gross edge.
+Capital required to clear on cash spot: **$163,855** for #18, **$70,932** for
+#21. At $50k of cash spot #18 is deeply negative -- commission alone exceeds its
+entire gross edge -- and #21 reaches only 0.76 against a 1.18 bar.
+
+CORRECTION (same day): an earlier version of this table used inferred
+parameters for #21 (edge 9.0 / vol 20.0) instead of its pre-registered ones
+(edge 12.0 / vol 24.5). The headline is unchanged -- both fail at $50k cash
+spot -- but #21's figures were understated, and it does clear at $100k, which
+the earlier table denied. Read parameters from the locked spec, never infer
+them from surrounding prose.
 
 The pre-registered combination spec is **VOID** by its own locked rule, which
 required K >= 3 members. That clause was written before any component existed

@@ -1,0 +1,48 @@
+# Specs routed to FORWARD PAPER by the statistical-viability screen.
+#
+# These consume no trials. They are here because they cannot be settled by
+# another backtest: #18 and #21 clear the deflated bar on their own if-true
+# arithmetic but cannot be traded at this account's order size, since a cash-only
+# spot FX account at $50k puts roughly $8,333 behind each of six concurrent
+# orders, where IBKR's $2 per-order minimum dominates the entire gross edge.
+#
+# Evidence therefore has to come from a sample that does not exist yet.
+# src/backtesting/validation/forward_paper.py refuses to record any observation
+# dated on or before `locked_on`, which is the only thing separating this from a
+# backtest that never declared a trial.
+#
+# Both fire rarely by construction (12 and 4 events a year), so this is a
+# multi-year instrument. That is the argument for starting it now rather than
+# when it becomes interesting.
+
+specs:
+  - name: fx-month-end-fix
+    locked_on: 2026-07-26
+    source: docs/strategies/research/20260726_fx_wave3_slate_prereg.md (spec 18)
+    cadence: last business day of each month
+    events_per_year: 12
+    params:
+      pairs: [EURUSD, USDJPY, GBPUSD, AUDUSD, USDCAD, USDCHF]
+      entry_utc: "14:00"
+      exit_utc: "16:05"
+      gross_edge_bps: 6.0
+      per_trade_vol_bps: 20.0
+      signal: sign of the month's relative equity return (rebalancing proxy)
+
+  - name: fx-quarter-end-fix
+    locked_on: 2026-07-26
+    source: docs/strategies/research/20260726_fx_wave3_slate_prereg.md (spec 21)
+    cadence: last business day of Mar / Jun / Sep / Dec
+    events_per_year: 4
+    params:
+      pairs: [EURUSD, USDJPY, GBPUSD, AUDUSD, USDCAD, USDCHF]
+      entry_utc: "14:00"
+      exit_utc: "16:05"
+      gross_edge_bps: 12.0
+      per_trade_vol_bps: 24.5
+      signal: sign of the quarter's relative equity return (rebalancing proxy)
+
+# Capital at which each would instead become gate-able on cash spot, for
+# reference, computed at the 1.5x cost gate against SR_zero = 1.1807:
+#   fx-month-end-fix    $163,855
+#   fx-quarter-end-fix   $70,932
