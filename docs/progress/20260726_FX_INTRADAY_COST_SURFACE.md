@@ -176,6 +176,70 @@ reason and discarding it at the Fill boundary. Exits carry entry_ts/entry_price
 so a round trip is reconstructable from the exit row alone; entries carry NaN
 excursions rather than zero, because zero would be a claim.
 
+## #20 re-gate (dispatched to strategy-lead)
+
+Verdict: **FAIL, and now cost-invariant.** OOS Sharpe -1.87 at 1.0x, -2.71 at
+1.5x. The zero-cost BOUND is the load-bearing number: with costs eliminated
+entirely, OOS is still -0.14 and gross pre-cost P&L is +43.9R over 6162 trades
+across 12 years. There is no gross edge, so the FAIL no longer depends on any
+cost assumption.
+
+My briefed premise was wrong on direction. I told the agent the cost fix runs
+pessimistic so the number should improve from -1.60; it worsened, because
+GBPJPY (the largest leg, 1888 entries) and EURGBP are in NEITHER measured table
+and take the conservative 4.0 bps fallback. GBPJPY went 1.55 -> 4.40 bps and the
+book average rose 1.30x. The agent declined the tempting fix (measure those two
+pairs and re-run, a degree of freedom spent chasing a better number) and ran the
+strictly stronger zero-cost bound instead, which makes the question moot.
+
+Trial accounting: does NOT increment N (stays 141). Same pairs, params, window
+and gate; no human chose a setting after seeing a result; the apparatus changes
+were platform-wide and gate-TIGHTENING. Counting a bug fix as a trial penalises
+fixing bugs. A flip to PASS was pre-committed to require counting it.
+
+## Phase 2 prep
+
+- **Blind-safe ledger** (`scripts/strategy/build_generation_ledger.py`). The
+  tracker cannot be handed to a generator: its Notes column is full of OOS
+  scores. The ledger exposes slot id, name, capability and a coarse status only.
+  The WEAK grade is deliberately collapsed into TESTED-FAIL, because "this one
+  nearly passed" is exactly what invites aiming at the near-miss.
+- **Combination spec LOCKED** before any component exists, as a RULE not a list:
+  every wave spec that cleared the viability screen and was run, equal weighted,
+  static, one trial, and a component is NOT dropped for performing badly.
+  Registered prediction: FAIL.
+- **Generation brief** naming the files the fresh context must not read.
+- Slot arithmetic: 43 OPEN + 4 naive-only, of which 40 are runnable (ML needs an
+  unbuilt harness, DATA needs data we lack). A ~50 slate needs ~10 novel specs;
+  the brief licenses a SHORTER slate over filler.
+
+## Two defects in this session's own work, found by the re-gate
+
+1. **I broke the runner.** `19c1488` made `bar` required on `_book_if_closed`
+   and I updated the three call sites inside the strategy module while missing
+   TWO in the runner. `py_compile` does not catch arity errors and the tests
+   drive the strategy directly, never through the runner. The agent had to fix
+   it before anything could run.
+2. **`trade_id` was degenerate** -- 2 distinct values across 14838 fill rows.
+   The counter was engine-local but the runner builds a fresh engine per day.
+   My test passed by using ONE engine; the deployment uses one per day. Fixed
+   with a module-level sequence plus a test that uses three separate engines.
+
+Both are the same failure mode, and it is now the third occurrence this session:
+a signature or state change that passes its unit test while being wrong in situ,
+because the test does not reproduce the caller's topology.
+
+## Governance note
+
+I dispatched a git-writing subagent into the working tree I was committing in.
+Its commits landed on `main` interleaved with mine (`8cbd84a`, then my
+`a8292ac`, then its `fb169df`), and it reported them as being on a branch
+`regate/fx-london-breakout` that does not exist, and attributed my commit to
+"another session". Nothing was lost and both its commits are clean (no
+settings.ini, no sentinel, verified), but I pushed its pre-registration
+unreviewed as a side effect. My own stored memory warns against exactly this.
+Use an isolated worktree for future agent-driven runs.
+
 ## Commits
 
 - `d98eb35` feat(fx): measured hour-of-week spread surface for the intraday cost path
@@ -186,6 +250,12 @@ excursions rather than zero, because zero would be a claim.
 - `fee7d85` feat(experiments): duplicate-spec detection for the registry
 - `098d085` fix(fx): the last two runners deflated against a zero trial count
 - `4ff0113` feat(backtesting): exit-side fill schema for the intraday engine
+- `230ca1a` fix(backtesting): the trial count silently shrank when the registry was locked
+- `8cbd84a` test(fx): pre-register the #20 re-gate (strategy-lead)
+- `a8292ac` feat(backtesting): formal statistical-viability screen
+- `fb169df` test(fx): #20 re-gate results -- FAIL, cost-robust (strategy-lead)
+- `3e22171` fix(backtesting): trade_id collided across engines
+- `d5b4386` docs(fx): Phase 2 prep -- ledger, combination spec, generation brief
 
 ## Validation
 
