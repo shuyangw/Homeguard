@@ -87,3 +87,29 @@ def test_screen_is_stricter_when_the_spec_trades_illiquid_hours():
     liquid = screen_spec(hours_of_week=[2 * 24 + 13], **common)
     illiquid = screen_spec(hours_of_week=[2 * 24 + 21], **common)
     assert liquid.if_true_sharpe > illiquid.if_true_sharpe
+
+
+def test_small_notional_raises_the_screened_cost():
+    """The $2 per-order commission minimum binds below $100k of notional."""
+    common = dict(pairs=["EURUSD"], hours_of_week=[2 * 24 + 13])
+    big = expected_cost_bps(**common, notional_usd=500_000)
+    small = expected_cost_bps(**common, notional_usd=10_000)
+    assert small > big
+
+
+def test_n_legs_multiplies_the_charge():
+    common = dict(pairs=["EURUSD"], hours_of_week=[2 * 24 + 13])
+    assert expected_cost_bps(**common, n_legs=2) == pytest.approx(
+        2 * expected_cost_bps(**common))
+
+
+def test_n_legs_below_one_raises():
+    with pytest.raises(ValueError):
+        expected_cost_bps(["EURUSD"], [2 * 24 + 13], n_legs=0)
+
+
+def test_defaults_are_the_flattering_assumption_and_are_documented():
+    """Omitting notional and legs must not silently change existing results."""
+    common = dict(pairs=["EURUSD"], hours_of_week=[2 * 24 + 13])
+    assert expected_cost_bps(**common) == pytest.approx(
+        expected_cost_bps(**common, notional_usd=100_000, n_legs=1))

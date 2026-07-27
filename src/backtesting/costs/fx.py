@@ -108,13 +108,36 @@ _DERIVED_RT_BPS: dict[str, float] = {
     for cross, (a, b) in DERIVED_CROSS_LEGS.items()
 }
 
-# Commission charged ON TOP of the spread, per side, in bps of notional.
-# UNVERIFIED: the IBKR published schedule could not be retrieved (both pricing
-# URLs return HTTP 403 to automated fetches on 2026-07-26). 0.20 bps/side is the
-# widely-cited IDEALPRO figure and is used as a documented DEFAULT, not a checked
-# fact. Verify against the current schedule before relying on a marginal result,
-# and override via `commission_bps_per_side` rather than editing this constant.
-_DEFAULT_COMMISSION_BPS_PER_SIDE = 0.20
+# Commission charged ON TOP of the spread, per side. CONFIRMED 2026-07-26 from
+# the account's own schedule: 0.20 bps of trade value, with a $2 USD MINIMUM per
+# order, at the entry tier (under $1bn monthly volume).
+#
+# The minimum is the term that bites. It stops binding only above $100,000 of
+# notional per order, and a retail-sized intraday trade sits well below that: at
+# $25k capital with a 33-pip stop at 0.5% risk the notional is about $48k, so the
+# true commission is roughly TWICE the headline rate. Commission is already the
+# dominant cost component for tight majors -- larger than the spread itself -- so
+# ignoring the minimum under-charges every small order, and under-charges
+# many-small-trades strategies hardest. That is exactly an intraday spec's shape.
+COMMISSION_RATE_BPS = 0.20
+COMMISSION_MIN_USD = 2.0
+_DEFAULT_COMMISSION_BPS_PER_SIDE = COMMISSION_RATE_BPS
+
+
+def effective_commission_bps(notional_usd: Optional[float],
+                             rate_bps: float = COMMISSION_RATE_BPS,
+                             min_usd: float = COMMISSION_MIN_USD) -> float:
+    """Per-side commission in bps once the per-order minimum is applied.
+
+    `notional_usd=None` means the order size is unknown, in which case the
+    headline rate is returned. That is a statement of ignorance, not a claim
+    that the minimum does not bind: a caller that knows its size should pass it.
+    """
+    if notional_usd is None:
+        return rate_bps
+    if notional_usd <= 0:
+        raise ValueError(f"notional_usd must be positive, got {notional_usd}")
+    return max(notional_usd * rate_bps / 1e4, min_usd) / notional_usd * 1e4
 
 # Per-SIDE half-spread in bps of USD notional for emerging-market currencies.
 # EM pairs are far wider than the G10 major/minor pip tiers and the pip path
@@ -205,13 +228,17 @@ def hour_of_week_multiplier(pair: str, hour_of_week: int) -> float:
 
 
 def fx_round_trip_bps_at(pair: str, hour_of_week: int,
-                         commission_bps_per_side: Optional[float] = None) -> float:
+                         commission_bps_per_side: Optional[float] = None,
+                         notional_usd: Optional[float] = None) -> float:
     """Round-trip cost in bps of notional at a specific hour of the week.
 
-    Only the spread scales with the hour; commission is flat per side.
+    Only the spread scales with the hour. Commission is flat per side in bps,
+    but its EFFECTIVE rate rises as order size falls, because of the $2 per-order
+    minimum: pass `notional_usd` to have that applied. An explicit
+    `commission_bps_per_side` overrides both.
     """
     if commission_bps_per_side is None:
-        commission_bps_per_side = _DEFAULT_COMMISSION_BPS_PER_SIDE
+        commission_bps_per_side = effective_commission_bps(notional_usd)
     spread_rt = _spread_rt_bps(pair) * hour_of_week_multiplier(pair, hour_of_week)
     return spread_rt + 2.0 * float(commission_bps_per_side)
 

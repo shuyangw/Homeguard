@@ -58,21 +58,42 @@ def if_true_sharpe(trades_per_year: float, gross_edge_bps: float,
 
 
 def expected_cost_bps(pairs: Sequence[str], hours_of_week: Sequence[int],
-                      commission_bps_per_side: float | None = None) -> float:
-    """Mean measured round-trip cost over the pairs and hours a spec trades."""
+                      commission_bps_per_side: float | None = None,
+                      notional_usd: float | None = None,
+                      n_legs: int = 1) -> float:
+    """Mean round-trip cost over the pairs and hours a spec trades.
+
+    `notional_usd` applies IBKR's $2 per-order commission minimum, which binds
+    below $100k of notional and is the dominant cost term for a retail-sized
+    order. Omitting it assumes the minimum never binds, which flatters any
+    small-order strategy.
+
+    `n_legs` multiplies the charge: a relative-value spec crossing two spreads
+    pays two round trips, and charging one flatters it by half.
+    """
     if not pairs or not hours_of_week:
         raise ValueError("expected_cost_bps needs at least one pair and one hour")
-    costs = [fx_round_trip_bps_at(p, h, commission_bps_per_side)
+    if n_legs < 1:
+        raise ValueError(f"n_legs must be >= 1, got {n_legs}")
+    costs = [fx_round_trip_bps_at(p, h, commission_bps_per_side, notional_usd)
              for p in pairs for h in hours_of_week]
-    return sum(costs) / len(costs)
+    return n_legs * sum(costs) / len(costs)
 
 
 def screen_spec(*, name: str, trades_per_year: float, gross_edge_bps: float,
                 per_trade_vol_bps: float, pairs: Sequence[str],
                 hours_of_week: Sequence[int], sr_zero: float,
-                commission_bps_per_side: float | None = None) -> ViabilityResult:
-    """Screen one spec against the current deflated bar."""
-    cost = expected_cost_bps(pairs, hours_of_week, commission_bps_per_side)
+                commission_bps_per_side: float | None = None,
+                notional_usd: float | None = None,
+                n_legs: int = 1) -> ViabilityResult:
+    """Screen one spec against the current deflated bar.
+
+    State `notional_usd` (typical order size) and `n_legs` (spreads crossed per
+    round trip). Both default to the flattering assumption, so omitting them
+    understates cost.
+    """
+    cost = expected_cost_bps(pairs, hours_of_week, commission_bps_per_side,
+                             notional_usd, n_legs)
     sharpe = if_true_sharpe(trades_per_year, gross_edge_bps, cost, per_trade_vol_bps)
     return ViabilityResult(name=name, if_true_sharpe=sharpe, sr_zero=sr_zero,
                            cost_bps=cost, margin=sharpe - sr_zero)
