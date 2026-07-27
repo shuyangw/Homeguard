@@ -1,6 +1,11 @@
 # FX 60-Strategy Catalog Campaign -- Synthesis (Wave 1) - 2026-07-19
 
 ## Status
+SUPERSEDED (2026-07-26) by `20260726_fx_campaign_synthesis_final.md`, which
+carries the corrected bar, the apparatus sweep, and wave 3. The wave-1/2
+verdicts below stand; the framing does not, because several figures quoted here
+predate defect fixes that moved them.
+
 RESOLVED (2026-07-19): the campaign is CLOSED. This document was written as an
 interim synthesis after Wave 1; Wave 2 then ran and ALL 6 Wave 2 strategies also
 failed. Across two waves, 12 gated strategies spanning 8+ distinct mechanisms all
