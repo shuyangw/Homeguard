@@ -123,3 +123,19 @@ def test_entry_fill_excursions_are_nan_not_zero():
     eng.add_order(Order(side="buy", kind="stop", trigger=100.0, qty=1.0))
     f = eng.match_resting_orders(_bar(1, 100.0, 101.0, 99.5, 100.5))[0]
     assert math.isnan(f.mae) and math.isnan(f.mfe)
+
+
+def test_trade_ids_are_unique_ACROSS_engines():
+    """Reproduces the deployment topology, which the single-engine test did not.
+
+    The runner builds a fresh OrderEngine per FX trading day. With an
+    engine-local counter every day's first position took the same trade_id: a
+    real run produced 2 distinct values across 14838 fill rows.
+    """
+    ids = []
+    for _ in range(3):
+        eng = OrderEngine()
+        _long_at(eng)
+        eng.flatten(100.0, _T0 + dt.timedelta(minutes=1))
+        ids.append([f.trade_id for f in eng.fills if f.reason][0])
+    assert len(set(ids)) == 3, f"trade_ids collided across engines: {ids}"

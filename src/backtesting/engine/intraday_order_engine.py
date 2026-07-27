@@ -9,6 +9,7 @@ Instrument-agnostic; a strategy drives it via on_bar callbacks (see run()).
 from __future__ import annotations
 
 import datetime as dt
+import itertools
 from dataclasses import dataclass, field
 from typing import NamedTuple, Optional
 
@@ -41,6 +42,12 @@ class Fill(NamedTuple):
 
 
 EXIT_ORDER_ID = -1  # engine-managed position exit (not a resting order)
+
+# Trade ids must be unique across ENGINES, not just within one. Callers build a
+# fresh OrderEngine per FX trading day, so an engine-local counter gave every
+# day's first position the same id -- a real run produced 2 distinct values
+# across 14838 fill rows, making the field useless for round-trip linkage.
+_TRADE_ID_SEQ = itertools.count(1)
 
 
 @dataclass
@@ -140,11 +147,10 @@ def _add_oco(self, a: "Order", b: "Order") -> int:  # noqa: E301  (attached belo
 
 def _open_position(self, side, qty, entry_price, entry_ts, stop, target,
                    tp_fraction, trail_dist):
-    self._next_id += 1
     self.position = Position(side=side, qty=qty, entry_price=entry_price,
                              entry_ts=entry_ts, stop=stop, target=target,
                              tp_fraction=tp_fraction, trail_dist=trail_dist,
-                             extreme=entry_price, trade_id=self._next_id)
+                             extreme=entry_price, trade_id=next(_TRADE_ID_SEQ))
     return self.position
 
 
