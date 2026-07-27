@@ -240,6 +240,34 @@ settings.ini, no sentinel, verified), but I pushed its pre-registration
 unreviewed as a side effect. My own stored memory warns against exactly this.
 Use an isolated worktree for future agent-driven runs.
 
+## Wave 3 resolution: zero runnable, zero trials
+
+The slate (49 specs, generated blind in a separate session) resolved to NO
+runnable specs, and no backtest was run. N stays 141, bar unmoved at 1.1807.
+
+The viability screen routed 47 before any data was touched. The 2 survivors were
+then killed by a cost term modelled the same day: IBKR's $2 per-order commission
+minimum, confirmed from the account's own schedule. It stops binding above
+$100k of notional per order; both survivors trade 6 majors concurrently, and the
+account is cash-only (no ECP, so no leveraged spot FX). At $50k that is $8,333
+per order, where commission alone exceeds the entire gross edge.
+
+Cash spot would need $163,855 of capital for #18 and $113,931 for #21.
+
+The pre-registered combination spec is VOID by its own K >= 3 rule, written
+before any component existed so it could not be renegotiated afterwards.
+
+SCOPE: this is an ACCESS and SIZE constraint, not a market finding. Nothing was
+backtested, so it says nothing about whether the mechanisms are real. Stating it
+as "month-end fix flow does not work" would be exactly the over-generalisation
+the North Star warns against.
+
+Live alternative: CME FX futures dissolve the constraint (one 6E is ~$135k
+notional, above the minimum, ~0.185 bps/side). The repo already carries all 8 FX
+futures contract specs, the cost model, the asset-class mapping, the futures
+engine and a walk-forward runner. It is a different instrument, so it needs its
+own pre-registration and its own trials.
+
 ## Commits
 
 - `d98eb35` feat(fx): measured hour-of-week spread surface for the intraday cost path
