@@ -50,6 +50,22 @@ def _pbo_via_splits_as_configs(oos_returns_by_split: Sequence[np.ndarray]) -> fl
     Sharpe) when there are too few observations/splits for the real CSCV
     machinery to produce a fold.
     """
+    # STUB-SPLIT GUARD (2026-07-26). CSCV needs equal-length columns, so every
+    # column is truncated to the SHORTEST. A single anomalously short split
+    # therefore discards most of every other split's data before CSCV runs --
+    # the same defect fixed in walkforward_common._compute_pbo on 2026-07-25.
+    # Drop splits shorter than half the median length FIRST, then truncate.
+    all_lengths = [len(np.asarray(r)) for r in oos_returns_by_split]
+    med = float(np.median(all_lengths)) if all_lengths else 0.0
+    kept = [r for r in oos_returns_by_split
+            if len(np.asarray(r)) >= 0.5 * med]
+    dropped = len(oos_returns_by_split) - len(kept)
+    if dropped:
+        logger.warning(
+            f"PBO stub-split guard dropped {dropped} of {len(oos_returns_by_split)} "
+            f"splits shorter than half the median length ({med:.0f})")
+    oos_returns_by_split = kept if len(kept) >= 2 else oos_returns_by_split
+
     lengths = [len(np.asarray(r)) for r in oos_returns_by_split]
     n_splits = len(oos_returns_by_split)
     min_len = min(lengths) if lengths else 0

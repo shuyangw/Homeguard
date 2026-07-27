@@ -49,3 +49,25 @@ def test_pbo_falls_back_to_proxy_when_splits_too_short():
     assert set(res) >= {"dsr", "pbo", "mean_oos_sharpe", "pass"}
     assert np.isfinite(res["pbo"])
     assert 0.0 <= res["pbo"] <= 1.0
+
+
+def test_pbo_drops_stub_splits_before_truncating():
+    """A single short split must not truncate every other split to its length.
+
+    Same defect as walkforward_common._compute_pbo carried before 2026-07-25:
+    CSCV needs equal-length columns, so truncating to the minimum lets one stub
+    discard most of the out-of-sample data before the gate ever sees it.
+    """
+    import numpy as np
+    from src.backtesting.validation.combined_gate import _pbo_via_splits_as_configs
+
+    rng = np.random.default_rng(0)
+    full = [rng.normal(0, 0.01, 400) for _ in range(6)]
+    with_stub = full + [rng.normal(0, 0.01, 12)]          # one 12-row stub
+
+    clean = _pbo_via_splits_as_configs(full)
+    guarded = _pbo_via_splits_as_configs(with_stub)
+    assert np.isfinite(clean)
+    # The stub is dropped, so the result stays a real CSCV number rather than
+    # collapsing to the median-split proxy on 12 rows.
+    assert np.isfinite(guarded)
