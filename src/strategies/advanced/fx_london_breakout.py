@@ -229,6 +229,17 @@ class LondonBreakoutStrategy:
             fill.side, fill.qty, fill.price, bar.ts, stop, target,
             self.tp_fraction, self._trail_dist)
 
+    def finalize_day(self, engine, bar):
+        """Close out anything still open at the FX day boundary, and book it.
+
+        The runner used to do this itself and reach into `_book_if_closed`. How
+        a position is closed at the boundary is the strategy's decision, so it
+        lives here and the day-loop harness just calls it.
+        """
+        if engine.position is not None:
+            engine.flatten(bar.close, bar.ts, reason="eod_safety")
+            self._book_if_closed(engine, bar)
+
     def _book_if_closed(self, engine, bar):
         if self._pos is None or engine.position is self._pos:
             return

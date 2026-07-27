@@ -36,6 +36,9 @@ from src.backtesting.benchmark import (
 from src.backtesting.data.fx_backtest_loader import load_fx_daily_panel
 from src.backtesting.data.fx_intraday_loader import load_fx_1min
 from src.backtesting.engine.intraday_order_engine import Bar, OrderEngine
+from src.backtesting.engine.intraday_walkforward import (
+    bars_for_day as _bars_for_day, fx_day_values as _fx_day_values,
+    pair_daily_returns)
 from src.backtesting.statistics.dsr import dsr
 from src.backtesting.statistics.psr import psr
 from src.backtesting.utils.indicators import Indicators
@@ -45,20 +48,6 @@ from src.strategies.advanced.fx_london_breakout import LondonBreakoutStrategy
 from src.utils import logger
 
 _REPORT_PATH = "docs/reports/fx/FX_LONDON_BREAKOUT_WALK_FORWARD.md"
-
-
-def _fx_day_values(utc_index: pd.DatetimeIndex) -> np.ndarray:
-    """FX trading day (17:00-ET boundary) for a tz-aware UTC index, DST-safe.
-
-    Mirrors ``fx_clock.fx_trading_day`` (shift NY wall time by +7h so 17:00 ET
-    becomes local midnight, then take the calendar date), but operates on
-    tz-NAIVE wall times so the +7h shift never re-localizes into a spring-forward
-    gap. ``fx_clock``'s ``DateOffset(hours=7)`` on the tz-aware index raises
-    NonExistentTimeError on 1m data crossing the DST gap (e.g. 2021-03-14 02:14).
-    """
-    ny_naive = utc_index.tz_convert("America/New_York").tz_localize(None)
-    shifted = ny_naive + pd.Timedelta(hours=7)
-    return np.asarray(pd.DatetimeIndex(shifted).date)
 
 
 def _daily_ohlc_from_panel(pair: str, start: dt.date, end: dt.date) -> Optional[pd.DataFrame]:
@@ -96,44 +85,25 @@ def _daily_atr_prior(pair: str, bars_1m: pd.DataFrame,
     return {d: float(v) for d, v in prior.items() if pd.notna(v)}
 
 
-def _bars_for_day(sub: pd.DataFrame) -> List[Bar]:
-    ts = sub.index.to_pydatetime()
-    o = sub["open"].to_numpy(dtype=float)
-    h = sub["high"].to_numpy(dtype=float)
-    lo = sub["low"].to_numpy(dtype=float)
-    c = sub["close"].to_numpy(dtype=float)
-    return [Bar(ts[i], o[i], h[i], lo[i], c[i]) for i in range(len(sub))]
-
-
 def _pair_daily_returns(pair: str, start: dt.date, end: dt.date, releases: pd.DataFrame,
                         risk_frac: float, tp_fraction: float, offset_pips: float,
                         override_pips: Optional[float] = None,
-                        cost_mult: float = 1.0) -> pd.Series:
+                        cost_mult: float = 1.0,
+                        collect_fills: Optional[List[Dict[str, Any]]] = None) -> pd.Series:
     bars = load_fx_1min(pair, start, end)
     if bars.empty:
         logger.warning(f"[london_wf] no 1m data for {pair}; contributing empty series")
         return pd.Series(dtype=float)
     atr_prior = _daily_atr_prior(pair, bars, start, end)
-    fxday = _fx_day_values(bars.index)
-    day_r: Dict[dt.date, float] = {}
-    trading_days: List[dt.date] = []
-    for day, sub in bars.groupby(fxday):
-        trading_days.append(day)
-        strat = LondonBreakoutStrategy(pair, atr_d1=atr_prior, risk_frac=risk_frac,
-                                       tp_fraction=tp_fraction, offset_pips=offset_pips,
-                                       releases=releases, override_pips=override_pips,
-                                       cost_mult=cost_mult)
-        eng = OrderEngine()
-        day_bars = _bars_for_day(sub)
-        eng.run(day_bars, strat)
-        if eng.position is not None and day_bars:
-            last = day_bars[-1]
-            eng.flatten(last.close, last.ts, reason="eod_safety")
-            strat._book_if_closed(eng, last)
-        for k, v in strat.day_r.items():
-            day_r[k] = day_r.get(k, 0.0) + v
-    idx = sorted(set(trading_days) | set(day_r.keys()))
-    return pd.Series({d: risk_frac * day_r.get(d, 0.0) for d in idx})
+
+    def make_strategy():
+        return LondonBreakoutStrategy(pair, atr_d1=atr_prior, risk_frac=risk_frac,
+                                      tp_fraction=tp_fraction, offset_pips=offset_pips,
+                                      releases=releases, override_pips=override_pips,
+                                      cost_mult=cost_mult)
+
+    return pair_daily_returns(bars, make_strategy, risk_frac, pair=pair,
+                              collect_fills=collect_fills)
 
 
 _TRADE_LOG_COLS = ["pair", "ts", "side", "price", "qty", "order_id", "day_r",
