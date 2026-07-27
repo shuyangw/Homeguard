@@ -15,6 +15,20 @@
 # multi-year instrument. That is the argument for starting it now rather than
 # when it becomes interesting.
 
+# EXECUTABILITY (determined 2026-07-26, before the first observation):
+# the registered construction is NOT executable in this cash account. The specs
+# enter in either direction, and a cash account cannot hold a negative foreign
+# balance -- that is a leveraged spot position and there is no ECP status. Only
+# the long-foreign leg is executable, which halves the trade count and raises the
+# capital each spec needs: month-end $163,855 -> $344,718, quarter-end
+# $70,932 -> $136,911.
+#
+# Consequence: every event is marked on BOTH bases (mechanism / deployable) per
+# docs/strategies/research/20260726_forward_paper_protocol.md. The construction is
+# NOT quietly narrowed to what the account could have done.
+
+protocol: docs/strategies/research/20260726_forward_paper_protocol.md
+
 specs:
   - name: fx-month-end-fix
     locked_on: 2026-07-26

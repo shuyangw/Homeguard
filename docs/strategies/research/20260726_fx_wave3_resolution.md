@@ -20,6 +20,11 @@ spot FX at IBKR).
 
 Cash spot, 1x, at the 1.5x cost gate against a bar of 1.1807:
 
+Bar provenance, stated once: the trial-Sharpe dispersion is v=0.4293 over 130
+observed trials. SR_zero = 1.1372 at N=141 (the count today) and
+1.1807 at N=141+50 (the count a 50-spec wave would face, which is the
+bar every wave-3 spec was screened against).
+
 | capital | notional/order | cost RT | #18 Month-end | #21 Quarter-end |
 |---:|---:|---:|---:|---:|
 | $25,000 | $4,167 | 10.28 bps | -4.00 | -0.68 |
@@ -92,8 +97,8 @@ The repo already carries the apparatus:
 
 Two honest caveats. **Micros do not help**: M6E at $13,500 notional costs about
 1.85 bps/side, as bad as small spot orders, so this needs full contracts. And
-six full contracts on $50k is roughly 16x notional leverage; margin permits it
-(about $15k initial) but the binding constraint becomes risk, not cost.
+six full contracts on $50k is 11.6x notional leverage ($578,375 of actual
+per-root notional, not 6 x 6E); margin permits it (about $15k initial) but the binding constraint becomes risk, not cost.
 
 This is a **different instrument, so it needs its own pre-registration and its
 own trials.** The locked spot specs must not be quietly re-pointed at futures.

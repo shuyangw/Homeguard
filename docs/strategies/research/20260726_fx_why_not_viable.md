@@ -123,6 +123,11 @@ This is the finding that ends the campaign, and it is not empirical.
 - Deflated bar: **SR_zero = 1.1372** at N=141, rising with every trial
 - Realistic ceiling for a single daily G10 factor: **0.3-0.6** net Sharpe
 
+Bar provenance, stated once: the trial-Sharpe dispersion is v=0.4293 over 130
+observed trials. SR_zero = 1.1372 at N=141 (the count today) and
+1.1807 at N=141+50 (the count a 50-spec wave would face, which is the
+bar every wave-3 spec was screened against).
+
 The Deflated Sharpe Ratio raises the bar as the search widens, because the best
 of many trials is expected to look good by chance. After 141 honestly-counted
 trials the bar sits near 1.14. A single factor drawn from the FX literature
