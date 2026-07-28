@@ -295,7 +295,7 @@ Registered before any affected test runs, per the chain's amendment rule.
 | 4 | M7 build vs buy | **BUILD**, follows from (3). Dividend input from `src/data/yfinance/fundamentals.py` (already in repo), not ORATS `div_assumption`. Needed by Wave 1 (027, 047), so it is Phase-2 critical path, not deferrable |
 | 5 | ThetaData subscription (Phase 0.10) | **ANSWERED: cancelled.** Phase 0.10 closed. Consequences: (a) the 2026-03 -> present refresh (V9) is **not executable** — data edge is 2026-02 across all 31 roots, confirmed; a **live-edge caveat** stands for current-premium sizing (015/019); (b) universe top-up download is **dead** as a route |
 | 6 | Legacy `options_1min/` (V12) | **MOOT — the store does not exist on this machine.** `H:\Stock_Data\options\` contains only `_logs`, `chains` (empty), `gex_daily` (empty), `options_combined`. V12 closes with no action |
-| 1 | OPT-021 exit version | **OPEN.** Not needed until Wave 2. Recommendation stands: restore **v1.0** (T+1 open) — the amendment to v1.1 was forced by an unmeasurable open mark, and V1/V3 show it is measurable |
+| 1 | OPT-021 exit version | **RESOLVED 2026-07-27: v1.0 (T+1 open exit).** Restores the originally pre-registered pure-crush hypothesis; the amendment to v1.1 was forced by an unmeasurable open mark, and V1/V3 (100% quote population, 0.000% crossed) show it is measurable. **v1.1 is RETIRED with its own ledger row, not deleted. Exactly one version may be tested** — running both would be two trials on one mechanism. Registered before any earnings data is touched, per the chain's amendment rule. **Consequence to expect:** OPT-021 exits into the open auction, the widest spreads of the day, on 4 legs — **stressed-tier costs are mandatory** and this will be the most cost-sensitive candidate on the slate. If the sign flips inside the mandatory +/-50% band it is reported as **cost-indeterminate, not a result** |
 | 2 | Universe breadth | **OPEN — but constrained.** Route (b) ThetaData top-up is dead (5); route (c) ORATS is deferred (3). Only **(a) narrow to on-disk roots** remains available without new spend. **Wave 1 is unaffected either way** (runs on `U_INDEX` + on-disk megacaps). Bites only at: 021 (still ~240-400 usable events on ~12 on-disk singles — workable, not crippled), and 026/031/045 (Wave-4 shelf, C+/B- priors, expected screen casualties) |
 
 ### Corrected ORATS dependency map (supersedes any earlier framing)
@@ -316,9 +316,11 @@ need is likewise Wave 1 (027, 047), which is why M7 is Phase-2 critical path.
 
 ## 5b. Decisions still open
 
-Items 1 (OPT-021 exit version) and 2 (universe breadth) above. Neither blocks Phase 0,
-Phase 1, or Wave 1. Item 1 is needed before Wave 2 touches earnings data; item 2 before
-Wave 2 (021) and Wave 4 (026/031/045).
+Only item 2 (universe breadth) remains. It does not block Phase 0, Phase 1, or Wave 1 —
+it is needed before Wave 2's OPT-021 and Wave 4's 026/031/045. With ThetaData top-up dead
+and ORATS deferred, **narrowing to the 31 on-disk roots is the only route available without
+new spend**; OPT-021 retains roughly 240-400 usable earnings events on the ~12 on-disk
+singles under that route.
 
 ## 6. Honest assessment
 
