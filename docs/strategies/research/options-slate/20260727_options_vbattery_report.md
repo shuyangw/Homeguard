@@ -764,3 +764,80 @@ This is an apparatus correction, not a specification change.
 **Run-status** -- `C:\Users\qwqw1\Dropbox\cs\github\Homeguard\output\run_status\`
 
 *No strategy backtest has been run. No P&L has been observed.*
+
+---
+
+# CORRECTION ADDENDUM -- 2026-07-28 (main loop)
+
+Two corrections to this report, both established by measurement after it was written.
+
+## C1. V5 missed the `ALL_NAN` partition class -- 580 partitions
+
+This report enumerated the **323 `NO_COLUMN`** partitions (ESC-2) but did not identify a second,
+larger failure class: partitions where the greek columns are **present but entirely NaN**.
+
+Full-store census (4,510 partitions, `implied_vol` tested with `np.isnan` on values):
+
+| Status | Partitions | Share |
+|---|---|---|
+| **OK** (usable) | **3,600** | **79.8%** |
+| **ALL_NAN** | **580** | **12.9%** |
+| NO_COLUMN | 323 | 7.2% |
+| PARTIAL_NAN | 7 | 0.2% |
+
+Per-partition detail: `20260728_options_greek_coverage_census.csv`.
+
+**Root cause of the miss -- the NaN-vs-NULL trap.** The greek columns are **NaN-valued float64,
+not SQL NULL**. Arrow/parquet therefore report **`null_count = 0` for a column that is 100%
+NaN**. Any V5-style "non-null rate >= 90%" gate computed on `null_count` **passes a completely
+empty column**. The same trap caught two independent analyses in the main loop before it was
+identified.
+
+**Registered rule going forward:** greek usability is tested with `np.isnan()` on the values.
+Column presence and `null_count` are both invalid tests.
+
+**Consequence for V5's verdict:** the registered V5 gate ("**>= 90%** non-null per root-year =
+PASS") must be re-evaluated on usable-value rate. Root-years that are ALL_NAN previously scored
+as passing and are in fact **0% usable**.
+
+## C2. ESC-2's implied cause was wrong -- this is a vendor boundary, not a bad download
+
+The main loop initially concluded the missing greeks were a recoverable download artifact
+(rate-limiting on the separate greeks endpoint, whose error is discarded at the call site and
+whose absence `_merge_data` tolerates). **That conclusion was wrong**, and the correction
+matters because it was about to justify paying to re-download.
+
+Three measurements kill the transient hypothesis:
+
+1. **Same downloader, same days, different outcome by root.** QQQ/AAPL/MSFT 2012-2016 were
+   written across the *same* mtime range (2026-01-29 .. 2026-02-22) as SPY/IWM/SPX 2012-2016
+   and got usable greeks.
+2. **184 partitions written during the suspected "bad week" (2026-02-14..20) have OK greeks.**
+   The pipeline was working that week.
+3. Write-date clustering explains only *which failure mode was recorded* (`NO_COLUMN` on one
+   code path, `ALL_NAN` on another), not the root cause.
+
+**Finding: ThetaData does not serve IV/greeks for the ETF/index roots before 2017-01.** Every
+such root -- SPY, IWM, SPX, DIA, GLD, SLV, TLT, EEM, FXI, SMH, XLE, XLF, XLI, XLK, XLV, VIX --
+has first-fully-usable year **2017**. **QQQ is the sole exception**, fully usable 2012-2026.
+Single names run further back (GOOGL 2014+, AMD 2015+, the rest full).
+
+**A re-download will not recover it. Do not spend money on a re-pull for this.**
+
+### Consequences
+
+- The honest window for SPY-based candidates is **~2017-2025 (~8.3 y)**, permanently. sigma_SR
+  ~ 0.35 rather than 0.27, roughly doubling the DSR hurdle relative to the doc chain's
+  registered arithmetic.
+- **ORATS (~$399, 2007+) is now the only route to pre-2017 SPY history**, and bundles the 2008
+  GFC window and dividend-aware smoothed surfaces. It moves from optional extension to the only
+  available fix for the slate's biggest structural weakness.
+- **QQQ is the only index root with a full 13.7-year usable series.** Re-anchoring from SPY to
+  QQQ now has a genuine data-availability justification, but it is a spec change to a different
+  underlying and requires a **logged amendment**, not a silent swap.
+- The download bug found while investigating is still real and worth fixing regardless: the
+  greeks error is discarded (`greeks_df, _ = ...`), `_merge_data` treats greeks as optional, and
+  there is **no post-download schema or usability validation anywhere**. A future re-pull that
+  hits rate limits would now produce null-padded columns that pass a column-count check.
+
+*No strategy backtest has been run. No P&L has been observed.*

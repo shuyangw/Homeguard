@@ -245,11 +245,54 @@ For a consolidated FX-only reference (all three FX datasets, CME FX futures, FX-
 
 ### `options/options_combined/`
 
-- **Schema**: `symbol, expiration, strike, right, timestamp, open, high, low, close, volume, trade_count, vwap, bid_close, ask_close, implied_vol, delta, theta, vega, underlying_px, gamma_eod, open_interest_eod` (21 cols)
 - **Partitioning**: `options_combined/root={ROOT}/year={YYYY}/month={MM}/data.parquet` (zero-padded month here)
-- 24.1B rows across 4,510 files (~250 GB) — by far the largest dataset
-- Source: ThetaData via `src/data/options/thetadata_adapter.py` + IBKR options chains
+- 24,078,079,007 rows across 4,510 files (~250 GB) — by far the largest dataset. Verified 2026-07-27.
+- **Coverage**: 31 roots, 2012-06 → **last session 2026-02-04** (last *complete* month is 2025-12)
+- Source: **ThetaData only.** The previous "+ IBKR options chains" claim was checked and is
+  **false** — no IBKR trace in the schema, the 14 writers, or the 34 download logs (V10, 2026-07-27).
 - Used by RAMP options pipeline research, CSCM, future options strategies
+
+#### Schema — THREE variants exist, not one
+
+| Cols | Partitions | Notes |
+|---|---|---|
+| 21 | 1,403 | leading `symbol` + full greeks |
+| 20 | 2,784 | no `symbol`, full greeks |
+| **16** | **323** | **no `implied_vol`, `delta`, `theta`, `vega`, `underlying_px`** |
+
+Full 21-col form: `symbol, expiration, strike, right, timestamp, open, high, low, close, volume,
+trade_count, vwap, bid_close, ask_close, implied_vol, delta, theta, vega, underlying_px,
+gamma_eod, open_interest_eod`. There are also 9 dtype variants. **Check the schema per
+partition; do not assume.**
+
+#### [!] Greeks coverage boundary — READ BEFORE PLANNING ANY OPTIONS WORK
+
+**Only 79.8% of partitions (3,600 / 4,510) have usable greeks.** Status census:
+`OK 3,600 · ALL_NAN 580 · NO_COLUMN 323 · PARTIAL_NAN 7`.
+Per-partition detail: `docs/strategies/research/options-slate/20260728_options_greek_coverage_census.csv`
+
+**Every ETF/index root except QQQ has NO usable IV/greeks before 2017-01** — SPY, IWM, SPX,
+DIA, GLD, SLV, TLT, EEM, FXI, SMH, XLE, XLF, XLI, XLK, XLV, VIX all have first-fully-usable
+year **2017**. QQQ is the sole exception with full 2012-2026 coverage. Single names run further
+back (AAPL/MSFT/NVDA/TSLA/AMZN/MSTR full; GOOGL from 2014; AMD from 2015).
+
+**This is a ThetaData coverage boundary, NOT a failed download. Re-downloading will NOT fix it
+— do not pay for a re-pull.** Proven 2026-07-28: QQQ/AAPL/MSFT 2012-2016 were written by the
+same downloader across the *same* date range (2026-01-29 .. 02-22) and got usable greeks, and
+184 partitions written during the suspected "bad week" were fine. The failure tracks
+**(root, era)**, not when the job ran.
+
+Practical consequence: the honest window for SPY-based options research is **~2017-2025
+(~8.3 y)**, not 13.7 y.
+
+#### [!] The NaN-vs-NULL trap — this fooled two separate analyses
+
+Greek columns are **NaN-valued float64, not SQL NULL**. So parquet/Arrow report
+**`null_count = 0` for a column that is 100% NaN**, and any "non-null rate" gate computed on
+`null_count` **silently passes a completely empty column**.
+
+**Always test `np.isnan(values)`. Never rely on `null_count`, and never on column presence.**
+Three states exist and only the last is usable: `NO_COLUMN` · `ALL_NAN` · `OK`.
 
 ---
 
