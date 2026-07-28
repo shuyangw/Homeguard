@@ -73,9 +73,16 @@ else
     echo "      Run install_tailscale.sh first, then re-run this script."
 fi
 
-# Set admin password from env
-GRAFANA_PASS="${GRAFANA_ADMIN_PASSWORD:-admin}"
-set_ini_key admin_password "${GRAFANA_PASS}" "${CONFIG_DIR}/grafana.ini"
+# Set admin password from env. Deliberately does NOT default to "admin": this
+# script is re-run on a live host, and now that set_ini_key actually matches an
+# uncommented key (the old sed silently no-opped), a missing env var would
+# overwrite a good password with a known one. Leave it alone instead.
+if [ -n "${GRAFANA_ADMIN_PASSWORD:-}" ]; then
+    set_ini_key admin_password "${GRAFANA_ADMIN_PASSWORD}" "${CONFIG_DIR}/grafana.ini"
+    echo "  admin_password updated from GRAFANA_ADMIN_PASSWORD"
+else
+    echo "  [!] GRAFANA_ADMIN_PASSWORD not set; leaving admin_password unchanged."
+fi
 
 # Provision datasources
 sudo mkdir -p "${PROVISIONING_DIR}/datasources"
