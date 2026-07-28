@@ -245,6 +245,72 @@ Unrelated bug spotted in passing: `/etc/systemd/system/homeguard-discord.service
 uses `StartLimitIntervalSec` in the `[Service]` section, where systemd ignores it
 (`Unknown key name ... ignoring`). It belongs in `[Unit]`.
 
+## Follow-up: the 2026-06-09 crash-loop, revisited
+
+Prompted by asking whether that incident was actually fixed. Two findings.
+
+### The alert comment preserved a disproven diagnosis
+
+The `RampServiceDownOrCrashLooping` comment (carried verbatim from the retired
+`rules.yaml` into the new rule file) described the incident as a "preflight
+false-zero". That was the **initial** diagnosis and it was **disproven**. Four
+separate IBKR cold-start timing fixes failed live validation before the real
+cause was found; the postmortem
+(`docs/progress/20260609_RAMP_PREFLIGHT_CRASHLOOP_FIX.md`) has a section titled
+"ACTUAL ROOT CAUSE (found after 4 failed timing fixes)".
+
+The real cause was a **phantom position in state**: the target-aware exit path
+sold via `execute_order` but never called `remove_position` or `log_exit`, so
+preflight saw an irreconcilable state-vs-broker mismatch and `exit(1)`'d on every
+boot. Fixed in `f7ea22f` with a regression test
+(`test_target_aware_exit_removes_position_from_state`). All five fix commits are
+present on the deploy branch, so production is not vulnerable to that trigger.
+
+Corrected in the rule comment, which now names both the disproven and the actual
+cause. Propagating the wrong wording would have sent the next person debugging a
+restart loop into the read path instead of state bookkeeping.
+
+### The crash-loop mechanism was still wide open
+
+Verified on the host that there is **no `--force-start` override** (a deferred
+remediation item from the postmortem), so preflight is genuinely running. Good.
+
+But the restart cap was **structurally unreachable**:
+
+```
+Restart=always   RestartUSec=30s
+StartLimitBurst=5   StartLimitIntervalUSec=10s   <- systemd defaults
+```
+
+Five starts inside a 10-second window is impossible at 30-second spacing, so the
+limiter never tripped and the unit retried **indefinitely**. That explains the
+"~1000x" figure exactly: 1000 x 30s is about 8.3 hours, one overnight window.
+
+The postmortem had deferred a real cap with "and/or an alert"; only the alert half
+was ever done, and it was not provisioned until 2026-07-27.
+
+Fixed, and a repo-wide sweep found the same defect in **four** units. The general
+bug: `StartLimitIntervalSec` and `StartLimitBurst` are `[Unit]` directives, and
+systemd silently ignores them in `[Service]` while logging "Unknown key name ...
+ignoring". So every declared cap in the repo was inert.
+
+| Unit | Was | Now |
+|---|---|---|
+| `homeguard-multi` | no cap; defaults unreachable | `[Unit]` 600s / 5 |
+| `homeguard-gateway` | pair in `[Service]`, ignored | moved to `[Unit]` |
+| `homeguard-discord` | pair in `[Service]`, ignored | moved to `[Unit]` |
+| `homeguard-trading` | pair in `[Service]`, legacy `StartLimitInterval` | moved to `[Unit]`, modern spelling |
+
+The sizing rule, now stated in each comment: **the interval must exceed
+`burst x RestartSec`** or the cap can never be reached. Verified in force on the
+host, and the journal no longer emits any ignored-key warning.
+
+Deliberate consequence: a genuine crash-loop now stops after ~5 attempts and the
+unit enters `failed` rather than churning all night. That is a hard stop, and
+`RampServiceDownOrCrashLooping` then pages Discord after 5m. A silent loop is
+worse than a clean stop plus an alert. Recovery is
+`systemctl reset-failed <unit> && systemctl start <unit>`.
+
 ## Known Issues / Remaining Work
 
 - **Nothing is delivered anywhere.** No contact points, no notification policy.
