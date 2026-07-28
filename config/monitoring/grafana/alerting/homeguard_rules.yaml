@@ -317,12 +317,36 @@ groups:
       # ------------------------------------------------------------------
       # RAMP metrics target down while the instance is up.
       #
-      # Carried over from the retired rules.yaml, whose comment is worth
-      # keeping verbatim: the RAMP metrics target (port 8082) goes unreachable
-      # when the process dies repeatedly -- e.g. the 2026-06-09 preflight
-      # false-zero that crash-looped ~1000x silently. Gating on node-exporter
-      # being up keeps this SILENT during the nightly EventBridge shutdown,
-      # when both targets drop together. 5m tolerates a single clean restart.
+      # The RAMP metrics target (port 8082) goes unreachable when the process
+      # dies repeatedly. Gating on node-exporter being up keeps this SILENT
+      # during the nightly EventBridge shutdown, when both targets drop
+      # together. 5m tolerates a single clean restart (verified: a manual
+      # restart on 2026-07-28 dropped the target for ~60s without firing).
+      #
+      # Motivating incident, 2026-06-09: RAMP crash-looped ~1000 times overnight,
+      # silently. NOTE the retired rules.yaml comment called this a "preflight
+      # false-zero"; that was the INITIAL diagnosis and it was DISPROVEN. Four
+      # separate IBKR cold-start timing fixes failed live validation before the
+      # real cause was found (see docs/progress/20260609_RAMP_PREFLIGHT_CRASHLOOP_FIX.md,
+      # section "ACTUAL ROOT CAUSE (found after 4 failed timing fixes)").
+      #
+      # The actual cause was a PHANTOM POSITION IN STATE: the target-aware exit
+      # path sold via execute_order but never called remove_position or
+      # log_exit, so preflight saw a state-vs-broker mismatch it could not
+      # reconcile and exit(1)'d on every boot. Fixed in f7ea22f with a
+      # regression test (tests/trading/test_ramp_live_adapter_target_execution.py
+      # ::test_target_aware_exit_removes_position_from_state).
+      #
+      # The read path was also hardened (preflight retry, ib.portfolio() poll,
+      # reqPositions fallback), so the false-zero scenario is covered too -- but
+      # it was never the cause here. Do not let that wording mislead the next
+      # person debugging a restart loop.
+      #
+      # The crash-loop MECHANISM is only partly closed. Preflight still exits
+      # the process rather than failing safe, so a different blocking condition
+      # can still loop. What changed is that homeguard-multi.service now carries
+      # a reachable StartLimitBurst cap, so a loop stops after ~5 attempts and
+      # this alert fires instead of the service churning all night.
       #
       # `== bool 0` rather than `== 0`: a bare filter preserves the left-hand
       # value, so `up == 0` yields 0 and a `gt 0` threshold would never fire.
