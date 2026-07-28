@@ -136,6 +136,67 @@ restarted; second run correctly skipped the restart.
 `::test_default_broker_for_unlisted_strategy`) were verified **pre-existing** by
 stashing all changes and re-running against `origin/main`.
 
+## Delivery (Layer 1), added later the same session
+
+Discord contact point plus a notification policy tree, provisioned through the
+same file mechanism and sync script as the rules. Routing by severity: critical
+notifies in 10s and repeats hourly; warning waits 5m and repeats every 12h; info
+is the canary, routed with a 24h `repeat_interval` so it becomes a once-a-day
+"alerting is still alive" heartbeat instead of a storm.
+
+The webhook URL is not committed. Grafana interpolates `${VAR}` in provisioning
+files from its process environment, supplied by a new
+`EnvironmentFile=-/etc/homeguard/grafana.env` in `grafana-server.service`.
+Interpolation was verified specifically for alerting provisioning by probing a
+non-secret field, because Grafana redacts the `url` field in API responses.
+
+### INCIDENT: I took Grafana down
+
+Provisioning the contact point before the secret existed **crash-looped
+grafana-server for several minutes**.
+
+An unset `${VAR}` does not degrade to "provisioned but undeliverable", which is
+what I had assumed and documented. Grafana rejects a discord integration with an
+empty url, its provisioning module fails, and the process exits:
+
+```
+Failed to provision alerting: failure parsing contact points: homeguard-discord:
+could not find webhook url property in settings
+grafana-server.service: Main process exited, code=exited, status=1/FAILURE
+```
+
+Dashboards and rule evaluation went down with it. **Trading was unaffected**
+(`homeguard-multi`, `homeguard-cscm`, `victoria-metrics`, `loki` all stayed
+active). Service was restored by moving the file aside and restarting; verified
+back to 7 rules, 0 unhealthy, canary firing.
+
+My missing-secret check had *warned* and then installed the file anyway. It now
+**refuses** to install any provisioning file with an unresolved variable, and
+removes a previously-installed copy so a later restart or reboot cannot fail for
+a reason nobody connects to the change. Verified on the host: the file is skipped,
+Grafana stays active, only `homeguard_rules.yaml` is installed.
+
+The transferable lesson: for config a service reads **at startup**, an invalid
+value is not a degraded feature, it is a boot failure. Fail closed on the
+feature, not open on the service.
+
+### Blocked on one manual step
+
+The Discord bot (`Homeguard-Bot`, guild `Homeguard`) authenticates fine, but
+returns `403 Missing Permissions` on `/channels/{id}/webhooks`, so the webhook
+could not be created programmatically. Also note there is **no `#alerting`
+channel**; the guild has `#general`, `#homeguard-querying`, and
+`#homeguard-status`. Target chosen: `#homeguard-status`
+(id `1531481095441481831`).
+
+To finish, either grant the bot Manage Webhooks on that channel (keeps the
+credential out of any transcript), or create the webhook by hand and write it to
+`/etc/homeguard/grafana.env`, then re-run `sync_grafana_alerts.sh`.
+
+Unrelated bug spotted in passing: `/etc/systemd/system/homeguard-discord.service:21`
+uses `StartLimitIntervalSec` in the `[Service]` section, where systemd ignores it
+(`Unknown key name ... ignoring`). It belongs in `[Unit]`.
+
 ## Known Issues / Remaining Work
 
 - **Nothing is delivered anywhere.** No contact points, no notification policy.
