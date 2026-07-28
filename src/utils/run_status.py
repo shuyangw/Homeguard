@@ -61,7 +61,15 @@ class RunStatus:
         }
         if extra:
             data.update(extra)
-        tmp = self.path.with_suffix(".tmp")
+        # The tmp path MUST be unique per write. A single shared `<name>.tmp` is
+        # written by both the caller's thread (explicit `heartbeat()`) and the
+        # background heartbeat thread, so they race two ways: both write the same
+        # file at once (PermissionError), or the first `replace()` consumes it and
+        # the second finds nothing (FileNotFoundError). The retry loop below cannot
+        # recover from the latter -- it retries the rename, but the source is gone --
+        # so the run dies. This killed 2 of 8 parallel jobs in the options V-battery
+        # sweep on 2026-07-27.
+        tmp = self.path.with_suffix(f".tmp.{os.getpid()}.{threading.get_ident()}")
         tmp.write_text(json.dumps(data, indent=2), encoding="utf-8")
         # `output/` can live inside a Dropbox-synced folder; Dropbox's indexer
         # periodically opens a just-written file for read, which collides with
@@ -78,8 +86,10 @@ class RunStatus:
             except (OSError, PermissionError) as exc:
                 last_exc = exc
                 if attempt == 4:
+                    tmp.unlink(missing_ok=True)  # never leak the scratch file
                     raise
                 time.sleep(0.2 * (2 ** attempt))
+        tmp.unlink(missing_ok=True)
         raise RuntimeError(f"unreachable: run_status write retries exhausted (last={last_exc})")
 
     def heartbeat(self, note: str = "") -> None:

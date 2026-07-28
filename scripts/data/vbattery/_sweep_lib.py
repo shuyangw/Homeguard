@@ -25,6 +25,7 @@ from typing import Dict, Iterator, List, Tuple
 
 import numpy as np
 import pandas as pd
+import pyarrow as pa
 import pyarrow.parquet as pq
 
 from src.settings import get_local_storage_dir
@@ -103,11 +104,27 @@ def iter_partition(path: Path, cols: List[str], batch_size: int = 400_000
     names = set(pf.schema_arrow.names)
     avail = [c for c in cols if c in names]
     for batch in pf.iter_batches(batch_size=batch_size, columns=avail):
+        # THIRD schema variant found in the store: some partitions store `right`
+        # dictionary-encoded with uint32 indices, which pyarrow cannot convert
+        # to pandas. Decode to the plain value type before conversion. Reported,
+        # not silently swallowed -- observed_dtypes() records the dictionary
+        # type and sweep_root flags it in `unhandled_schema_variants`.
+        if any(pa.types.is_dictionary(f.type) for f in batch.schema):
+            arrs, flds = [], []
+            for i, f in enumerate(batch.schema):
+                col = batch.column(i)
+                if pa.types.is_dictionary(f.type):
+                    col = col.dictionary_decode()
+                    f = pa.field(f.name, col.type)
+                arrs.append(col)
+                flds.append(f)
+            batch = pa.RecordBatch.from_arrays(arrs, schema=pa.schema(flds))
         df = batch.to_pandas()
         for c in avail:
             want = CANONICAL_DTYPES.get(c)
             if want == "string":
-                df[c] = df[c].astype("string").astype(object)
+                if df[c].dtype != object:
+                    df[c] = df[c].astype(object)
             elif want == "float64":
                 df[c] = pd.to_numeric(df[c], errors="coerce").astype("float64")
             elif want == "int64":

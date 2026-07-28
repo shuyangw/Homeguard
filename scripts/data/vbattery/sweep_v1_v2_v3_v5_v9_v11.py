@@ -28,7 +28,8 @@ import pandas as pd
 
 from scripts.data.vbattery._sweep_lib import (
     ABS_DELTA_LABELS, BASE, DTE_LABELS, MONEYNESS_LABELS, PCTS, ROOTS,
-    Reservoir, VOL_STATE_LABELS, READ_COLS, abs_delta_code, dte_code,
+    Reservoir, RTH_FIRST, RTH_LAST, VOL_STATE_LABELS, READ_COLS,
+    abs_delta_code, dte_code,
     iter_partition, moneyness_code, observed_dtypes, quote_fields,
     root_partitions,
 )
@@ -93,22 +94,48 @@ class VolProxy:
                         self.rv_hist.append(float(np.std(r, ddof=1)))
 
 
+def _ts_table(ts_col) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Factorise timestamps once; derive session/time at the UNIQUE level.
+
+    A root-month has ~8k distinct timestamps but tens of millions of rows, so
+    every string slice is done on the unique table and broadcast by code -- no
+    multi-million-element string array is ever materialised.
+    """
+    codes, uniq = pd.factorize(ts_col.astype(object))
+    us = np.asarray([str(u) for u in uniq], dtype="U19")
+    u_sess = np.asarray([s[:10] for s in us])
+    u_hhmm = np.asarray([s[11:16] for s in us])
+    u_min = np.asarray([int(s[11:13]) * 60 + int(s[14:16]) if len(s) >= 16 else -1
+                        for s in us], dtype=np.int64)
+    sess_uniq, sess_of_ts = np.unique(u_sess, return_inverse=True)
+    return codes, sess_uniq, sess_of_ts.astype(np.int64), u_hhmm, u_min
+
+
 def _session_closes(path: Path) -> dict[str, float]:
-    out: dict[str, tuple[str, float]] = {}
-    for df in iter_partition(path, ["timestamp", "underlying_px"], batch_size=1_000_000):
-        ts = df["timestamp"].astype(str)
-        sess = ts.str.slice(0, 10)
-        hh = ts.str.slice(11, 19)
-        tmp = pd.DataFrame({"s": sess, "h": hh, "u": df["underlying_px"]})
-        tmp = tmp.dropna(subset=["u"])
-        if tmp.empty:
+    """Per-session LAST underlying_px (the vol-proxy reference price)."""
+    best: dict[str, tuple[int, float]] = {}
+    for df in iter_partition(path, ["timestamp", "underlying_px"], batch_size=2_000_000):
+        if df.empty:
             continue
-        g = tmp.sort_values("h").groupby("s").tail(1)
-        for s, h, u in zip(g["s"], g["h"], g["u"]):
-            cur = out.get(s)
-            if cur is None or h >= cur[0]:
-                out[s] = (h, float(u))
-    return {k: v[1] for k, v in out.items()}
+        u = df["underlying_px"].to_numpy(dtype=np.float64)
+        ok = np.isfinite(u)
+        if not ok.any():
+            continue
+        codes, sess_uniq, sess_of_ts, _, u_min = _ts_table(df["timestamp"])
+        c = codes[ok]
+        uu = u[ok]
+        mins = u_min[c]
+        order = np.lexsort((mins, sess_of_ts[c]))
+        s_sorted = sess_of_ts[c][order]
+        last = np.nonzero(np.append(np.diff(s_sorted), 1))[0]
+        for i in last:
+            si = int(s_sorted[i])
+            s = str(sess_uniq[si])
+            t = int(mins[order][i])
+            cur = best.get(s)
+            if cur is None or t >= cur[0]:
+                best[s] = (t, float(uu[order][i]))
+    return {k: v[1] for k, v in best.items()}
 
 
 # ------------------------------------------------------------- accumulators
@@ -200,7 +227,7 @@ def prepass_root(root: str, force: bool = False) -> None:
                    meta={"root": root, "n_partitions": len(parts)}) as st:
         for i, (y, m, path) in enumerate(parts):
             rows.update(_session_closes(path))
-            st.heartbeat(note=f"{root} {y}-{m:02d} ({i+1}/{len(parts)})")
+            st.meta["progress"] = f"{root} {y}-{m:02d} ({i+1}/{len(parts)})"
     df = pd.DataFrame({"session": sorted(rows), "underlying_close":
                        [rows[s] for s in sorted(rows)]})
     df["root"] = root
@@ -239,9 +266,10 @@ def process_partition(acc: RootAcc, year: int, month: int, path: Path,
         if n == 0:
             continue
         n_rows += n
-        ts = df["timestamp"].astype(str)
-        sess = ts.str.slice(0, 10).to_numpy()
-        hhmm = ts.str.slice(11, 16).to_numpy()
+        tcodes, suniq, sess_of_ts, u_hhmm, u_min = _ts_table(df["timestamp"])
+        scodes = sess_of_ts[tcodes]
+        ns = len(suniq)
+        u_rth = (u_hhmm >= RTH_FIRST) & (u_hhmm <= RTH_LAST)
 
         bid = df["bid_close"].to_numpy(dtype=np.float64)
         ask = df["ask_close"].to_numpy(dtype=np.float64)
@@ -250,18 +278,14 @@ def process_partition(acc: RootAcc, year: int, month: int, path: Path,
         volume = df["volume"].to_numpy(dtype=np.int64)
         vol0 = volume == 0
 
-        in_rth = (hhmm >= "09:30") & (hhmm <= "16:00")
+        in_rth = u_rth[tcodes]
 
         # ---- session-level (V2 / V9) ----
-        scodes, suniq = pd.factorize(sess)
-        ns = len(suniq)
         cnt = np.bincount(scodes, minlength=ns)
         c_rth = np.bincount(scodes[in_rth], minlength=ns)
         c_vol0 = np.bincount(scodes[vol0], minlength=ns)
         c_qv = np.bincount(scodes[qv], minlength=ns)
         c_v0qv = np.bincount(scodes[vol0 & qv], minlength=ns)
-        mins = (np.char.replace(hhmm.astype("U5"), ":", "").astype(np.int64))
-        mins = (mins // 100) * 60 + (mins % 100)
         for i, s in enumerate(suniq):
             r = acc._sess(str(s))
             r["n_rows"] += int(cnt[i])
@@ -271,37 +295,39 @@ def process_partition(acc: RootAcc, year: int, month: int, path: Path,
             r["n_qv"] += int(c_qv[i])
             r["n_vol0_qv"] += int(c_v0qv[i])
             r["n_volpos"] += int(cnt[i] - c_vol0[i])
-        hmin = pd.Series(hhmm).groupby(scodes).min()
-        hmax = pd.Series(hhmm).groupby(scodes).max()
-        for i, s in enumerate(suniq):
-            r = acc._sess(str(s))
-            r["first_bar"] = min(r["first_bar"], str(hmin.iloc[i]))
-            r["last_bar"] = max(r["last_bar"], str(hmax.iloc[i]))
+        # first/last bar + present minutes: derived from the UNIQUE timestamp
+        # table restricted to codes actually present in this batch.
+        present = np.unique(tcodes)
+        for tc in present:
+            s = str(suniq[sess_of_ts[tc]])
+            r = acc._sess(s)
+            h = str(u_hhmm[tc])
+            if h < r["first_bar"]:
+                r["first_bar"] = h
+            if h > r["last_bar"]:
+                r["last_bar"] = h
+            acc.sess_minutes[s].add(int(u_min[tc]))
 
         # ---- contract identity, DTE ----
-        exp_s = df["expiration"].astype(str).str.slice(0, 10)
-        ec, eu = pd.factorize(exp_s)
-        eu_ord = pd.to_datetime(pd.Series(eu), errors="coerce").values.astype(
+        ec, eu = pd.factorize(df["expiration"].astype(object))
+        eu_ord = pd.to_datetime(pd.Series([str(x)[:10] for x in eu]),
+                                errors="coerce").values.astype(
             "datetime64[D]").astype(np.int64)
         exp_ord = eu_ord[ec]
         su_ord = pd.to_datetime(pd.Series(suniq), errors="coerce").values.astype(
             "datetime64[D]").astype(np.int64)
-        sess_ord = su_ord[scodes]
-        dte = (exp_ord - sess_ord).astype(np.float64)
+        dte = (exp_ord - su_ord[scodes]).astype(np.float64)
 
         strike = df["strike"].to_numpy(dtype=np.float64)
-        rgt = df["right"].astype(str).to_numpy()
-        is_call = (rgt == "CALL")
+        rc, ru = pd.factorize(df["right"].astype(object))
+        ru_call = np.asarray([str(x) == "CALL" for x in ru])
+        is_call = ru_call[rc]
         skm = np.where(np.isfinite(strike), np.round(strike * 1000.0), -1).astype(np.int64)
         ckey = (exp_ord * 2 + is_call.astype(np.int64)) * 20_000_000 + skm
-        pair = scodes.astype(np.int64) * 1_000_000_000_000 + ckey
-        up = np.unique(pair)
-        for pv in up:
+        pair = scodes * 1_000_000_000_000 + ckey
+        for pv in np.unique(pair):
             si = int(pv // 1_000_000_000_000)
             acc.sess_contracts[str(suniq[si])].add(int(pv % 1_000_000_000_000))
-        mpair = np.unique(scodes.astype(np.int64) * 10_000 + mins)
-        for pv in mpair:
-            acc.sess_minutes[str(suniq[int(pv // 10_000)])].add(int(pv % 10_000))
 
         # ---- V1 (RTH only) ----
         dcode = abs_delta_code(df["delta"].to_numpy(dtype=np.float64))
@@ -477,7 +503,7 @@ def sweep_root(root: str, batch_size: int, year_from=None, year_to=None,
                 acc.start_year(y)
                 cur_year = y
             total_rows += process_partition(acc, y, m, path, vol, batch_size, prebuilt)
-            st.heartbeat(note=f"{fn} {y}-{m:02d} ({i+1}/{len(parts)}) rows={total_rows}")
+            st.meta["progress"] = f"{fn} {y}-{m:02d} ({i+1}/{len(parts)}) rows={total_rows}"
         acc.flush_year()
         meta = {"root": root, "chunk": suffix, "vol_proxy_prebuilt": prebuilt,
                 "n_partitions": len(parts), "n_rows": total_rows,
@@ -535,12 +561,12 @@ def aggregate() -> None:
     sdf["month"] = sdf["session"].str.slice(5, 7).astype(int)
     got = sdf.groupby(["root", "year", "month"]).agg(
         sessions_present=("session", "nunique"),
-        n_half_days_present=("is_half_day", "sum")).reset_index()
+        n_half_days_present=("is_half_day", lambda x: int(x.fillna(False).sum()))).reset_index()
     exp["year"] = exp["session"].str.slice(0, 4).astype(int)
     exp["month"] = exp["session"].str.slice(5, 7).astype(int)
     expm = exp.groupby(["year", "month"]).agg(
         sessions_expected=("session", "nunique"),
-        half_days_expected=("is_half_day", "sum")).reset_index()
+        half_days_expected=("is_half_day", lambda x: int(x.sum()))).reset_index()
     v9 = got.merge(expm, on=["year", "month"], how="left")
     v9["coverage"] = v9["sessions_present"] / v9["sessions_expected"]
     v9["flagged_lt_90pct"] = v9["coverage"] < 0.90

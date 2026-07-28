@@ -44,3 +44,45 @@ def test_killed_run_leaves_stale_running(tmp_path, monkeypatch):
         assert d["started_at"] and d["heartbeat_at"]
     finally:
         st._stop.set()  # stop the heartbeat thread (simulated kill cleanup)
+
+
+def test_concurrent_heartbeat_and_explicit_write_do_not_race(tmp_path, monkeypatch):
+    """Regression: an explicit heartbeat() racing the background heartbeat thread
+    must not kill the run.
+
+    Both writers previously shared ONE fixed tmp path (`<name>.tmp`), so whichever
+    called `replace()` second found the source file already consumed by the first
+    and raised FileNotFoundError (WinError 2). The existing retry loop cannot
+    recover from it -- it retries the rename, but the source is gone -- so the
+    exception propagated and aborted the run. This killed 2 of 8 parallel jobs
+    during the options V-battery sweep on 2026-07-27.
+    """
+    import threading as _threading
+
+    from src.utils import run_status as rs
+
+    monkeypatch.setattr(rs, "_STATUS_DIR", tmp_path)
+
+    errors = []
+
+    with rs.RunStatus("race_probe", heartbeat_seconds=1) as status:
+        def hammer():
+            for i in range(60):
+                try:
+                    status.heartbeat(note=f"tick {i}")
+                except Exception as exc:  # noqa: BLE001 - the point of the test
+                    errors.append(exc)
+
+        threads = [_threading.Thread(target=hammer) for _ in range(4)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+    assert not errors, f"heartbeat raced with itself/the heartbeat thread: {errors[:3]}"
+
+    written = json.loads(status.path.read_text(encoding="utf-8"))
+    assert written["status"] == "DONE"
+
+    leftovers = list(tmp_path.glob("*.tmp*"))
+    assert not leftovers, f"temp files leaked: {leftovers}"

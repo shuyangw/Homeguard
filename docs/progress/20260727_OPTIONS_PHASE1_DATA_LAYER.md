@@ -76,18 +76,52 @@ hypotheses, and the registered gate blocks OI/gamma work when the answer is not 
 What changed is the justification, not the rule. Relaxing it is the principal's call, not this
 phase's — and it should not be relaxed for `gamma_eod` on current evidence.
 
+## Sweep results (completed)
+
+Full coverage: 4,510/4,510 partitions, 31/31 roots, 415 root-years, 24,078,079,007 rows.
+
+- **V1 PASS for index roots on all 45 gradeable root-years** (99.03-100.00%). 12 non-index
+  FAILs (MSTR 2013-2018, VIX 2017-2018, AMD 2015, META 2021, AVGO 2012, EEM 2024) and
+  **82 root-years UNGRADEABLE** because the `delta` column does not exist there.
+- **V2 PASS decisively** — 91.78% of rows store-wide are `volume=0` with a valid quote, against
+  a 60% gate. Grid density median 1.0000 confirms a complete dense quote grid independently.
+- **V3 PASS** — crossed 0.0037%, 27x below the gate; zero of 415 root-years reach 0.1%. Zero-bid
+  shows a clean U-shape in moneyness with its minimum ATM (0.65%), which is the expected
+  microstructural signature.
+- **V5** 331/415 PASS, 84 UNTRUSTED — but only **2 are genuinely partially-null** (AMZN 2015,
+  GOOGL 2015); the other 82 have no columns to recompute from. Delta sign correct on 100% of
+  24bn rows.
+- **V9** 113 root-months flagged; spread census delivered (181,761 cells).
+
+Two structural findings with direct leakage implications, both independently verified:
+**the 09:30 bar has `bid==ask==0` universally** (70,239/70,239 rows on SPY 2024-01), and
+**half-days are padded to 16:00 with stale quotes** (864/864 sessions) so the registered 15:45
+snapshot would otherwise fall ~2h45m after the real close. The canonical layer clamps to
+`min(15:45, real close)`.
+
+## Repo bug found and fixed
+
+`src/utils/run_status.py` wrote every update to a single fixed `<name>.tmp` path shared by the
+caller's thread and the background heartbeat thread. Racing writers hit either `PermissionError`
+(both writing at once) or `FileNotFoundError` (first `replace()` consumes the source, second
+finds nothing) — and the retry loop cannot recover from the latter, so the run dies. **It killed
+2 of 8 parallel sweep jobs.** Reproduced with a failing 4-thread regression test, then fixed
+with a per-writer unique tmp suffix plus cleanup-on-failure. All 4 tests pass.
+
 ## Known Issues / Remaining Work
 
-- **The V1/V2/V3/V5/V9/V11 sweep is still running.** Definitions are validated against SPY
-  2024-01 and reconcile with the known preliminary values (V1 [0.05,0.15] 99.986%, crossed
-  0.00003%). Unswept root-years are reported as NOT MEASURED, never as PASS. The report must be
-  updated when it completes.
+- **ESC-7: the preliminary figures that motivated this phase do not reproduce.** The execution
+  plan's "all four gates pass by wide margins" (zero-bid 11.7%, vol0-with-quote 77.4%,
+  IV==0.5 1.29%) came from a head-of-file sample spanning the **first ~6 minutes** of
+  2024-01-02 — the widest-spread minutes of the day. Full-month: 3.38% / 88.99% / 1.59%. My own
+  initial 2.46M-row probe was biased identically. The gates still pass, but the prior evidence
+  was not what it was represented to be, and the execution plan should be corrected.
 - V8 SPX/VIX findings are windowed (last 12 and 24 of ~165 partitions); pre-2017 unmeasured.
-- float32 precision loss in 274 partitions (2.18B rows) is recorded but its error magnitude is
-  not quantified.
+- float32 precision loss in 274 partitions (2.18B rows) recorded; error magnitude not quantified.
+- NBBO-at-minute-end is **inferred, not established** — no vendor spec, subscription cancelled.
+- `vol_state_proxy` in the spread census is a stated causal proxy, not `regime_state_daily`;
+  rebuild the census if cost parameterization needs the real regime.
 - `OptionsDataStore` deprecation (Phase 0.9) still awaiting go-ahead; nothing deleted.
-- Corrected in passing: zero-bid frequency is **3.38%** full-month, not the 11.7% in the
-  execution plan (that was a 614k-row sampling artifact).
 
 ## Validation
 
