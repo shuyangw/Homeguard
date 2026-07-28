@@ -197,6 +197,95 @@ def test_market_open_gate_is_never_aggregated_across_jobs():
             )
 
 
+def _contact_point_names() -> set[str]:
+    names = set()
+    for _, doc in _load_rule_files():
+        for cp in doc.get('contactPoints', []) or []:
+            names.add(cp['name'])
+    return names
+
+
+def test_no_secret_is_committed_in_provisioning():
+    """Webhook URLs and tokens must be ${VAR} references, never literals.
+
+    A committed webhook URL is a live credential in git history.
+    """
+    for name, doc in _load_rule_files():
+        for cp in doc.get('contactPoints', []) or []:
+            for receiver in cp.get('receivers', []) or []:
+                url = (receiver.get('settings') or {}).get('url', '')
+                if not url:
+                    continue
+                assert url.startswith('${') and url.endswith('}'), (
+                    f'{name}: contact point {cp["name"]!r} has a literal url. '
+                    f'Use a ${{VAR}} reference resolved from Grafana\'s '
+                    f'EnvironmentFile instead of committing a credential.'
+                )
+
+
+def test_notification_policy_receivers_exist():
+    """Every route must name a contact point that is actually provisioned.
+
+    A route pointing at a non-existent receiver is accepted by the schema and
+    then delivers nothing.
+    """
+    known = _contact_point_names()
+    if not known:
+        pytest.skip('no contact points provisioned')
+
+    def check(policy, path):
+        receiver = policy.get('receiver')
+        if receiver:
+            assert receiver in known, \
+                f'{path}: receiver {receiver!r} is not a provisioned contact point {sorted(known)}'
+        for i, route in enumerate(policy.get('routes', []) or []):
+            check(route, f'{path}.routes[{i}]')
+
+    for name, doc in _load_rule_files():
+        for i, policy in enumerate(doc.get('policies', []) or []):
+            check(policy, f'{name}.policies[{i}]')
+
+
+def test_every_rule_severity_is_routed():
+    """Each severity a rule emits must match a route, or it silently falls back.
+
+    Unrouted severities land on the root receiver, which may be fine, but it
+    must be a deliberate choice rather than an oversight.
+    """
+    severities = {(r.get('labels') or {}).get('severity') for _, r in _all_rules()}
+    severities.discard(None)
+    routed = set()
+    for _, doc in _load_rule_files():
+        for policy in doc.get('policies', []) or []:
+            for route in policy.get('routes', []) or []:
+                for matcher in route.get('object_matchers', []) or []:
+                    if len(matcher) == 3 and matcher[0] == 'severity' and matcher[1] == '=':
+                        routed.add(matcher[2])
+    if not routed:
+        pytest.skip('no notification policy provisioned')
+    assert severities <= routed, \
+        f'severities emitted but not explicitly routed: {sorted(severities - routed)}'
+
+
+def test_canary_route_does_not_spam():
+    """The canary fires permanently, so its route needs a long repeat_interval.
+
+    Without this the always-on canary becomes a notification storm and the whole
+    channel gets muted, defeating the purpose.
+    """
+    for _, doc in _load_rule_files():
+        for policy in doc.get('policies', []) or []:
+            for route in policy.get('routes', []) or []:
+                matchers = route.get('object_matchers', []) or []
+                if any(m[:2] == ['severity', '='] and m[2] == 'info' for m in matchers):
+                    repeat = str(route.get('repeat_interval', ''))
+                    assert repeat.endswith('h') and int(repeat[:-1]) >= 12, (
+                        f'info route repeat_interval is {repeat!r}; the canary fires '
+                        f'permanently so this must be >= 12h to act as a heartbeat '
+                        f'rather than a storm'
+                    )
+
+
 def test_canary_rule_is_present_and_always_true():
     """The canary is load-bearing: it is the only proof the pipeline evaluates."""
     canaries = [r for _, r in _all_rules() if r['uid'] == 'hg-alerting-canary']
