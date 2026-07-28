@@ -180,7 +180,55 @@ The transferable lesson: for config a service reads **at startup**, an invalid
 value is not a degraded feature, it is a boot failure. Fail closed on the
 feature, not open on the service.
 
-### Blocked on one manual step
+### Delivery CONFIRMED working
+
+End to end verified: Grafana -> Discord -> `#homeguard-status`. Proven from both
+sides, not just by absence of an error.
+
+- `POST /api/alertmanager/grafana/config/api/v1/receivers/test` -> HTTP 200
+- Read back via the bot: `GET /channels/1531481095441481831/messages` returned
+  the message, author `Grafana`, title `[FIRING:1] HomeguardDeliveryTest`
+- Operator confirmed it visually
+
+Final state: Grafana healthy, 7 rules, 0 unhealthy, canary firing, contact points
+= `homeguard-discord` (discord) plus Grafana's built-in email receiver.
+
+Getting there surfaced three things worth recording:
+
+1. **A 404 "Unknown Webhook" is not always a bad URL.** The first installed
+   webhook 404'd because it had been deleted while being reconfigured, minutes
+   after I had successfully validated it. Re-validating showed it live again and
+   pointing at the intended channel.
+2. **Changing a webhook's channel in the Discord UI preserves the URL.** So
+   retargeting needs no config change on this side. Note the reverse is not true:
+   `channel_id` cannot be changed through the token-authenticated API route, only
+   via bot auth with Manage Webhooks.
+3. **"No error in the log" is not proof of delivery.** After the credential was
+   fixed, the 404 stopped appearing and it looked like delivery had started. It
+   had not: reading the channel showed zero messages. The canary's notification
+   was suppressed because alertmanager had already recorded an attempt for that
+   aggregation group, and the info route's `repeat_interval: 24h` means the next
+   attempt is 24h out. Positive confirmation required reading the destination.
+
+That last point is a real weakness of the 24h heartbeat interval: a delivery that
+fails once waits a day for the next attempt. Acceptable for a heartbeat whose
+purpose is "is the path alive", but it means the heartbeat cannot be used to
+diagnose a freshly-broken path quickly. Use the test endpoint for that.
+
+Also cleaned up: a `zz-interp-test` contact point left in Grafana's database by
+the interpolation experiment. Deleting its provisioning file did not remove it
+(same behaviour as rules), so it needed
+`DELETE /api/v1/provisioning/contact-points/{uid}` with `X-Disable-Provenance`.
+
+### Credential hygiene follow-up
+
+Two webhook URLs passed through the setup conversation, so both should be treated
+as exposed. The unused one (`#general`, "Captain Hook") should be deleted in
+Discord if it still exists. Rotating the live one is a one-line change to
+`/etc/homeguard/grafana.env` plus a `sync_grafana_alerts.sh` run, with no code
+change and no redeploy.
+
+### Previously blocked on one manual step (now resolved)
 
 The Discord bot (`Homeguard-Bot`, guild `Homeguard`) authenticates fine, but
 returns `403 Missing Permissions` on `/channels/{id}/webhooks`, so the webhook
