@@ -1,0 +1,633 @@
+# Grafana unified-alerting rule provisioning (Grafana 12.x).
+#
+# Deployed by infra/ec2/sync_grafana_alerts.sh to
+#   /etc/grafana/provisioning/alerting/homeguard_rules.yaml
+#
+# IMPORTANT -- Grafana reads provisioning/alerting/ at STARTUP ONLY. There is no
+# file watcher here, unlike provisioning/dashboards/. The sync script MUST
+# restart grafana-server for changes to take effect.
+#
+# `uid` values are FROZEN. Changing one orphans that rule's state history and
+# creates a duplicate rule. Retire rules via the `deleteRules:` block instead.
+#
+# DELIVERY -- as of this commit there are NO contact points and NO notification
+# policies. These rules evaluate and show state in the UI and in
+# /api/prometheus/grafana/api/v1/rules, but NOTHING IS DELIVERED ANYWHERE. The
+# `severity` labels below are inert until a notification policy routes on them.
+# Grafana also only runs while the instance is up (8am-8pm ET Mon-Fri plus a
+# Sat 23:00 - Sun 00:10 UTC window), so in-process alerting structurally cannot
+# report that the host itself died. See docs/monitoring/.
+#
+# SCOPE -- these cover "the machine is broken", not "performance is bad". There
+# is deliberately no drawdown alert: no automated drawdown stop exists in the
+# live path, so there is no discrete event to alert on and no action a page
+# would prompt. Drawdown is a dashboard concern. Note also that
+# hg_portfolio_drawdown_pct is NEGATIVE by construction -- see
+# docs/monitoring/METRIC_SPEC.md.
+#
+# THRESHOLD SEMANTICS -- read before editing. Most expressions put the
+# comparison inside the PromQL, so they yield either a sample or an EMPTY
+# vector. Empty means "gate closed", which is why every rule sets
+# `noDataState: OK`. But a PromQL filter like `up == 0` PRESERVES the left-hand
+# value, so it yields 0, not 1 -- a `gt 0` threshold on it would never fire.
+# Where a boolean is wanted, `== bool 0` is used so the value is literally
+# 1 = true / 0 = false. Check the value a query actually returns before
+# choosing an evaluator; scripts/monitoring/validate_alert_exprs.py runs them.
+#
+# Valid `job` labels come from config/monitoring/victoria-metrics/scrape.yaml
+# and are exactly: homeguard-omr, homeguard-ramp, homeguard-mp,
+# homeguard-cscm, node. omr and mp are currently up=0 (their units exist but
+# are disabled and superseded by homeguard-multi), so rules must NOT be
+# generalised across all homeguard-* jobs or they fire permanently.
+apiVersion: 1
+
+groups:
+  - orgId: 1
+    name: homeguard-trading
+    folder: Homeguard Alerts
+    interval: 1m
+    rules:
+
+      # ------------------------------------------------------------------
+      # IB Gateway heartbeat stale during RAMP market hours.
+      #
+      # Two fixes vs the retired rules.yaml:
+      #  1. The gate was `max(hg_market_open) == 1`, which was a NO-OP.
+      #     hg_market_open is unlabeled and run_cscm_live.py hardcodes it to
+      #     1.0 ("crypto = always open"), so max() across jobs was permanently
+      #     1 and the gate never gated -- this rule would have fired every
+      #     night and every weekend. Scoped to job="homeguard-ramp".
+      #  2. Threshold 120s -> 300s. Measured during market hours over 7 days,
+      #     ibkr heartbeat age is p99 71s / max 166s, so 120s sat inside the
+      #     noise band. Ungated over 2 days the max is 310s, which is a
+      #     market-closed/restart artifact -- i.e. the gate is load-bearing.
+      #
+      # IBKRBroker.is_market_open() is a pure weekday+clock check with no
+      # network call, so the gate does NOT go false when the gateway dies.
+      # It is holiday-unaware, so expect false positives on NYSE holidays.
+      #
+      # Value returned is the heartbeat age in seconds (a filter preserves the
+      # left-hand value), hence `gt 0` rather than a magnitude threshold.
+      # ------------------------------------------------------------------
+      - uid: hg-ibgw-down
+        title: IBGatewayDown
+        condition: C
+        for: 5m
+        noDataState: OK
+        execErrState: Error
+        labels:
+          severity: critical
+          strategy: ramp
+        annotations:
+          summary: 'IB Gateway heartbeat stale for {{ $values.B.Value | printf "%.0f" }}s during RAMP market hours'
+          description: >-
+            hg_broker_last_heartbeat_timestamp{broker="ibkr"} has not advanced
+            for over 300s while hg_market_open{job="homeguard-ramp"} == 1.
+            Check homeguard-gateway.service and the IBC login; IB Gateway may
+            need a manual re-auth. Known false positive: NYSE holidays, since
+            is_market_open() is weekday+clock only, not holiday-aware.
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: victoriametrics
+            model:
+              refId: A
+              datasource:
+                type: prometheus
+                uid: victoriametrics
+              editorMode: code
+              instant: true
+              range: false
+              expr: >-
+                (time() - max(hg_broker_last_heartbeat_timestamp{job="homeguard-ramp",broker="ibkr"})) > 300
+                and on() (max(hg_market_open{job="homeguard-ramp"}) == 1)
+          - refId: B
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: __expr__
+            model:
+              refId: B
+              datasource:
+                type: __expr__
+                uid: __expr__
+              type: reduce
+              reducer: last
+              expression: A
+          - refId: C
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: __expr__
+            model:
+              refId: C
+              datasource:
+                type: __expr__
+                uid: __expr__
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [0]
+
+      # ------------------------------------------------------------------
+      # Streaming websocket down during RAMP market hours.
+      #
+      # `or vector(0)` is the fix for absence-vs-zero: hg_websocket_connected
+      # is only emitted when the adapter exposes a data provider, so a
+      # vanished provider produces NO series and a bare `min(...) == 0` would
+      # pass silently. With `or vector(0)` the expression yields 0 instead of
+      # empty, so absence fires.
+      #
+      # provider="iex" is deliberately NOT matched. It comes from the
+      # STREAMING_FEED env var; pinning it would silently disable this alert
+      # if the feed is ever switched to sip.
+      #
+      # The `up == 1` clause stops this double-alerting with RampServiceDown
+      # when the whole process is gone.
+      #
+      # Value is 0 (disconnected) or 1 (connected), hence `lt 1`.
+      # ------------------------------------------------------------------
+      - uid: hg-ws-disconnected
+        title: WebSocketDisconnected
+        condition: C
+        for: 5m
+        noDataState: OK
+        execErrState: Error
+        labels:
+          severity: warning
+          strategy: ramp
+        annotations:
+          summary: 'RAMP streaming websocket disconnected during market hours'
+          description: >-
+            hg_websocket_connected for job="homeguard-ramp" is 0, or the gauge
+            is absent entirely, while the market is open and the process is up.
+            RAMP falls back to REST polling, so this degrades signal freshness
+            rather than halting trading. Check the Alpaca stream and
+            USE_STREAMING in the unit file.
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: victoriametrics
+            model:
+              refId: A
+              datasource:
+                type: prometheus
+                uid: victoriametrics
+              editorMode: code
+              instant: true
+              range: false
+              expr: >-
+                (min(hg_websocket_connected{job="homeguard-ramp"}) or vector(0))
+                and on() (max(hg_market_open{job="homeguard-ramp"}) == 1)
+                and on() (max(up{job="homeguard-ramp"}) == 1)
+          - refId: B
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: __expr__
+            model:
+              refId: B
+              datasource:
+                type: __expr__
+                uid: __expr__
+              type: reduce
+              reducer: last
+              expression: A
+          - refId: C
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: __expr__
+            model:
+              refId: C
+              datasource:
+                type: __expr__
+                uid: __expr__
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator:
+                    type: lt
+                    params: [1]
+
+      # ------------------------------------------------------------------
+      # RAMP produced no rebalance decision today.
+      #
+      # Replaces the retired StrategySignalStale, which read
+      # hg_strategy_last_signal_timestamp -- a gauge set to time.time() on
+      # EVERY metrics tick (src/monitoring/hooks.py), making it process
+      # liveness rather than signal age. src/monitoring/registry.py documents
+      # this trap and names hg_strategy_last_decision_timestamp as the real
+      # signal; it is fed from the mtime of
+      # data/trading/decisions/_latest/<strategy>.json.
+      #
+      # A bare age threshold cannot work. RAMP rebalances once daily at
+      # 15:55 ET, so decision age legitimately reaches ~24h on weekdays and
+      # was measured at 72h across a weekend. Any threshold that catches a
+      # missed day also fires every Monday morning. So this asks "did today's
+      # decision happen?" only AFTER today's window has closed.
+      #
+      # hour() is UTC. >= 22 UTC is 18:00 EDT / 17:00 EST, both post-close and
+      # both inside instance uptime. The 15:55 ET decision lands at 19:55 UTC
+      # (EDT) or 20:55 UTC (EST), so in-window age is at most ~4h while a
+      # missed day is >= 28h; 43200s (12h) sits with wide margin on both sides.
+      #
+      # The day_of_week() clause excludes the Sat 23:00 UTC startup window,
+      # which overlaps hour() >= 22 and would otherwise fire on Friday's
+      # legitimately-stale decision.
+      #
+      # RE-DERIVE THIS WINDOW if the EventBridge schedule or the rebalance
+      # time changes.
+      #
+      # No CSCM equivalent: CSCM decision age legitimately climbs to 168h
+      # (weekly rebalance), so any staleness threshold would report a missed
+      # rebalance about 8 days late. CSCM is covered by CscmServiceDown.
+      # ------------------------------------------------------------------
+      - uid: hg-ramp-decision-missed
+        title: RampDecisionMissedToday
+        condition: C
+        for: 15m
+        noDataState: OK
+        execErrState: Error
+        labels:
+          severity: critical
+          strategy: ramp
+        annotations:
+          summary: 'RAMP has no rebalance decision for {{ $values.B.Value | printf "%.0f" }}s on a weekday after close'
+          description: >-
+            hg_strategy_last_decision_timestamp{strategy="ramp"} is older than
+            12h during the post-close evaluation window on a weekday, meaning
+            today's 15:55 ET rebalance did not produce a decision file. Check
+            `journalctl -u homeguard-multi` for a preflight or reconciler exit.
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 3600
+              to: 0
+            datasourceUid: victoriametrics
+            model:
+              refId: A
+              datasource:
+                type: prometheus
+                uid: victoriametrics
+              editorMode: code
+              instant: true
+              range: false
+              expr: >-
+                (time() - max(hg_strategy_last_decision_timestamp{job="homeguard-ramp",strategy="ramp"})) > 43200
+                and on() (hour() >= 22)
+                and on() (day_of_week() >= 1)
+                and on() (day_of_week() <= 5)
+          - refId: B
+            relativeTimeRange:
+              from: 3600
+              to: 0
+            datasourceUid: __expr__
+            model:
+              refId: B
+              datasource:
+                type: __expr__
+                uid: __expr__
+              type: reduce
+              reducer: last
+              expression: A
+          - refId: C
+            relativeTimeRange:
+              from: 3600
+              to: 0
+            datasourceUid: __expr__
+            model:
+              refId: C
+              datasource:
+                type: __expr__
+                uid: __expr__
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [0]
+
+      # ------------------------------------------------------------------
+      # RAMP metrics target down while the instance is up.
+      #
+      # Carried over from the retired rules.yaml, whose comment is worth
+      # keeping verbatim: the RAMP metrics target (port 8082) goes unreachable
+      # when the process dies repeatedly -- e.g. the 2026-06-09 preflight
+      # false-zero that crash-looped ~1000x silently. Gating on node-exporter
+      # being up keeps this SILENT during the nightly EventBridge shutdown,
+      # when both targets drop together. 5m tolerates a single clean restart.
+      #
+      # `== bool 0` rather than `== 0`: a bare filter preserves the left-hand
+      # value, so `up == 0` yields 0 and a `gt 0` threshold would never fire.
+      # With `bool` the value is explicitly 1 = down / 0 = up.
+      # ------------------------------------------------------------------
+      - uid: hg-ramp-service-down
+        title: RampServiceDownOrCrashLooping
+        condition: C
+        for: 5m
+        noDataState: OK
+        execErrState: Error
+        labels:
+          severity: critical
+          strategy: ramp
+        annotations:
+          summary: 'RAMP metrics target down while the instance is up (possible crash-loop)'
+          description: >-
+            homeguard-ramp (127.0.0.1:8082) has been unreachable for 5m while
+            node-exporter shows the instance up, so the service is down or
+            crash-looping rather than cleanly stopped. Check
+            `journalctl -u homeguard-multi`; a preflight reconciler exit is the
+            known failure mode.
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: victoriametrics
+            model:
+              refId: A
+              datasource:
+                type: prometheus
+                uid: victoriametrics
+              editorMode: code
+              instant: true
+              range: false
+              expr: >-
+                (up{job="homeguard-ramp"} == bool 0)
+                and on() (up{job="node"} == 1)
+          - refId: B
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: __expr__
+            model:
+              refId: B
+              datasource:
+                type: __expr__
+                uid: __expr__
+              type: reduce
+              reducer: last
+              expression: A
+          - refId: C
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: __expr__
+            model:
+              refId: C
+              datasource:
+                type: __expr__
+                uid: __expr__
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [0]
+
+      # ------------------------------------------------------------------
+      # CSCM metrics target down while the instance is up. Same shape as the
+      # RAMP rule. This is also CSCM's only liveness coverage, since its
+      # weekly cadence makes decision-staleness alerting useless.
+      #
+      # Deliberately NOT generalised to all homeguard-* jobs: omr and mp are
+      # measured up=0 (units disabled, superseded by homeguard-multi), so a
+      # regex rule would fire permanently.
+      # ------------------------------------------------------------------
+      - uid: hg-cscm-service-down
+        title: CscmServiceDownOrCrashLooping
+        condition: C
+        for: 5m
+        noDataState: OK
+        execErrState: Error
+        labels:
+          severity: critical
+          strategy: cscm
+        annotations:
+          summary: 'CSCM metrics target down while the instance is up (possible crash-loop)'
+          description: >-
+            homeguard-cscm (127.0.0.1:8084) has been unreachable for 5m while
+            node-exporter shows the instance up. Check
+            `journalctl -u homeguard-cscm`. Note CSCM rebalances weekly, so
+            this liveness check is its primary coverage.
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: victoriametrics
+            model:
+              refId: A
+              datasource:
+                type: prometheus
+                uid: victoriametrics
+              editorMode: code
+              instant: true
+              range: false
+              expr: >-
+                (up{job="homeguard-cscm"} == bool 0)
+                and on() (up{job="node"} == 1)
+          - refId: B
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: __expr__
+            model:
+              refId: B
+              datasource:
+                type: __expr__
+                uid: __expr__
+              type: reduce
+              reducer: last
+              expression: A
+          - refId: C
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: __expr__
+            model:
+              refId: C
+              datasource:
+                type: __expr__
+                uid: __expr__
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [0]
+
+      # ------------------------------------------------------------------
+      # Burst of order rejections.
+      #
+      # The retired rule used `sum(rate(...[5m])) > 0.1`, which is 6
+      # rejections per MINUTE and could never fire even with a live counter:
+      # RAMP places roughly 20 orders once a day, so a single rejection over
+      # [5m] is a rate of 0.0033. Restated in the event-count domain, which is
+      # what "spike" actually means here.
+      #
+      # increase() also absorbs the counter resetting to 0 when the process
+      # restarts (the registry is in-memory).
+      #
+      # COVERAGE LIMIT -- read before trusting a quiet OrderRejectionSpike:
+      #   RAMP  : covered. StrategyAdapter forwards the registry to
+      #           ExecutionEngine, which records rejections.
+      #   OMR   : NOT covered. OMRLiveAdapter has no metrics_registry parameter,
+      #           so nothing reaches ExecutionEngine. The job is kept in the
+      #           selector so coverage starts automatically if OMR is ever
+      #           wired and re-enabled (it is currently up=0, superseded by
+      #           homeguard-multi).
+      #   CSCM  : NOT covered. CSCMLiveAdapter is not a StrategyAdapter subclass
+      #           and calls broker.place_crypto_order directly, bypassing
+      #           ExecutionEngine entirely.
+      # So silence here means "RAMP had no rejection burst", not "no strategy
+      # had one".
+      #
+      # No slippage rule: the registry's histogram exporter emits only _count
+      # and _sum with no _bucket series, so histogram_quantile() is
+      # impossible, and slippage is currently hardcoded to 0.0 in
+      # ExecutionEngine.
+      # ------------------------------------------------------------------
+      - uid: hg-order-reject-spike
+        title: OrderRejectionSpike
+        condition: C
+        for: 0s
+        noDataState: OK
+        execErrState: Error
+        labels:
+          severity: warning
+        annotations:
+          summary: '{{ $values.B.Value | printf "%.0f" }} order rejections in the last 30m'
+          description: >-
+            hg_orders_rejected_total increased by 3 or more over 30m across
+            homeguard-ramp/omr. Inspect the `reason` label for the bounded
+            rejection class, and the service journal for the full broker error
+            text. Covers RAMP and OMR only; CSCM bypasses ExecutionEngine.
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 3600
+              to: 0
+            datasourceUid: victoriametrics
+            model:
+              refId: A
+              datasource:
+                type: prometheus
+                uid: victoriametrics
+              editorMode: code
+              instant: true
+              range: false
+              expr: sum(increase(hg_orders_rejected_total{job=~"homeguard-(ramp|omr)"}[30m]))
+          - refId: B
+            relativeTimeRange:
+              from: 3600
+              to: 0
+            datasourceUid: __expr__
+            model:
+              refId: B
+              datasource:
+                type: __expr__
+                uid: __expr__
+              type: reduce
+              reducer: last
+              expression: A
+          - refId: C
+            relativeTimeRange:
+              from: 3600
+              to: 0
+            datasourceUid: __expr__
+            model:
+              refId: C
+              datasource:
+                type: __expr__
+                uid: __expr__
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator:
+                    type: gte
+                    params: [3]
+
+      # ------------------------------------------------------------------
+      # Intentionally always firing. Do not "fix" this rule.
+      #
+      # It is the end-to-end proof that the alerting pipeline evaluates at
+      # all. This whole rule set sat unloaded and unnoticed from 2026-04-18 to
+      # 2026-07-27 precisely because a silent alerting system is
+      # indistinguishable from a quiet one. If this canary is NOT in the
+      # firing state, alerting is broken.
+      #
+      # Once a contact point exists it doubles as the delivery smoke test:
+      # route severity=info to a low-noise channel and this proves the path.
+      # ------------------------------------------------------------------
+      - uid: hg-alerting-canary
+        title: HomeguardAlertingCanary
+        condition: C
+        for: 0s
+        noDataState: Alerting
+        execErrState: Error
+        labels:
+          severity: info
+        annotations:
+          summary: 'Alerting canary: the Grafana alert pipeline is evaluating'
+          description: >-
+            Intentionally always firing. Proves rule evaluation works, and once
+            a contact point is configured, proves delivery works. If this is
+            not firing, alerting is broken -- do not silence or delete it.
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: victoriametrics
+            model:
+              refId: A
+              datasource:
+                type: prometheus
+                uid: victoriametrics
+              editorMode: code
+              instant: true
+              range: false
+              expr: vector(1)
+          - refId: B
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: __expr__
+            model:
+              refId: B
+              datasource:
+                type: __expr__
+                uid: __expr__
+              type: reduce
+              reducer: last
+              expression: A
+          - refId: C
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: __expr__
+            model:
+              refId: C
+              datasource:
+                type: __expr__
+                uid: __expr__
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [0]
+
+# Retire a rule by uid here. Removing it from `rules:` above is not reliably
+# enough to delete it from Grafana.
+# deleteRules:
+#   - orgId: 1
+#     uid: <retired-uid>

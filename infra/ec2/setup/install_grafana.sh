@@ -70,6 +70,13 @@ if [ -f ~/Homeguard/infra/ec2/sync_grafana_dashboards.sh ]; then
     bash ~/Homeguard/infra/ec2/sync_grafana_dashboards.sh
 fi
 
+# Copy alert rule provisioning. Runs BEFORE the restart below so a fresh install
+# needs only one Grafana bounce; the sync script's own restart is skipped because
+# it only fires when the file content actually changed.
+if [ -f ~/Homeguard/infra/ec2/sync_grafana_alerts.sh ]; then
+    bash ~/Homeguard/infra/ec2/sync_grafana_alerts.sh
+fi
+
 # Install service override
 sudo cp ~/Homeguard/infra/ec2/services/grafana-server.service /etc/systemd/system/
 sudo systemctl daemon-reload
