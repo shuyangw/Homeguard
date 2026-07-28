@@ -42,6 +42,25 @@ for src in "${SOURCE_DIR}"/*.yaml; do
     fi
 done
 
+# Any ${VAR} referenced by a provisioning file must be present in Grafana's
+# EnvironmentFile, or Grafana resolves it to an empty string and silently fails
+# to deliver. Surface that here rather than leaving it to be discovered by an
+# alert that never arrives.
+GRAFANA_ENV_FILE="/etc/homeguard/grafana.env"
+missing_vars=""
+for var in $(grep -ohE '\$\{[A-Z_][A-Z0-9_]*\}' "${SOURCE_DIR}"/*.yaml 2>/dev/null \
+                | tr -d '${}' | sort -u); do
+    if ! sudo grep -qE "^${var}=.+" "${GRAFANA_ENV_FILE}" 2>/dev/null; then
+        missing_vars="${missing_vars} ${var}"
+    fi
+done
+if [ -n "${missing_vars}" ]; then
+    echo "[sync-alerts] [!] Referenced but NOT set in ${GRAFANA_ENV_FILE}:${missing_vars}"
+    echo "[sync-alerts]     Alert rules will still evaluate, but notifications"
+    echo "[sync-alerts]     will NOT be delivered. See"
+    echo "[sync-alerts]     config/monitoring/grafana/grafana.env.example"
+fi
+
 count=$(ls "${SOURCE_DIR}"/*.yaml | wc -l)
 if [ "${changed}" -eq 0 ]; then
     echo "[sync-alerts] ${count} file(s) already current; skipping Grafana restart"

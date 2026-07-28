@@ -6,6 +6,12 @@ After=network.target victoria-metrics.service
 Type=simple
 User=grafana
 Group=grafana
+# Secrets referenced as ${VAR} from alerting provisioning files (currently the
+# Discord webhook URL for alert delivery). Leading "-" makes a missing file
+# non-fatal, so a host without it still starts -- Grafana just resolves the
+# variable to an empty string and logs delivery failures.
+# Template: config/monitoring/grafana/grafana.env.example
+EnvironmentFile=-/etc/homeguard/grafana.env
 ExecStart=/usr/sbin/grafana-server \
   --config=/etc/grafana/grafana.ini \
   --homepath=/usr/share/grafana \

@@ -140,9 +140,17 @@ stashing all changes and re-running against `origin/main`.
 
 - **Nothing is delivered anywhere.** No contact points, no notification policy.
   Rules evaluate and show state; no page happens. `severity` labels are inert.
-  This is the deferred next conversation. `DISCORD_MONITORING_WEBHOOK` already
-  exists on the host and is used by `weekly_report.py`, so a Grafana Discord
-  contact point can reuse it.
+  This is the deferred next conversation.
+
+  **Correction to an earlier claim in this document:** it originally said
+  `DISCORD_MONITORING_WEBHOOK` "already exists on the host and is used by
+  `weekly_report.py`, so a Grafana Discord contact point can reuse it". That is
+  wrong. The host `.env` contains only `DISCORD_TOKEN` (the bot token, a
+  different thing). `DISCORD_MONITORING_WEBHOOK` is unset, so
+  `weekly_report.py` has been taking its "webhook not configured" branch and the
+  weekly QuantStats report has never been delivered either. That is the same
+  silent-delivery failure class as the alerting bug, in a second place. There was
+  no existing channel to reuse; delivery had to be built.
 - **Host-level death is structurally uncoverable** by in-process Grafana
   alerting: if the box dies the notifier dies with it, and Grafana only runs
   08:00-20:00 ET weekdays plus a Sat 23:00-Sun 00:10 UTC window. Needs an

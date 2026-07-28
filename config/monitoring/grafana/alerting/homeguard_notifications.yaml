@@ -1,0 +1,89 @@
+# Grafana alert DELIVERY: contact point + notification policy tree.
+#
+# Deployed by infra/ec2/sync_grafana_alerts.sh to
+#   /etc/grafana/provisioning/alerting/homeguard_notifications.yaml
+# Like the rule file, this is read at STARTUP ONLY -- the sync script restarts
+# grafana-server when content changes.
+#
+# SECRET HANDLING -- the Discord webhook URL is NOT in this file and must never
+# be committed. Grafana interpolates ${VAR} in provisioning files from its own
+# process environment, which is supplied by
+#   EnvironmentFile=-/etc/homeguard/grafana.env
+# in infra/ec2/services/grafana-server.service. Template and setup instructions:
+#   config/monitoring/grafana/grafana.env.example
+# If DISCORD_MONITORING_WEBHOOK is unset, the URL resolves to an empty string and
+# Grafana logs delivery failures. Verified on Grafana 12.4.3 that ${VAR}
+# interpolation works in alerting provisioning files.
+#
+# WHAT THIS DOES NOT COVER -- if the EC2 instance or Grafana itself dies, nothing
+# here can tell you, because the notifier dies with it. Grafana only runs
+# 08:00-20:00 ET Mon-Fri plus a Sat 23:00 - Sun 00:10 UTC window. Off-box
+# coverage needs a scheduled Lambda plus SNS and is deliberately out of scope
+# here; see docs/progress/20260727_GRAFANA_ALERTING_FIX.md.
+apiVersion: 1
+
+contactPoints:
+  - orgId: 1
+    name: homeguard-discord
+    receivers:
+      - uid: hg-discord
+        type: discord
+        settings:
+          url: ${DISCORD_MONITORING_WEBHOOK}
+          # Grafana's default Discord payload already includes rule name, state,
+          # and the annotation summary, so no custom message template is needed.
+          use_discord_username: false
+        # Send one message per alert group rather than per alert instance.
+        disableResolveMessage: false
+
+policies:
+  - orgId: 1
+    receiver: homeguard-discord
+    # Group by rule and strategy so a multi-strategy incident does not collapse
+    # into one indistinguishable notification.
+    group_by:
+      - alertname
+      - strategy
+    # Defaults for anything that does not match a child route below.
+    group_wait: 30s
+    group_interval: 5m
+    repeat_interval: 4h
+    routes:
+
+      # Critical: page fast, and keep reminding while it is still broken.
+      # IBGatewayDown, RampDecisionMissedToday, Ramp/CscmServiceDown.
+      - receiver: homeguard-discord
+        object_matchers:
+          - ['severity', '=', 'critical']
+        group_by:
+          - alertname
+          - strategy
+        group_wait: 10s
+        group_interval: 1m
+        repeat_interval: 1h
+
+      # Warning: degraded rather than broken (WebSocketDisconnected falls back to
+      # REST polling; OrderRejectionSpike wants investigation, not intervention).
+      # Slower first notification, much slower reminders.
+      - receiver: homeguard-discord
+        object_matchers:
+          - ['severity', '=', 'warning']
+        group_wait: 5m
+        group_interval: 10m
+        repeat_interval: 12h
+
+      # Info is the canary, which fires permanently BY DESIGN. Routed with a 24h
+      # repeat_interval so it becomes a once-a-day "alerting is still alive"
+      # heartbeat instead of a notification storm.
+      #
+      # This is the load-bearing part of the whole delivery design: the previous
+      # rule set was silent for three months and nobody noticed, because a
+      # working alerting system and a broken one look identical until something
+      # breaks. A daily heartbeat makes the difference observable. If the daily
+      # message stops arriving, alerting is broken -- that is the signal.
+      - receiver: homeguard-discord
+        object_matchers:
+          - ['severity', '=', 'info']
+        group_wait: 0s
+        group_interval: 24h
+        repeat_interval: 24h
