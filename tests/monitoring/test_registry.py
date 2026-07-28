@@ -147,9 +147,38 @@ class TestHighLevelUpdates:
         assert reg.get_gauge('hg_portfolio_buying_power_usd', {'broker': 'alpaca'}) == 150000.0
 
     def test_update_drawdown(self):
+        """Drawdown is NEGATIVE by convention -- see the sign note below.
+
+        The previous version of this test passed 5.2 and asserted 5.2. It was
+        not wrong (the setter is a passthrough) but it encoded the wrong mental
+        model, and that is what let the alert rules ship with
+        `max(hg_portfolio_drawdown_pct) > 7`, a condition that can never be
+        true. Uses a negative value so the convention is visible at the
+        assertion.
+        """
         reg = MetricsRegistry(strategy='omr')
-        reg.update_drawdown(5.2)
-        assert reg.get_gauge('hg_portfolio_drawdown_pct') == 5.2
+        reg.update_drawdown(-5.2)
+        assert reg.get_gauge('hg_portfolio_drawdown_pct') == -5.2
+
+    def test_drawdown_sign_convention_is_negative(self):
+        """Guard the sign convention at the producer, not just the setter.
+
+        The setter is a passthrough so it cannot enforce a sign. This replicates
+        the producer formula from run_live_paper_trading.py and
+        run_cscm_live.py, both of which compute
+        (equity - peak) / peak * 100 against a running max, and asserts the
+        result is always <= 0. If the producers ever switch to a positive
+        convention, this test and every alert threshold must change together.
+        """
+        def producer_drawdown_pct(equity: float, peak_equity: float) -> float:
+            peak = max(peak_equity, equity)
+            return 0.0 if peak <= 0 else (equity - peak) / peak * 100.0
+
+        assert producer_drawdown_pct(100.0, 100.0) == 0.0
+        assert abs(producer_drawdown_pct(91.0, 100.0) - (-9.0)) < 1e-9
+        assert producer_drawdown_pct(120.0, 100.0) == 0.0  # new peak, not +20
+        for equity, peak in [(50, 100), (99, 100), (1, 1000), (100, 100)]:
+            assert producer_drawdown_pct(equity, peak) <= 0.0
 
     def test_update_strategy_last_decision_timestamp_is_labeled(self):
         """Decision-age gauge must carry the strategy label so each strategy

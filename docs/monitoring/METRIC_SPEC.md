@@ -11,10 +11,28 @@ names: `omr`, `ramp`, `mp`, `cscm`.
 | `hg_portfolio_equity_usd` | gauge | `broker` | `broker.get_account()['portfolio_value']` |
 | `hg_portfolio_cash_usd` | gauge | `broker` | `broker.get_account()['cash']` |
 | `hg_portfolio_buying_power_usd` | gauge | `broker` | `broker.get_account()['buying_power']` |
-| `hg_portfolio_drawdown_pct` | gauge | -- | rolling peak equity tracker |
+| `hg_portfolio_drawdown_pct` | gauge | -- | rolling peak equity tracker. **NEGATIVE by construction** -- see note below |
 | `hg_portfolio_day_pnl_usd` | gauge | -- | equity minus day-open equity |
 
 Multiple processes emit portfolio metrics from the same broker account.
+
+### Sign convention: `hg_portfolio_drawdown_pct` is negative
+
+Computed as `(equity - peak) / peak * 100` where `peak` is a running maximum
+(`scripts/trading/run_live_paper_trading.py`, `scripts/trading/run_cscm_live.py`).
+Because `peak >= equity` always, the gauge is in `[-100, 0]`: `0` at the peak,
+`-9.0` at a 9% drawdown. It is never positive.
+
+This is deliberate -- the Grafana panels show losses as negative bars -- but it
+is a trap for alert thresholds. A rule written as
+`max(hg_portfolio_drawdown_pct) > 7` can never fire, and two shipped alert rules
+had exactly that defect from 2026-04-18 until 2026-07-27. Correct forms are
+`min(hg_portfolio_drawdown_pct) < -7` or an explicit `abs()`.
+
+`tests/monitoring/test_registry.py::test_drawdown_sign_convention_is_negative`
+pins this at the producer formula, and
+`tests/monitoring/test_alert_rules_provisioning.py::test_no_positive_threshold_on_drawdown`
+rejects any new rule that compares it against a positive bound.
 VictoriaMetrics deduplicates identical samples. Grafana uses `max by (broker)`.
 
 ## Strategy Metrics (emitted by owning strategy only)
