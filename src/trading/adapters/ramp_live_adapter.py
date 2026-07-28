@@ -373,7 +373,8 @@ class RAMPLiveAdapter(StrategyAdapter):
             position_size=0.10,  # Base position size (overridden by dynamic 1/N sizing)
             max_positions=20,  # Maximum across all regimes (STRONG_BULL uses 20)
             data_lookback_days=data_lookback_days,
-            data_provider=data_provider
+            data_provider=data_provider,
+            metrics_registry=metrics_registry
         )
 
         # Store configuration
@@ -395,10 +396,11 @@ class RAMPLiveAdapter(StrategyAdapter):
         self.spy_dd_threshold = spy_dd_threshold
         self.slippage_per_share = slippage_per_share
         self._broker_name = broker_name
-        # Optional metrics registry -- when provided, rebalance errors increment
-        # hg_strategy_rebalance_errors_total{strategy,phase}. Sidecars pass this
-        # in so silent order-submission failures surface on dashboards.
-        self._metrics_registry = metrics_registry
+        # self._metrics_registry is set by super().__init__ above, which also
+        # forwards the registry to ExecutionEngine so order-event metrics
+        # (hg_orders_submitted/filled/rejected_total) are recorded. Used here for
+        # hg_strategy_rebalance_errors_total{strategy,phase} so silent
+        # order-submission failures surface on dashboards.
 
         # Store reference to RAMP signals
         self._ramp_signals = ramp_signals

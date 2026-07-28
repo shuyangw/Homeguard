@@ -187,7 +187,10 @@ class TestAdapterInitialization:
                     symbols=['AAPL']
                 )
 
-        mock_ee.assert_called_once_with(mock_broker)
+        # metrics_registry is forwarded so ExecutionEngine can record
+        # hg_orders_* metrics. It defaults to None, which is behaviourally
+        # identical to the previous ExecutionEngine(broker) call.
+        mock_ee.assert_called_once_with(mock_broker, metrics_registry=None)
 
     def test_init_creates_position_manager(self, mock_broker, mock_strategy):
         """Test adapter creates PositionManager with correct config."""
