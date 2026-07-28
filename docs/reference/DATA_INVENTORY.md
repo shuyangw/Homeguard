@@ -285,6 +285,19 @@ same downloader across the *same* date range (2026-01-29 .. 02-22) and got usabl
 Practical consequence: the honest window for SPY-based options research is **~2017-2025
 (~8.3 y)**, not 13.7 y.
 
+**The vendor does NOT document this** (checked 2026-07-28). ThetaData advertises "Options data
+availability: **Since June 2012**" -- which matches our *quote* coverage exactly -- and their
+implied-volatility endpoint docs state **no coverage dates at all**: nothing per-symbol, per
+symbol-type, or per-tier. So the headline implies greeks reach back to 2012, which is true for
+QQQ and the single names and false for 16 of our 31 roots. We could not have known this at
+purchase time, and this census appears to be the only written record of it.
+
+**Status of the conclusion:** the vendor-boundary explanation is an **inference from our own
+data**, strong but not corroborated by vendor documentation. **Not yet asked: ThetaData support**
+-- "does IV/greeks history for SPY/IWM/SPX start in 2017, and why does QQQ reach 2012?" That is
+free, needs no active subscription, and would confirm or refute the boundary. **Ask before ever
+spending on a re-pull.**
+
 #### [!] The NaN-vs-NULL trap — this fooled two separate analyses
 
 Greek columns are **NaN-valued float64, not SQL NULL**. So parquet/Arrow report
