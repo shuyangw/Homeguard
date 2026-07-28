@@ -421,11 +421,23 @@ does not.
 
 ### Instance schedule
 
-EventBridge stops the instance overnight and starts it in the morning; it stays
-up over the weekend for the CSCM Sunday tick. **The exact stop time is not
-verified**: `INFRASTRUCTURE_OVERVIEW.md` and the draft both say 4:30 PM ET, but
-on 2026-07-27 the tailnet reported the peer alive until roughly 8:00 PM ET. Read
-the EventBridge rule before relying on the window.
+Verified against EventBridge **Scheduler** (not Rules; `aws events list-rules`
+returns nothing):
+
+| Schedule | Expression | TZ |
+|---|---|---|
+| `homeguard-start-instance` | `cron(0 8 ? * MON-FRI *)` | America/New_York |
+| `homeguard-stop-instance` | `cron(0 20 ? * MON-FRI *)` | America/New_York |
+| `homeguard-start-instance-sunday` | `cron(0 23 ? * SAT *)` | UTC |
+| `homeguard-stop-instance-sunday` | `cron(10 0 ? * SUN *)` | UTC |
+
+So the window is 8:00 AM to 8:00 PM ET Mon-Fri, plus a ~70 minute Sat/Sun slot for
+the CSCM tick. Both the draft and `INFRASTRUCTURE_OVERVIEW.md` said 9:00 AM to
+4:30 PM ET with the instance idling all weekend; both were wrong and are corrected.
+
+Practical consequence: an instance started manually **after** the 8:00 PM stop has
+no schedule to stop it until the following 8:00 PM, so it runs overnight. Stop it
+by hand.
 
 The stdio server still launches when the host is down; it is a local process and
 does not connect at startup. Every *tool call* in that window returns a
@@ -523,4 +535,4 @@ auth in place.
 | Proposed escape `sed 's/[&|\\]/\\&/g'` | Wrong under this sed; needs `\\\\&` | Would have **corrupted `admin_password`** for any password containing `&` |
 | `install_tailscale.sh` advertises one bad URL | **Two**: also `http://homeguard-ec2:8428/vmui` | Both corrected |
 | macOS-only, `/usr/local/bin` wrapper | Primary machine is Windows; wrappers now in `infra/mcp/` under git | Cross-platform, no drift |
-| EventBridge stop at 4:30 PM ET | Peer observed alive until ~8:00 PM ET on 2026-07-27 | Unverified; read the rule |
+| EventBridge stop at 4:30 PM ET, up all weekend | Actually 8:00 PM ET Mon-Fri via EventBridge Scheduler, plus a ~70 min Sat/Sun CSCM slot | Both times wrong in the draft and in INFRASTRUCTURE_OVERVIEW.md |

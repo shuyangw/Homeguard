@@ -17,7 +17,7 @@
 | **Root Volume** | [+] Active | 50 GB gp3 (encrypted) |
 | **Public IP** | [+] Active | `<YOUR_EC2_IP>` (Elastic IP) |
 | **Remote Access** | [+] Tailscale | SSH and Grafana via Tailnet; public SSH restricted to `<YOUR_IP_CIDR>` |
-| **Scheduled Start/Stop** | [+] Enabled | 9:00 AM - 4:30 PM ET Mon-Fri (equities). CSCM runs weekly Sun 00:00 UTC. |
+| **Scheduled Start/Stop** | [+] Enabled | 8:00 AM - 8:00 PM ET Mon-Fri (equities), plus a Sat 23:00 - Sun 00:10 UTC window for the CSCM tick. |
 | **Trading Services** | [+] Running | OMR, RAMP, CSCM under `homeguard-trading.target` |
 | **Monitoring Stack** | [+] Running | VictoriaMetrics + Grafana + Loki + Promtail + node_exporter |
 
@@ -115,9 +115,10 @@ Per-strategy broker routing lives in `config/trading/broker_routing.yaml` — at
 Lambda + EventBridge control-plane (unchanged):
 
 ```
-EventBridge cron                    EventBridge cron
- 0 14 ? * MON-FRI *                  30 21 ? * MON-FRI *
-   (9:00 AM ET)                        (4:30 PM ET)
+EventBridge Scheduler               EventBridge Scheduler
+ cron(0 8 ? * MON-FRI *)             cron(0 20 ? * MON-FRI *)
+ tz=America/New_York                 tz=America/New_York
+   (8:00 AM ET)                        (8:00 PM ET)
        |                                  |
        v                                  v
   Lambda: homeguard-start-instance   Lambda: homeguard-stop-instance
@@ -127,7 +128,16 @@ EventBridge cron                    EventBridge cron
               ec2:StartInstances / ec2:StopInstances
 ```
 
-Lambda schedule only applies to equity-trading hours (OMR, RAMP). CSCM runs on a weekly cadence; the instance is already up during its Sunday tick because Lambda doesn't stop it on weekends (or we manually keep it up — see "CSCM note" below).
+Two further schedules cover the CSCM Sunday tick, both in UTC:
+
+```
+cron(0 23 ? * SAT *)  -> homeguard-start-instance-sunday
+cron(10 0 ? * SUN *)  -> homeguard-stop-instance-sunday
+```
+
+The weekday pair applies to equity-trading hours (OMR, RAMP). CSCM is covered by
+the dedicated Sat/Sun pair above, NOT by the instance idling through the weekend.
+See "CSCM note" below.
 
 ---
 
@@ -196,7 +206,14 @@ ssh -i ~/.ssh/homeguard-trading.pem ec2-user@<YOUR_EC2_IP>
 
 *Adjust upward if the instance starts running 24/7 (e.g. for CSCM's Sunday tick) — t4g.medium 24/7 ≈ $24/mo on compute alone.*
 
-**CSCM note:** the Lambda stop schedule only fires Mon-Fri 4:30 PM ET, so the instance is still up on Saturdays and Sundays to catch CSCM's Sunday 00:00 UTC rebalance. If you adopt a tighter schedule, ensure the instance is started before that tick or move CSCM to its own schedule.
+**CSCM note:** the weekday stop fires Mon-Fri 8:00 PM ET, so the instance is NOT up through the weekend. Two dedicated schedules cover CSCM's Sunday 00:00 UTC rebalance: `homeguard-start-instance-sunday` (Sat 23:00 UTC) and `homeguard-stop-instance-sunday` (Sun 00:10 UTC), giving a ~70 minute window around the tick. If CSCM's runtime grows past that window, widen the stop schedule rather than assuming spare time exists.
+
+Authoritative source is EventBridge **Scheduler**, not EventBridge Rules. `aws events list-rules` returns nothing; use:
+
+```bash
+aws scheduler list-schedules --region "$EC2_REGION"
+aws scheduler get-schedule --name homeguard-stop-instance --region "$EC2_REGION"
+```
 
 ---
 
@@ -204,12 +221,12 @@ ssh -i ~/.ssh/homeguard-trading.pem ec2-user@<YOUR_EC2_IP>
 
 ### Monday-Friday
 
-- **9:00 AM ET** — EventBridge → start Lambda → EC2 boot (~30s). systemd brings up `homeguard-trading.target`, monitoring stack, IB Gateway.
+- **8:00 AM ET** -- EventBridge → start Lambda → EC2 boot (~30s). systemd brings up `homeguard-trading.target`, monitoring stack, IB Gateway.
 - **9:30 AM ET** — equity market opens. OMR exits overnight positions shortly after open.
 - **3:50 PM ET** — OMR enters overnight positions.
 - **3:55 PM ET** — RAMP rebalances via IBKR historical bars + Alpaca trading.
 - **4:00 PM ET** — market closes. Monitoring stack continues collecting.
-- **4:30 PM ET** — EventBridge → stop Lambda → graceful shutdown. EBS + Elastic IP persist.
+- **8:00 PM ET** -- EventBridge → stop Lambda → graceful shutdown. EBS + Elastic IP persist.
 
 ### Weekends (Sat-Sun)
 - Instance remains up (not scheduled to stop) so CSCM can fire at Sun 00:00 UTC.
