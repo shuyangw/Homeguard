@@ -147,9 +147,64 @@ Two further irrecoverable gaps:
   what masked the 2026-06-09 phantom position.
 - **The 2026-05-16 to 06-09 blackout.** No rows exist to audit.
 
+## Fix APPLIED 2026-07-28 (recommendations 1 and 2)
+
+Both silent paths now record. Committed `a0e75f8` on `main`, cherry-picked to
+`f009df5` on the deploy branch, deployed, and `homeguard-multi` restarted at
+01:40 EDT (14h before the 15:55 ET rebalance).
+
+- **Trims** call `log_exit` with the **filled partial qty** and `entry_price` from
+  state, then decrement via `update_position_qty` rather than `remove_position`
+  since the position survives. A trim that consumes the whole position (rounding,
+  or a target collapsing below one share) falls back to `remove_position`.
+- **Buys** call `log_entry` and persist via `add_or_update_position` (the same
+  utility the legacy path uses, so a top-up accumulates instead of resetting qty
+  and losing the original cost basis).
+- **Both** now check the `execute_order` return value, which neither did. A failed
+  order previously looked identical to a filled one; on a falsy result they log an
+  error and touch neither the trade log nor state.
+
+Five tests added, each mutation-verified: reverting the trim `log_exit`, reverting
+the buy `log_entry`, or swapping the trim's decrement for a removal all fail the
+suite. Failure attribution checked by stashing, so the 6 unrelated failures in
+`test_adapters.py` and `test_streaming_integration.py` are confirmed identical with
+and without the change.
+
+Restart verified non-destructive: 17 position gauges before and after, no
+exceptions from the new paths, `NRestarts: 0`, and all 7 alert rules still healthy.
+
+Placement on the deploy branch was verified explicitly rather than trusted to the
+auto-merge, since `ramp_live_adapter.py` differs by ~437 lines between branches:
+within `_execute_rebalance_target_aware` there are now 2 `log_exit` (full exit and
+trim), 1 `log_entry`, and each sits inside its own loop.
+
+### Still unverified until the next rebalance
+
+RAMP trades once daily at 15:55 ET, so **no trim or buy has executed under the new
+code yet**. The confirmation to run after today's rebalance:
+
+```bash
+python3 - <<'PY'
+import json, glob, collections, os
+d = collections.Counter()
+for p in glob.glob(os.path.expanduser('~/logs/trades_20260728.jsonl')):
+    for line in open(p):
+        r = json.loads(line)
+        if r.get('strategy') == 'ramp':
+            d[(r['trade_type'], (r.get('metadata') or {}).get('exit_reason'))] += 1
+print(d)
+PY
+```
+
+Expect **entry rows to appear for the first time since 2026-06-09**, and any trim
+to produce an exit row with `metadata.exit_reason == 'trim'`. Cross-check the
+counts against `journalctl -u homeguard-multi | grep -cE "RAMP\] (TRIM|BUY)"` for
+the same day; they should now match, where previously trims and buys had no
+corresponding rows at all.
+
 ## Recommendations
 
-Ordered by value. None applied by this audit, which was read-only.
+Recommendations 1 and 2 are DONE (see above). 3 to 5 remain open.
 
 1. **Log the trim path** (`ramp_live_adapter.py`, trim loop). Call `log_exit` with
    the trimmed share count and decrement state qty, mirroring the full-exit loop
