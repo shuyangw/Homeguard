@@ -285,18 +285,38 @@ same downloader across the *same* date range (2026-01-29 .. 02-22) and got usabl
 Practical consequence: the honest window for SPY-based options research is **~2017-2025
 (~8.3 y)**, not 13.7 y.
 
-**The vendor does NOT document this** (checked 2026-07-28). ThetaData advertises "Options data
-availability: **Since June 2012**" -- which matches our *quote* coverage exactly -- and their
-implied-volatility endpoint docs state **no coverage dates at all**: nothing per-symbol, per
-symbol-type, or per-tier. So the headline implies greeks reach back to 2012, which is true for
-QQQ and the single names and false for 16 of our 31 roots. We could not have known this at
-purchase time, and this census appears to be the only written record of it.
+**The vendor DOES document this** -- in the **v3** docs, not the marketing page or the v2
+endpoint docs (corrected 2026-07-28; an earlier note here wrongly said it was undocumented).
 
-**Status of the conclusion:** the vendor-boundary explanation is an **inference from our own
-data**, strong but not corroborated by vendor documentation. **Not yet asked: ThetaData support**
--- "does IV/greeks history for SPY/IWM/SPX start in 2017, and why does QQQ reach 2012?" That is
-free, needs no active subscription, and would confirm or refute the boundary. **Ask before ever
-spending on a re-pull.**
+**Mechanism (confirmed by docs AND by our data).** Greeks are *derived per tick*, not stored:
+> "Theta Data calculates Greeks for each tick of data and uses the exact underlying tick (price)
+> at the time of the option tick." -- docs.thetadata.us/Articles/Data-And-Requests/Option-Greeks.html
+
+and underlying (stock) coverage is **tape-dependent**:
+> "Theta Data has full historical coverage for the **UTP tape** going back to **2012-06-01**."
+> "For symbols only available on the **CTA tape**, the history is limited to **2020-01-01**."
+> -- docs.thetadata.us/Articles/Getting-Started/Subscriptions.html (**SPY is named** as such a symbol)
+
+**No underlying tick history => no greeks.** The docs state it outright for NDX: "Greeks for NDX
+options prior to this date cannot be computed from historical underlying data."
+
+Our store matches exactly: in every `ALL_NAN` partition **`underlying_px` is also 100% NaN**,
+while `bid_close`/`ask_close` are **100% intact**. The greeks are empty precisely where the
+underlying is.
+
+**Unreconciled:** the docs say CTA-only is limited to 2020-01-01, but our SPY greeks are usable
+from **2017**. Either CTA coverage improved after the docs were written, or our edge is
+tier-related (STANDARD = options from 2016-01-01). Neither matches 2017 exactly. Do not assume a
+clean tape/tier rule -- three Nasdaq-listed roots (TLT, SMH, AMD) are affected too.
+
+**=> The gap is SELF-REPAIRABLE where we have an underlying.** `bid_close`/`ask_close` survive in
+**all 4,510 partitions**, so IV/greeks can be computed from quote mid + our own underlying
+(ThetaData documents the same workaround via its `stock_price` parameter). Our minute bars:
+SPY/IWM/QQQ from **2016** (`equities/sip_raw`, `equities/sip_split`; IEX from 2017).
+- **2016: recoverable** (~+1 year of window; sigma_SR ~0.35 -> ~0.33)
+- **2012-2015: NOT recoverable** -- no 1m underlying, so no 15:45-symmetric mark
+- Marginal cost is low because **M7 (the surface fitter) is already on the Wave-1 critical path**.
+- **ORATS (2007+) ships its own greeks AND underlying** -- still the only route to pre-2016.
 
 #### [!] The NaN-vs-NULL trap — this fooled two separate analyses
 
