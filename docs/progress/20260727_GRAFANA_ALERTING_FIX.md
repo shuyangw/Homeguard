@@ -1,0 +1,179 @@
+# Grafana Alerting Fix - 2026-07-27
+
+## Summary
+
+`config/monitoring/grafana/alerts/rules.yaml` defined 7 alert rules for a live
+trading system and **none had ever been active** since the file was created on
+2026-04-18. Found by exercising the Grafana MCP integration installed earlier the
+same session: `alerting_manage_rules` returned `null`, which turned into an audit.
+Six independent defects were found and fixed, rules are now provisioned and
+evaluating, and delivery (contact points/routing) is deliberately deferred.
+
+## The six defects
+
+1. **Nothing loaded the file.** `install_grafana.sh` provisioned datasources and
+   dashboards only. No `vmalert`, no Alertmanager. The file header said "Import
+   via Grafana UI" from its first commit; `91a7297` (2026-06-09) said outright
+   "Needs provisioning into Grafana". It never happened.
+2. **Wrong schema.** Prometheus/vmalert format, not Grafana unified alerting.
+3. **Drawdown sign inverted.** `hg_portfolio_drawdown_pct` is negative by
+   construction, so `max(...) > 7` / `> 9` could never fire.
+4. **Order metrics dead.** `hg_orders_rejected_total` was defined and called, but
+   `StrategyAdapter` built `ExecutionEngine(broker)` with no registry.
+5. **`max(hg_market_open) == 1` was a no-op.** Unlabeled gauge, and
+   `run_cscm_live.py:229` hardcodes it to 1.0 for crypto, so `max()` across jobs
+   is permanently 1. Three rules gated on it and would have fired every night
+   and weekend. Worse than silence: alert spam trains you to ignore alerts.
+6. **`StrategySignalStale` read the wrong metric.**
+   `hg_strategy_last_signal_timestamp` is `time.time()` every tick, i.e. process
+   liveness, not signal age.
+
+## Key decisions
+
+- **No drawdown alerting at all**, RAMP included. Per the operator: gradual
+  losses are a dashboard concern. Reinforced by a hard finding: **no automated
+  drawdown stop exists in the live path**, so the old annotation "Check if
+  auto-stop triggered" referenced a mechanism that was never built. No discrete
+  event to alert on, no action a page would prompt. Defect 3 closed by deletion.
+- **Grafana file provisioning over vmalert+Alertmanager.** Two more daemons on a
+  4GB box already capped at grafana 400M / VM 200M / tailscaled 100M is not worth
+  it for 5 rules, and `noDataState: OK` cleanly expresses "empty vector means the
+  gate is closed".
+- **Not generalised across `homeguard-*` jobs.** `omr` and `mp` measure `up=0`
+  (units disabled, superseded by `homeguard-multi`), so a regex rule would fire
+  permanently. Service-down rules enumerate ramp and cscm only.
+- **OMR order metrics deliberately not wired.** `OMRLiveAdapter` has no
+  `metrics_registry` param and is `up=0`. Adding a parameter nothing passes would
+  be aspirational. The rule annotation states the real coverage rather than
+  claiming OMR is covered.
+
+## Thresholds, set from measured data (not guessed)
+
+| Measurement | Value | Consequence |
+|---|---|---|
+| ibkr heartbeat age, market hours, 7d | p99 71s, max 166s | 300s threshold (old 120s was inside the noise band) |
+| ibkr heartbeat age, ungated, 2d | max 310s | the market-hours gate is load-bearing |
+| `up` by job | ramp=1 cscm=1 node=1, omr=0 mp=0 | do not generalise service-down rules |
+| RAMP decision age, 7d | ~24h weekdays, 72h over a weekend | bare age threshold impossible; needs a post-close time gate |
+| CSCM decision age, 7d | climbs to 168h then resets | no useful staleness rule; liveness only |
+
+## Changes Made
+
+- **`config/monitoring/grafana/alerting/homeguard_rules.yaml`** (new): 7 rules in
+  Grafana unified-alerting schema. `IBGatewayDown`, `WebSocketDisconnected`,
+  `RampDecisionMissedToday`, `Ramp`/`CscmServiceDownOrCrashLooping`,
+  `OrderRejectionSpike`, and an always-firing canary.
+- **`config/monitoring/grafana/alerts/rules.yaml`**: deleted. Two sources of
+  truth is how this stayed broken.
+- **`infra/ec2/sync_grafana_alerts.sh`** (new): mirrors the dashboards sync but
+  **restarts grafana-server**, because `provisioning/alerting/` has no file
+  watcher. Guarded on a content compare, and greps the journal afterwards.
+- **`infra/ec2/setup/install_grafana.sh`**, **`instance_update_repo.sh`**: hooks.
+- **`src/trading/core/execution_engine.py`**: added `classify_reject_reason()`, a
+  closed set of 8 classes plus `other`, replacing `str(e)[:50]`.
+- **`src/trading/adapters/strategy_adapter.py`**: `metrics_registry` kwarg,
+  forwarded to `ExecutionEngine`. `ramp_live_adapter.py` passes it via `super()`.
+- **`scripts/monitoring/validate_alert_exprs.py`** (new): runs every expression
+  against the datasource.
+- **`docs/monitoring/METRIC_SPEC.md`**: documented the negative sign convention.
+- Tests: `test_alert_rules_provisioning.py` (new, 9 guards),
+  `test_order_metrics_wiring.py` (new), plus `test_registry.py` and
+  `test_strategy_adapter_base.py` updates.
+
+## Commits
+
+On `main` (`b5284e9..6abaa71`):
+- `8073acb` fix(trading): wire the metrics registry into ExecutionEngine
+- `e35ca81` feat(monitoring): provision Grafana alert rules, fixing 6 defects
+- `6abaa71` docs(monitoring): document the drawdown sign convention
+
+On deploy branch `ramp-phase4-turnover-regime-research` (`0eafc19..b3a8316`):
+- the three above, cherry-picked clean
+- `b3a8316` fix(infra): bring install_grafana.sh in line with main
+
+## Validation
+
+**Every expression** run against live VictoriaMetrics: 7 ok, 0 failed, 4 empty.
+Each empty proven to be a closed gate, not a typo, by decomposing it:
+`hg_market_open{job="homeguard-ramp"}` = 0 (market closed), `hour()` = 2 UTC,
+decision age 24990s < 43200.
+
+**Defect 5 demonstrated side by side** on live data with the market closed:
+`max(hg_market_open)` = **1** (old, broken) vs
+`max(hg_market_open{job="homeguard-ramp"})` = **0** (fixed).
+
+**Threshold semantics checked, not assumed.** `up == 0` preserves the left-hand
+value and yields 0, so a `gt 0` threshold would never fire. Rules use
+`== bool 0` so the value is explicitly 1 = down. This would have been a seventh
+defect had it shipped.
+
+**Schema round-tripped**: provisioned, then read back via
+`/api/v1/provisioning/alert-rules`. `provenance=file`, and `condition`/`for`/
+`noDataState`/`execErrState` plus the full A->B->C chain preserved exactly.
+
+**A real rule proven to fire**: a temporary probe on
+`min(hg_portfolio_drawdown_pct{job="homeguard-cscm"}) < -9` went to `firing` and
+rendered `PROBE: CSCM drawdown -13.74% is below -9`. Proves the
+query->reduce->threshold chain on real data, the negative-sign analysis, and that
+`{{ $values.B.Value }}` templating works where the old `{{ $value }}` would have
+rendered empty.
+
+**Both linters mutation-tested.** Every guard was verified to fail when its
+defect is reintroduced: unscoped market_open gate, positive drawdown threshold,
+phantom metric, bad job label, duplicate uid, missing severity, `for:` as int,
+missing nested `model.datasource`, and condition naming a query node instead of
+the threshold node (that last guard was **missing** and was added after the
+mutation test caught it). Reverting the `ExecutionEngine` wiring or the
+classifier also fails the suite.
+
+**Sync script**: ran on the host from the committed path. First run updated and
+restarted; second run correctly skipped the restart.
+
+**Final state**: 7 rules, 0 unhealthy, 6 inactive, canary firing.
+
+**Test suite**: 1005 passed. The only 2 failures
+(`test_broker_routing.py::test_load_returns_dict`,
+`::test_default_broker_for_unlisted_strategy`) were verified **pre-existing** by
+stashing all changes and re-running against `origin/main`.
+
+## Known Issues / Remaining Work
+
+- **Nothing is delivered anywhere.** No contact points, no notification policy.
+  Rules evaluate and show state; no page happens. `severity` labels are inert.
+  This is the deferred next conversation. `DISCORD_MONITORING_WEBHOOK` already
+  exists on the host and is used by `weekly_report.py`, so a Grafana Discord
+  contact point can reuse it.
+- **Host-level death is structurally uncoverable** by in-process Grafana
+  alerting: if the box dies the notifier dies with it, and Grafana only runs
+  08:00-20:00 ET weekdays plus a Sat 23:00-Sun 00:10 UTC window. Needs an
+  off-box watchdog.
+- **`homeguard-multi` not restarted.** The `ExecutionEngine` wiring is deployed
+  but inert until a restart, so `hg_orders_*` will stay empty and
+  `OrderRejectionSpike` blind until then. Restart outside 15:55 ET.
+- **Tests write to `config/trading/strategy_toggle.yaml`.** Running
+  `tests/trading/` mutates it via `StrategyStateManager` with the default
+  `modified_by='api'`, bumping `last_modified`. Enabled values are preserved, but
+  this dirties a gitignored + force-tracked live runtime config on every test
+  run. Reverted manually here; it is a test-isolation bug worth fixing.
+- **`main` has diverged locally.** A concurrent session holds 4 unpushed
+  options-docs commits on local `main` (tip `146ba34`) while `origin/main` is at
+  `6abaa71`. Nothing was lost, my push was a clean fast-forward from `b5284e9`,
+  but that session needs to rebase before pushing, and a force-push there would
+  drop these three commits.
+- **`sample.yaml`** (Grafana's own shipped file) sits in
+  `/etc/grafana/provisioning/alerting/` on the host, dated from install. Inert
+  (rule count is 7, all ours), but worth knowing it is there.
+- **Phantom risk limits, flagged and NOT actioned.**
+  `config/trading/omr_trading_config.yaml:76-85` declares `max_daily_loss_pct`,
+  `max_weekly_loss_pct` and `max_drawdown_pct` with comments saying "triggers
+  halt". They load into attributes (`omr_config_loader.py:91-94`) with **zero
+  readers**, and `position_manager.check_stop_losses()` is dead code. Same block
+  in `omr_expanded_config.yaml` and `momentum_trading_config.yaml`. The repo
+  asserts risk protection it does not have. Needs a decision: delete the dead
+  config, implement a real auto-stop that writes `set_enabled(False)` and emits
+  an `hg_strategy_halted` gauge, or document as aspirational.
+- **`RampDecisionMissedToday`'s `hour() >= 22` UTC window** is coupled to the
+  EventBridge schedule and RAMP's 15:55 ET rebalance. Re-derive if either
+  changes.
+- **NYSE holidays** will false-positive `IBGatewayDown`, since
+  `IBKRBroker.is_market_open()` is weekday+clock only.
