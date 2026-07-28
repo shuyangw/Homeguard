@@ -1,7 +1,7 @@
 # Grafana MCP Server -- Claude Code + Claude Desktop Setup
 
 **Date**: 2026-07-27
-**Status**: Phases 0-4 APPLIED and verified on Windows (`swangpc2`). Phase 1 committed but NOT yet run on EC2. Phase 5 (macOS) not started.
+**Status**: Phases 0-4 APPLIED and verified on Windows (`swangpc2`), including `root_url` on the host. Phase 5 (Claude Desktop) not started; macOS machine not set up.
 **Scope**: Local stdio Model Context Protocol (MCP) integration between operator machines and the tailnet-scoped Grafana on `homeguard-ec2`
 **Machines**: `swangpc2` (Windows 11, primary) and `sws-macbook-pro` (macOS)
 **Related**: `docs/INFRASTRUCTURE_OVERVIEW.md`, `docs/monitoring/METRIC_SPEC.md`, `infra/mcp/README.md`, `infra/ec2/setup/install_grafana.sh`, `infra/ec2/setup/install_tailscale.sh`
@@ -16,7 +16,7 @@ draft are collected in Appendix D.
 
 1. Claude.ai custom connectors are dialed from Anthropic's cloud and **cannot** reach a tailnet-only host. Local stdio is the only viable transport. Works in Claude Code and Claude Desktop, not claude.ai web or mobile.
 2. **Phase 0 is resolved.** `tailscale serve` is already running on the host and tailnet HTTPS certificates are already enabled, but neither is captured in the repo. Grafana is loopback-bound; `https://homeguard-ec2.tail3e202b.ts.net/api/health` returns `{"database":"ok","version":"12.4.3"}` while `http://...:3000` is refused. Phase 1 therefore **codifies existing behavior** rather than changing it.
-3. `root_url` is unset on the host. Confirmed live: the MCP server logs `public_url=http://localhost:3000` at startup, so `generate_deeplink` emits unusable links until Phase 1 runs on EC2.
+3. `root_url` was unset on the host, confirmed on-host at `grafana.ini:59`. Now **set and verified**: `appUrl` and `generate_deeplink` both return `https://homeguard-ec2.tail3e202b.ts.net/`.
 4. Grafana **Viewer** service account plus an `--enabled-tools` allowlist and `--disable-write`. Verified: `POST /api/dashboards/db` with the token returns **403**.
 5. Secrets live in `~/.config/homeguard/grafana-mcp.env`, never in `~/.claude.json` or `claude_desktop_config.json`, both of which store env vars in world-readable plaintext.
 6. Datasource UIDs are `victoriametrics` (type `prometheus`) and `loki`, both `editable: false`.
@@ -119,26 +119,79 @@ URLs, not one: `http://homeguard-ec2:3000` and `http://homeguard-ec2:8428/vmui`.
 VictoriaMetrics and Loki are loopback-only and reached through Grafana's
 datasource proxy (`access: proxy`), so both now print SSH-tunnel instructions.
 
-### 1.3 Apply
+### 1.3 Apply (APPLIED 2026-07-27, `root_url` only)
 
-Requires shell access, see the Phase 0 note. Not yet run.
+Shell access is via Tailscale SSH, which requires a one-time interactive browser
+check (`tailscale ssh ec2-user@homeguard-ec2` prints a `login.tailscale.com` URL).
+Direct SSH over the Elastic IP does not work: the SG allows `73.68.21.247/32`
+while the operator IP has drifted to `73.218.180.119`.
+
+**The documented full-script apply was deliberately NOT used.** Two reasons found
+on the host:
+
+1. **EC2 tracks a deploy branch, not `main`.** `~/Homeguard` is on
+   `ramp-phase4-turnover-regime-research` (per `docs/progress` history, this is
+   the stable V11 production branch). `git pull` there does not bring in commits
+   merged to `main`; the host's `install_grafana.sh` has no `set_ini_key`. Running
+   the full installer would have required cherry-picking onto the production
+   branch first.
+2. **The full installer does more than Phase 1 needs** on a live host: `dnf
+   install`, a datasource and dashboard re-sync from the *deploy branch's*
+   `config/monitoring/`, a systemd unit overwrite, and a Grafana restart.
+
+So only the `root_url` change was applied, using the identical verified
+`set_ini_key` logic inline over SSH, after backing up the config:
 
 ```bash
-ssh ec2-user@homeguard-ec2 'cd ~/Homeguard && git pull \
-  && bash infra/ec2/setup/install_tailscale.sh \
-  && bash infra/ec2/setup/install_grafana.sh'
+sudo cp -n /etc/grafana/grafana.ini /etc/grafana/grafana.ini.bak.20260727
+# set_ini_key root_url "https://${TS_FQDN}/" /etc/grafana/grafana.ini
+sudo systemctl restart grafana-server
 ```
 
-### 1.4 Verify
+Resulting diff against the backup was exactly one line:
 
-```bash
-curl -sS "https://homeguard-ec2.tail3e202b.ts.net/api/health"
-# expect: {"database":"ok","version":"12.4.3",...}
+```
+59c59
+< ;root_url = %(protocol)s://%(domain)s:%(http_port)s/
+---
+> root_url = https://homeguard-ec2.tail3e202b.ts.net/
 ```
 
-Then re-run the wrapper and confirm the startup log shows
-`public_url=https://homeguard-ec2.tail3e202b.ts.net/` instead of
-`http://localhost:3000`. That is the check that `root_url` took.
+`install_tailscale.sh` was not run and does not need to be: `tailscale serve` is
+already active on the host (`https://homeguard-ec2.tail3e202b.ts.net (tailnet
+only) |-- / proxy http://localhost:3000`). Note that its `TAILSCALE_AUTH_KEY`
+guard `exit 1`s before reaching the new serve block, so the patch only takes
+effect on a rebuild, which is where the auth key is supplied anyway.
+
+### 1.4 Verify (DONE)
+
+```
+GET /api/health            -> {"database":"ok","version":"12.4.3"}
+GET /api/org (admin auth)  -> 200      # password survived the edit
+GET /api/frontend/settings -> appUrl: https://homeguard-ec2.tail3e202b.ts.net/
+grep -c '^admin_password = '           -> 1, unchanged
+sudo ss -lntp                          -> 127.0.0.1:{3000,8428,3100}, all loopback
+```
+
+Fresh wrapper process:
+
+```
+startup log       -> public_url=https://homeguard-ec2.tail3e202b.ts.net
+generate_deeplink -> https://homeguard-ec2.tail3e202b.ts.net/d/homeguard-portfolio
+```
+
+**Gotcha:** `mcp-grafana` fetches `public_url` **once at startup** and caches it.
+An MCP server process that was running before the `root_url` change keeps
+returning `http://localhost:3000` from `generate_deeplink`. Restart the client
+session, not just Grafana, after changing `root_url`.
+
+### 1.5 Remaining: reconcile the deploy branch
+
+`main` has the idempotent `set_ini_key` installer;
+`ramp-phase4-turnover-regime-research` does not. Until those converge, a rebuild
+from the deploy branch reintroduces the non-idempotent `sed` and the unset
+`root_url`. Cherry-pick `a7923b1` and `27ee4ff` onto the deploy branch when it is
+next touched, or fold it into the eventual branch reconciliation.
 
 ---
 
@@ -358,7 +411,9 @@ does not.
 | R7 | Same silent-empty past Loki's **30-day** retention | Medium | Same handling as R6. The draft said 14 days; actual is `720h` |
 | R8 | Tool-set drift on upgrade adds unreviewed categories | Low | Allowlist, not denylist. Re-read `--help` and re-run Phase 6 test 5 after any upgrade |
 | R9 | Config drift between the two clients or two machines | Low | One wrapper per platform, both in git, byte-identical flag lists |
-| R10 | `root_url` still loopback until Phase 1 runs on EC2 | Low | `generate_deeplink` returns `http://localhost:3000/...`. Cosmetic; no data-integrity impact |
+| R10 | `root_url` loopback, so `generate_deeplink` returns unusable links | Low | **RESOLVED 2026-07-27.** `appUrl` is the tailnet FQDN and deeplinks verified. Note the startup-cache gotcha in Phase 1.4 |
+| R11 | Installer resets `admin_password` to `admin` | High | **Fixed in `27ee4ff`.** Making `set_ini_key` work turned a latent no-op into a live overwrite: `GRAFANA_ADMIN_PASSWORD:-admin` would have replaced a good password with a known one on re-run. The key is now skipped when the env var is unset |
+| R12 | Rebuild from the deploy branch reintroduces both defects | Medium | The fix is on `main` only; EC2 tracks `ramp-phase4-turnover-regime-research`. See Phase 1.5 |
 
 ---
 

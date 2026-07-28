@@ -100,15 +100,61 @@ Phase 6, live tool calls against production:
 Confirmed no impact on the concurrent session: md5 of its three modified files
 identical before and after the fast-forward, and all still listed as modified.
 
+## Phase 1 Applied (later the same session)
+
+The user completed the Tailscale SSH browser check, which unblocked shell access.
+
+On-host diagnostics confirmed every remote inference: all three services bound to
+`127.0.0.1` (`3000`, `8428`, `3100`), `tailscale serve` already proxying
+`https://homeguard-ec2.tail3e202b.ts.net -> http://localhost:3000`, and
+`root_url` still commented at `grafana.ini:59`.
+
+**Applied `root_url` only, not the documented full-script run.** Two reasons found
+on the host:
+
+- **EC2 tracks `ramp-phase4-turnover-regime-research`, not `main`.** `git pull`
+  there brought in an unrelated alerts commit and none of this work; the host's
+  `install_grafana.sh` has zero `set_ini_key` occurrences. The full apply would
+  have needed a cherry-pick onto the production branch first.
+- The full installer also runs `dnf install`, re-syncs datasources and dashboards
+  from the deploy branch's config, overwrites the systemd unit, and restarts
+  Grafana. More blast radius than Phase 1 requires on a live host.
+
+Backed up the config, applied the change with the identical verified `set_ini_key`
+logic inline, restarted Grafana. Diff against the backup was exactly one line (59).
+
+Verified: `/api/health` ok; `/api/org` with admin auth 200, so the password
+survived; `appUrl` now `https://homeguard-ec2.tail3e202b.ts.net/`; a fresh wrapper
+logs `public_url=https://homeguard-ec2.tail3e202b.ts.net` and `generate_deeplink`
+returns `https://homeguard-ec2.tail3e202b.ts.net/d/homeguard-portfolio`.
+
+### R11: a bug my own fix created
+
+Making `set_ini_key` work turned a latent no-op into a live hazard.
+`install_grafana.sh` had `GRAFANA_PASS="${GRAFANA_ADMIN_PASSWORD:-admin}"`. Under
+the old broken `sed`, `admin_password` was already uncommented so `^;admin_password`
+never matched and the line did nothing. With the working helper, re-running the
+installer without the env var exported would have **overwritten the Grafana admin
+password with `admin`** on a host serving live trading dashboards. Caught before
+running anything on the host. Fixed in `27ee4ff`: skip the key when the env var is
+unset rather than defaulting.
+
+### Gotcha: mcp-grafana caches public_url
+
+It fetches `public_url` once at startup. A server process predating the `root_url`
+change keeps returning `http://localhost:3000` from `generate_deeplink`, which the
+in-session MCP server did. Restart the client session, not just Grafana.
+
 ## Known Issues / Remaining Work
 
-- **Phase 1 not yet applied on EC2.** Committed but not run, because shell access
-  is unavailable by either route: the security group allows `73.68.21.247/32` while
-  the operator IP has drifted to `73.218.180.119`, and Tailscale SSH requires
-  interactive browser auth. MCP needs only HTTPS so the integration works, but
-  until Phase 1 runs, `root_url` stays loopback. Confirmed live: `generate_deeplink`
-  returns `http://localhost:3000/d/homeguard-portfolio`. Cosmetic, no data-integrity
-  impact (R10).
+- **Deploy branch not reconciled.** The installer fix is on `main` only, while EC2
+  tracks `ramp-phase4-turnover-regime-research`. A rebuild from the deploy branch
+  reintroduces both the non-idempotent `sed` and the unset `root_url`. Cherry-pick
+  `a7923b1` and `27ee4ff` onto it when next touched (R12).
+- **`install_tailscale.sh` serve block only fires on rebuild.** Its
+  `TAILSCALE_AUTH_KEY` guard `exit 1`s before reaching the new code. Harmless,
+  since a rebuild is where the auth key is supplied, and serve is already active.
+- **Config backup left on host** at `/etc/grafana/grafana.ini.bak.20260727`.
 - **Phase 5, Claude Desktop, not started** on either machine.
 - **macOS machine not set up.** Wrapper is committed and ready; needs the binary,
   the env file, and `claude mcp add`.
