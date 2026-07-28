@@ -264,9 +264,30 @@ uses `StartLimitIntervalSec` in the `[Service]` section, where systemd ignores i
   alerting: if the box dies the notifier dies with it, and Grafana only runs
   08:00-20:00 ET weekdays plus a Sat 23:00-Sun 00:10 UTC window. Needs an
   off-box watchdog.
-- **`homeguard-multi` not restarted.** The `ExecutionEngine` wiring is deployed
-  but inert until a restart, so `hg_orders_*` will stay empty and
-  `OrderRejectionSpike` blind until then. Restart outside 15:55 ET.
+- **`homeguard-multi` restarted 2026-07-28 00:26 EDT** (15.5h before the 15:55 ET
+  rebalance, market closed). Clean: `active`, `NRestarts: 0`, no crash-loop. The
+  `code=10167` IBKR lines in the startup log are "market data not subscribed /
+  delayed data" notices, normal for a paper account outside market hours.
+
+  State verified non-destructive. Position and equity gauges came back
+  **byte-identical** to the pre-restart capture (17 position series), and
+  `hg_strategy_last_decision_timestamp` is unchanged at `1785182149.2468166`.
+  Note the gauges read **empty for the first ~25s** after restart, because the
+  registry is in-memory and repopulates on the metrics tick; that is not state
+  loss, and the positions live at IBKR regardless. Do not conclude anything from
+  a metrics read taken immediately after a restart.
+
+  Unplanned validation: the restart took the RAMP metrics target down for roughly
+  a minute, and `RampServiceDownOrCrashLooping` correctly stayed `inactive`. Its
+  `for: 5m` absorbed a clean restart, which is exactly what that tolerance is
+  documented to be for. No spurious notification was sent.
+
+  **Still unverified:** `hg_orders_*` remains absent. The registry only exports a
+  counter after its first increment, and RAMP places orders once daily at
+  15:55 ET, so `OrderRejectionSpike` cannot be confirmed live until after today's
+  rebalance. Check then that `hg_orders_submitted_total` and
+  `hg_orders_filled_total` exist with a `reason` label drawn only from the closed
+  classifier set.
 - **Tests write to `config/trading/strategy_toggle.yaml`.** Running
   `tests/trading/` mutates it via `StrategyStateManager` with the default
   `modified_by='api'`, bumping `last_modified`. Enabled values are preserved, but
