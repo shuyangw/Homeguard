@@ -283,18 +283,40 @@ Wave 1 order (spec §6.1): **015, 019** first (they anchor everything), then 016
 
 ---
 
-## 5. Decisions required (yours, not mine)
+## 5. Decisions — LOGGED 2026-07-27
 
-| # | Decision | Recommendation | Blocks |
-|---|---|---|---|
-| 1 | **OPT-021 exit version** — v1.0 (T+1 open) or v1.1 (T+1 near-close). Exactly one may be tested | **Restore v1.0.** The amendment away from it was forced by a data limitation that measurement has now removed; the pure-crush mechanism is cleaner | Any earnings-data contact (Wave 2) |
-| 2 | **Universe treatment** for breadth-dependent candidates (021, 026, 031, 045; 001/002/020 beyond on-disk megacaps). Disk covers ~13 singles, not `U_MEGA20`/`U_TIER1_100` | **Narrow to on-disk roots via logged amendment** for Wave 1-2, and re-open only if 0.10 shows cheap top-ups. Narrowing shrinks 021's event count materially — accept that, or pay for breadth | Wave 2+; V13 will force it |
-| 3 | **ORATS ~$399** one-time, 2007+ | **Worth it, but not now.** It is the only cure for missing-2008 on a short-vol-heavy slate, and adds dividend-aware smoothed surfaces. But nothing blocks on it, and Wave-1 results will tell you whether the slate deserves the spend. Defer to post-Wave-0 | Nothing (explicitly non-blocking) |
-| 4 | **M7 build vs buy** (smoothed IV surface) | If (3) is yes, buy wins on effort. If (3) is deferred, **build M7** — P1's low-delta rule and 027/030/047 need it | Phase 2 |
-| 5 | **ThetaData subscription status** (0.10) | Need you to confirm — no Theta config in `.env`. Determines the 2026-03 -> present refresh and top-up cost | Refresh; universe option (b) |
-| 6 | **Legacy `options_1min/` disposition** | Report V12 equivalence first. **Delete nothing** | — |
+Registered before any affected test runs, per the chain's amendment rule.
 
----
+| # | Decision | Resolution (2026-07-27) |
+|---|---|---|
+| 3 | ORATS ~$399 | **DEFERRED.** Not a gate for any wave (A1 demoted it to non-blocking). Consequence: build **M7** instead of buying SMV, and the **missing-2008 caveat attaches permanently to every short-vol result** and must be stated on each, not omitted |
+| 4 | M7 build vs buy | **BUILD**, follows from (3). Dividend input from `src/data/yfinance/fundamentals.py` (already in repo), not ORATS `div_assumption`. Needed by Wave 1 (027, 047), so it is Phase-2 critical path, not deferrable |
+| 5 | ThetaData subscription (Phase 0.10) | **ANSWERED: cancelled.** Phase 0.10 closed. Consequences: (a) the 2026-03 -> present refresh (V9) is **not executable** — data edge is 2026-02 across all 31 roots, confirmed; a **live-edge caveat** stands for current-premium sizing (015/019); (b) universe top-up download is **dead** as a route |
+| 6 | Legacy `options_1min/` (V12) | **MOOT — the store does not exist on this machine.** `H:\Stock_Data\options\` contains only `_logs`, `chains` (empty), `gex_daily` (empty), `options_combined`. V12 closes with no action |
+| 1 | OPT-021 exit version | **OPEN.** Not needed until Wave 2. Recommendation stands: restore **v1.0** (T+1 open) — the amendment to v1.1 was forced by an unmeasurable open mark, and V1/V3 show it is measurable |
+| 2 | Universe breadth | **OPEN — but constrained.** Route (b) ThetaData top-up is dead (5); route (c) ORATS is deferred (3). Only **(a) narrow to on-disk roots** remains available without new spend. **Wave 1 is unaffected either way** (runs on `U_INDEX` + on-disk megacaps). Bites only at: 021 (still ~240-400 usable events on ~12 on-disk singles — workable, not crippled), and 026/031/045 (Wave-4 shelf, C+/B- priors, expected screen casualties) |
+
+### Corrected ORATS dependency map (supersedes any earlier framing)
+
+ORATS gates **nothing** in Waves 2/4. Its four roles and their substitutes:
+
+| Role | Substitute | Status |
+|---|---|---|
+| Smoothed IV surface (P1 low-delta; 006/027/030/047) | **M7** — spec says "ORATS SMV **or** M7" at every call site | substitutable (build) |
+| Dividends for M7 + M1 | `src/data/yfinance/fundamentals.py` | substitutable (free) |
+| Breadth beyond 31 roots (021/026/031/045) | narrowing | a route, not a requirement |
+| Cross-vendor quote/IV validation | D-047/030 already runs vs owned raw deep-OTM quotes; ORATS only upgrades it to a true cross-check | nice-to-have |
+| **2007-2012 history (missing-2008)** | **none** | **genuinely unique** |
+
+The unique role bites **Wave 1** (015, 016, 027, 047 — the short-vol/tail core), not Waves 2/4.
+So ORATS is a **Wave-1 credibility purchase**, not a Waves-2/4 unlock. The smoothed-surface
+need is likewise Wave 1 (027, 047), which is why M7 is Phase-2 critical path.
+
+## 5b. Decisions still open
+
+Items 1 (OPT-021 exit version) and 2 (universe breadth) above. Neither blocks Phase 0,
+Phase 1, or Wave 1. Item 1 is needed before Wave 2 touches earnings data; item 2 before
+Wave 2 (021) and Wave 4 (026/031/045).
 
 ## 6. Honest assessment
 
