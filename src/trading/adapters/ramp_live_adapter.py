@@ -2269,12 +2269,70 @@ class RAMPLiveAdapter(StrategyAdapter):
                     f"[RAMP] TRIM {sym}: SELL {shares_to_sell} "
                     f"(current ${current_value:.0f} -> target ${target_value:.0f})"
                 )
-                self.execution_engine.execute_order(
+                order = self.execution_engine.execute_order(
                     symbol=sym,
                     quantity=shares_to_sell,
                     side=OrderSide.SELL,
                     order_type=OrderType.MARKET,
                 )
+                # A trim realizes PnL exactly like a full exit, so it MUST be
+                # logged. It previously was not: f7ea22f fixed the full-exit loop
+                # above and left this branch silent, so every trim's realized PnL
+                # was invisible to compute_lifetime_realized_pnl (which sums only
+                # trade_type == 'exit' rows). The 2026-07-28 audit measured 80
+                # unlogged trims over ~3 months, $292k of notional, against a
+                # reported lifetime realized PnL of -$3.2k. See
+                # docs/progress/20260728_RAMP_REALIZED_PNL_AUDIT.md
+                #
+                # Note this is also the ONLY path by which crash protection
+                # realizes PnL: there is no stop-loss here, risk reduction just
+                # shrinks plan.exposure_pct into smaller targets, which surface
+                # as trims.
+                if order:
+                    _inner = (order.get('order') if isinstance(order, dict) else None) or {}
+                    fill_price = (
+                        float(_inner.get('filled_avg_price') or 0)
+                        or current_price
+                    )
+                    filled_qty = int(_inner.get('filled_qty') or 0) or shares_to_sell
+                    try:
+                        position_info = self.state_manager.get_positions(
+                            STRATEGY_NAME
+                        ).get(sym, {})
+                        trade_logger = get_trade_log_writer()
+                        trade_logger.log_exit(
+                            strategy=STRATEGY_NAME,
+                            symbol=sym,
+                            qty=filled_qty,
+                            exit_price=fill_price,
+                            order_id=_inner.get('order_id'),
+                            entry_price=position_info.get(
+                                'entry_price', float(pos.get('avg_entry_price', 0) or 0)
+                            ),
+                            entry_time=position_info.get('entry_time'),
+                            metadata={'exit_reason': 'trim', 'partial': True},
+                            account_snapshot=self.broker.get_account(),
+                        )
+                    except Exception as log_err:
+                        logger.error(f"[RAMP] Trade logging failed (non-blocking): {log_err}")
+                    # Decrement rather than remove: a trim is a partial reduction,
+                    # so the position survives. Leaving state at the pre-trim qty
+                    # let it drift high until sync_with_broker silently corrected
+                    # it, which is the same masking that hid the 2026-06-09 bug.
+                    remaining = int(pos['quantity']) - filled_qty
+                    if remaining > 0:
+                        self.state_manager.update_position_qty(
+                            STRATEGY_NAME, sym, remaining
+                        )
+                    else:
+                        # Trim consumed the whole position (rounding, or a target
+                        # that collapsed below one share). Treat as a full exit.
+                        self.state_manager.remove_position(STRATEGY_NAME, sym)
+                else:
+                    logger.error(
+                        f"[RAMP] TRIM {sym}: order returned no result; "
+                        f"state and trade log NOT updated"
+                    )
             except Exception as e:
                 logger.error(f"[RAMP] Error trimming {sym}: {e}")
 
@@ -2339,12 +2397,64 @@ class RAMPLiveAdapter(StrategyAdapter):
                     f"[RAMP] BUY {sym}: {shares} @ ${price:.2f} "
                     f"(rank={rank}, target ${target_value:.0f})"
                 )
-                self.execution_engine.execute_order(
+                order = self.execution_engine.execute_order(
                     symbol=sym,
                     quantity=shares,
                     side=OrderSide.BUY,
                     order_type=OrderType.MARKET,
                 )
+                # Record the entry. This path logged nothing before, so the trade
+                # log had ZERO entry rows across 15 trading days while 225 BUY
+                # orders were placed (2026-07-28 audit). Entries do not feed
+                # realized PnL directly -- compute_lifetime_realized_pnl sums only
+                # exit rows -- but without them the log cannot be reconciled, and
+                # exits had to fall back on adopt_broker_positions stamping
+                # entry_price from broker average cost.
+                if order:
+                    _inner = (order.get('order') if isinstance(order, dict) else None) or {}
+                    fill_price = float(_inner.get('filled_avg_price') or 0) or price
+                    filled_qty = int(_inner.get('filled_qty') or 0) or shares
+                    try:
+                        trade_logger = get_trade_log_writer()
+                        trade_logger.log_entry(
+                            strategy=STRATEGY_NAME,
+                            symbol=sym,
+                            qty=filled_qty,
+                            price=fill_price,
+                            order_id=_inner.get('order_id'),
+                            metadata={
+                                'rank': rank,
+                                'target_value': round(target_value, 2),
+                                'entry_reason': (
+                                    'top_up' if current_value > 0 else 'new'
+                                ),
+                            },
+                            account_snapshot=self.broker.get_account(),
+                        )
+                    except Exception as log_err:
+                        logger.error(f"[RAMP] Trade logging failed (non-blocking): {log_err}")
+                    # Keep state in step with the fill. add_or_update_position
+                    # handles new positions AND top-ups, accumulating qty rather
+                    # than overwriting it, which is what the legacy path uses for
+                    # the same reason. Uses the actual fill price so realized PnL
+                    # on a later close reflects the broker entry, not the sizing
+                    # quote.
+                    try:
+                        self.state_manager.add_or_update_position(
+                            STRATEGY_NAME, sym, filled_qty, fill_price,
+                            _inner.get('order_id'),
+                            broker=self._broker_name,
+                        )
+                    except Exception as state_err:
+                        logger.error(
+                            f"[RAMP] State update failed for BUY {sym} "
+                            f"(non-blocking): {state_err}"
+                        )
+                else:
+                    logger.error(
+                        f"[RAMP] BUY {sym}: order returned no result; "
+                        f"state and trade log NOT updated"
+                    )
             except Exception as e:
                 logger.error(f"[RAMP] Error buying {sym}: {e}")
 
