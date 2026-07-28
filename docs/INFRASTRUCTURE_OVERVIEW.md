@@ -57,8 +57,8 @@ Per-strategy broker routing lives in `config/trading/broker_routing.yaml` — at
 | `tailscaled.service` | Mesh VPN for remote access | - | - |
 
 **Retention:**
-- VictoriaMetrics: 90 days
-- Loki: 14 days (configurable in `config/monitoring/loki/config.yaml`)
+- VictoriaMetrics: 90 days (`-retentionPeriod=90d` in `infra/ec2/services/victoria-metrics.service`)
+- Loki: 30 days (`retention_period: 720h` in `config/monitoring/loki/config.yaml`)
 - Trade log JSONL: rolls daily under `/home/ec2-user/logs/trades_YYYYMMDD.jsonl`, retained indefinitely (small, append-only)
 
 ### Observability services (pre-existing)
@@ -164,10 +164,15 @@ Lambda schedule only applies to equity-trading hours (OMR, RAMP). CSCM runs on a
 
 ## Remote Access
 
-Primary path: **Tailscale**. The EC2 host and the operator laptop join the same tailnet. Grafana and SSH are bound to the tailnet address only — no public ingress required beyond the `<YOUR_IP_CIDR>` SSH fallback.
+Primary path: **Tailscale**. The EC2 host and the operator laptop join the same tailnet. SSH is reachable over the tailnet; Grafana is published on the tailnet by `tailscale serve`, which terminates TLS and proxies to loopback. No public ingress is required beyond the `<YOUR_IP_CIDR>` SSH fallback.
 
-Grafana URL (tailnet-only): `http://<ec2-tailnet-ip>:3000`
-VictoriaMetrics UI: `http://<ec2-tailnet-ip>:8428/vmui`
+Nothing in the monitoring stack binds to a routable address. Grafana, VictoriaMetrics, and Loki all listen on `127.0.0.1` only:
+
+Grafana (tailnet, TLS): `https://homeguard-ec2.<tailnet>.ts.net/` via `tailscale serve --bg 3000`
+VictoriaMetrics UI: not served; tunnel it -- `ssh -L 8428:127.0.0.1:8428 ec2-user@homeguard-ec2` then `http://127.0.0.1:8428/vmui`
+Loki: not served; tunnel it -- `ssh -L 3100:127.0.0.1:3100 ec2-user@homeguard-ec2`
+
+Grafana reaches VictoriaMetrics and Loki through its own datasource proxy (`access: proxy` in `config/monitoring/grafana/datasources.yaml`), so neither backend ever needs tailnet exposure.
 
 Public SSH fallback still works via Elastic IP:
 ```bash
@@ -270,7 +275,7 @@ Dashboard JSON changes under `config/monitoring/grafana/dashboards/` require cop
 
 ## Security Summary
 
-- **Network**: SSH restricted to `<YOUR_IP_CIDR>`. Grafana/VM/Loki bound to tailnet (100.x.y.z) — no public ingress on 3000/8428/3100.
+- **Network**: SSH restricted to `<YOUR_IP_CIDR>`. Grafana/VM/Loki bind to `127.0.0.1` only; Grafana is reached over the tailnet via `tailscale serve` (TLS terminated by tailscaled), VM and Loki via SSH tunnel. No public ingress on 3000/8428/3100.
 - **Data at rest**: EBS encrypted, IAM least-privilege on Lambda role, IMDSv2 required.
 - **Secrets**: `.env` on instance (Alpaca, Discord, Anthropic keys, IBKR config). Not committed.
 - **Tailscale**: separate auth plane; compromised Tailnet key is scoped only to the tailnet devices and revocable from the admin console.
