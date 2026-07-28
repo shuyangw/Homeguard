@@ -184,7 +184,9 @@ def run_pass(
 
     result = plugin.download(symbols_remaining, start_date=start, end_date=end)
 
-    tracker_path = base_dir / "_manifests" / f"{subdir}.status.csv"
+    # Flatten nested subdir to match manifest/event-log naming:
+    # "equities/sip_split/1min" -> "equities_sip_split_1min.status.csv"
+    tracker_path = base_dir / "_manifests" / f"{subdir.replace('/', '_')}.status.csv"
     pass_did_work = bool(symbols_remaining) or bool(reaped)
     if pass_did_work or not tracker_path.exists():
         tracker_rows = rebuild_tracker(

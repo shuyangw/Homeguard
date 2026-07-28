@@ -194,7 +194,8 @@ def main(argv=None) -> int:
         base_dir=base_dir, subdir=subdir, universe=symbols,
         validation_errors=validation_errors,
     )
-    tracker_path = base_dir / "_manifests" / f"{subdir}.status.csv"
+    # Flatten nested subdir to match manifest/event-log naming
+    tracker_path = base_dir / "_manifests" / f"{subdir.replace('/', '_')}.status.csv"
     write_tracker_csv(tracker_path, tracker_rows)
 
     bad = sum(1 for e in validation_errors.values())

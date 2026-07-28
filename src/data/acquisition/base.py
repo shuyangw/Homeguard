@@ -59,6 +59,8 @@ class BaseDownloader(ABC):
     RETRY_DELAY = 5.0  # seconds
     MANIFEST_FLUSH_EVERY = 25  # completions
     MANIFEST_FLUSH_INTERVAL_SEC = 60.0
+    EVENT_LOG_RETRIES = 3
+    EVENT_LOG_RETRY_DELAY = 0.05  # seconds
 
     def __init__(
         self,
@@ -123,8 +125,25 @@ class BaseDownloader(ABC):
             "event": event,
             **fields,
         }
-        with open(log_path, "a", encoding="utf-8") as f:
-            f.write(json.dumps(record, default=str) + "\n")
+        line = json.dumps(record, default=str) + "\n"
+
+        # Telemetry must never kill the download. On Windows a concurrent
+        # reader (tail/grep/antivirus) can hold the file without write-sharing,
+        # making this append fail with PermissionError; retry briefly, then
+        # drop the event rather than propagating out of the worker thread.
+        for attempt in range(self.EVENT_LOG_RETRIES):
+            try:
+                with open(log_path, "a", encoding="utf-8") as f:
+                    f.write(line)
+                return
+            except OSError as e:
+                if attempt == self.EVENT_LOG_RETRIES - 1:
+                    logger.warning(
+                        f"Dropped progress event {event} for "
+                        f"{fields.get('symbol', '?')}: {e}"
+                    )
+                else:
+                    time.sleep(self.EVENT_LOG_RETRY_DELAY)
 
     def get_existing_symbols(self) -> Set[str]:
         output_dir = self._get_output_dir()
