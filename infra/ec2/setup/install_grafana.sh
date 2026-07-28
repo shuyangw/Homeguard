@@ -35,13 +35,47 @@ fi
 # Install or update (pin to target version)
 sudo dnf install -y "grafana-${GRAFANA_VERSION}"
 
-# Configure grafana.ini for localhost binding
-sudo sed -i 's/^;http_addr =.*/http_addr = 127.0.0.1/' "${CONFIG_DIR}/grafana.ini"
-sudo sed -i 's/^;http_port =.*/http_port = 3000/' "${CONFIG_DIR}/grafana.ini"
+# Idempotent grafana.ini key setter. The previous `sed 's/^;key =.*/'` form only
+# matched the commented default, so it silently no-opped on every re-run after
+# the first -- meaning a hand-edited or drifted value was never corrected.
+# Safe because http_addr, http_port, root_url, and admin_password each appear
+# exactly once in grafana.ini. Escapes &, |, and \ so values containing sed
+# replacement metacharacters (notably passwords) are written literally.
+set_ini_key() {
+    local key="$1" val="$2" file="$3"
+    local esc
+    esc="$(printf '%s' "$val" | sed -e 's/[&|\\]/\\\\&/g')"
+    if sudo grep -qE "^[;#]?[[:space:]]*${key}[[:space:]]*=" "$file"; then
+        sudo sed -i -E "s|^[;#]?[[:space:]]*${key}[[:space:]]*=.*|${key} = ${esc}|" "$file"
+    else
+        printf '%s = %s\n' "$key" "$val" | sudo tee -a "$file" >/dev/null
+    fi
+}
+
+# Configure grafana.ini for loopback binding. Grafana is NEVER exposed directly:
+# `tailscale serve` (see install_tailscale.sh) terminates TLS on the tailnet and
+# proxies to 127.0.0.1:3000.
+set_ini_key http_addr 127.0.0.1 "${CONFIG_DIR}/grafana.ini"
+set_ini_key http_port 3000      "${CONFIG_DIR}/grafana.ini"
+
+# root_url must be the tailnet FQDN, not loopback. Grafana builds absolute links
+# from it, so a 127.0.0.1 root_url makes every generated dashboard URL (and the
+# MCP `generate_deeplink` tool) emit addresses that are useless off-host.
+# python3 rather than jq: python3 ships with Amazon Linux 2023, jq may not.
+TS_FQDN="$(tailscale status --json 2>/dev/null \
+    | python3 -c 'import json,sys; print(json.load(sys.stdin)["Self"]["DNSName"].rstrip("."))' \
+    2>/dev/null || true)"
+if [ -n "${TS_FQDN}" ]; then
+    set_ini_key root_url "https://${TS_FQDN}/" "${CONFIG_DIR}/grafana.ini"
+    echo "  root_url = https://${TS_FQDN}/"
+else
+    echo "  [!] Could not resolve tailnet FQDN; leaving root_url unchanged."
+    echo "      Run install_tailscale.sh first, then re-run this script."
+fi
 
 # Set admin password from env
 GRAFANA_PASS="${GRAFANA_ADMIN_PASSWORD:-admin}"
-sudo sed -i "s/^;admin_password =.*/admin_password = ${GRAFANA_PASS}/" "${CONFIG_DIR}/grafana.ini"
+set_ini_key admin_password "${GRAFANA_PASS}" "${CONFIG_DIR}/grafana.ini"
 
 # Provision datasources
 sudo mkdir -p "${PROVISIONING_DIR}/datasources"
@@ -77,5 +111,9 @@ sudo systemctl enable grafana-server
 sudo systemctl restart grafana-server
 
 echo "[+] Grafana installed and started"
-echo "  URL: http://127.0.0.1:3000"
+if [ -n "${TS_FQDN}" ]; then
+    echo "  URL:   https://${TS_FQDN}/  (tailnet, via tailscale serve)"
+else
+    echo "  URL:   http://127.0.0.1:3000  (loopback only -- tailscale serve not configured)"
+fi
 echo "  Login: admin / (see GRAFANA_ADMIN_PASSWORD env var)"
