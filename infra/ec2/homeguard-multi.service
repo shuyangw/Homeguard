@@ -3,6 +3,31 @@ Description=Homeguard Multi-Strategy Trading Bot (pinned to RAMP)
 After=network.target homeguard-gateway.service
 Wants=homeguard-gateway.service
 
+# Crash-loop cap. On 2026-06-09 a phantom position in state made preflight
+# exit(1) on every boot, and Restart=always restarted it every 30s for roughly
+# 1000 cycles (~8h) overnight, silently.
+#
+# systemd's DEFAULTS do not stop that: StartLimitBurst=5 over
+# StartLimitIntervalSec=10s is unreachable when RestartSec=30 spaces restarts
+# 30s apart, so the limiter never trips and the unit retries forever. The
+# interval must exceed burst x RestartSec to be reachable at all:
+# 5 x 30s = 150s, so 600s leaves clear headroom.
+#
+# Effect: a genuine crash-loop gives up after ~5 attempts (~2.5 min) and the
+# unit enters `failed` instead of churning all night. That is deliberately a
+# hard stop -- RampServiceDownOrCrashLooping then fires (up=0 while node=1) and
+# pages Discord after 5m, which is the intended outcome. A silent loop is worse
+# than a clean stop plus an alert.
+#
+# These MUST live in [Unit], not [Service]. systemd silently ignores them in
+# [Service] ("Unknown key name ... ignoring"), which is a real latent bug in
+# infra/ec2/services/homeguard-gateway.service.
+#
+# After hitting the limit, clear it with:
+#   sudo systemctl reset-failed homeguard-multi && sudo systemctl start homeguard-multi
+StartLimitIntervalSec=600
+StartLimitBurst=5
+
 [Service]
 Type=simple
 User=ec2-user
