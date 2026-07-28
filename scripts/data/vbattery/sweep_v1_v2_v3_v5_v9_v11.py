@@ -67,6 +67,8 @@ class VolProxy:
 
     def ingest_month(self, sess_close: dict[str, float]) -> None:
         for s in sorted(sess_close):
+            if s in self.state:
+                continue
             if self.sessions and s <= self.sessions[-1]:
                 continue
             # state for session s uses ONLY sessions strictly before s
@@ -180,8 +182,44 @@ class RootAcc:
         self.census_res = {}
 
 
+def prepass_root(root: str, force: bool = False) -> None:
+    """Cheap 2-column pass -> per-session last underlying_px for the vol proxy.
+
+    Run once per root so chunked (year-range) sweeps share ONE causal vol
+    history instead of restarting the trailing window at each chunk boundary.
+    """
+    SHARD_DIR.mkdir(parents=True, exist_ok=True)
+    out = SHARD_DIR / f"uclose_{root}.parquet"
+    if out.exists() and not force:
+        logger.info(f"[=] {root}: uclose shard exists, skipping prepass")
+        return
+    parts = root_partitions(root)
+    t0 = time.time()
+    rows = {}
+    with RunStatus(f"vbattery_prepass_{root}",
+                   meta={"root": root, "n_partitions": len(parts)}) as st:
+        for i, (y, m, path) in enumerate(parts):
+            rows.update(_session_closes(path))
+            st.heartbeat(note=f"{root} {y}-{m:02d} ({i+1}/{len(parts)})")
+    df = pd.DataFrame({"session": sorted(rows), "underlying_close":
+                       [rows[s] for s in sorted(rows)]})
+    df["root"] = root
+    df.to_parquet(out, index=False)
+    logger.info(f"[+] prepass {root}: {len(df)} sessions, {time.time()-t0:.1f}s")
+
+
+def load_vol_proxy(root: str) -> tuple[VolProxy, bool]:
+    f = SHARD_DIR / f"uclose_{root}.parquet"
+    vp = VolProxy()
+    if not f.exists():
+        return vp, False
+    df = pd.read_parquet(f)
+    vp.ingest_month(dict(zip(df["session"], df["underlying_close"])))
+    return vp, True
+
+
 def process_partition(acc: RootAcc, year: int, month: int, path: Path,
-                      vol: VolProxy, batch_size: int) -> int:
+                      vol: VolProxy, batch_size: int, prebuilt_vol: bool = False) -> int:
     dt = observed_dtypes(path)
     acc.schema.append({"root": acc.root, "year": year, "month": month,
                        "n_cols": len(dt), **{f"dtype_{k}": v for k, v in dt.items()}})
@@ -192,7 +230,8 @@ def process_partition(acc: RootAcc, year: int, month: int, path: Path,
             acc.bad_variants.append({"root": acc.root, "year": year, "month": month,
                                      "column": c, "dtype": dt[c]})
 
-    vol.ingest_month(_session_closes(path))
+    if not prebuilt_vol:
+        vol.ingest_month(_session_closes(path))
 
     n_rows = 0
     for df in iter_partition(path, READ_COLS, batch_size=batch_size):
@@ -340,9 +379,10 @@ def process_partition(acc: RootAcc, year: int, month: int, path: Path,
 
 # ------------------------------------------------------------------ writing
 
-def write_shards(acc: RootAcc, meta: dict) -> None:
+def write_shards(acc: RootAcc, meta: dict, suffix: str = "") -> None:
     SHARD_DIR.mkdir(parents=True, exist_ok=True)
-    r = acc.root
+    r = acc.root          # value written into the `root` column
+    fn = acc.root + suffix  # filename stem (chunked runs get a year-range suffix)
 
     rows = []
     for y, a in sorted(acc.v1.items()):
@@ -350,7 +390,7 @@ def write_shards(acc: RootAcc, meta: dict) -> None:
             rows.append({"root": r, "year": y, "abs_delta_bucket": lab,
                          "n_rth_rows": int(a[i, 0]), "n_quote_valid": int(a[i, 1]),
                          "frac_quote_valid": (float(a[i, 1]) / a[i, 0]) if a[i, 0] else np.nan})
-    pd.DataFrame(rows).to_parquet(SHARD_DIR / f"v1_{r}.parquet", index=False)
+    pd.DataFrame(rows).to_parquet(SHARD_DIR / f"v1_{fn}.parquet", index=False)
 
     srows = []
     for s, d in sorted(acc.sess.items()):
@@ -358,7 +398,7 @@ def write_shards(acc: RootAcc, meta: dict) -> None:
                       "n_contracts": len(acc.sess_contracts.get(s, ())),
                       "n_minutes": len(acc.sess_minutes.get(s, ()))})
     sdf = pd.DataFrame(srows)
-    sdf.to_parquet(SHARD_DIR / f"v2sessions_{r}.parquet", index=False)
+    sdf.to_parquet(SHARD_DIR / f"v2sessions_{fn}.parquet", index=False)
 
     rows = []
     for y, a in sorted(acc.v3.items()):
@@ -374,7 +414,7 @@ def write_shards(acc: RootAcc, meta: dict) -> None:
             base[f"zerobid_frac_{lab}"] = (float(z[i, 1]) / z[i, 0]) if z[i, 0] else np.nan
             base[f"n_{lab}"] = int(z[i, 0])
         rows.append(base)
-    pd.DataFrame(rows).to_parquet(SHARD_DIR / f"v3_{r}.parquet", index=False)
+    pd.DataFrame(rows).to_parquet(SHARD_DIR / f"v3_{fn}.parquet", index=False)
 
     rows = []
     for y, a in sorted(acc.v5.items()):
@@ -393,43 +433,54 @@ def write_shards(acc: RootAcc, meta: dict) -> None:
                      "iv_eq_0p5_frac_of_invalid_quote":
                          float(a[9]) / a[10] if a[10] else np.nan,
                      "delta_sign_wrong_n": int(a[11])})
-    pd.DataFrame(rows).to_parquet(SHARD_DIR / f"v5_{r}.parquet", index=False)
+    pd.DataFrame(rows).to_parquet(SHARD_DIR / f"v5_{fn}.parquet", index=False)
 
-    pd.DataFrame(acc.census_rows).to_parquet(SHARD_DIR / f"v11_{r}.parquet", index=False)
-    pd.DataFrame(acc.schema).to_parquet(SHARD_DIR / f"schema_{r}.parquet", index=False)
-    (SHARD_DIR / f"meta_{r}.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
+    pd.DataFrame(acc.census_rows).to_parquet(SHARD_DIR / f"v11_{fn}.parquet", index=False)
+    pd.DataFrame(acc.schema).to_parquet(SHARD_DIR / f"schema_{fn}.parquet", index=False)
+    (SHARD_DIR / f"meta_{fn}.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
 
 
-def sweep_root(root: str, batch_size: int, only_year=None, only_month=None,
-               force: bool = False) -> dict:
-    done = SHARD_DIR / f"meta_{root}.json"
-    if done.exists() and not force and only_year is None:
-        logger.info(f"[=] {root}: shards exist, skipping (use --force to redo)")
+def sweep_root(root: str, batch_size: int, year_from=None, year_to=None,
+               only_month=None, force: bool = False) -> dict:
+    chunked = year_from is not None or year_to is not None
+    suffix = ""
+    if chunked:
+        suffix = f"_y{year_from or 0}_{year_to or 9999}"
+        if only_month is not None:
+            suffix += f"m{only_month:02d}"
+    fn = root + suffix
+    done = SHARD_DIR / f"meta_{fn}.json"
+    if done.exists() and not force:
+        logger.info(f"[=] {fn}: shards exist, skipping (use --force to redo)")
         return {"root": root, "skipped": True}
 
     parts = root_partitions(root)
-    if only_year is not None:
-        parts = [p for p in parts if p[0] == only_year and
-                 (only_month is None or p[1] == only_month)]
+    if year_from is not None:
+        parts = [p for p in parts if p[0] >= year_from]
+    if year_to is not None:
+        parts = [p for p in parts if p[0] <= year_to]
+    if only_month is not None:
+        parts = [p for p in parts if p[1] == only_month]
     if not parts:
-        logger.warning(f"[!] {root}: no partitions found")
+        logger.warning(f"[!] {fn}: no partitions found")
         return {"root": root, "n_partitions": 0}
 
     acc = RootAcc(root)
-    vol = VolProxy()
+    vol, prebuilt = load_vol_proxy(root)
     t0 = time.time()
     total_rows = 0
     cur_year = None
-    with RunStatus(f"vbattery_sweep_{root}",
-                   meta={"root": root, "n_partitions": len(parts)}) as st:
+    with RunStatus(f"vbattery_sweep_{fn}",
+                   meta={"root": root, "chunk": suffix, "n_partitions": len(parts)}) as st:
         for i, (y, m, path) in enumerate(parts):
             if y != cur_year:
                 acc.start_year(y)
                 cur_year = y
-            total_rows += process_partition(acc, y, m, path, vol, batch_size)
-            st.heartbeat(note=f"{root} {y}-{m:02d} ({i+1}/{len(parts)}) rows={total_rows}")
+            total_rows += process_partition(acc, y, m, path, vol, batch_size, prebuilt)
+            st.heartbeat(note=f"{fn} {y}-{m:02d} ({i+1}/{len(parts)}) rows={total_rows}")
         acc.flush_year()
-        meta = {"root": root, "n_partitions": len(parts), "n_rows": total_rows,
+        meta = {"root": root, "chunk": suffix, "vol_proxy_prebuilt": prebuilt,
+                "n_partitions": len(parts), "n_rows": total_rows,
                 "wall_seconds": round(time.time() - t0, 1),
                 "partitions": [f"{y}-{m:02d}" for y, m, _ in parts],
                 "unhandled_schema_variants": acc.bad_variants,
@@ -437,8 +488,8 @@ def sweep_root(root: str, batch_size: int, only_year=None, only_month=None,
                                     "last underlying_px, expanding-percentile ranked, "
                                     "strictly causal; NOT regime_state_daily"),
                 "census_percentiles": "reservoir-sampled estimate, cap=%d/cell" % RES_CAP}
-        write_shards(acc, meta)
-    logger.info(f"[+] {root}: {total_rows:,} rows, {len(parts)} partitions, "
+        write_shards(acc, meta, suffix)
+    logger.info(f"[+] {fn}: {total_rows:,} rows, {len(parts)} partitions, "
                 f"{meta['wall_seconds']}s")
     return meta
 
@@ -509,10 +560,12 @@ def aggregate() -> None:
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--root")
-    ap.add_argument("--year", type=int)
+    ap.add_argument("--year-from", type=int)
+    ap.add_argument("--year-to", type=int)
     ap.add_argument("--month", type=int)
     ap.add_argument("--batch-size", type=int, default=400_000)
     ap.add_argument("--force", action="store_true")
+    ap.add_argument("--prepass", action="store_true")
     ap.add_argument("--aggregate", action="store_true")
     args = ap.parse_args()
 
@@ -520,10 +573,14 @@ def main() -> None:
         aggregate()
         return
     if not args.root:
-        raise SystemExit("--root or --aggregate required")
+        raise SystemExit("--root, --prepass or --aggregate required")
     roots = ROOTS if args.root == "ALL" else args.root.split(",")
     for r in roots:
-        sweep_root(r, args.batch_size, args.year, args.month, args.force)
+        if args.prepass:
+            prepass_root(r, args.force)
+        else:
+            sweep_root(r, args.batch_size, args.year_from, args.year_to,
+                       args.month, args.force)
 
 
 if __name__ == "__main__":
