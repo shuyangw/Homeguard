@@ -101,6 +101,16 @@ if [ "$CHANGES_PULLED" = true ]; then
             echo "⚠️  Dashboard sync failed (non-fatal; pull was successful)"
         echo ""
     fi
+
+    # Sync Grafana alert rules. Unlike dashboards, provisioning/alerting/ has no
+    # file watcher, so the sync script restarts grafana-server -- but only when
+    # the rule content actually changed, so routine pulls do not bounce it.
+    if [ -f "$REPO_DIR/infra/ec2/sync_grafana_alerts.sh" ]; then
+        echo "Syncing Grafana alert rules..."
+        bash "$REPO_DIR/infra/ec2/sync_grafana_alerts.sh" || \
+            echo "⚠️  Alert rule sync failed (non-fatal; pull was successful)"
+        echo ""
+    fi
 else
     echo "✅ Already up to date (no changes)"
     echo ""
