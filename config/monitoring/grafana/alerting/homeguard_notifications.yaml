@@ -11,9 +11,20 @@
 #   EnvironmentFile=-/etc/homeguard/grafana.env
 # in infra/ec2/services/grafana-server.service. Template and setup instructions:
 #   config/monitoring/grafana/grafana.env.example
-# If DISCORD_MONITORING_WEBHOOK is unset, the URL resolves to an empty string and
-# Grafana logs delivery failures. Verified on Grafana 12.4.3 that ${VAR}
-# interpolation works in alerting provisioning files.
+# Verified on Grafana 12.4.3 that ${VAR} interpolation works in alerting
+# provisioning files.
+#
+# CRITICAL -- if DISCORD_MONITORING_WEBHOOK is unset, this file does NOT degrade
+# to "provisioned but undeliverable". Grafana rejects a discord integration with
+# an empty url, its provisioning module fails, and the process EXITS:
+#   Failed to provision alerting: ... could not find webhook url property
+#   grafana-server.service: Main process exited, code=exited, status=1/FAILURE
+# It then crash-loops, taking dashboards and rule evaluation down with it.
+#
+# infra/ec2/sync_grafana_alerts.sh therefore REFUSES to install this file when
+# the variable is unset, and removes any previously-installed copy, so a missing
+# secret means "no notifications" rather than "no monitoring". Do not defeat that
+# check by copying this file into place by hand.
 #
 # WHAT THIS DOES NOT COVER -- if the EC2 instance or Grafana itself dies, nothing
 # here can tell you, because the notifier dies with it. Grafana only runs

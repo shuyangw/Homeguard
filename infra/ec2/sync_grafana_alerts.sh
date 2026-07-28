@@ -30,40 +30,63 @@ fi
 
 sudo mkdir -p "${TARGET_DIR}"
 
+GRAFANA_ENV_FILE="/etc/homeguard/grafana.env"
+
+# Return the ${VAR} names a provisioning file requires.
+#
+# Comments are stripped first: these files document the interpolation mechanism
+# in their own headers, so scanning comment text yields phantom names (a literal
+# "${VAR}" in prose) and a check that reports phantoms is one people ignore.
+required_vars_for() {
+    sed 's/#.*//' "$1" 2>/dev/null \
+        | grep -ohE '\$\{[A-Z_][A-Z0-9_]*\}' \
+        | tr -d '${}' | sort -u
+}
+
+# A file whose required secret is missing MUST NOT be installed.
+#
+# This is not a nicety. An unset ${VAR} does not degrade to "provisioned but
+# undeliverable" -- Grafana FAILS ITS PROVISIONING MODULE AND REFUSES TO START:
+#   Failed to provision alerting: ... could not find webhook url property
+#   grafana-server.service: Main process exited, code=exited, status=1/FAILURE
+# and then crash-loops, taking down dashboards and rule evaluation with it. So a
+# missing secret must mean "this feature is absent", never "monitoring is down".
+# Learned the hard way on 2026-07-27.
 changed=0
 for src in "${SOURCE_DIR}"/*.yaml; do
-    dest="${TARGET_DIR}/$(basename "${src}")"
+    name="$(basename "${src}")"
+    dest="${TARGET_DIR}/${name}"
+
+    missing=""
+    for var in $(required_vars_for "${src}"); do
+        if ! sudo grep -qE "^${var}=.+" "${GRAFANA_ENV_FILE}" 2>/dev/null; then
+            missing="${missing} ${var}"
+        fi
+    done
+
+    if [ -n "${missing}" ]; then
+        echo "[sync-alerts] [!] SKIPPING ${name}: unset in ${GRAFANA_ENV_FILE}:${missing}"
+        echo "[sync-alerts]     Installing it would prevent grafana-server from starting."
+        echo "[sync-alerts]     See config/monitoring/grafana/grafana.env.example"
+        # Remove a previously-installed copy, otherwise the next restart -- which
+        # may be hours later, or a reboot -- fails for a reason nobody connects
+        # to this change.
+        if sudo test -f "${dest}"; then
+            sudo rm -f "${dest}"
+            echo "[sync-alerts]     Removed stale ${name} to keep Grafana bootable."
+            changed=1
+        fi
+        continue
+    fi
+
     if ! sudo cmp -s "${src}" "${dest}" 2>/dev/null; then
         sudo cp "${src}" "${dest}"
         sudo chown root:grafana "${dest}"
         sudo chmod 640 "${dest}"
-        echo "[sync-alerts] Updated $(basename "${src}")"
+        echo "[sync-alerts] Updated ${name}"
         changed=1
     fi
 done
-
-# Any ${VAR} referenced by a provisioning file must be present in Grafana's
-# EnvironmentFile, or Grafana resolves it to an empty string and silently fails
-# to deliver. Surface that here rather than leaving it to be discovered by an
-# alert that never arrives.
-GRAFANA_ENV_FILE="/etc/homeguard/grafana.env"
-missing_vars=""
-# Strip comments first: these files document the ${VAR} mechanism in their own
-# headers, and scanning comment text yields spurious names (e.g. a literal
-# "${VAR}" in prose) which makes the warning untrustworthy and easy to ignore.
-for var in $(sed 's/#.*//' "${SOURCE_DIR}"/*.yaml 2>/dev/null \
-                | grep -ohE '\$\{[A-Z_][A-Z0-9_]*\}' \
-                | tr -d '${}' | sort -u); do
-    if ! sudo grep -qE "^${var}=.+" "${GRAFANA_ENV_FILE}" 2>/dev/null; then
-        missing_vars="${missing_vars} ${var}"
-    fi
-done
-if [ -n "${missing_vars}" ]; then
-    echo "[sync-alerts] [!] Referenced but NOT set in ${GRAFANA_ENV_FILE}:${missing_vars}"
-    echo "[sync-alerts]     Alert rules will still evaluate, but notifications"
-    echo "[sync-alerts]     will NOT be delivered. See"
-    echo "[sync-alerts]     config/monitoring/grafana/grafana.env.example"
-fi
 
 count=$(ls "${SOURCE_DIR}"/*.yaml | wc -l)
 if [ "${changed}" -eq 0 ]; then
