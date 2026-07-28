@@ -165,27 +165,29 @@ max*, not a discovery. This should be settled before anyone sees a number.
 
 Phases follow the chain (work order + spec v2 §9), amended for Homeguard rules.
 
-### Phase 0 — Repo reconciliation (BLOCKING, ~half day)
+### Phase 0 — Repo reconciliation · **COMPLETE 2026-07-27**
 
-Eleven items from the work order §1. **Partially complete already** (this document):
+All eleven items resolved, none ABSENT. Full report:
+`20260727_options_phase0_reconciliation.md`. Headlines:
 
-| Item | Status |
-|---|---|
-| 0.2 `OptionsDataLoader` real output columns | **DONE** — D1, D2 above |
-| 0.5 Yang-Zhang exists | **DONE** — D5 |
-| 0.7 storage/partition conventions | partially — Hive `root=/year=/month=` confirmed |
-| 0.8 cost model | **DONE** — D4 (unit trap flagged) |
-| 0.9 `OptionsDataStore` vs `OptionsDataLoader` | **DONE** — `chains/`, `gex_daily/` are empty on disk; store class is dead. Propose deprecate. **Do not delete yet** (work order §4) |
-| 0.11 join semantics | **DONE** — V6 resolved, §2 |
-| 0.3 ledger | **DONE** — D7, §3.2 |
-| 0.1 strategy registry format | TODO |
-| 0.4 `strategy_toggle.yaml` | TODO |
-| 0.6 DuckDB attach patterns | TODO |
-| 0.10 **ThetaData subscription status + tier** | TODO — no Theta config found in `.env`. Determines refresh + universe top-up feasibility. **User input likely required.** |
-| extra: classifier PIT state log | TODO — `market_regime_detector.py` has `last_classification_timestamp`; whether *historical* state is persisted point-in-time is unverified. **This is an existential gate for all P5-gated candidates** (001, 002, 005, 011, 013, 015, 036, 050) |
-
-**Deliverable:** `docs/strategies/research/options-slate/20260727_options_phase0_reconciliation.md` — asserted /
-actual / status / evidence(file:line) for all eleven.
+- **0.8 classifier PIT — the existential item — passes.** No persisted state log, but
+  `analyze_regime_history()` performs a **causal replay** (`index <= date`), and
+  `_calculate_vix_percentile` uses a trailing 252-row window of an already-truncated frame,
+  so there is **no full-sample lookahead**. Regime gates are backtestable; **Wave 1 does not
+  shrink**. Requires: materialize `regime_state_daily` once (O(n^2) replay, 8 consumers), and
+  state the data-vintage caveat on results.
+- **New Phase-1 prerequisite: VIX spot is not in local storage.** `/h/Stock_Data/alt_data/vix/`
+  holds only `vx_curve.parquet` (VIX *futures* term structure, 2013-05 -> 2026-07). The regime
+  detector's VIX index input is *fetched* via `src/utils/vix_provider.py` / yfinance `^VIX`.
+  A fetched series is not reproducible -> materialize VIX spot locally before replay.
+- **0.1 — use the FX/futures runner pattern, not the equity registry.** `src/strategies/registry.py`
+  serves config-driven single-instrument equity work; FX and futures use dedicated runners on
+  `walkforward_common`. Options (multi-leg, chain data) belongs with the latter — and that path
+  already carries the `FillSink` convention.
+- **0.6 — DuckDB is single-writer.** Parallel per-root V-battery jobs must shard to parquet and
+  do one serialized ledger append; concurrent writes to `experiments.duckdb` will collide.
+- **0.9 — `OptionsDataStore` is confirmed dead** (`chains/`, `gex_daily/` empty). Deprecation
+  proposed, **not executed** (work-order §4 forbids deletion this phase). Awaiting go-ahead.
 
 ### Phase 1a — Canonicalization (~1-2 days)
 
