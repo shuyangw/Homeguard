@@ -48,7 +48,11 @@ done
 # alert that never arrives.
 GRAFANA_ENV_FILE="/etc/homeguard/grafana.env"
 missing_vars=""
-for var in $(grep -ohE '\$\{[A-Z_][A-Z0-9_]*\}' "${SOURCE_DIR}"/*.yaml 2>/dev/null \
+# Strip comments first: these files document the ${VAR} mechanism in their own
+# headers, and scanning comment text yields spurious names (e.g. a literal
+# "${VAR}" in prose) which makes the warning untrustworthy and easy to ignore.
+for var in $(sed 's/#.*//' "${SOURCE_DIR}"/*.yaml 2>/dev/null \
+                | grep -ohE '\$\{[A-Z_][A-Z0-9_]*\}' \
                 | tr -d '${}' | sort -u); do
     if ! sudo grep -qE "^${var}=.+" "${GRAFANA_ENV_FILE}" 2>/dev/null; then
         missing_vars="${missing_vars} ${var}"
