@@ -78,6 +78,25 @@ def _raw(rows):
     return pl.DataFrame(full, schema=schema)
 
 
+# ------------------------------------------------- 0. on-disk schema variants
+
+
+def test_expiration_accepts_date_dtype_variant():
+    """100 partitions (SPY 2017-2018, QQQ 2017/2018/2023) ship `expiration` as
+    date32 rather than string. Canonicalization must accept both."""
+    raw = _raw([{"timestamp": "2024-01-02T15:45:00", "expiration": "2024-01-19"}])
+    raw_date = raw.with_columns(pl.col("expiration").str.to_date())
+    assert raw_date.schema["expiration"] == pl.Date
+
+    out_str = C.canonicalize_frame(raw, root="SPY")
+    out_date = C.canonicalize_frame(raw_date, root="SPY")
+
+    assert out_date["expiry"][0] == date(2024, 1, 19)
+    assert out_date.schema["expiry"] == pl.Date
+    assert out_date["dte"][0] == out_str["dte"][0]
+    assert out_date["dte_trading"][0] == out_str["dte_trading"][0]
+
+
 # ---------------------------------------------------------------- 1. timestamps
 
 
