@@ -1,4 +1,5 @@
 import json
+import os
 
 import pytest
 
@@ -9,6 +10,19 @@ def _read(tmp_path, name):
     files = list(tmp_path.glob(f"{name}_*.json"))
     assert len(files) == 1, files
     return json.loads(files[0].read_text())
+
+
+def test_status_path_is_unique_per_process(tmp_path, monkeypatch):
+    """Two runs of the same name starting within the same second must not share
+    a destination file. A second-resolution stamp alone collides across the
+    parallel workers this class exists to monitor: both `replace()` onto one
+    path and Windows raises PermissionError (WinError 5). Observed killing 9 of
+    276 parallel options_chain_eod jobs on 2026-07-28."""
+    monkeypatch.setattr("src.utils.run_status._STATUS_DIR", tmp_path)
+    a = RunStatus("dup")
+    b = RunStatus("dup")
+    assert a.path != b.path
+    assert str(os.getpid()) in a.path.name
 
 
 def test_clean_run_records_done(tmp_path, monkeypatch):

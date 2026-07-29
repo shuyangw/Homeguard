@@ -26,6 +26,7 @@ import threading
 import time
 from pathlib import Path
 from typing import Any, Dict, Optional
+from uuid import uuid4
 
 from src.utils.timezone import tz
 from src.utils.logger import get_logger
@@ -42,8 +43,14 @@ class RunStatus:
         self.name = name
         self.meta = dict(meta or {})
         self.heartbeat_seconds = heartbeat_seconds
+        # The stamp is second-resolution, so parallel workers launched together
+        # collide on one DESTINATION path and their `replace()` calls fight
+        # (WinError 5) -- this killed 9 of 276 parallel options_chain_eod jobs on
+        # 2026-07-28. The earlier fix made only the *tmp* path unique. pid keeps
+        # the file operationally traceable; the suffix guarantees uniqueness both
+        # across processes and within one.
         stamp = tz.now().strftime("%Y%m%d_%H%M%S")
-        self.path = _STATUS_DIR / f"{name}_{stamp}.json"
+        self.path = _STATUS_DIR / f"{name}_{stamp}_{os.getpid()}_{uuid4().hex[:6]}.json"
         self._stop = threading.Event()
         self._thread: Optional[threading.Thread] = None
         self._started_at = ""
