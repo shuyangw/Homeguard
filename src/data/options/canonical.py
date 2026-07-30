@@ -225,8 +225,9 @@ def _finite(col: str) -> pl.Expr:
 
 
 def _expiry_expr(df: pl.DataFrame) -> pl.Expr:
-    """`expiration` ships as string in most partitions and as date32 in 100 of
-    them (SPY 2017-2018, QQQ 2017/2018/2023). Accept both; fail loud otherwise."""
+    """`expiration` ships as string in most partitions and as date32 in a
+    minority (SPY 2017-2018, QQQ 2017/2018/2023, IWM 2017-01..04). Accept both;
+    fail loud otherwise."""
     dtype = df.schema["expiration"]
     if dtype == pl.Date:
         return pl.col("expiration").alias("expiry")

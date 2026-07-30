@@ -82,8 +82,9 @@ def _raw(rows):
 
 
 def test_expiration_accepts_date_dtype_variant():
-    """100 partitions (SPY 2017-2018, QQQ 2017/2018/2023) ship `expiration` as
-    date32 rather than string. Canonicalization must accept both."""
+    """A minority of partitions (SPY 2017-2018, QQQ 2017/2018/2023, and
+    IWM 2017-01..04 found while materializing IWM) ship `expiration` as date32
+    rather than string. Canonicalization must accept both."""
     raw = _raw([{"timestamp": "2024-01-02T15:45:00", "expiration": "2024-01-19"}])
     raw_date = raw.with_columns(pl.col("expiration").str.to_date())
     assert raw_date.schema["expiration"] == pl.Date
