@@ -274,30 +274,70 @@ def calendar_census(root: str, months) -> pl.DataFrame:
     if params.height == 0:
         return pl.DataFrame()
     grid = np.linspace(-0.3, 0.2, 51)
-    n_pairs = n_bad_pairs = 0
-    pt_total = pt_bad = 0
+    recs = []
     for (sd,), g in params.partition_by(["session_date"], as_dict=True).items():
         g = g.sort("T")
         if g.height < 2:
             continue
+        rows = list(g.iter_rows(named=True))
         ws = [
             svi_total_variance(grid, SVIParams(r["svi_a"], r["svi_b"], r["svi_rho"],
                                                r["svi_m"], r["svi_sigma"]))
-            for r in g.iter_rows(named=True)
+            for r in rows
         ]
         for i in range(len(ws) - 1):
             bad = ws[i + 1] < ws[i] - 1e-12
-            n_pairs += 1
-            n_bad_pairs += int(bad.any())
-            pt_total += bad.size
-            pt_bad += int(bad.sum())
-    return pl.DataFrame([{
-        "root": root, "adjacent_expiry_pairs": n_pairs,
-        "pairs_with_any_violation": n_bad_pairs,
-        "pair_viol_rate": (n_bad_pairs / n_pairs) if n_pairs else float("nan"),
-        "grid_points": pt_total, "point_viol_rate":
-            (pt_bad / pt_total) if pt_total else float("nan"),
+            # Worst violation expressed in vol points at the far expiry, so a
+            # numerically-trivial crossing is distinguishable from a real one.
+            gap = np.maximum(ws[i] - ws[i + 1], 0.0)
+            T_far = rows[i + 1]["T"]
+            vol_pts = float(np.max(np.sqrt(np.maximum(ws[i], 1e-12) / T_far)
+                                   - np.sqrt(np.maximum(ws[i + 1], 1e-12) / T_far))
+                            ) if bad.any() else 0.0
+            recs.append({
+                "near_dte": rows[i]["dte"], "far_dte": rows[i + 1]["dte"],
+                "dte_gap": rows[i + 1]["dte"] - rows[i]["dte"],
+                "any_violation": bool(bad.any()),
+                "points_violating": int(bad.sum()), "points": int(bad.size),
+                "max_gap_w": float(gap.max()), "max_vol_points": vol_pts,
+            })
+    if not recs:
+        return pl.DataFrame()
+    df = pl.DataFrame(recs).with_columns(
+        pl.when(pl.col("near_dte") <= 7).then(pl.lit("near<=7"))
+        .when(pl.col("near_dte") <= 30).then(pl.lit("near 8-30"))
+        .when(pl.col("near_dte") <= 90).then(pl.lit("near 31-90"))
+        .otherwise(pl.lit("near 91+")).alias("bucket")
+    )
+    out = (
+        df.group_by("bucket")
+        .agg(
+            pl.len().alias("adjacent_pairs"),
+            pl.col("any_violation").sum().alias("pairs_with_violation"),
+            pl.col("points_violating").sum().alias("points_violating"),
+            pl.col("points").sum().alias("points"),
+            pl.col("max_vol_points").median().alias("median_max_vol_points"),
+            pl.col("max_vol_points").max().alias("worst_vol_points"),
+        )
+        .with_columns(
+            (pl.col("pairs_with_violation") / pl.col("adjacent_pairs")).alias("pair_viol_rate"),
+            (pl.col("points_violating") / pl.col("points")).alias("point_viol_rate"),
+            pl.lit(root).alias("root"),
+        )
+        .sort("bucket")
+    )
+    total = pl.DataFrame([{
+        "bucket": "ALL", "adjacent_pairs": df.height,
+        "pairs_with_violation": int(df["any_violation"].sum()),
+        "points_violating": int(df["points_violating"].sum()),
+        "points": int(df["points"].sum()),
+        "median_max_vol_points": float(df["max_vol_points"].median()),
+        "worst_vol_points": float(df["max_vol_points"].max()),
+        "pair_viol_rate": float(df["any_violation"].mean()),
+        "point_viol_rate": float(df["points_violating"].sum() / df["points"].sum()),
+        "root": root,
     }])
+    return pl.concat([out, total], how="diagonal_relaxed")
 
 
 # ---------------------------------------------------------------------------
