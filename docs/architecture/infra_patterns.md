@@ -74,6 +74,28 @@ Result (closed_trades, daily_snapshots, equity_curve)
 - **Storage**: Hive-partitioned parquet: `options_combined/root={SYMBOL}/year={YYYY}/month={MM}/data.parquet`
 - **Loader**: `OptionsDataLoader` from `src/strategies/options/data_loader.py`
 - **Key columns**: strike, expiry, delta, bid, ask, mid_price, implied_vol, open_interest, days_to_expiry, option_type, underlying_price
+- **WARNING**: `OptionsDataLoader` renames `gamma_eod -> gamma` and
+  `open_interest_eod -> open_interest`, stripping the `_eod` leak marker, and its
+  `get_eod_chain()` hardcodes 16:00 while the registered snapshot is 15:45. Do
+  not use it for slate work -- use the canonical layer below.
+
+### Options Canonical + Derived Tables (`src/data/options/`)
+All hive-partitioned as `root={SYMBOL}/year={YYYY}/month={MM}/data.parquet`
+under `<storage>/options/`.
+
+| Table | Module | Grain | Notes |
+|---|---|---|---|
+| `options_chain_eod` | `canonical.py` | contract x session | Snapshot at the registered **15:45 ET** minute, clamped to the real close on half-days. Marks are `mid` from valid quotes only; `close`/`vwap` are trade prints and are never marks. SPY 2017-01..2025-12, QQQ 2012-06..2025-12. |
+| `options_iv_surface` | `iv_surface_build.py` | session x expiry | **M7.** Raw-SVI params, parity-implied forward/discount, fit diagnostics, and a REASON CODE. Refused slices are present with null params -- a refusal is a positive record, not a missing row. |
+| `options_iv_smooth` | `iv_surface_build.py` | contract x session | **M7.** `iv_smooth`, `delta_smooth`, `iv_source`, `surface_reason`, `extrapolated`. Join to `options_chain_eod` on (session_date, expiry, strike, right). Required by P1 below \|delta\| 0.10. |
+
+- **M7 fitter**: `src/data/options/iv_surface.py`. Dividend-awareness comes from
+  the put-call-parity forward solved off the session's own quotes (point-in-time,
+  no dividend series); the discount factor comes from
+  `src/data/rates/fred_reader.py` (DGS1MO..DGS2). Registered choices and the
+  D-047/030 gate threshold: `docs/strategies/research/options-slate/20260730_m7_prereg.md`.
+- **Build**: `python scripts/data/build_m7_surface.py --jobs 8 --shard i/n`
+- **Validate**: `python scripts/data/validate_m7_surface.py`
 
 ### Symbol Universes
 - Location: `config/universes/`
