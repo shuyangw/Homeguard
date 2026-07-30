@@ -4,7 +4,8 @@ Provides reusable tools for assessing whether a strategy's observed
 performance is statistically significant or likely due to overfitting.
 
 Modules:
-    deflated_sharpe - Deflated Sharpe Ratio (Bailey & Lopez de Prado 2014)
+    deflated_sharpe - Deflated Sharpe Ratio adapter; delegates the formula
+                      to src.backtesting.statistics.dsr (single source of truth)
     bootstrap       - Bootstrap confidence intervals for strategy metrics
     cpcv            - Combinatorial Purged Cross-Validation
     permutation     - Permutation test framework for signal significance
