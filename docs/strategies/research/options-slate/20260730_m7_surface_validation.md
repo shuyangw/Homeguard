@@ -417,6 +417,29 @@ supported by the data.
 Every consumer must branch on `surface_reason`: a null `iv_smooth` means **no
 surface here**, and must not be silently coerced to a shipped value.
 
+### End-to-end check of OPT-047's actual selection
+
+An OPT-047-shaped query -- 3-month (80-100 DTE) puts, strike nearest 0.05
+smoothed delta -- run against four partitions spanning both roots and the
+2019/2022 stress years:
+
+| partition | selections | median \|delta\| achieved | median `iv_smooth` | extrapolated |
+|---|---|---|---|---|
+| SPY 2019-03 | 19 | 0.0499 | 0.2398 | **0.0%** |
+| SPY 2022-10 | 21 | 0.0500 | 0.4151 | **0.0%** |
+| QQQ 2014-07 | 17 | 0.0514 | 0.2084 | **0.0%** |
+| QQQ 2023-05 | 16 | 0.0500 | 0.3368 | **0.0%** |
+
+The join is exact on all four (row count unchanged, zero unmatched), the
+selection hits the 0.05 target essentially exactly, and the IV level responds
+correctly to regime (0.24 in Mar-2019 vs 0.42 in Oct-2022).
+
+**Important qualifier on the 31% extrapolation figure in Section 5:** that is
+the share across *all* contracts with `|delta| < 0.05`, which includes far
+deeper strikes than any consumer selects. At OPT-047's actual selection point --
+3-month, 0.05 delta -- extrapolation was **0.0%** on every partition sampled.
+The wing caveat is real but it binds beyond the ladder's strike, not at it.
+
 ---
 
 ## Appendix A -- Divergence log
