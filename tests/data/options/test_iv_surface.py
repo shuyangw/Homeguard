@@ -54,6 +54,34 @@ def test_svi_total_variance_is_positive_and_convex_for_benign_params():
     assert np.all(np.diff(w, 2) > -1e-12), "total variance must be convex in k"
 
 
+def test_analytic_jacobian_matches_finite_differences():
+    """The fit supplies a closed-form Jacobian; a wrong one would bias every fit."""
+    k = np.linspace(-0.4, 0.25, 30)
+    theta = np.array([0.006, 0.08, -0.55, 0.01, 0.12])
+
+    def model(t):
+        a, b, rho, m, s = t
+        return a + b * (rho * (k - m) + np.sqrt((k - m) ** 2 + s**2))
+
+    x = k - theta[3]
+    r = np.sqrt(x**2 + theta[4] ** 2)
+    analytic = np.column_stack([
+        np.ones_like(x),
+        theta[2] * x + r,
+        theta[1] * x,
+        -theta[1] * (theta[2] + x / r),
+        theta[1] * theta[4] / r,
+    ])
+
+    eps = 1e-7
+    numeric = np.column_stack([
+        (model(theta + eps * np.eye(5)[i]) - model(theta - eps * np.eye(5)[i]))
+        / (2 * eps)
+        for i in range(5)
+    ])
+    np.testing.assert_allclose(analytic, numeric, atol=1e-6)
+
+
 def test_svi_wings_are_asymptotically_linear():
     """The reason SVI was chosen over a spline: bounded linear wings."""
     k = np.array([8.0, 9.0, 10.0, 11.0])
@@ -72,6 +100,50 @@ def test_black76_put_call_parity_holds():
     c = black76_price(F, K, T, sigma, "C", D)
     p = black76_price(F, K, T, sigma, "P", D)
     assert c - p == pytest.approx(D * (F - K), abs=1e-10)
+
+
+def test_vectorized_iv_agrees_with_the_repo_scalar_inverter():
+    """Pin the fast bisection inverter to the repo's existing scalar brentq.
+
+    `black76_iv_vec` exists only because `atm_iv.black76_iv` is ~2 orders of
+    magnitude too slow at this scale. Two inverters that could disagree is a
+    correctness risk, so this test forbids divergence.
+    """
+    from src.backtesting.vol.atm_iv import black76_iv
+    from src.data.options.iv_surface import black76_iv_vec
+
+    F, T, D = 470.0, 0.25, 0.9868
+    r = -np.log(D) / T
+    strikes = np.array([380.0, 420.0, 455.0, 470.0, 485.0, 510.0, 550.0])
+    is_call = strikes >= F
+    truth_iv = np.array([0.31, 0.24, 0.19, 0.17, 0.16, 0.18, 0.22])
+    prices = np.array([
+        black76_price(F, k, T, s, "C" if c else "P", D)
+        for k, s, c in zip(strikes, truth_iv, is_call)
+    ])
+
+    fast = black76_iv_vec(prices, F, strikes, T, D, is_call)
+    slow = np.array([
+        black76_iv(p, F, k, T, r, "C" if c else "P")
+        for p, k, c in zip(prices, strikes, is_call)
+    ])
+
+    np.testing.assert_allclose(fast, truth_iv, atol=1e-8)
+    np.testing.assert_allclose(fast, slow, atol=1e-6)
+
+
+def test_vectorized_iv_returns_nan_below_intrinsic():
+    from src.data.options.iv_surface import black76_iv_vec
+
+    F, T, D = 470.0, 0.25, 0.9868
+    strikes = np.array([400.0, 400.0, 400.0])
+    # below intrinsic; above the forward itself (unattainable); and a genuine
+    # deep-ITM price that IS invertible and must NOT be discarded.
+    prices = np.array([1.0, 600.0, 200.0])
+    out = black76_iv_vec(prices, F, strikes, T, D, np.array([True, True, True]))
+    assert np.isnan(out[0])
+    assert np.isnan(out[1])
+    assert np.isfinite(out[2])
 
 
 def test_black76_price_is_above_intrinsic():

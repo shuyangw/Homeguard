@@ -40,9 +40,8 @@ from typing import Optional, Sequence
 
 import numpy as np
 from scipy.optimize import least_squares
-from scipy.stats import norm
+from scipy.special import ndtr
 
-from src.backtesting.vol.atm_iv import black76_iv
 from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -192,17 +191,69 @@ def black76_price(F: float, K: float, T: float, sigma: float, right: str,
     d1 = (np.log(F / K) + 0.5 * v**2) / v
     d2 = d1 - v
     if right == "C":
-        return float(D * (F * norm.cdf(d1) - K * norm.cdf(d2)))
-    return float(D * (K * norm.cdf(-d2) - F * norm.cdf(-d1)))
+        return float(D * (F * ndtr(d1) - K * ndtr(d2)))
+    return float(D * (K * ndtr(-d2) - F * ndtr(-d1)))
+
+
+def _b76_forward_price_vec(F: float, K, T: float, sigma, is_call):
+    """Vectorized UNDISCOUNTED Black-76 price."""
+    v = sigma * np.sqrt(T)
+    v = np.maximum(v, 1e-12)
+    d1 = (np.log(F / K) + 0.5 * v**2) / v
+    d2 = d1 - v
+    call = F * ndtr(d1) - K * ndtr(d2)
+    put = K * ndtr(-d2) - F * ndtr(-d1)
+    return np.where(is_call, call, put)
+
+
+def black76_iv_vec(prices, F: float, strikes, T: float, D: float, is_call,
+                   lo: float = 1e-3, hi: float = 5.0, iters: int = 60):
+    """Vectorized Black-76 implied vol by bisection. NaN where not invertible.
+
+    Bisection rather than Newton: the forward price is strictly monotone in
+    sigma, so bisection cannot fail to converge, and at 60 vectorized halvings
+    the bracket is far below float precision.
+
+    `src/backtesting/vol/atm_iv.black76_iv` is the repo's existing scalar
+    inverter and was evaluated for reuse, but it is a per-point `brentq` over a
+    `scipy.stats.norm` closure -- roughly two orders of magnitude too slow for
+    the ~22M inversions this build needs. This function is pinned to it by
+    `test_vectorized_iv_agrees_with_the_repo_scalar_inverter`, so the two can
+    never silently diverge.
+    """
+    prices = np.asarray(prices, dtype=float)
+    strikes = np.asarray(strikes, dtype=float)
+    is_call = np.asarray(is_call, dtype=bool)
+    if D <= 0 or T <= 0:
+        return np.full(prices.shape, np.nan)
+
+    fwd_px = prices / D
+    intrinsic = np.where(is_call, np.maximum(F - strikes, 0.0),
+                         np.maximum(strikes - F, 0.0))
+    hi_px = _b76_forward_price_vec(F, strikes, T, np.full(strikes.shape, hi),
+                                   is_call)
+    usable = (
+        np.isfinite(fwd_px) & (strikes > 0) & (fwd_px > intrinsic + 1e-12)
+        & (fwd_px < hi_px)
+    )
+
+    a = np.full(strikes.shape, lo)
+    b = np.full(strikes.shape, hi)
+    for _ in range(iters):
+        mid = 0.5 * (a + b)
+        too_low = _b76_forward_price_vec(F, strikes, T, mid, is_call) < fwd_px
+        a = np.where(too_low, mid, a)
+        b = np.where(too_low, b, mid)
+    return np.where(usable, 0.5 * (a + b), np.nan)
 
 
 def _iv_from_price(price: float, F: float, K: float, T: float, D: float,
                    right: str) -> float:
-    """Invert a DISCOUNTED price to Black-76 IV. NaN when not invertible."""
-    if not np.isfinite(price) or price <= 0 or D <= 0:
-        return float("nan")
-    r = -np.log(D) / T if T > 0 else 0.0
-    return black76_iv(price, F, K, T, r, right)
+    """Scalar convenience wrapper over `black76_iv_vec`."""
+    out = black76_iv_vec(
+        np.array([price]), F, np.array([K]), T, D, np.array([right == "C"])
+    )
+    return float(out[0])
 
 
 def smooth_delta(p: SVIParams, k: float, T: float, F: float, D: float,
@@ -219,8 +270,8 @@ def smooth_delta(p: SVIParams, k: float, T: float, F: float, D: float,
     d1 = (-k + 0.5 * v**2) / v  # k = log(K/F) so log(F/K) = -k
     carry = D * F / spot
     if right == "C":
-        return float(carry * norm.cdf(d1))
-    return float(-carry * norm.cdf(-d1))
+        return float(carry * ndtr(d1))
+    return float(-carry * ndtr(-d1))
 
 
 # --------------------------------------------------------------------------
@@ -333,25 +384,25 @@ def fit_expiry(strikes, rights, bids, asks, forward: float, discount: float,
     if keep.sum() < MIN_FIT_POINTS:
         return _refused(REASON_TOO_FEW_STRIKES, F, D, T, int(keep.sum()))
 
-    k_all, w_all, weights = [], [], []
-    for K, right, bid, ask, mid in zip(
-        strikes[keep], rights[keep], bids[keep], asks[keep], mids[keep]
-    ):
-        iv = _iv_from_price(mid, F, K, T, D, right)
-        if not np.isfinite(iv) or not (0.01 < iv < 5.0):
-            continue
-        iv_b = _iv_from_price(bid, F, K, T, D, right)
-        iv_a = _iv_from_price(ask, F, K, T, D, right)
-        band = (iv_a - iv_b) if (np.isfinite(iv_a) and np.isfinite(iv_b)) else np.nan
-        if not np.isfinite(band) or band <= 0:
-            band = IV_SPREAD_FLOOR
-        k_all.append(np.log(K / F))
-        w_all.append(iv**2 * T)
-        weights.append(1.0 / max(band, IV_SPREAD_FLOOR))
+    kk = strikes[keep]
+    is_call = rights[keep] == "C"
+    iv_mid = black76_iv_vec(mids[keep], F, kk, T, D, is_call)
+    good = np.isfinite(iv_mid) & (iv_mid > 0.01) & (iv_mid < 5.0)
+    if good.sum() < MIN_FIT_POINTS:
+        return _refused(REASON_TOO_FEW_STRIKES, F, D, T, int(good.sum()))
 
-    k = np.asarray(k_all)
-    w = np.asarray(w_all)
-    wt = np.asarray(weights)
+    kk = kk[good]
+    is_call = is_call[good]
+    iv_mid = iv_mid[good]
+    iv_bid = black76_iv_vec(bids[keep][good], F, kk, T, D, is_call)
+    iv_ask = black76_iv_vec(asks[keep][good], F, kk, T, D, is_call)
+
+    band = iv_ask - iv_bid
+    band = np.where(np.isfinite(band) & (band > 0), band, IV_SPREAD_FLOOR)
+
+    k = np.log(kk / F)
+    w = iv_mid**2 * T
+    wt = 1.0 / np.maximum(band, IV_SPREAD_FLOOR)
     n = k.size
     if n < MIN_FIT_POINTS:
         return _refused(REASON_TOO_FEW_STRIKES, F, D, T, n)
@@ -365,6 +416,19 @@ def fit_expiry(strikes, rights, bids, asks, forward: float, discount: float,
         a, b, rho, m, s = theta
         model = a + b * (rho * (k - m) + np.sqrt((k - m) ** 2 + s**2))
         return wt * (model - w)
+
+    def jacobian(theta):
+        """Closed-form Jacobian. Exact, and ~2.5x faster than finite differences."""
+        _a, b, rho, m, s = theta
+        x = k - m
+        r = np.sqrt(x**2 + s**2)
+        return wt[:, None] * np.column_stack([
+            np.ones_like(x),          # d/da
+            rho * x + r,              # d/db
+            b * x,                    # d/drho
+            -b * (rho + x / r),       # d/dm
+            b * s / r,                # d/dsigma
+        ])
 
     # `b` is box-bounded by 2/T, NOT 4/T. Since |rho| < 1, b <= 2/T is a
     # SUFFICIENT condition for the Lee bound b*(1+|rho|) <= 4/T that
@@ -382,7 +446,8 @@ def fit_expiry(strikes, rights, bids, asks, forward: float, discount: float,
                       rho0, m0, s0]
                 x0 = list(np.clip(x0, lower, upper))
                 try:
-                    sol = least_squares(residual, x0, bounds=(lower, upper),
+                    sol = least_squares(residual, x0, jac=jacobian,
+                                        bounds=(lower, upper),
                                         method="trf", max_nfev=2000)
                 except Exception as exc:  # numerical failure -> refuse, never guess
                     logger.debug(f"[!] SVI solve raised: {exc}")
