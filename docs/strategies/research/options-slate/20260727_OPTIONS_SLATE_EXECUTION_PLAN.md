@@ -19,6 +19,11 @@ written without repo access:
 
 ---
 
+> **AMENDED 2026-07-30 by `2026-07-30_options_docchain_amendment_A2.md`.** The registered
+> Wave-1 DSR hurdle of **0.41 is superseded by 1.02** -- the usable window is 8.3 y (not 13.7)
+> and lifetime N is ~349 (not 9). A2 governs the hurdle, the window, and which DSR implementation
+> may be used. Candidate definitions, priors and wave structure are unchanged.
+
 ## 1. Which documents govern
 
 Eight documents were delivered. Three are **retired**; five govern.
