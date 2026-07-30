@@ -30,8 +30,8 @@ from src.data.options.canonical import EOD_STORE_NAME
 from src.data.options.iv_surface import (
     REASON_OK,
     SVIParams,
-    _gatheral_g,
     black76_iv_vec,
+    gatheral_g_vec,
     smooth_iv,
     svi_total_variance,
 )
@@ -61,13 +61,24 @@ GATE_MIN_INSIDE_FRAC = 0.90
 GATE_MAX_MEDIAN_ABS_DIFF = 0.015
 
 
-def _read_store(root: str, store: str, months) -> pl.DataFrame:
+def _read_store(root: str, store: str, months, sessions=None,
+                columns=None) -> pl.DataFrame:
+    """Read a store, filtering per-partition so memory stays bounded.
+
+    The EOD chain is ~424 MB compressed across both roots; reading it whole and
+    filtering afterwards is what makes this battery fall over.
+    """
+    keep = set(sessions) if sessions is not None else None
     frames = []
     for y, m in months:
         p = _month_path(root, y, m, store)
         if not p.exists():
             continue
-        df = pl.read_parquet(p)
+        df = pl.read_parquet(p, columns=columns)
+        if keep is not None:
+            df = df.filter(pl.col("session_date").is_in(list(keep)))
+            if df.height == 0:
+                continue
         for c, d in df.schema.items():
             if d == pl.Float32:
                 df = df.with_columns(pl.col(c).cast(pl.Float64))
@@ -147,12 +158,8 @@ def residual_census(root: str, months, n_sessions: int) -> pl.DataFrame:
     keep = {sessions[i] for i in pick}
     params = params.filter(pl.col("session_date").is_in(list(keep)))
 
-    chain = _read_store(root, EOD_STORE_NAME, months).filter(
-        pl.col("session_date").is_in(list(keep))
-    )
-    smooth = _read_store(root, SMOOTH_STORE_NAME, months).filter(
-        pl.col("session_date").is_in(list(keep))
-    )
+    chain = _read_store(root, EOD_STORE_NAME, months, sessions=keep)
+    smooth = _read_store(root, SMOOTH_STORE_NAME, months, sessions=keep)
     joined = chain.join(
         smooth.select("session_date", "expiry", "strike", "right",
                       "iv_smooth", "delta_smooth", "extrapolated"),
@@ -238,15 +245,15 @@ def butterfly_census(root: str, months) -> pl.DataFrame:
         params.select("session_date", "expiry", "T", "svi_a", "svi_b",
                       "svi_rho", "svi_m", "svi_sigma"),
         on=["session_date", "expiry"], how="inner",
+    ).filter(pl.col("k").is_not_null() & pl.col("delta_smooth").is_not_null())
+    if j.height == 0:
+        return pl.DataFrame()
+    # One vectorized pass over every contract -- no per-slice grouping.
+    g = gatheral_g_vec(
+        j["k"].to_numpy(), j["svi_a"].to_numpy(), j["svi_b"].to_numpy(),
+        j["svi_rho"].to_numpy(), j["svi_m"].to_numpy(), j["svi_sigma"].to_numpy(),
     )
-    g_vals, buckets = [], []
-    for (a, b, rho, m, s), grp in j.partition_by(
-        ["svi_a", "svi_b", "svi_rho", "svi_m", "svi_sigma"], as_dict=True
-    ).items():
-        p = SVIParams(a, b, rho, m, s)
-        g_vals.append(_gatheral_g(grp["k"].to_numpy(), p))
-        buckets.append(np.abs(grp["delta_smooth"].to_numpy()))
-    g = np.concatenate(g_vals); dl = np.concatenate(buckets)
+    dl = np.abs(j["delta_smooth"].to_numpy())
     df = pl.DataFrame({"g": g, "bucket": _bucket(dl)})
     return (
         df.group_by("bucket")
@@ -363,12 +370,11 @@ def d047_gate(root: str, months) -> tuple:
     keep = [sessions[i] for i in sorted(idx.tolist())]
     params = params.filter(pl.col("session_date").is_in(keep))
 
-    chain = _read_store(root, EOD_STORE_NAME, months).filter(
-        pl.col("session_date").is_in(keep)
-        & pl.col("dte").is_between(GATE_DTE[0], GATE_DTE[1])
+    chain = _read_store(root, EOD_STORE_NAME, months, sessions=keep).filter(
+        pl.col("dte").is_between(GATE_DTE[0], GATE_DTE[1])
     )
-    smooth = _read_store(root, SMOOTH_STORE_NAME, months).filter(
-        pl.col("session_date").is_in(keep) & pl.col("iv_smooth").is_not_null()
+    smooth = _read_store(root, SMOOTH_STORE_NAME, months, sessions=keep).filter(
+        pl.col("iv_smooth").is_not_null()
     )
     j = chain.join(
         smooth.select("session_date", "expiry", "strike", "right", "iv_smooth",

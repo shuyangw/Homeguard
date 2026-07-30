@@ -147,17 +147,25 @@ def svi_is_arbitrage_free(p: SVIParams, T: float) -> bool:
     return True
 
 
-def _gatheral_g(k, p: SVIParams):
-    """Gatheral's g(k). g >= 0 everywhere <=> no butterfly arbitrage."""
+def gatheral_g_vec(k, a, b, rho, m, sigma):
+    """Gatheral's g(k), with per-point SVI parameters.
+
+    Accepts arrays for the parameters so a whole store's worth of slices can be
+    checked in one pass rather than grouped slice by slice.
+    """
     k = np.asarray(k, dtype=float)
-    x = k - p.m
-    root = np.sqrt(x**2 + p.sigma**2)
-    w = p.a + p.b * (p.rho * x + root)
-    w = np.maximum(w, 1e-12)
-    wp = p.b * (p.rho + x / root)
-    wpp = p.b * p.sigma**2 / root**3
+    x = k - m
+    root = np.sqrt(x**2 + np.asarray(sigma) ** 2)
+    w = np.maximum(a + b * (rho * x + root), 1e-12)
+    wp = b * (rho + x / root)
+    wpp = b * np.asarray(sigma) ** 2 / root**3
     term = 1.0 - 0.5 * k * wp / w
     return term**2 - 0.25 * wp**2 * (1.0 / w + 0.25) + 0.5 * wpp
+
+
+def _gatheral_g(k, p: SVIParams):
+    """Gatheral's g(k). g >= 0 everywhere <=> no butterfly arbitrage."""
+    return gatheral_g_vec(k, p.a, p.b, p.rho, p.m, p.sigma)
 
 
 def butterfly_violation_rate(k, p: SVIParams, T: float) -> float:
