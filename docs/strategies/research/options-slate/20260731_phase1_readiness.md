@@ -41,8 +41,8 @@ IWM-specific code path. Provenance: source store `options_combined`, snapshot mi
 |---|---|---|---|
 | SPY | 59,148 | 6,801,800 | 2017-01 .. 2025-12 |
 | QQQ | 67,629 | 5,260,977 | 2012-06 .. 2025-12 |
-| **IWM** | **IWM_SURFACE_ROWS** | **IWM_SMOOTH_ROWS** | **2017-01 .. 2025-12** |
-| **total** | **TOTAL_SURFACE** | **TOTAL_SMOOTH** | |
+| **IWM** | **48,128** | **2,686,042** | **2017-01 .. 2025-12** |
+| **total** | **174,905** | **14,748,819** | |
 
 `options_iv_smooth` is 1:1 with `options_chain_eod` by construction (one smoothed row per
 contract-session, NULL `iv_smooth` with a `surface_reason` where the slice was refused).
@@ -56,7 +56,26 @@ Previously `output/wave0/derived/*.parquet` -- a Wave-0 scratch path inside the 
 
 `<storage>/options/derived/<table>/<table>.parquet` + `<table>.meta.json`
 
-DERIVED_TABLE_BLOCK
+| table | rows | SPY | QQQ | IWM | span |
+|---|---|---|---|---|---|
+| `atm_iv_daily` | 46,770 | 12,930 | 20,340 | 13,500 | 2012-06-01 .. 2025-12-26 |
+| `atm_per_expiry` | 174,873 | 59,148 | 67,598 | 48,127 | 2012-06-01 .. 2025-12-26 |
+| `skew_daily` | 44,920 | 12,569 | 19,047 | 13,304 | 2012-06-01 .. 2025-12-26 |
+| `term_slope_daily` | 7,786 | 2,150 | 3,386 | 2,250 | 2012-06-01 .. 2025-12-26 |
+| `iv_rank_daily` | 46,770 | 12,930 | 20,340 | 13,500 | 2012-06-01 .. 2025-12-26 |
+| `put_iv_daily` | 15,371 | 4,280 | 6,626 | 4,465 | 2012-06-01 .. 2025-12-26 |
+| `rv_daily` | 7,963 | 2,655 | 2,653 | 2,655 | 2016-01-04 .. 2026-07-27 |
+
+Distinct sessions in `atm_iv_daily`: **SPY 2,155 / QQQ 3,390 / IWM 2,250**. Per-root spans:
+SPY and IWM both 2017-01-03 .. 2025-12-26 (no pre-2017 rows, matching the greeks boundary);
+QQQ 2012-06-01 .. 2025-12-26. `rv_daily` runs off the underlying 1-minute bars
+(`equities/sip_split/1min`), which extend past the options store, hence its later `date_max`.
+
+**Regression check:** the SPY and QQQ rows in the relocated tables are **bit-identical** to the
+old `output/wave0/derived/` copies (33,270 rows matched, `atm_iv` all-close). The relocation is
+a pure move plus the IWM addition -- no existing value changed.
+
+
 
 Each table carries a **provenance sidecar** (`<table>.meta.json`) with `dataset`, `source`,
 `snapshot_timestamp`, `git_sha`, `columns`, `rows`, `date_min`/`date_max`, `roots`,
@@ -299,6 +318,10 @@ essentially complete. Any Phase-2 study that needs a clean 2017 has it in IWM an
 SPY. Combined with Section 2.5 (SPY 2017 now UNTRUSTED at 0.8960), **SPY 2017 should be treated
 as unusable and SPY's honest window read as 2018-2025**, while IWM's is the full 2017-2025.
 
+The size of the gap is visible in the derived tables: over the *identical* nominal window
+(2017-01-03 .. 2025-12-26) `atm_iv_daily` carries **2,250 sessions for IWM against 2,155 for
+SPY** -- IWM contributes 95 more usable sessions than SPY does, entirely from 2017.
+
 ### 5.2 M7's far wing is heavy-tailed -- OPT-047 / OPT-030 mark off RAW quotes
 
 In the `|delta| < 0.05` bucket the M7 fit residual p99 is **17.1 vol points (SPY) / 23.7 vol
@@ -340,7 +363,7 @@ Reported because reality wins.
 
 | # | Brief / prior doc said | Disk / code says | Consequence |
 |---|---|---|---|
-| 1 | IWM shares SPY's coverage profile in 2017 | IWM 2017 is **essentially complete** (19-23 sessions/month); SPY 2017 ramps from 2 | Positive for OPT-016 -- IWM contributes a clean 2017 that SPY cannot |
+| 1 | IWM shares SPY's coverage profile in 2017 | IWM 2017 is **essentially complete** (19-23 sessions/month); SPY 2017 ramps from 2. 2,250 vs 2,155 derived sessions over the same window | Positive for OPT-016 -- IWM contributes a clean 2017 that SPY cannot |
 | 2 | Addendum C1: V5's gate "was computed on `null_count`" and passed 100%-NaN root-years | The shipped sweep uses `np.isfinite` on values throughout; ALL_NAN root-years already scored 0.0 / UNTRUSTED | C1's stated cause is wrong. The real defect -- the gate ignoring the registered SANITY bounds -- is corrected here and flips 19 root-years including SPY 2017 |
 | 3 | `expiration` ships as date32 in "100 partitions (SPY 2017-2018, QQQ 2017/2018/2023)" | **IWM 2017-01..04 also do**, for 104 in the materialized universe | None -- the existing regression test already covers the variant; enumeration corrected |
 | 4 | Gap 1 might need an IWM schema fix | IWM built cleanly through the unmodified canonical layer, 108/108 partitions | No IWM-specific code was written, as required |
