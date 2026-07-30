@@ -19,6 +19,11 @@ written without repo access:
 
 ---
 
+> **AMENDED 2026-07-30 by `2026-07-30_options_docchain_amendment_A4.md`.** A2's hurdle table is
+> SUPERSEDED: the registered bar is **1.137** (the live campaign-trial-distribution path), and it
+> **grows** -- each candidate is graded at its own evaluation time, not against the entry-time N.
+> `n_trials_project_wide()` is ledger metadata only and may never grade a strategy.
+>
 > **AMENDED 2026-07-30 by `2026-07-30_options_docchain_amendment_A3.md`.** The D-047/030
 > integrity gate FAILED; OPT-047 and OPT-030 now mark off **raw quote mid**, not `iv_smooth`
 > (the gate's own registered consequence). OPT-027 is unaffected (its 0.10 delta leg does not
