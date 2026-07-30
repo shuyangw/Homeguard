@@ -25,12 +25,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from src.backtesting.diagnostics import options_iv_state as ivs
 from src.backtesting.diagnostics.session_bars import session_close_schedule
+from src.data.options.derived_store import load_derived_table
 from src.utils.logger import get_logger
 from src.utils.run_status import RunStatus
 
 logger = get_logger(__name__)
 
-DERIVED = Path("output/wave0/derived")
 OUT = Path("output/wave0/groupB1")
 
 
@@ -39,7 +39,7 @@ def _load():
     for name in ("atm_iv_daily", "atm_per_expiry", "skew_daily",
                  "term_slope_daily", "iv_rank_daily", "rv_daily",
                  "put_iv_daily"):
-        t = pd.read_parquet(DERIVED / f"{name}.parquet")
+        t = load_derived_table(name)
         if "session_date" in t.columns:
             t["session_date"] = pd.to_datetime(t["session_date"]).dt.date
         d[name] = t
