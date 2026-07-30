@@ -677,7 +677,12 @@ def _append_to_registry(
             window_end=end_date,
             metrics=metrics,
             combinations_in_run=combinations_in_run,
-            combinations_project=n_trials_project_wide(),
+            # Bookkeeping, not grading: strict=False so the very first run
+            # against an empty registry does not raise. The row's own
+            # contribution is added so the stored column stays a running
+            # cumulative count (the 2026-07-28 backfill's convention).
+            combinations_project=(
+                n_trials_project_wide(strict=False) + combinations_in_run),
             config_payload=getattr(config, 'model_dump', lambda: None)() if hasattr(config, 'model_dump') else None,
             wall_clock_start=wall_clock_start,
             wall_clock_end=datetime.now(tz=timezone.utc),

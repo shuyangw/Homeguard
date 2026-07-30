@@ -12,6 +12,8 @@ import pandas as pd
 import pytest
 
 from src.experiments import (
+    TRIAL_RULE_OPTIMIZER_ONLY,
+    TrialCountUnavailableError,
     append_run,
     incumbent_return_streams,
     init_db,
@@ -106,9 +108,17 @@ def test_append_run_round_trip(db_path: Path) -> None:
 
 
 def test_n_trials_project_wide_accumulates(db_path: Path) -> None:
-    assert n_trials_project_wide(db_path) == 0
+    """NEGATIVE CONTROL for the 2026-07-30 fix.
 
-    # A driver run doesn't count -- only optimizer runs.
+    The superseded implementation filtered on `agent_name =
+    'backtest-optimizer'`, an agent that has never written a single registry
+    row, so it returned 0 forever. Every assertion below returns 0 under that
+    implementation, so this test has demonstrable power against it.
+    """
+    with pytest.raises(TrialCountUnavailableError):
+        n_trials_project_wide(db_path)
+
+    # Every writer counts. The superseded version returned 0 here.
     append_run(
         db_path=db_path,
         strategy_name="ramp",
@@ -116,7 +126,7 @@ def test_n_trials_project_wide_accumulates(db_path: Path) -> None:
         metrics={"sharpe": 1.0},
         combinations_in_run=5,
     )
-    assert n_trials_project_wide(db_path) == 0
+    assert n_trials_project_wide(db_path) == 5
 
     append_run(
         db_path=db_path,
@@ -128,11 +138,92 @@ def test_n_trials_project_wide_accumulates(db_path: Path) -> None:
     append_run(
         db_path=db_path,
         strategy_name="omr",
-        agent_name="backtest-optimizer",
+        agent_name="futures-harness",
         metrics={"best_sharpe": 0.9},
         combinations_in_run=80,
     )
-    assert n_trials_project_wide(db_path) == 200
+    assert n_trials_project_wide(db_path) == 205
+
+
+def test_n_trials_counts_an_agent_name_nobody_has_invented_yet(db_path: Path) -> None:
+    """No allowlist. A brand-new writer must be counted the day it appears.
+
+    The original defect was an agent-name filter that silently stopped
+    matching. Re-introducing any allowlist breaks this test.
+    """
+    append_run(
+        db_path=db_path,
+        strategy_name="whatever",
+        agent_name="some-harness-invented-in-2027",
+        metrics={"sharpe": 0.4},
+        combinations_in_run=7,
+    )
+    assert n_trials_project_wide(db_path) == 7
+
+
+def test_n_trials_treats_a_missing_combination_count_as_one_trial(db_path: Path) -> None:
+    """A writer that forgets `combinations_in_run` still ran a trial.
+
+    Defaulting the NULL to 0 would silently under-deflate -- the exact
+    direction of the original bug.
+    """
+    append_run(
+        db_path=db_path,
+        strategy_name="ramp",
+        agent_name="fx-harness",
+        metrics={"sharpe": 0.4},
+    )
+    assert n_trials_project_wide(db_path) == 1
+
+
+def test_n_trials_honors_an_explicit_zero_for_a_rerun(db_path: Path) -> None:
+    """`combinations_in_run = 0` marks an exact rerun of an already-counted
+    spec (the backfill's convention) and must not add a trial."""
+    append_run(
+        db_path=db_path,
+        strategy_name="ramp",
+        agent_name="fx-harness",
+        metrics={"sharpe": 0.4},
+        combinations_in_run=3,
+    )
+    append_run(
+        db_path=db_path,
+        strategy_name="ramp",
+        agent_name="fx-harness",
+        metrics={"sharpe": 0.4},
+        combinations_in_run=0,
+        notes="apparatus-correction rerun",
+    )
+    assert n_trials_project_wide(db_path) == 3
+
+
+def test_n_trials_never_shrinks_below_a_backfilled_cumulative_count(db_path: Path) -> None:
+    """`combinations_project` is a floor: N never shrinks.
+
+    The 2026-07-28 backfill wrote a reconstructed cumulative counter that is
+    larger than anything derivable from `combinations_in_run` alone on rows it
+    did not touch. Reading only the summed column would discard it.
+    """
+    append_run(
+        db_path=db_path,
+        strategy_name="ramp",
+        agent_name="trial-count-reconstruction",
+        metrics={"sharpe": 0.0},
+        combinations_in_run=1,
+        combinations_project=349,
+    )
+    assert n_trials_project_wide(db_path) == 349
+
+
+def test_n_trials_empty_registry_is_loud(db_path: Path) -> None:
+    """An absent count must never masquerade as 'zero trials, no deflation'."""
+    with pytest.raises(TrialCountUnavailableError):
+        n_trials_project_wide(db_path)
+
+
+def test_n_trials_empty_registry_non_strict_returns_zero(db_path: Path) -> None:
+    """Bookkeeping call sites (recording provenance, not grading) opt out."""
+    assert n_trials_project_wide(db_path, strict=False) == 0
 
 
 def test_incumbent_return_streams_returns_latest_run(db_path: Path) -> None:

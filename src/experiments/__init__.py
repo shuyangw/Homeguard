@@ -5,6 +5,10 @@ optimization run appends. The portfolio-integrator queries.
 """
 from src.experiments.registry import (
     DEFAULT_DB_PATH,
+    DEFAULT_TRIAL_RULE,
+    TRIAL_RULE_EVERY_SPEC,
+    TRIAL_RULE_OPTIMIZER_ONLY,
+    TrialCountUnavailableError,
     append_run,
     duplicate_spec_run_ids,
     incumbent_return_streams,
@@ -15,6 +19,10 @@ from src.experiments.registry import (
 
 __all__ = [
     "DEFAULT_DB_PATH",
+    "DEFAULT_TRIAL_RULE",
+    "TRIAL_RULE_EVERY_SPEC",
+    "TRIAL_RULE_OPTIMIZER_ONLY",
+    "TrialCountUnavailableError",
     "append_run",
     "duplicate_spec_run_ids",
     "incumbent_return_streams",

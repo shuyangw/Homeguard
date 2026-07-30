@@ -306,22 +306,109 @@ def _insert_return_stream(con: duckdb.DuckDBPyConnection, run_id: str, stream: p
     )
 
 
-def n_trials_project_wide(db_path: Path = DEFAULT_DB_PATH) -> int:
-    """Cumulative optimizer trial count across the whole project.
+class TrialCountUnavailableError(RuntimeError):
+    """The registry cannot supply an honest project-wide trial count.
 
-    Use as the N argument to expected_max_sharpe() per methodology Section 9.4.
-    Returns 0 if the registry is empty.
+    Raised instead of returning 0. A zero N makes `expected_max_sharpe()`
+    return 0.0, which silently disables multiple-testing deflation entirely --
+    the failure mode that went undetected from the registry's creation until
+    2026-07-30. An absent count must never be mistaken for "no trials".
     """
+
+
+#: Every evaluated specification counts as a trial. Bailey & Lopez de Prado's
+#: N is the number of configurations whose Sharpe was OBSERVED -- every draw
+#: the maximum could have been taken over -- not only those drawn by a grid
+#: search. This is the default.
+TRIAL_RULE_EVERY_SPEC = "every_spec"
+
+#: Only configurations produced by an optimizer sweep count. Identified
+#: STRUCTURALLY (the row is a child of a sweep, or its phase declares one),
+#: never by an agent-name allowlist -- an allowlist is what silently broke.
+#:
+#: WARNING: as of 2026-07-30 this rule evaluates to 0 on the live registry.
+#: No optimizer sweep has ever written a row (`make_trial_callback` is wired
+#: at src/backtest_runner.py:960 but every real campaign -- futures, fx, RAMP
+#: -- used its own harness). Selecting this rule therefore means NO DEFLATION.
+TRIAL_RULE_OPTIMIZER_ONLY = "optimizer_only"
+
+DEFAULT_TRIAL_RULE = TRIAL_RULE_EVERY_SPEC
+
+# A NULL `combinations_in_run` means the writer did not declare a count, not
+# that no trial happened -- count it as 1. An explicit 0 is a deliberate
+# "exact rerun of an already-counted spec" marker (the 2026-07-28 backfill's
+# convention) and is honored.
+_TRIAL_SUM = "COALESCE(SUM(COALESCE(combinations_in_run, 1)), 0)"
+
+_OPTIMIZER_PREDICATE = "(parent_run_id IS NOT NULL OR phase LIKE 'optimization%')"
+
+
+def n_trials_project_wide(
+    db_path: Path = DEFAULT_DB_PATH,
+    *,
+    rule: str = DEFAULT_TRIAL_RULE,
+    strict: bool = True,
+) -> int:
+    """Cumulative project-wide trial count N, for DSR deflation.
+
+    Use as the N argument to `expected_max_sharpe()` per methodology
+    Section 9.4.
+
+    The count is `SUM(COALESCE(combinations_in_run, 1))`, floored by
+    `MAX(combinations_project)` so a reconstructed cumulative counter (the
+    2026-07-28 backfill) is never discarded and N never shrinks.
+
+    Args:
+        db_path: registry file.
+        rule: `TRIAL_RULE_EVERY_SPEC` (default) or
+            `TRIAL_RULE_OPTIMIZER_ONLY`. See those constants -- the choice is
+            a methodology judgment and is deliberately explicit at the call
+            site rather than hardcoded here.
+        strict: when True (default) a count of 0 raises
+            `TrialCountUnavailableError` rather than silently disabling
+            deflation. Pass `strict=False` only for bookkeeping call sites
+            that record provenance rather than grade a strategy.
+
+    Raises:
+        ValueError: unknown `rule`.
+        TrialCountUnavailableError: `strict` and the count is 0.
+    """
+    if rule not in (TRIAL_RULE_EVERY_SPEC, TRIAL_RULE_OPTIMIZER_ONLY):
+        raise ValueError(
+            f"unknown trial-count rule {rule!r}; expected "
+            f"{TRIAL_RULE_EVERY_SPEC!r} or {TRIAL_RULE_OPTIMIZER_ONLY!r}")
+
+    where = "" if rule == TRIAL_RULE_EVERY_SPEC else f" WHERE {_OPTIMIZER_PREDICATE}"
     init_db(db_path)
     con = _connect_with_retry(db_path, read_only=True)
     try:
-        row = con.execute(
-            "SELECT COALESCE(SUM(combinations_in_run), 0) FROM runs "
-            "WHERE agent_name = 'backtest-optimizer'"
+        summed, floor = con.execute(
+            f"SELECT {_TRIAL_SUM}, COALESCE(MAX(combinations_project), 0) "
+            f"FROM runs{where}"
         ).fetchone()
-        return int(row[0] or 0)
     finally:
         con.close()
+
+    summed = int(summed or 0)
+    floor = int(floor or 0)
+    if floor > summed:
+        logger.warning(
+            f"[registry] combinations_project floor ({floor}) exceeds the "
+            f"summed combinations_in_run ({summed}) under rule {rule!r}. "
+            "Using the floor -- N never shrinks -- but some row's "
+            "combinations_in_run has been lost or reset; investigate.")
+    n = max(summed, floor)
+
+    if n == 0 and strict:
+        raise TrialCountUnavailableError(
+            f"project-wide trial count is 0 under rule {rule!r} at {db_path}. "
+            "A zero N disables DSR deflation entirely, so it is refused rather "
+            "than returned. Either the registry is empty, or -- if the rule is "
+            f"{TRIAL_RULE_OPTIMIZER_ONLY!r} -- no optimizer sweep has ever "
+            "written a row, which has been true for the whole life of this "
+            f"registry. Use rule={TRIAL_RULE_EVERY_SPEC!r}, or pass "
+            "strict=False if this call is bookkeeping rather than grading.")
+    return n
 
 
 def make_trial_callback(
