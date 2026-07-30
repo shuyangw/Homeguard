@@ -841,3 +841,66 @@ Single names run further back (GOOGL 2014+, AMD 2015+, the rest full).
   hits rate limits would now produce null-padded columns that pass a column-count check.
 
 *No strategy backtest has been run. No P&L has been observed.*
+
+---
+
+# CORRECTION C3 -- 2026-07-31: C1's diagnosis was wrong, and V5 is worse than C1 said
+
+Addendum **C1 (above) misdiagnosed its own finding.** Corrected here from source, per the rule that
+where a document and the code disagree, the code wins.
+
+## What C1 got wrong
+
+C1 asserted V5's gate "was computed on `null_count`" and therefore silently passed 100%-NaN
+columns. **That is false.** `scripts/data/vbattery/sweep_v1_v2_v3_v5_v9_v11.py` uses
+`np.isfinite()` on values throughout (e.g. `ok = np.isfinite(u)`, line 121). ALL_NAN root-years
+already scored **0.0 / UNTRUSTED** in the shipped CSV. The NaN-vs-NULL trap is real and did defeat
+several *main-loop* analyses -- but it did **not** defeat this sweep.
+
+## What the actual defect is -- and it is worse
+
+The sweep **computes** the registered sanity bounds (`np.isfinite(iv) & (iv > 0.01) & (iv < 5.0)`,
+line 363) but the **gate never applied them**. It bound on the finite rate alone, despite this
+report's own V5 section calling the plausibility screen load-bearing.
+
+Re-scoring against the **registered 90% threshold, restated verbatim and unchanged**, applied to
+the usable-value rate:
+
+| | Before | After |
+|---|---:|---:|
+| PASS | 331 | **312** |
+| UNTRUSTED | 84 | **103** |
+
+**19 root-years flip, every one PASS -> UNTRUSTED. Nothing was promoted.** The threshold was not
+touched; only the metric it binds on was corrected.
+
+**Two flips matter:**
+- **SPY 2017 fails at 0.8960**
+- QQQ 2013 fails at 0.8910
+
+## Consequence: SPY's honest window is 2018-2025, not 2017-2025
+
+SPY 2017 now fails V5, and independently **SPY 2017 is materially incomplete in the source store**
+-- 158 sessions against IWM's and QQQ's 251 (verified raw-side; SPY's 2017-01 partition holds
+2 sessions). Both point the same way.
+
+**A related inversion, contrary to what earlier documents assumed:** the "2017 H1 near-absent"
+defect is **SPY-specific**, not a shared greeks-boundary artifact. Over the identical window
+`atm_iv_daily` holds **2,250 IWM sessions vs 2,155 SPY**. **IWM is the cleanest leg of OPT-016's
+universe, not the marginal one.**
+
+## What this does and does not change
+
+- **The registered hurdle is UNAFFECTED.** Amendment A4 moved grading onto the live
+  campaign-trial-distribution path, whose sigma_SR is the **empirical** cross-trial dispersion
+  (0.4293), not `1/sqrt(years)`. The window refinement (8.3 y -> ~8.0 y) would have moved a
+  `1/sqrt(T)` sigma_SR by ~2%; it moves the operative bar by **nothing**. A4's ruling insulated the
+  gate from exactly this class of revision.
+- **A2's "~8.3 y" window statement is now known imprecise** (SPY is effectively 2018-2025). It is
+  **non-operative** for grading per the above, so no amendment is raised solely for it. Should the
+  window ever become a gate input again, it must be re-derived, not reused.
+- **Results headers must state each candidate's actual usable window per root**, not a slate-wide
+  figure -- SPY 2018-2025, IWM/QQQ 2017-2025 (QQQ 2012-2025 where greeks permit).
+
+*C3 corrects C1's stated cause and supersedes its PASS/UNTRUSTED counts. C1's conclusion that V5's
+verdict needed re-scoring stands -- for a different and more serious reason than it gave.*
