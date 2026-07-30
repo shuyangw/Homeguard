@@ -19,6 +19,11 @@ written without repo access:
 
 ---
 
+> **AMENDED 2026-07-30 by `2026-07-30_options_docchain_amendment_A3.md`.** The D-047/030
+> integrity gate FAILED; OPT-047 and OPT-030 now mark off **raw quote mid**, not `iv_smooth`
+> (the gate's own registered consequence). OPT-027 is unaffected (its 0.10 delta leg does not
+> trip P1). **OPT-006 remains BLOCKED.** Wave 1 is unblocked at 9 candidates.
+>
 > **AMENDED 2026-07-30 by `2026-07-30_options_docchain_amendment_A2.md`.** The registered
 > Wave-1 DSR hurdle of **0.41 is superseded by 1.02** -- the usable window is 8.3 y (not 13.7)
 > and lifetime N is ~349 (not 9). A2 governs the hurdle, the window, and which DSR implementation
