@@ -363,6 +363,22 @@ def implied_forward(strikes_c, mids_c, strikes_p, mids_p, D: float,
 # --------------------------------------------------------------------------
 
 
+def structural_refusal(dte: int, T: float) -> Optional[str]:
+    """Refusals that depend only on the expiry, not on any quote.
+
+    These MUST be tested before the forward is solved. At `dte == 0` the
+    implied dividend yield `q = r - log(F/S)/T` divides by T -> 0 and blows up,
+    so the forward check would otherwise fire first and stamp a 0DTE slice
+    `IMPLAUSIBLE_FORWARD` -- a true refusal with a misleading reason. The whole
+    point of the reason code is to tell P1 *why* there is no surface.
+    """
+    if dte == 0 or T <= 0:
+        return REASON_ZERO_DTE
+    if dte > MAX_DTE:
+        return REASON_DTE_OUT_OF_RANGE
+    return None
+
+
 def _refused(reason: str, F: float, D: float, T: float,
              n: int = 0) -> ExpiryFit:
     nan = float("nan")
@@ -373,10 +389,9 @@ def fit_expiry(strikes, rights, bids, asks, forward: float, discount: float,
                T: float, dte: int, spot: float) -> ExpiryFit:
     """Fit one (root, session, expiry) slice. Returns a refusal, never a guess."""
     F, D = float(forward), float(discount)
-    if dte == 0 or T <= 0:
-        return _refused(REASON_ZERO_DTE, F, D, T)
-    if dte > MAX_DTE:
-        return _refused(REASON_DTE_OUT_OF_RANGE, F, D, T)
+    structural = structural_refusal(dte, T)
+    if structural is not None:
+        return _refused(structural, F, D, T)
     if not np.isfinite(F) or F <= 0:
         return _refused(REASON_NO_FORWARD, F, D, T)
 

@@ -306,6 +306,24 @@ def test_long_dated_slice_does_not_spuriously_refuse_as_arb_violation():
     assert fit.params.b * (1 + abs(fit.params.rho)) <= 4.0 / T
 
 
+def test_structural_refusals_take_precedence_over_forward_refusals():
+    """Regression: a 0DTE slice must say ZERO_DTE, not IMPLAUSIBLE_FORWARD.
+
+    The implied dividend yield q = r - log(F/S)/T divides by T, so at dte 0 the
+    forward check blows up and -- if evaluated first -- stamps a structurally
+    impossible slice with a misleading reason. 695 SPY slices were mislabelled
+    this way before the fix. The refusal is right either way; the REASON is the
+    deliverable, because it is what tells P1 why there is no surface.
+    """
+    from src.data.options.iv_surface import (
+        REASON_DTE_OUT_OF_RANGE, structural_refusal,
+    )
+
+    assert structural_refusal(0, 0.0) == REASON_ZERO_DTE
+    assert structural_refusal(401, 401 / 365) == REASON_DTE_OUT_OF_RANGE
+    assert structural_refusal(30, 30 / 365) is None
+
+
 def test_refused_fit_yields_null_not_a_number():
     """P1 must be able to tell 'no surface' from 'surface says 0.05'."""
     F, D, T = 470.0, 0.996, 0.25

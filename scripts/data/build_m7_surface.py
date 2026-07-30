@@ -35,16 +35,16 @@ def _init_worker() -> None:
     os.environ["OMP_NUM_THREADS"] = "1"
 
 
-def _run_one(job: Job) -> Tuple[Job, bool, str]:
+def _run_one(job) -> Tuple[Job, bool, str]:
     from src.data.options.iv_surface_build import build_month
 
-    root, year, month = job
+    (root, year, month), overwrite = job
     try:
-        build_month(root, year, month, overwrite=False)
-        return job, True, ""
+        build_month(root, year, month, overwrite=overwrite)
+        return (root, year, month), True, ""
     except Exception as exc:  # a failed month must not kill the wave
         logger.error(f"[-] {root} {year}-{month:02d} failed: {exc}")
-        return job, False, str(exc)
+        return (root, year, month), False, str(exc)
 
 
 def _collect_jobs(roots: Sequence[str]) -> List[Job]:
@@ -64,6 +64,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     ap.add_argument("--roots", default="SPY,QQQ")
     ap.add_argument("--jobs", type=int, default=8)
     ap.add_argument("--shard", default="0/1", help="i/n round-robin shard")
+    ap.add_argument("--overwrite", action="store_true")
     args = ap.parse_args(argv)
 
     roots = [r.strip() for r in args.roots.split(",") if r.strip()]
@@ -82,8 +83,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         meta={"roots": roots, "months": len(jobs), "jobs": args.jobs},
     ) as status:
         with mp.Pool(args.jobs, initializer=_init_worker) as pool:
+            payload = [(j, args.overwrite) for j in jobs]
             for done, (job, ok, err) in enumerate(
-                pool.imap_unordered(_run_one, jobs), start=1
+                pool.imap_unordered(_run_one, payload), start=1
             ):
                 if not ok:
                     failures.append((job, err))

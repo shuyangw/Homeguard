@@ -30,11 +30,13 @@ from src.data.options.canonical import EOD_STORE_NAME
 from src.data.options.iv_surface import (
     REASON_OK,
     ExpiryFit,
+    ForwardFit,
     butterfly_violation_rate,
     fit_expiry,
     implied_forward,
     smooth_delta,
     smooth_iv,
+    structural_refusal,
     zero_rate,
 )
 from src.settings import get_local_storage_dir
@@ -161,6 +163,22 @@ def build_month_frames(root: str, year: int, month: int
         for (expiry,), e in sorted(sess.partition_by("expiry", as_dict=True).items()):
             dte = int(e["dte"][0])
             T = max(dte, 0) / DAYS_PER_YEAR
+            strikes = e["strike"].to_numpy()
+            rights = e["right"].to_numpy()
+            # Structural refusals first: solving a forward at T -> 0 produces a
+            # spurious IMPLAUSIBLE_FORWARD that masks the real reason.
+            structural = structural_refusal(dte, T)
+            if structural is not None:
+                fit = ExpiryFit(None, structural, float("nan"), float("nan"), T,
+                                0, float("nan"), float("nan"),
+                                float("nan"), float("nan"))
+                ff = ForwardFit(float("nan"), float("nan"), float("nan"), 0,
+                                structural)
+                params.append(_param_row(root, sd, expiry, dte, spot, ff, fit))
+                smooth.extend(
+                    _smooth_rows(root, sd, expiry, dte, spot, strikes, rights, fit)
+                )
+                continue
             try:
                 D = float(np.exp(-zero_rate(sd, max(T, 1e-6)) * T))
             except ValueError as exc:
@@ -171,10 +189,8 @@ def build_month_frames(root: str, year: int, month: int
             ff = implied_forward(
                 c["strike"].to_numpy(), c["mid"].to_numpy(),
                 p_["strike"].to_numpy(), p_["mid"].to_numpy(),
-                D=D, spot=spot, T=max(T, 1e-6),
+                D=D, spot=spot, T=T,
             )
-            strikes = e["strike"].to_numpy()
-            rights = e["right"].to_numpy()
             if ff.reason != REASON_OK:
                 # Forward refusals propagate; the slice is never fitted on a
                 # forward we do not believe.
