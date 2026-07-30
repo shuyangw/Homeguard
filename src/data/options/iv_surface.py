@@ -403,6 +403,11 @@ def fit_expiry(strikes, rights, bids, asks, forward: float, discount: float,
     k = np.log(kk / F)
     w = iv_mid**2 * T
     wt = 1.0 / np.maximum(band, IV_SPREAD_FLOOR)
+    # Sort by k. Callers happen to pass strike-ordered frames today, but
+    # `np.interp` below silently returns garbage on unsorted x, so do not
+    # depend on the caller's ordering.
+    order = np.argsort(k)
+    k, w, wt = k[order], w[order], wt[order]
     n = k.size
     if n < MIN_FIT_POINTS:
         return _refused(REASON_TOO_FEW_STRIKES, F, D, T, n)

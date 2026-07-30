@@ -231,6 +231,24 @@ def test_fit_recovers_a_known_svi_slice():
     np.testing.assert_allclose(smooth_iv(fit.params, k, T), truth, atol=2e-3)
 
 
+def test_fit_is_invariant_to_input_row_order():
+    """The fit must not depend on the caller's row ordering."""
+    F, D, T = 470.0, 0.996, 0.25
+    strikes, rights, bids, asks = _synthetic_slice(BENIGN, T, F, D)
+    ordered = fit_expiry(strikes=strikes, rights=rights, bids=bids, asks=asks,
+                         forward=F, discount=D, T=T, dte=91, spot=468.0)
+
+    rng = np.random.default_rng(7)
+    p = rng.permutation(len(strikes))
+    shuffled = fit_expiry(strikes=strikes[p], rights=rights[p], bids=bids[p],
+                          asks=asks[p], forward=F, discount=D, T=T, dte=91,
+                          spot=468.0)
+
+    assert shuffled.reason == ordered.reason == REASON_OK
+    np.testing.assert_allclose(shuffled.params.as_tuple(),
+                               ordered.params.as_tuple(), rtol=1e-6, atol=1e-9)
+
+
 def test_fit_reports_residuals_in_vol_points():
     F, D, T = 470.0, 0.996, 0.25
     strikes, rights, bids, asks = _synthetic_slice(BENIGN, T, F, D)
