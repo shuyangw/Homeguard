@@ -475,6 +475,63 @@ def d047_gate(root: str, months) -> tuple:
 
 
 # ---------------------------------------------------------------------------
+# Supplementary (NOT one of the four registered checks): strike-selection
+# agreement. P1 consumes the surface to SELECT a strike, not to price one, so
+# the decision-relevant question is whether smoothed and shipped delta pick the
+# same contract.
+# ---------------------------------------------------------------------------
+
+
+def selection_agreement(root: str, months) -> pl.DataFrame:
+    params = _read_store(root, SURFACE_STORE_NAME, months).filter(
+        (pl.col("reason") == REASON_OK)
+        & pl.col("dte").is_between(GATE_DTE[0], GATE_DTE[1])
+    )
+    if params.height == 0:
+        return pl.DataFrame()
+    rng = np.random.default_rng(SEED)
+    sessions = params["session_date"].unique().sort().to_list()
+    idx = rng.choice(len(sessions), min(GATE_SESSIONS_PER_ROOT, len(sessions)),
+                     replace=False)
+    keep = [sessions[i] for i in sorted(idx.tolist())]
+
+    chain = _read_store(root, EOD_STORE_NAME, months, sessions=keep).filter(
+        pl.col("dte").is_between(GATE_DTE[0], GATE_DTE[1])
+    )
+    smooth = _read_store(root, SMOOTH_STORE_NAME, months, sessions=keep).filter(
+        pl.col("iv_smooth").is_not_null()
+    )
+    j = chain.join(
+        smooth.select("session_date", "expiry", "strike", "right", "delta_smooth"),
+        on=["session_date", "expiry", "strike", "right"], how="inner",
+    ).filter(pl.col("delta").is_not_nan() & pl.col("delta").is_not_null())
+    if j.height == 0:
+        return pl.DataFrame()
+
+    rows = []
+    for target in (0.05, 0.10, 0.25):
+        a = j.with_columns(
+            (pl.col("delta_smooth").abs() - target).abs().alias("ds"),
+            (pl.col("delta").abs() - target).abs().alias("dh"),
+        )
+        pick_s = a.sort("ds").group_by(
+            ["session_date", "expiry", "right"], maintain_order=False
+        ).first().select("session_date", "expiry", "right",
+                         pl.col("strike").alias("k_smooth"))
+        pick_h = a.sort("dh").group_by(
+            ["session_date", "expiry", "right"], maintain_order=False
+        ).first().select("session_date", "expiry", "right",
+                         pl.col("strike").alias("k_shipped"))
+        m = pick_s.join(pick_h, on=["session_date", "expiry", "right"], how="inner")
+        same = (m["k_smooth"] == m["k_shipped"]).mean()
+        diff = (m["k_smooth"] - m["k_shipped"]).abs()
+        rows.append({
+            "root": root, "target_delta": target, "n": m.height,
+            "same_strike_frac": float(same),
+            "median_abs_strike_diff": float(diff.median()),
+            "p95_abs_strike_diff": float(np.percentile(diff.to_numpy(), 95)),
+        })
+    return pl.DataFrame(rows)
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
@@ -486,7 +543,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     roots = [r.strip() for r in args.roots.split(",") if r.strip()]
 
-    all_params, resid, bfly, cal, stab, gates, gate_det = [], [], [], [], [], [], []
+    all_params, resid, bfly, cal, stab, gates, gate_det, sel = (
+        [], [], [], [], [], [], [], []
+    )
     for root in roots:
         months = _available_months(root)
         logger.info(f"[+] {root}: {len(months)} months")
@@ -495,6 +554,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         bfly.append(butterfly_census(root, months))
         cal.append(calendar_census(root, months))
         stab.append(stability_census(root, months))
+        sel.append(selection_agreement(root, months))
         d, v = d047_gate(root, months)
         if v:
             gates.append(v)
@@ -513,6 +573,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         "calendar.csv": pl.concat([c for c in cal if c.height],
                                   how="vertical_relaxed"),
         "stability.csv": summarize_stability(stb),
+        "selection_agreement.csv": pl.concat([s for s in sel if s.height],
+                                             how="vertical_relaxed")
+        if any(s.height for s in sel) else pl.DataFrame(),
         "d047_gate.csv": pl.DataFrame(gates),
         "d047_gate_detail.csv": pl.concat([d for d in gate_det if d.height],
                                           how="vertical_relaxed"),
