@@ -19,13 +19,32 @@ quotes. The effective cutoff is therefore
 
     min(15:45, last real bar of the session)
 
-For bar-START labelled 1-minute data the last real bar of a 13:00 close is the
-13:00 - 1min = 12:59 bar, so a padded 13:00 bar can never become the mark.
+This module truncates the UNDERLYING 1-minute equity bars (`equities/sip_split`),
+which are bar-START labelled -- MEASURED, not assumed: a full session runs
+04:00 .. 19:59. The last regular bar of a 13:00 close is therefore the 12:59
+bar, and the cutoff is set accordingly, matching
+`diagnostics.session_bars.build_session_marks`.
 
-NOTE (divergence, reported): `canonical._snapshot_cutoff_expr` clamps to the
-close TIME itself and filters `ts <= cutoff`, which on an early-close session
-admits exactly one padded bar (the bar labelled at the close minute). This
-module is strictly tighter. See the Phase-2a doc.
+THE OPTIONS STORE LABELS DIFFERENTLY, and the difference is load-bearing.
+Measured on SPY 2024-07 (`options_combined`): a session carries 391 minute
+labels, 09:30 .. 16:00 inclusive. The 09:30 label has `bid == ask == 0` in
+100.00% of rows yet carries volume in 45% of them, while the 16:00 label has
+live quotes and zero volume in 100%. So the trade fields are bar-START while
+the quote fields are the quote AS OF the labelled minute -- the row labelled
+15:45 carries the 15:45 quote, which is exactly the registered snapshot
+instant, and the row labelled at an early close carries that session's closing
+quote. `canonical._snapshot_cutoff_expr` clamping to the close TIME (inclusive)
+is therefore CORRECT for options and is NOT a divergence; an earlier reading of
+this file suspected it was, and disk says otherwise.
+
+The padding is real and the clamp does matter: on 2024-07-03 (13:00 close) the
+options rows continue to 16:00 with volume 0 and a frozen quote -- mean mid
+6.8692 from ~13:1x onward against 6.9018 at the 13:00 bar. Reading the
+registered 15:45 blindly would mark that session off a stale quote.
+
+Bottom line: options marks come from `options_chain_eod` (canonical owns that
+clamp); this module owns the 1-minute UNDERLYING truncation that feeds P6, P9
+and P10. Neither re-slices the other's data.
 
 --------------------------------------------------------------------------
 Negative control

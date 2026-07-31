@@ -126,6 +126,46 @@ def test_multi_session_frame_is_truncated_per_session():
     verify_snapshot_truncation(out)
 
 
+def _options_partition():
+    from src.settings import get_local_storage_dir
+
+    return (
+        get_local_storage_dir() / "options" / "options_combined"
+        / "root=SPY" / "year=2024" / "month=07" / "data.parquet"
+    )
+
+
+@pytest.mark.skipif(
+    not _options_partition().exists(), reason="options_combined not on this host"
+)
+def test_disk_the_options_store_labels_bars_differently_from_the_equity_store():
+    """MEASURED, not assumed. The two stores' conventions differ, which is why
+    `canonical` clamps to the close minute inclusive and this module does not.
+
+    A session carries 391 labels 09:30..16:00. The 09:30 label is universally
+    zero-quoted (it is the pre-open state) yet carries volume; the 16:00 label
+    has live quotes and no volume.
+    """
+    import pyarrow.parquet as pq
+
+    pf = pq.ParquetFile(_options_partition())
+    t = pf.read_row_groups(
+        [0], columns=["timestamp", "bid_close", "ask_close", "volume"]
+    ).to_pandas()
+    t["hhmm"] = t["timestamp"].str.slice(11, 16)
+    labels = sorted(t["hhmm"].unique())
+    assert len(labels) == 391
+    assert labels[0] == "09:30" and labels[-1] == "16:00"
+
+    open_bar = t[t["hhmm"] == "09:30"]
+    assert ((open_bar["bid_close"] == 0) & (open_bar["ask_close"] == 0)).all()
+    assert (open_bar["volume"] > 0).any()
+
+    close_bar = t[t["hhmm"] == "16:00"]
+    assert not ((close_bar["bid_close"] == 0) & (close_bar["ask_close"] == 0)).all()
+    assert (close_bar["volume"] == 0).all()
+
+
 def test_naive_timestamps_are_treated_as_eastern_wall_clock():
     bars = _bars(NORMAL_SESSION)
     bars["timestamp"] = bars["timestamp"].dt.tz_convert(EASTERN_TZ).dt.tz_localize(None)

@@ -280,7 +280,11 @@ def _selection_deltas(
 
     # A3: the surface where it is NOT extrapolated, shipped (flagged) otherwise.
     if "extrapolated" in df.columns:
-        extrap = df["extrapolated"].fillna(True).to_numpy(dtype=bool)
+        extrap = (
+            df["extrapolated"].astype("object").where(
+                df["extrapolated"].notna(), True
+            ).to_numpy(dtype=bool)
+        )
     else:
         extrap = np.ones(len(df), dtype=bool)
     use_smooth = np.isfinite(smooth) & ~extrap
