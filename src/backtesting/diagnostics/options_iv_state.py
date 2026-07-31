@@ -43,171 +43,35 @@ CENSUS_CSV = Path("docs/strategies/research/options-slate/"
 
 DTE_BUCKETS = (7, 14, 30, 45, 60, 90)
 
-# Registered usability bounds for the NaN-valued greek columns.
-IV_MIN = 1e-6           # strictly positive
-IV_MAX = 5.0            # 500% annualized -- above this the quote is garbage
-ABS_DELTA_MIN = 1e-6    # strictly positive
-ABS_DELTA_MAX = 1.0     # EXCLUSIVE: |delta| == 1.0 is a saturated/degenerate mark
-
 EOD_COLUMNS = ["session_date", "expiry", "strike", "right", "mid",
                "implied_vol", "delta", "underlying_px", "dte", "quote_valid"]
 
 
 # ---------------------------------------------------------------------------
-# Backward-looking window primitives (anti-lookahead)
+# PROMOTED TO THE REGISTERED PRIMITIVES (Phase 2a)
 # ---------------------------------------------------------------------------
+# `trailing_percentile` / `trailing_rank` / `greek_usable_mask` /
+# `select_nearest_abs_delta` / the monthly-expiry helpers were first written
+# here in Wave 0. They are now the registered P8 / M2 / P2 implementations and
+# live in `src.backtesting.options`. They are RE-EXPORTED, not re-implemented:
+# two copies of a lookahead guard is exactly how the two drift apart.
 
-MIN_WINDOW_COVERAGE = 0.95
-
-
-def trailing_percentile(s: pd.Series, window: int,
-                        min_coverage: float = MIN_WINDOW_COVERAGE) -> pd.Series:
-    """Fraction of the `window` STRICTLY-PRIOR observations below today's value.
-
-    The current observation is EXCLUDED from its own comparison window, and the
-    window always SPANS exactly `window` prior positions (NaN before that), so
-    nothing at t is a function of any observation at t+1 or later.
-
-    REGISTERED COVERAGE RULE: the window may contain non-measurable sessions
-    (e.g. a session with no bracketing expiry). The comparison is made against
-    the FINITE observations actually present, provided they cover at least
-    `min_coverage` of the window; otherwise the output is NaN. Missing sessions
-    are NEVER imputed, forward-filled or interpolated -- they are simply absent
-    from the comparison set, and callers count them.
-    """
-    v = pd.to_numeric(s, errors="coerce").to_numpy(dtype=float)
-    n = len(v)
-    need = max(1, int(np.ceil(min_coverage * window)))
-    out = np.full(n, np.nan)
-    for i in range(window, n):
-        cur = v[i]
-        if not np.isfinite(cur):
-            continue
-        w = v[i - window:i]
-        w = w[np.isfinite(w)]
-        if len(w) < need:
-            continue
-        out[i] = float((w < cur).sum()) / float(len(w))
-    return pd.Series(out, index=s.index, name=f"pctile_{window}")
-
-
-def trailing_rank(s: pd.Series, window: int,
-                  min_coverage: float = MIN_WINDOW_COVERAGE) -> pd.Series:
-    """(x - min) / (max - min) over the `window` STRICTLY-PRIOR observations.
-
-    Same registered coverage rule as `trailing_percentile`.
-    """
-    v = pd.to_numeric(s, errors="coerce").to_numpy(dtype=float)
-    n = len(v)
-    need = max(1, int(np.ceil(min_coverage * window)))
-    out = np.full(n, np.nan)
-    for i in range(window, n):
-        cur = v[i]
-        if not np.isfinite(cur):
-            continue
-        w = v[i - window:i]
-        w = w[np.isfinite(w)]
-        if len(w) < need:
-            continue
-        lo, hi = float(w.min()), float(w.max())
-        if hi <= lo:
-            continue
-        out[i] = (cur - lo) / (hi - lo)
-    return pd.Series(out, index=s.index, name=f"rank_{window}")
-
-
-# ---------------------------------------------------------------------------
-# NaN-greek filtering -- defeats the null_count trap
-# ---------------------------------------------------------------------------
-
-def greek_usable_mask(df: pd.DataFrame, require_delta: bool = True) -> pd.Series:
-    """Row mask of contracts whose greeks are actually USABLE.
-
-    Tests VALUES (np.isfinite), never null_count / is_null / column presence:
-    a 100%-NaN float64 column reports null_count == 0 in arrow and would pass
-    any null-based check. Also rejects degenerate marks (iv <= 0, iv > 5.0,
-    |delta| == 0 or 1) and rows whose quote was not valid.
-    """
-    iv = pd.to_numeric(df.get("implied_vol"), errors="coerce").to_numpy(dtype=float)
-    mask = np.isfinite(iv) & (iv > IV_MIN) & (iv <= IV_MAX)
-    if require_delta:
-        d = pd.to_numeric(df.get("delta"), errors="coerce").to_numpy(dtype=float)
-        ad = np.abs(d)
-        mask &= np.isfinite(d) & (ad > ABS_DELTA_MIN) & (ad < ABS_DELTA_MAX)
-    if "quote_valid" in df.columns:
-        qv = df["quote_valid"].fillna(False).to_numpy(dtype=bool)
-        mask &= qv
-    return pd.Series(mask, index=df.index, name="greek_usable")
-
-
-def select_nearest_abs_delta(df: pd.DataFrame,
-                             target: float,
-                             tolerance: float) -> Optional[pd.Series]:
-    """Row whose |delta| is nearest `target`, or None if beyond `tolerance`."""
-    if df is None or len(df) == 0:
-        return None
-    d = pd.to_numeric(df["delta"], errors="coerce").to_numpy(dtype=float)
-    ad = np.abs(d)
-    dist = np.abs(ad - target)
-    ok = np.isfinite(dist)
-    if not ok.any():
-        return None
-    dist = np.where(ok, dist, np.inf)
-    i = int(np.argmin(dist))
-    if dist[i] > tolerance:
-        return None
-    return df.iloc[i]
-
-
-# ---------------------------------------------------------------------------
-# Monthly (third-Friday) expiry identification
-# ---------------------------------------------------------------------------
-
-def third_friday(year: int, month: int) -> _date:
-    """Standard monthly expiry date before any holiday shift."""
-    cal = calendar.Calendar()
-    fridays = [d for d in cal.itermonthdates(year, month)
-               if d.month == month and d.weekday() == 4]
-    return fridays[2]
-
-
-def monthly_expiry(year: int, month: int,
-                   trading_days: Optional[Set[_date]] = None) -> _date:
-    """Third Friday, shifted BACK to the prior trading day when it is a holiday.
-
-    (Good Friday is the operative case: the monthly contract then expires on
-    the Thursday.) With no `trading_days` set supplied the raw third Friday is
-    returned unshifted.
-    """
-    d = third_friday(year, month)
-    if trading_days is None:
-        return d
-    for _ in range(7):
-        if d in trading_days:
-            return d
-        d = d - pd.Timedelta(days=1).to_pytimedelta()
-    return third_friday(year, month)
-
-
-def monthly_expiry_set(start: _date, end: _date,
-                       trading_days: Optional[Set[_date]] = None) -> Set[_date]:
-    """All standard monthly expiries in [start, end]."""
-    out: Set[_date] = set()
-    y, m = start.year, start.month
-    one = pd.Timedelta(days=1).to_pytimedelta()
-    while (y, m) <= (end.year, end.month):
-        # Both listing conventions are accepted: from Feb-2015 the standard
-        # monthly is dated the third FRIDAY, before that it was dated the
-        # SATURDAY following the third Friday (OCC expiration-date change).
-        # A third Friday that is an exchange holiday shifts BACK to Thursday.
-        for d in (monthly_expiry(y, m, trading_days=trading_days),
-                  third_friday(y, m) + one):
-            if start <= d <= end:
-                out.add(d)
-        m += 1
-        if m == 13:
-            y, m = y + 1, 1
-    return out
+from src.backtesting.options.marks import (  # noqa: E402
+    ABS_DELTA_MAX,
+    ABS_DELTA_MIN,
+    IV_MAX,
+    IV_MIN,
+    greek_usable_mask,
+)
+from src.backtesting.options.primitives import (  # noqa: E402
+    MIN_WINDOW_COVERAGE,
+    monthly_expiry,
+    monthly_expiry_set,
+    select_nearest_abs_delta,
+    third_friday,
+    trailing_percentile,
+    trailing_rank,
+)
 
 
 # ---------------------------------------------------------------------------
