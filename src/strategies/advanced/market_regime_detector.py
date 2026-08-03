@@ -107,6 +107,9 @@ class MarketRegimeDetector:
         # call. Consumed by the Phase 4 harness so variants can build target
         # weights from the full score vector rather than just the winner.
         self.last_regime_scores: Optional[Dict[str, float]] = None
+        # V14 freshness assertion: variants check this equals their tick timestamp
+        # before reading last_regime_scores. Populated at the end of classify_regime.
+        self.last_classification_timestamp: Optional[datetime] = None
 
     def classify_regime(
         self,
@@ -177,6 +180,7 @@ class MarketRegimeDetector:
         # Persist for harness consumption (variants need the full score vector,
         # not just the winner) before we collapse to best_regime.
         self.last_regime_scores = dict(regime_scores)
+        self.last_classification_timestamp = timestamp  # V14 freshness assertion target
 
         # Select regime with highest score
         best_regime = max(regime_scores, key=regime_scores.get)
