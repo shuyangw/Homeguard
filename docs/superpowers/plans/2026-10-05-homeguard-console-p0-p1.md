@@ -1655,19 +1655,18 @@ Expected: fast-forward succeeds. If it refuses because a local uncommitted file 
 
 The instance is stopped outside 08:00-20:00 ET weekdays. Starting it is a power change; do it outside 09:15-16:15 ET on trading days.
 
-- [ ] **R1 [operator]: Cherry-pick onto the deploy branch**
+- [ ] **R1 [operator]: Push the prepared deploy series**
+
+The series is already prepared, not pushed, on local branch `deploy/console-p0-p1` (worktree `.worktrees/deploy-console`), cut from `origin/ramp-phase4-turnover-regime-research` at f009df5. It holds the 13 code commits from main, cherry-picked in order (`strategy_toggle.example.yaml` conflicted on the template fix and was resolved to main's version, verified identical), plus one deploy-only commit: `tests/trading/adapters/test_ramp_live_adapter_variant.py` now skips its toggle check when the untracked `strategy_toggle.yaml` is absent, since that test exists only on the deploy branch and otherwise fails in every fresh checkout. Main's docs commits are not part of the series. Before pushing, confirm origin has not moved and that the push is a fast-forward:
 
 ```bash
-cd /c/Users/qwqw1/Dropbox/cs/github/Homeguard
+cd /c/Users/qwqw1/Dropbox/cs/github/Homeguard/.worktrees/console-p0-p1
 git fetch origin ramp-phase4-turnover-regime-research
-git branch -f ramp-phase4-turnover-regime-research origin/ramp-phase4-turnover-regime-research
-git worktree add .worktrees/deploy-console ramp-phase4-turnover-regime-research
-cd .worktrees/deploy-console
-git cherry-pick <task1-test> <task1-fix> <task2-untrack> <task3-test> <task3-feat> <task4-test> <task4-feat> <task5-test> <task5-feat> <task6-infra> <task6-readme>
-$PY -m pytest tests/console_agent tests/trading/test_state_manager_toggle_defaults.py tests/trading/test_state_manager_adopt.py tests/trading/test_state_manager_migration.py tests/trading/test_state_manager_broker_aware.py -q -p no:cacheprovider
+git merge-base --is-ancestor origin/ramp-phase4-turnover-regime-research deploy/console-p0-p1 && echo ff-ok
+git log --oneline origin/ramp-phase4-turnover-regime-research..deploy/console-p0-p1
 ```
 
-Expected: every cherry-pick applies without conflict, and all tests pass on the deploy branch. On any conflict, `git cherry-pick --abort` and report. Then, with go-ahead: `git push origin ramp-phase4-turnover-regime-research`.
+Expected: `ff-ok` and 14 commits. Run git against `.worktrees/deploy-console` with `git -C` from another worktree: that branch has no `.claude/hooks/strategy_lead_gate.py`, so the Bash PreToolUse hook fails whenever the shell's working directory is that worktree. Then, with go-ahead: `git push origin deploy/console-p0-p1:ramp-phase4-turnover-regime-research`.
 
 - [ ] **R2 [operator]: Check the instance Python and Tailscale versions**
 
@@ -1680,10 +1679,10 @@ Expected: Python 3.9 or newer, and `--https` listed as a `serve` flag. If `--htt
 - [ ] **R3 [operator]: One-time toggle untrack on the instance (outside any decision window)**
 
 ```bash
-ssh ec2 'cd ~/Homeguard && sha256sum config/trading/strategy_toggle.yaml && cp config/trading/strategy_toggle.yaml ~/strategy_toggle.yaml.pre-untrack && bash infra/ec2/instance_update_repo.sh; cp ~/strategy_toggle.yaml.pre-untrack config/trading/strategy_toggle.yaml && sha256sum config/trading/strategy_toggle.yaml; git ls-files --error-unmatch config/trading/strategy_toggle.yaml; echo "ls-files exit=$?"'
+ssh ec2 'cd ~/Homeguard && git status --short && sha256sum config/trading/strategy_toggle.yaml && cp config/trading/strategy_toggle.yaml ~/strategy_toggle.yaml.pre-untrack && git checkout -- config/trading/strategy_toggle.yaml && git pull --ff-only origin ramp-phase4-turnover-regime-research; cp ~/strategy_toggle.yaml.pre-untrack config/trading/strategy_toggle.yaml && sha256sum config/trading/strategy_toggle.yaml; git ls-files --error-unmatch config/trading/strategy_toggle.yaml; echo "ls-files exit=$?"'
 ```
 
-Expected: both sha256 lines match; `ls-files exit=1` (untracked). Do NOT pass `--restart` (it restarts the legacy homeguard-trading unit). No trading restart is needed; the next 08:00 boot picks up the fail-closed code.
+Expected: both sha256 lines match; `ls-files exit=1` (untracked). This runs `git pull` directly instead of `instance_update_repo.sh`: the script runs both Grafana sync scripts after the pull and before the copy back, which would leave the file missing for seconds (any toggle reload in that gap regenerates an all-disabled file and logs an ERROR), and the series changes no dashboards or alert rules, so those syncs have nothing to do. `git checkout --` first resets an instance-side edit (already saved in the copy) so the pull can delete the file; if `git status --short` shows any OTHER modified tracked file, stop and report before running the rest, since the pull would refuse. No trading restart is needed; the next 08:00 boot picks up the fail-closed code.
 
 - [ ] **R4 [operator]: Install the agent**
 
