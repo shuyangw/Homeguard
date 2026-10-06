@@ -167,13 +167,17 @@ class StrategyStateManager:
                 with open(self.toggle_file, 'r') as f:
                     self._toggle = yaml.safe_load(f) or {}
             else:
-                # Create default toggle config
+                # Fail closed: a missing file (e.g. deleted by a deploy) must never turn trading on.
+                logger.error(
+                    f"Toggle file missing at {self.toggle_file}; regenerating with every strategy "
+                    f"disabled. Trading stays off until the file is restored."
+                )
                 self._toggle = {
                     'strategies': {
-                        'omr': {'enabled': True, 'shutdown_requested': False},
+                        'omr': {'enabled': False, 'shutdown_requested': False},
                         'mp': {'enabled': False, 'shutdown_requested': False},
-                        'ramp': {'enabled': True, 'shutdown_requested': False},
-                        'cscm': {'enabled': True, 'shutdown_requested': False},
+                        'ramp': {'enabled': False, 'shutdown_requested': False},
+                        'cscm': {'enabled': False, 'shutdown_requested': False},
                     },
                     'last_modified': tz.iso_timestamp(),
                     'modified_by': 'auto'
