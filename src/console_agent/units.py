@@ -18,7 +18,7 @@ INFRA_UNITS = (
     "grafana-server.service",
     "node-exporter.service",
 )
-SHOW_PROPERTIES = "Id,ActiveState,SubState,NRestarts,ActiveEnterTimestamp,MemoryCurrent,ExecStart"
+SHOW_PROPERTIES = "Id,LoadState,ActiveState,SubState,NRestarts,ActiveEnterTimestamp,MemoryCurrent,ExecStart"
 _STRATEGY_ARG = re.compile(r"run_live_paper_trading\.py\b.*?--strategy[ =]([a-z0-9_]+)")
 # systemd reports MemoryCurrent as max uint64 when memory accounting has no value.
 _MEMORY_NOT_SET = "18446744073709551615"
@@ -27,6 +27,7 @@ _MEMORY_NOT_SET = "18446744073709551615"
 @dataclass
 class UnitState:
     unit: str
+    load_state: str
     active_state: str
     sub_state: str
     restarts: int | None
@@ -77,6 +78,7 @@ def _unit_state(props: dict[str, str]) -> UnitState:
     memory = props.get("MemoryCurrent", "")
     return UnitState(
         unit=props["Id"],
+        load_state=props.get("LoadState", "unknown"),
         active_state=props.get("ActiveState", "unknown"),
         sub_state=props.get("SubState", "unknown"),
         restarts=int(restarts) if restarts.isdigit() else None,

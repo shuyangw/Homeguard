@@ -15,6 +15,9 @@ _STRATEGY_NAME = re.compile(r"[a-z][a-z0-9_]{0,15}")
 
 
 class AgentHandler(BaseHTTPRequestHandler):
+    # Seconds a connection may sit idle before the server drops it, so idle peers cannot pin threads.
+    timeout = 15
+
     def do_GET(self) -> None:
         # tailscale serve sets this header for tailnet users; requests without it never came through serve.
         if self.headers.get(LOGIN_HEADER) != self.server.config.operator_login:
@@ -35,23 +38,37 @@ class AgentHandler(BaseHTTPRequestHandler):
     def _method_not_allowed(self) -> None:
         self._send_json(405, {"error": "read-only agent"})
 
-    do_POST = do_PUT = do_PATCH = do_DELETE = _method_not_allowed
+    do_POST = do_PUT = do_PATCH = do_DELETE = do_HEAD = do_OPTIONS = _method_not_allowed
 
     def _send_decision(self, strategy: str) -> None:
         if not _STRATEGY_NAME.fullmatch(strategy):
             self._send_json(400, {"error": "invalid strategy name"})
             return
-        if strategy not in status.read_toggle(self.server.config.toggle_path):
+        try:
+            known_strategies = status.read_toggle(self.server.config.toggle_path)
+        except status.TOGGLE_ERRORS as e:
+            self._send_unavailable("toggle", e)
+            return
+        if strategy not in known_strategies:
             self._send_json(404, {"error": f"unknown strategy {strategy}"})
             return
-        record = status.read_latest_decision(self.server.config.latest_dir, strategy)
+        try:
+            record = status.read_latest_decision(self.server.config.latest_dir, strategy)
+        except status.READ_ERRORS as e:
+            self._send_unavailable(f"decision:{strategy}", e)
+            return
         if record is None:
             self._send_json(404, {"error": f"no decision recorded for {strategy}"})
             return
         self._send_json(200, record)
 
+    def _send_unavailable(self, source: str, error: Exception) -> None:
+        logger.error(f"[console-agent] {source} unreadable: {error!r}")
+        self._send_json(503, {"error": repr(error), "source": source})
+
     def _send_json(self, code: int, payload: dict) -> None:
-        body = json.dumps(payload).encode("utf-8")
+        # default=str: YAML values such as dates are not JSON types.
+        body = json.dumps(payload, default=str).encode("utf-8")
         self.send_response(code)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))

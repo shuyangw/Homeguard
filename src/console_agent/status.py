@@ -18,8 +18,8 @@ import yaml
 from src.console_agent import units
 
 # Errors a malformed file or an unexpected JSON shape can raise while reading it.
-_READ_ERRORS = (OSError, ValueError, KeyError, TypeError, AttributeError)
-_TOGGLE_ERRORS = _READ_ERRORS + (yaml.YAMLError,)
+READ_ERRORS = (OSError, ValueError, KeyError, TypeError, AttributeError)
+TOGGLE_ERRORS = READ_ERRORS + (yaml.YAMLError,)
 
 
 @dataclass(frozen=True)
@@ -110,12 +110,14 @@ def build_status(config: AgentConfig, now: datetime) -> dict:
     unit_states = _read_units(errors)
     try:
         toggle = read_toggle(config.toggle_path)
-    except _TOGGLE_ERRORS as e:
+    except TOGGLE_ERRORS as e:
         errors.append({"source": "toggle", "error": repr(e)})
         toggle = {}
-    strategies = {
-        name: _strategy_entry(config, name, settings, unit_states, errors) for name, settings in toggle.items()
-    }
+    strategies = {}
+    for name, settings in toggle.items():
+        # YAML turns keys like 2026-01-01 into dates, which JSON cannot use as keys.
+        key = str(name)
+        strategies[key] = _strategy_entry(config, key, settings, unit_states, errors)
     return {
         "generated_at": now.isoformat(),
         "units": [asdict(state) for state in unit_states],
@@ -154,11 +156,15 @@ def _strategy_entry(
     }
     try:
         entry["snapshot"] = read_snapshot(config.snapshot_dir, name)
-    except _READ_ERRORS as e:
+    except FileNotFoundError as e:
+        # Only a strategy that some unit runs is expected to write a snapshot.
+        if entry["units"]:
+            errors.append({"source": f"snapshot:{name}", "error": repr(e)})
+    except READ_ERRORS as e:
         errors.append({"source": f"snapshot:{name}", "error": repr(e)})
     try:
         record = read_latest_decision(config.latest_dir, name)
         entry["last_decision"] = summarize_decision(record) if record is not None else None
-    except _READ_ERRORS as e:
+    except READ_ERRORS as e:
         errors.append({"source": f"decision:{name}", "error": repr(e)})
     return entry
