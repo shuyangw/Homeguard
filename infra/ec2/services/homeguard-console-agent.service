@@ -1,0 +1,26 @@
+[Unit]
+Description=Homeguard Console Agent (read-only instance status for the local console)
+After=network-online.target
+Wants=network-online.target
+# StartLimit* must live in [Unit]; systemd ignores them in [Service].
+# 600s exceeds 5 x RestartSec, so a crash loop stops after five attempts.
+StartLimitIntervalSec=600
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=ec2-user
+WorkingDirectory=/home/ec2-user/Homeguard
+Environment="PATH=/home/ec2-user/Homeguard/venv/bin:/usr/local/bin:/usr/bin:/bin"
+ExecStart=/home/ec2-user/Homeguard/venv/bin/python -m src.console_agent
+Restart=on-failure
+RestartSec=10
+# Killed before any trading process under memory pressure (homeguard-multi runs at 0).
+MemoryMax=96M
+OOMScoreAdjust=500
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=homeguard-console-agent
+
+[Install]
+WantedBy=multi-user.target
