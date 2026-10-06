@@ -193,3 +193,30 @@ resource "aws_cloudwatch_metric_alarm" "instance_status_check" {
     InstanceId = aws_instance.homeguard_trading.id
   }
 }
+
+# CloudWatch Alarm - reboot when the OS stops answering (instance check only;
+# a reboot cannot fix a failed system/hardware check). On 2026-10-06 a manual
+# start hung with the instance check failing and a reboot cleared it. Actions
+# fire on the OK -> ALARM transition only, so a box that hangs again after the
+# reboot is not reboot-looped, and a stopped instance reports no data.
+resource "aws_cloudwatch_metric_alarm" "instance_check_reboot" {
+  count = var.create_cloudwatch_alarms ? 1 : 0
+
+  alarm_name          = "homeguard-trading-bot-instance-check-reboot"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 3
+  metric_name         = "StatusCheckFailed_Instance"
+  namespace           = "AWS/EC2"
+  period              = 60
+  statistic           = "Maximum"
+  threshold           = 0
+  alarm_description   = "Reboot the instance after 3 minutes of failed instance status checks"
+  alarm_actions = concat(
+    ["arn:aws:automate:${var.aws_region}:ec2:reboot"],
+    var.create_sns_alerts ? [aws_sns_topic.trading_alerts[0].arn] : [],
+  )
+
+  dimensions = {
+    InstanceId = aws_instance.homeguard_trading.id
+  }
+}
