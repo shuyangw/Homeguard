@@ -11,7 +11,9 @@ the local Homeguard Console. Design: `docs/superpowers/specs/2026-10-05-homeguar
 | `GET /decisions?strategy=<name>` | The full latest decision record from `data/trading/decisions/_latest/<name>.json` |
 
 Every request must carry `Tailscale-User-Login` equal to `CONSOLE_OPERATOR_LOGIN`
-(403 otherwise). Any write method returns 405.
+(403 otherwise). Every other method (including HEAD and OPTIONS) returns 405.
+`/decisions` returns 503 with a `source` field when the toggle file or the
+decision record cannot be read. Idle connections are dropped after 15 seconds.
 
 ## Rules
 
