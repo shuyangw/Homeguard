@@ -168,7 +168,11 @@ See "CSCM note" below.
 - Lambda execution role with `ec2:StartInstances`, `ec2:StopInstances`, CloudWatch Logs.
 - CloudWatch log groups for Lambda (90d retention).
 - Optional CloudWatch Agent for host metrics is **disabled**; node_exporter + VM replaces it.
-- Optional SNS topic for Lambda failure alerts (off by default).
+- SNS topic `homeguard-trading-alerts` (email), enabled in `terraform.tfvars` via `create_sns_alerts`.
+- CloudWatch alarms (`create_cloudwatch_alarms`), all off-box so they work when the instance itself is hung:
+  - `homeguard-trading-bot-status-check`: any failed status check for 2 minutes, emails via SNS.
+  - `homeguard-trading-bot-instance-check-reboot`: failed instance (OS) check for 3 minutes, reboots the instance and emails. Added 2026-10-06 after a manual start hung with the OS unreachable and a reboot fixed it.
+  - `homeguard-high-memory-usage`, `homeguard-swap-usage`: host memory pressure, emails via SNS.
 
 ---
 
