@@ -21,10 +21,10 @@ TODO.md
 # Git worktrees (isolated workspaces for parallel feature development)
 .worktrees/
 
-# Strategy enable/shutdown toggle: runtime state modified by the bot at every
-# rebalance / via /toggle Discord command. Don't track. Auto-generated on
-# first run by StrategyStateManager._load_toggle if missing. See template
-# at config/trading/strategy_toggle.example.yaml.
+# Strategy enable/shutdown toggle: runtime state, changed on the instance.
+# Don't track. If missing, StrategyStateManager._load_toggle regenerates it
+# with every strategy DISABLED (fail closed). Template:
+# config/trading/strategy_toggle.example.yaml.
 config/trading/strategy_toggle.yaml
 
 # ============================================================================
