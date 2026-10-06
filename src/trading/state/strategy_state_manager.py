@@ -170,7 +170,10 @@ class StrategyStateManager:
                 # Fail closed: a missing file (e.g. deleted by a deploy) must never turn trading on.
                 logger.error(
                     f"Toggle file missing at {self.toggle_file}; regenerating with every strategy "
-                    f"disabled. Trading stays off until the file is restored."
+                    f"disabled, so trading stays off. To restore, copy back the saved file (on the "
+                    f"instance, ~/strategy_toggle.yaml.pre-untrack) or config/trading/"
+                    f"strategy_toggle.example.yaml, then set each strategy's enabled flag AND "
+                    f"variant (production RAMP runs v11; a missing variant falls back to v01)."
                 )
                 self._toggle = {
                     'strategies': {

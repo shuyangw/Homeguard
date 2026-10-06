@@ -13,20 +13,29 @@
 #   strategies.<name>.enabled: bool         # whether the strategy runs at all
 #   strategies.<name>.shutdown_requested: bool  # graceful-stop signal; bot
 #                                                 will exit on next idle tick
+#   strategies.<name>.variant: str          # strategy version; a missing variant
+#                                                 falls back to v01, so set it explicitly
 #   last_modified: ISO timestamp (auto-updated by save)
 #   modified_by: free-form identifier of the modifier (auto/api/discord/manual)
-last_modified: '2026-04-26T00:00:00+00:00'
+#
+# Every strategy ships disabled (fail closed). Turn on only what should trade,
+# and check the variant: production RAMP runs v11.
+last_modified: '2026-10-05T00:00:00+00:00'
 modified_by: example
 strategies:
   omr:
-    enabled: true
+    enabled: false
     shutdown_requested: false
+    variant: v01
   mp:
     enabled: false
     shutdown_requested: false
+    variant: v01
   ramp:
-    enabled: true
+    enabled: false
     shutdown_requested: false
+    variant: v11
   cscm:
-    enabled: true
+    enabled: false
     shutdown_requested: false
+    variant: v01
