@@ -40,6 +40,7 @@ backtesting/     BacktestEngine, PortfolioSimulator (Numba JIT), optimization (g
 backtesting_v2/  Next-gen backtesting (in development)
 discord_bot/     Claude-powered read-only monitoring (slash commands)
 discord_cscm/    CSCM-specific Discord alerts
+console_agent/   Read-only instance agent for the Homeguard Console (/status, /decisions over tailnet :8443)
 screening/       Stock screener via Alpaca + yfinance fundamentals
 utils/           Logger (ASCII-only, Rich), timezone (tz.now()), VIX fallbacks, TTL caching
 settings/        get_local_storage_dir(), .env (API keys), settings.ini (paths), YAML configs
