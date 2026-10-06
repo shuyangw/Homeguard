@@ -38,6 +38,42 @@ class ExecutionStatus(Enum):
     CANCELLED = "cancelled"
 
 
+# Bounded reject-reason classifier.
+#
+# `reason` is a Prometheus label, so it MUST come from a closed set. The previous
+# `str(e)[:50]` embedded order IDs, symbols, and timestamps from broker error
+# text, which would mint an unbounded number of series in a 90-day-retention
+# TSDB. An exploding label is worse than a missing metric, so classify before
+# recording. Cardinality ceiling: strategies(4) x reasons(8) x brokers(3) ~= 96.
+#
+# The full exception text is never lost -- it stays in the logger.error call at
+# the call site and in execution['error'].
+_REJECT_REASON_PATTERNS = (
+    ('insufficient_funds', ('insufficient', 'buying power', 'margin')),
+    ('invalid_quantity', ('invalid quantity', 'quantity must', 'zero quantity')),
+    ('missing_price', ('price required', 'limit price', 'invalid price')),
+    ('not_tradable', ('not tradable', 'not permitted', 'no security definition',
+                      'halted', 'not shortable')),
+    ('rate_limited', ('rate limit', 'too many requests', 'pacing violation')),
+    ('connection', ('connection', 'timeout', 'timed out', 'disconnect',
+                    'not connected')),
+    ('rejected', ('rejected', 'cancelled', 'canceled')),
+)
+
+
+def classify_reject_reason(exc: BaseException) -> str:
+    """Map an exception to one of a fixed set of Prometheus-safe reason labels.
+
+    Returns 'other' for anything unrecognised, so the label set stays closed
+    even as broker error text changes.
+    """
+    message = str(exc).lower()
+    for label, needles in _REJECT_REASON_PATTERNS:
+        if any(needle in message for needle in needles):
+            return label
+    return 'other'
+
+
 class ExecutionEngine:
     """
     Broker-agnostic execution engine.
@@ -215,7 +251,8 @@ class ExecutionEngine:
                 self.failed_orders += 1
                 if self.metrics_registry is not None:
                     try:
-                        self.metrics_registry.record_order_rejected(str(e)[:50], self._broker_label())
+                        self.metrics_registry.record_order_rejected(
+                            classify_reject_reason(e), self._broker_label())
                     except Exception as metric_err:
                         logger.error(f"Metrics record_order_rejected failed: {metric_err}")
                 raise
@@ -238,7 +275,8 @@ class ExecutionEngine:
                     self.failed_orders += 1
                     if self.metrics_registry is not None:
                         try:
-                            self.metrics_registry.record_order_rejected(str(last_error)[:50], self._broker_label())
+                            self.metrics_registry.record_order_rejected(
+                                classify_reject_reason(last_error), self._broker_label())
                         except Exception as metric_err:
                             logger.error(f"Metrics record_order_rejected failed: {metric_err}")
                     raise BrokerError(f"Order execution failed after {self.max_retries} attempts: {last_error}")

@@ -4,6 +4,14 @@ Documentation=https://github.com/shuyangw/Homeguard
 After=network-online.target homeguard-trading.service
 Wants=network-online.target
 
+# Restart limits (prevent rapid restart loops). Moved here from [Service], where
+# systemd silently ignored them ("Unknown key name 'StartLimitIntervalSec' in
+# section 'Service', ignoring") so the intended cap was never in effect.
+# With RestartSec=10, the interval must exceed burst x RestartSec (5 x 10s = 50s)
+# to be reachable; 300s leaves ample headroom.
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
 [Service]
 Type=simple
 User=ec2-user
@@ -16,10 +24,6 @@ EnvironmentFile=/home/ec2-user/Homeguard/.env
 Restart=always
 RestartSec=10
 TimeoutStopSec=30
-
-# Restart limits (prevent rapid restart loops)
-StartLimitIntervalSec=300
-StartLimitBurst=5
 
 # Logging
 StandardOutput=journal

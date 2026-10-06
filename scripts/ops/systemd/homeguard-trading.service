@@ -3,6 +3,14 @@ Description=Homeguard Trading Bot - Live Paper Trading
 After=network-online.target
 Wants=network-online.target
 
+# Restart limits (prevent rapid restart loops). These are [Unit] directives;
+# systemd silently ignores them in [Service] ("Unknown key name ... ignoring"),
+# so the intended cap was never in effect. Also switched from the legacy
+# StartLimitInterval spelling to StartLimitIntervalSec. With RestartSec=10 the
+# interval must exceed burst x RestartSec (5 x 10s = 50s); 300s has headroom.
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
 [Service]
 Type=simple
 User=ec2-user
@@ -19,8 +27,6 @@ ExecStart=/home/ec2-user/Homeguard/venv/bin/python /home/ec2-user/Homeguard/scri
 # Restart policy
 Restart=on-failure
 RestartSec=10
-StartLimitInterval=300
-StartLimitBurst=5
 
 # Resource limits (optional - adjust based on your needs)
 MemoryMax=1G

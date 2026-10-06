@@ -4,6 +4,14 @@ After=network-online.target homeguard-xvfb.service
 Requires=homeguard-xvfb.service
 Before=homeguard-trading.target
 
+# Moved here from [Service], where systemd silently ignored them
+# ("Unknown key name 'StartLimitIntervalSec' in section 'Service', ignoring").
+# These are [Unit] directives, so the intended crash-loop cap was never in
+# effect. With RestartSec=60, the interval must exceed burst x RestartSec
+# (5 x 60s = 300s) to be reachable; 600s leaves headroom.
+StartLimitIntervalSec=600
+StartLimitBurst=5
+
 [Service]
 Type=simple
 User=ec2-user
@@ -22,8 +30,6 @@ ExecStart=/opt/ibc/scripts/ibcstart.sh 1037 -g \
 
 Restart=always
 RestartSec=60
-StartLimitBurst=5
-StartLimitIntervalSec=600
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=homeguard-gateway

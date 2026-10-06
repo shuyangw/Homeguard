@@ -485,3 +485,144 @@ class TestTargetAwareExecution:
         assert adapter.broker.get_account.call_count >= len(buys), (
             "Expected get_account() called at least once per BUY for sequential cash tracking"
         )
+
+
+class TestTargetAwareTradeLogging:
+    """Trims and buys MUST reach the trade log and state.
+
+    Background: f7ea22f fixed the full-exit loop and left the trim and buy
+    branches silent. compute_lifetime_realized_pnl sums only rows with
+    trade_type == 'exit', so an unlogged trim's realized PnL is invisible with no
+    warning. The 2026-07-28 audit measured 80 unlogged trims over ~3 months,
+    $292k of notional, against a reported lifetime realized PnL of -$3.2k.
+    See docs/progress/20260728_RAMP_REALIZED_PNL_AUDIT.md
+    """
+
+    def test_trim_logs_exit_with_trimmed_qty(self):
+        """A trim realizes PnL and must be logged, with the PARTIAL qty."""
+        sym = "AAPL"
+        positions = [_pos(sym, 120)]              # $12k held
+        current_positions = {sym: 12_000.0}       # target 10% of $100k -> $10k
+
+        adapter = _make_adapter(symbols=[sym], positions=positions)
+        _capture_orders(adapter)
+        adapter.state_manager.get_positions.return_value = {
+            sym: {"qty": 120, "entry_price": 90.0, "entry_time": "2026-07-01T15:55:00"}
+        }
+
+        plan = _plan_for(targets_dict={sym: 0.10}, exits_dict={}, top_n=5)
+        adapter._latest_plan = plan
+
+        with patch(
+            "src.trading.adapters.ramp_live_adapter.get_trade_log_writer"
+        ) as mock_writer:
+            adapter._execute_rebalance_target_aware(
+                signals=[], current_positions=current_positions
+            )
+            log_exit = mock_writer.return_value.log_exit
+
+        assert log_exit.called, (
+            "A trim MUST call log_exit; otherwise its realized PnL never reaches "
+            "compute_lifetime_realized_pnl and is silently lost"
+        )
+        kw = log_exit.call_args.kwargs
+        assert kw["symbol"] == sym
+        # 20 shares trimmed ($2k / $100), NOT the full 120-share position.
+        assert kw["qty"] == 20, f"expected the trimmed qty 20, got {kw['qty']}"
+        assert kw["entry_price"] == 90.0, "entry_price must come from state"
+        assert kw["metadata"]["exit_reason"] == "trim"
+
+    def test_trim_decrements_state_rather_than_removing(self):
+        """A trim is partial: state qty must drop, and the position must survive."""
+        sym = "AAPL"
+        adapter = _make_adapter(symbols=[sym], positions=[_pos(sym, 120)])
+        _capture_orders(adapter)
+        adapter.state_manager.get_positions.return_value = {
+            sym: {"qty": 120, "entry_price": 90.0}
+        }
+        adapter._latest_plan = _plan_for(
+            targets_dict={sym: 0.10}, exits_dict={}, top_n=5
+        )
+
+        with patch("src.trading.adapters.ramp_live_adapter.get_trade_log_writer"):
+            adapter._execute_rebalance_target_aware(
+                signals=[], current_positions={sym: 12_000.0}
+            )
+
+        adapter.state_manager.update_position_qty.assert_called_once_with(
+            "ramp", sym, 100
+        )
+        assert not adapter.state_manager.remove_position.called, (
+            "A partial trim must NOT remove the position from state"
+        )
+
+    def test_buy_logs_entry(self):
+        """The buy path logged nothing, so the trade log had zero entry rows
+        across 15 trading days while 225 BUY orders were placed."""
+        sym = "NEW"
+        adapter = _make_adapter(symbols=[sym], positions=[])
+        _capture_orders(adapter)
+        adapter.state_manager.get_positions.return_value = {}
+        adapter._latest_plan = _plan_for(
+            targets_dict={sym: 0.10}, exits_dict={}, top_n=5
+        )
+
+        with patch(
+            "src.trading.adapters.ramp_live_adapter.get_trade_log_writer"
+        ) as mock_writer:
+            adapter._execute_rebalance_target_aware(
+                signals=[], current_positions={}
+            )
+            log_entry = mock_writer.return_value.log_entry
+
+        assert log_entry.called, "A BUY MUST call log_entry"
+        kw = log_entry.call_args.kwargs
+        assert kw["symbol"] == sym
+        assert kw["qty"] > 0
+        assert kw["price"] == PRICE_PER_SHARE, "must use the actual fill price"
+
+    def test_buy_updates_state_via_add_or_update(self):
+        """Must use add_or_update_position so a top-up accumulates rather than
+        resetting qty and losing the original cost basis."""
+        sym = "NEW"
+        adapter = _make_adapter(symbols=[sym], positions=[])
+        _capture_orders(adapter)
+        adapter.state_manager.get_positions.return_value = {}
+        adapter._latest_plan = _plan_for(
+            targets_dict={sym: 0.10}, exits_dict={}, top_n=5
+        )
+
+        with patch("src.trading.adapters.ramp_live_adapter.get_trade_log_writer"):
+            adapter._execute_rebalance_target_aware(
+                signals=[], current_positions={}
+            )
+
+        assert adapter.state_manager.add_or_update_position.called, (
+            "BUY must persist to state via add_or_update_position"
+        )
+        args = adapter.state_manager.add_or_update_position.call_args
+        assert args.args[0] == "ramp" and args.args[1] == sym
+        assert args.kwargs.get("broker") is not None, (
+            "add_or_update_position requires broker for new positions"
+        )
+
+    def test_failed_order_does_not_touch_log_or_state(self):
+        """If execute_order returns nothing, we must not claim a fill happened."""
+        sym = "AAPL"
+        adapter = _make_adapter(symbols=[sym], positions=[_pos(sym, 120)])
+        adapter.execution_engine.execute_order = MagicMock(return_value=None)
+        adapter.state_manager.get_positions.return_value = {
+            sym: {"qty": 120, "entry_price": 90.0}
+        }
+        adapter._latest_plan = _plan_for(
+            targets_dict={sym: 0.10}, exits_dict={}, top_n=5
+        )
+
+        with patch(
+            "src.trading.adapters.ramp_live_adapter.get_trade_log_writer"
+        ) as mock_writer:
+            adapter._execute_rebalance_target_aware(
+                signals=[], current_positions={sym: 12_000.0}
+            )
+            assert not mock_writer.return_value.log_exit.called
+        assert not adapter.state_manager.update_position_qty.called

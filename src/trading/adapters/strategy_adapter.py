@@ -59,7 +59,8 @@ class StrategyAdapter(ABC):
         position_size: float = 0.1,
         max_positions: int = 5,
         data_lookback_days: int = 365,
-        data_provider: Optional["DataProviderInterface"] = None
+        data_provider: Optional["DataProviderInterface"] = None,
+        metrics_registry=None
     ):
         """
         Initialize strategy adapter.
@@ -72,6 +73,12 @@ class StrategyAdapter(ABC):
             max_positions: Maximum concurrent positions (default: 5)
             data_lookback_days: Days of historical data to fetch (default: 365)
             data_provider: Data provider with fallback chain (optional, uses broker if not provided)
+            metrics_registry: Optional MetricsRegistry, forwarded to ExecutionEngine so
+                order-event metrics are recorded. ExecutionEngine has always accepted
+                this, but nothing passed it, so hg_orders_submitted_total /
+                hg_orders_filled_total / hg_orders_rejected_total / hg_fill_slippage_bps
+                were emitted by no live process. Defaults to None, which preserves
+                the previous no-metrics behaviour for every existing caller.
         """
         self.strategy = strategy
         self.broker = broker
@@ -79,9 +86,10 @@ class StrategyAdapter(ABC):
         self.position_size = position_size
         self.max_positions = max_positions
         self.data_lookback_days = data_lookback_days
+        self._metrics_registry = metrics_registry
 
         # Initialize components
-        self.execution_engine = ExecutionEngine(broker)
+        self.execution_engine = ExecutionEngine(broker, metrics_registry=metrics_registry)
 
         # Create position manager config
         position_config = {
