@@ -129,3 +129,15 @@ def test_show_units_passes_names_and_properties(monkeypatch):
     assert calls[0][:2] == ["systemctl", "show"]
     assert calls[0][2:5] == ["homeguard-multi.service", "homeguard-cscm.service", "loki.service"]
     assert calls[0][-2:] == ["-p", units.SHOW_PROPERTIES]
+
+
+def test_load_state_tells_a_missing_unit_from_a_stopped_one():
+    output = (
+        "Id=loki.service\nLoadState=not-found\nActiveState=inactive\nSubState=dead\n\n"
+        "Id=promtail.service\nLoadState=loaded\nActiveState=inactive\nSubState=dead\n"
+    )
+    loki, promtail = units.parse_show_output(output)
+
+    assert loki.load_state == "not-found"
+    assert promtail.load_state == "loaded"
+    assert "LoadState" in units.SHOW_PROPERTIES.split(",")

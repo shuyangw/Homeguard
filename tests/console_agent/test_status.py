@@ -150,12 +150,33 @@ def test_decoy_and_tmp_files_in_latest_are_not_strategies(agent_config, fake_sys
     assert not [e for e in doc["errors"] if e["source"] == "decision:omr"]
 
 
-def test_missing_snapshots_are_reported_in_errors(agent_config, fake_systemd):
+def test_missing_snapshot_without_a_unit_is_not_an_error(agent_config, fake_systemd):
     doc = status.build_status(agent_config, NOW)
 
     sources = {error["source"] for error in doc["errors"]}
-    assert {"snapshot:mp", "snapshot:omr"} <= sources
+    assert "snapshot:mp" not in sources
+    assert "snapshot:omr" not in sources
     assert doc["strategies"]["mp"]["snapshot"] is None
+
+
+def test_missing_snapshot_for_a_strategy_with_a_unit_is_an_error(agent_config, fake_systemd):
+    (agent_config.snapshot_dir / "ramp_snapshot.json").unlink()
+
+    doc = status.build_status(agent_config, NOW)
+
+    assert any(error["source"] == "snapshot:ramp" for error in doc["errors"])
+    assert doc["strategies"]["ramp"]["snapshot"] is None
+
+
+def test_non_json_yaml_values_still_serialize(agent_config, fake_systemd):
+    agent_config.toggle_path.write_text(
+        "strategies:\n  ramp:\n    enabled: true\n    variant: 2026-05-23\n  2026-01-01:\n    enabled: false\n"
+    )
+
+    doc = status.build_status(agent_config, NOW)
+
+    assert set(doc["strategies"]) == {"ramp", "2026-01-01"}
+    assert json.loads(json.dumps(doc, default=str))["strategies"]["ramp"]["variant"] == "2026-05-23"
 
 
 def test_corrupt_latest_decision_is_an_error_not_a_failure(agent_config, fake_systemd):

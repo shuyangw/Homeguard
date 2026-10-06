@@ -1,6 +1,8 @@
 """Integration tests: a real ThreadingHTTPServer on an ephemeral port."""
 
+import http.client
 import json
+import socket
 import subprocess
 import sys
 import threading
@@ -10,6 +12,7 @@ from pathlib import Path
 
 import pytest
 
+from src.console_agent import server as server_module
 from src.console_agent.server import LOGIN_HEADER, make_server
 from tests.console_agent.conftest import OPERATOR_LOGIN
 
@@ -117,3 +120,59 @@ def test_agent_does_not_import_the_trading_stack():
         [sys.executable, "-c", probe], cwd=REPO_ROOT, capture_output=True, text=True, timeout=60, check=True
     )
     assert result.stdout.strip().splitlines()[-1] == "[]"
+
+
+@pytest.mark.parametrize("method", ["HEAD", "OPTIONS"])
+def test_head_and_options_are_not_allowed(agent_url, method):
+    host, port = agent_url.removeprefix("http://").split(":")
+    connection = http.client.HTTPConnection(host, int(port), timeout=5)
+    connection.request(method, "/status", headers={LOGIN_HEADER: OPERATOR_LOGIN})
+    response = connection.getresponse()
+    connection.close()
+
+    assert response.status == 405
+
+
+def test_status_survives_non_json_yaml_values(agent_config, agent_url):
+    agent_config.toggle_path.write_text("strategies:\n  ramp:\n    enabled: true\n    variant: 2026-05-23\n")
+
+    code, body = call(agent_url, "/status")
+
+    assert code == 200
+    assert body["strategies"]["ramp"]["variant"] == "2026-05-23"
+
+
+def test_decisions_with_an_unreadable_toggle_is_503_naming_the_source(agent_config, agent_url):
+    agent_config.toggle_path.write_text("strategies: [unclosed\n")
+
+    code, body = call(agent_url, "/decisions?strategy=ramp")
+
+    assert code == 503
+    assert body["source"] == "toggle"
+
+
+def test_decisions_with_a_corrupt_record_is_503_naming_the_source(agent_config, agent_url):
+    (agent_config.latest_dir / "ramp.json").write_text('{"schema_version": 2, "decision_id": "ramp-tru')
+
+    code, body = call(agent_url, "/decisions?strategy=ramp")
+
+    assert code == 503
+    assert body["source"] == "decision:ramp"
+
+
+def test_handler_timeout_defaults_to_fifteen_seconds():
+    assert server_module.AgentHandler.timeout == 15
+
+
+def test_idle_connection_is_closed_by_the_server(agent_config, fake_systemd, monkeypatch):
+    monkeypatch.setattr(server_module.AgentHandler, "timeout", 0.5)
+    server = make_server(agent_config, port=0)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        idle = socket.create_connection(("127.0.0.1", server.server_address[1]), timeout=5)
+        assert idle.recv(1) == b""
+        idle.close()
+    finally:
+        server.shutdown()
+        server.server_close()
