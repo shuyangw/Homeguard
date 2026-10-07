@@ -291,7 +291,8 @@ class LiveTradingRunner:
         self.check_interval = check_interval
         self.running = False
         self.last_run_time: Optional[datetime] = None
-        self.last_exit_time: Optional[datetime] = None  # Track last exit execution
+        # (date, scheduled time, action) already fired, so each fires once per day
+        self._fired_actions: set = set()
         self.last_progress_log: Optional[datetime] = None
         self.data_preloaded_today: bool = False  # Track if data pre-loaded today
         self.intraday_prefetched_today: bool = False  # Track if intraday data pre-fetched today
@@ -392,16 +393,12 @@ class LiveTradingRunner:
                                datetime.combine(now_est.date(), target_time)).total_seconds())
 
                 if time_diff < 60:
-                    # Check if we already ran this action within last minute
-                    if action == 'entry' and self.last_run_time:
-                        seconds_since_last = tz.seconds_since(self.last_run_time)
-                        if seconds_since_last < 60:
-                            continue
-                    elif action == 'exit' and self.last_exit_time:
-                        seconds_since_last = tz.seconds_since(self.last_exit_time)
-                        if seconds_since_last < 60:
-                            continue
-
+                    # The window spans several 15 s checks; without this, 'rebalance'
+                    # re-fired on each (7-8 full RAMP rebalances per day in 2026-09).
+                    fired_key = (now_est.date(), exec_config['time'], action)
+                    if fired_key in self._fired_actions:
+                        continue
+                    self._fired_actions.add(fired_key)
                     return action
 
             return None
@@ -515,7 +512,6 @@ class LiveTradingRunner:
                 if hasattr(self.adapter, 'close_overnight_positions'):
                     logger.info("Closing overnight positions...")
                     self.adapter.close_overnight_positions()
-                    self.last_exit_time = tz.now()
                     logger.success("Overnight positions closed")
                 else:
                     logger.warning("Adapter does not support position closing")
