@@ -25,7 +25,18 @@ Found that RAMP trades on NYSE holidays and after early closes because `IBKRBrok
 - **Duplicate-order fixes** (main `1ae74f4..67e97f2`, deploy branch `4521e1d..e83dd40`): ExecutionEngine retries only placement failures, never re-places an accepted order, and on a timeout cancels then polls the final state (a fill that lands during the cancel counts as success); the runner fires each scheduled action once per day, persisted in `fired_actions.json` in its log dir so a restart inside the window does not re-fire. Independent Opus review: ready with fixes; its Important #2 (fill during cancel) and #4 (restart inside window) were fixed with failing-first tests.
 - **Operator decisions (2026-10-07)**: deploy calendar fix + OOM limits + duplicate-order fixes in one `homeguard-multi` restart at 16:20 ET (scheduled in-session); leave the 8 short positions open for now; RAMP stays paused until the operator re-enables it.
 
+## Deploy (2026-10-07 16:20 ET)
+- Pre-checks: execution lock free (RAMP's lock from 15:54 had expired at 15:58); RAMP disabled; its 15:55 decision skipped at the `strategy_enabled` gate.
+- Instance pulled to `e83dd40`; `strategy_toggle.yaml` unchanged by the pull, RAMP still `enabled: false` (v11).
+- `homeguard-multi` unit reinstalled and restarted at 16:22 ET: active in about 3 s, `OOMScoreAdjust=-900`, `MemoryMax=1073741824`, 0 restarts, no tracebacks, RAMP v11 loaded, IBKR market data farm OK.
+- On-instance checks: `IBKRBroker().is_market_open()` is False after 16:00; `ExecutionEngine.settle_timeout` is 5.0; `LiveTradingRunner._mark_fired` exists.
+- IBKR paper smoke test (`scripts/trading/smoke_test_ibkr_paper.py`, full mode): PASSED, exit 0; engine counters 2 successful, 0 failed, 0 retries; the after-hours orders drew IBKR Warning 399 and were placed once and cancelled (no duplicates); positions unchanged, no lingering orders.
+- Read-only position check (clientId 98): 26 stock positions, 18 long, the same 8 shorts in the same quantities as at 10:51 ET, 0 open orders.
+- New on reconnect: IBKR code 2172, "The version of the application you are running, 1037.1, needs to be upgraded, as it will be desupported on 20261215". Not caused by the deploy (absent from the journal earlier today and on 2026-10-06).
+
 ## Known Issues / Remaining Work
+- **Upgrade IB Gateway before 2026-12-15** (IBKR code 2172: application version 1037.1 desupported on that date).
+- RAMP is paused and the 8 shorts are open: re-enabling RAMP and handling the shorts are operator decisions.
 - Known residual risk (review #1): a placement that raises AFTER IBKR accepted the order (run_sync timeout during the post-place sleep, or `_translate_order` raising) is still treated as "no order" and retried. Fix by keeping `trade` once `placeOrder` returns, or by an `orderRef` idempotency key.
 - Review #3: partial fills reach callers only in the exception message, so RAMP state and the trade log can diverge until the next broker sync.
 - Review minors deferred: cancel message ignores cancel's return value; OrderNotFound logged at ERROR; accepted-then-timed-out orders counted as rejections in metrics; cancel_order bypasses run_sync.
