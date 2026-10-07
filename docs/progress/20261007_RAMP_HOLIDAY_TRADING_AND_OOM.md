@@ -22,7 +22,13 @@ Found that RAMP trades on NYSE holidays and after early closes because `IBKRBrok
 - `65fa24d` fix(infra): cap homeguard-multi memory at 1G (main; deploy branch `f94b9a8`)
 - `3c17ecc` / `137697b` test + fix(ibkr): NYSE calendar for is_market_open (branch `feat/ibkr-calendar`)
 
+- **Duplicate-order fixes** (main `1ae74f4..67e97f2`, deploy branch `4521e1d..e83dd40`): ExecutionEngine retries only placement failures, never re-places an accepted order, and on a timeout cancels then polls the final state (a fill that lands during the cancel counts as success); the runner fires each scheduled action once per day, persisted in `fired_actions.json` in its log dir so a restart inside the window does not re-fire. Independent Opus review: ready with fixes; its Important #2 (fill during cancel) and #4 (restart inside window) were fixed with failing-first tests.
+- **Operator decisions (2026-10-07)**: deploy calendar fix + OOM limits + duplicate-order fixes in one `homeguard-multi` restart at 16:20 ET (scheduled in-session); leave the 8 short positions open for now; RAMP stays paused until the operator re-enables it.
+
 ## Known Issues / Remaining Work
+- Known residual risk (review #1): a placement that raises AFTER IBKR accepted the order (run_sync timeout during the post-place sleep, or `_translate_order` raising) is still treated as "no order" and retried. Fix by keeping `trade` once `placeOrder` returns, or by an `orderRef` idempotency key.
+- Review #3: partial fills reach callers only in the exception message, so RAMP state and the trade log can diverge until the next broker sync.
+- Review minors deferred: cancel message ignores cancel's return value; OrderNotFound logged at ERROR; accepted-then-timed-out orders counted as rejections in metrics; cancel_order bypasses run_sync.
 - Restart `homeguard-multi` after 16:15 ET (operator go-ahead) to activate the OOM limits; the 08:00-09:15 window was missed because Tailscale SSH was awaiting browser approval.
 - Deploy the calendar fix (go-ahead needed): merge, cherry-pick to the deploy branch, same restart, then run `scripts/trading/smoke_test_ibkr_paper.py`. Check the instance venv has `pandas_market_calendars` first (requirements pin 4.4.1; this machine has 5.1.1). Deadline: 2026-11-26.
 - Fix the duplicate-order bug: treat IBKR warnings 399/2161 as accepted, not as failures to retry.
