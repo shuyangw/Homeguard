@@ -48,6 +48,9 @@ SyslogIdentifier=homeguard-multi
 # Under memory pressure the kernel kills almost anything before the process that
 # trades RAMP (the console agent runs at +500). Same value as the legacy homeguard-ramp unit.
 OOMScoreAdjust=-900
+# ~2x the 30-day peak RSS (468MB on trading days, 2026-09-07..10-07). Caps a runaway
+# without killing a normal 09:30 preload or 15:55 rebalance.
+MemoryMax=1G
 
 [Install]
 WantedBy=multi-user.target
