@@ -13,9 +13,11 @@ Implements 22 abstract methods across 6 interfaces:
 
 import asyncio
 from datetime import date, datetime
+from functools import lru_cache
 from typing import Dict, List, Optional, Tuple
 
 import pandas as pd
+import pandas_market_calendars as mcal
 import pytz
 
 from ib_async import (
@@ -53,6 +55,16 @@ from src.utils.logger import get_logger
 logger = get_logger(__name__)
 
 ET = pytz.timezone('America/New_York')
+
+
+@lru_cache(maxsize=8)
+def _nyse_session(day: date) -> Optional[Tuple[datetime, datetime]]:
+    """(open, close) of the NYSE regular session on `day` (tz-aware), or None if the exchange is closed."""
+    schedule = mcal.get_calendar('NYSE').schedule(start_date=day, end_date=day)
+    if schedule.empty:
+        return None
+    session = schedule.iloc[0]
+    return session['market_open'].to_pydatetime(), session['market_close'].to_pydatetime()
 
 
 class IBKRBroker(
@@ -156,17 +168,15 @@ class IBKRBroker(
     # ==================== MarketHoursInterface ====================
 
     def is_market_open(self) -> bool:
-        """Check if US equity market is currently open."""
+        """Check if the NYSE regular session is open now (holidays and early closes included)."""
         try:
             from src.utils.timezone import tz
             now = tz.now()
-            weekday = now.weekday()
-            if weekday >= 5:
+            session = _nyse_session(now.date())
+            if session is None:
                 return False
-            from datetime import time
-            market_open = time(9, 30)
-            market_close = time(16, 0)
-            return market_open <= now.time() <= market_close
+            market_open, market_close = session
+            return market_open <= now < market_close
         except Exception as e:
             logger.error(f"[IBKR] Failed to check market hours: {e}")
             raise BrokerConnectionError(f"IBKR API error: {e}")
