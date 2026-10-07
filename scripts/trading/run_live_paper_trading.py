@@ -291,8 +291,6 @@ class LiveTradingRunner:
         self.check_interval = check_interval
         self.running = False
         self.last_run_time: Optional[datetime] = None
-        # (date, scheduled time, action) already fired, so each fires once per day
-        self._fired_actions: set = set()
         self.last_progress_log: Optional[datetime] = None
         self.data_preloaded_today: bool = False  # Track if data pre-loaded today
         self.intraday_prefetched_today: bool = False  # Track if intraday data pre-fetched today
@@ -338,6 +336,10 @@ class LiveTradingRunner:
 
         log_dir.mkdir(parents=True, exist_ok=True)
         self.log_dir = log_dir
+        # (date, scheduled time, action) already fired, so each fires once per day. Persisted
+        # because Restart=always can bring the process back inside the same 15:55 window.
+        self._fired_actions_file = log_dir / "fired_actions.json"
+        self._fired_actions: set = self._load_fired_actions()
 
         # Setup session tracker
         strategy_name = adapter.__class__.__name__.replace('LiveAdapter', '')
@@ -349,6 +351,26 @@ class LiveTradingRunner:
 
         # Note: File logging is now handled by TradingLogger in TradingSessionTracker
         logger.info(f"File logging enabled: {log_dir}")
+
+    def _load_fired_actions(self) -> set:
+        try:
+            entries = json.loads(self._fired_actions_file.read_text())
+            return {(datetime.strptime(day, "%Y-%m-%d").date(), at, action) for day, at, action in entries}
+        except FileNotFoundError:
+            return set()
+        except (OSError, ValueError, TypeError) as e:
+            logger.error(f"Could not read {self._fired_actions_file}, starting with none fired: {e}")
+            return set()
+
+    def _mark_fired(self, key: tuple) -> None:
+        self._fired_actions.add(key)
+        today_entries = [[day.isoformat(), at, action] for day, at, action in self._fired_actions if day == key[0]]
+        try:
+            tmp = self._fired_actions_file.with_suffix(".tmp")
+            tmp.write_text(json.dumps(today_entries))
+            tmp.replace(self._fired_actions_file)
+        except OSError as e:
+            logger.error(f"Could not persist fired actions to {self._fired_actions_file}: {e}")
 
     def _signal_handler(self, signum, frame):
         """Handle shutdown signals gracefully."""
@@ -398,7 +420,7 @@ class LiveTradingRunner:
                     fired_key = (now_est.date(), exec_config['time'], action)
                     if fired_key in self._fired_actions:
                         continue
-                    self._fired_actions.add(fired_key)
+                    self._mark_fired(fired_key)
                     return action
 
             return None
