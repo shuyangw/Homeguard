@@ -45,6 +45,9 @@ RestartSec=30
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=homeguard-multi
+# Under memory pressure the kernel kills almost anything before the process that
+# trades RAMP (the console agent runs at +500). Same value as the legacy homeguard-ramp unit.
+OOMScoreAdjust=-900
 
 [Install]
 WantedBy=multi-user.target
