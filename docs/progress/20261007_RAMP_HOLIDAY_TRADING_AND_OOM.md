@@ -1,0 +1,32 @@
+# RAMP Holiday Trading, Duplicate Orders and OOM Protection - 2026-10-07
+
+## Summary
+Found that RAMP trades on NYSE holidays and after early closes because `IBKRBroker.is_market_open()` is a plain weekday 09:30-16:00 clock check, confirmed it happened on Labor Day 2026-09-07, and found a second bug that re-sends orders when IBKR answers with a warning. Built the calendar fix (branch, not deployed) and protected `homeguard-multi` from the OOM killer (pushed, not yet active on the instance).
+
+## Findings
+- **Holiday trading (confirmed)**: at 15:54 ET on Mon 2026-09-07 (Labor Day) RAMP ran its rebalance in SELL-ONLY mode and placed market DAY sells for IP 54, GNRC 10, EIX 36, BLDR 31. IBKR answered Warning 399 ("will not be placed at the exchange until 2026-09-08 09:30") and queued them. Order 257539 (IP) filled 37/54 at $36.55 at 09:30:06 on 2026-09-08 (Loki, `homeguard-multi.service`).
+- **Duplicate orders on IBKR warnings (confirmed)**: the broker maps the warning to status `ValidationError` and the order path re-sends, so every Labor Day sell went out 3 times (12 orders for 4 intended). IBKR validation warnings occurred only on 2026-09-07 (12) and 2026-09-08 (1, a 2161 price-cap notice on the queued fill) in the last 30 days, so normal rebalances have not hit it, but any warning (including 2161 during market hours) would.
+- **Not yet confirmed**: whether the extra copies also filled (possible oversell or short positions in IP, GNRC, EIX, BLDR). The 2026-09-08 rebalance was SELL-ONLY and skipped buys, so it would not have covered a short. Needs RAMP's position snapshots or IBKR positions over SSH.
+- **Exposure ahead**: Thu 2026-11-26 (Thanksgiving), Fri 2026-12-25, Fri 2027-01-01 (closed all day) and Fri 2026-11-27, Thu 2026-12-24 (13:00 close). The instance's start/stop schedule also ignores holidays.
+- **RAMP memory**: 30-day peak RSS 468MB on trading days, about 350MB on weekends (VictoriaMetrics `hg_process_rss_bytes`).
+- Morning start 2026-10-07 08:00 came up cleanly; both status-check alarms OK.
+
+## Changes Made
+- **`infra/ec2/homeguard-multi.service`**: `OOMScoreAdjust=-900` (same as the legacy homeguard-ramp unit) and `MemoryMax=1G` (about 2x the peak). On main and the deploy branch; NOT active until the unit is reinstalled and `homeguard-multi` restarted.
+- **`src/trading/brokers/ibkr/ibkr_broker.py`** (branch `feat/ibkr-calendar`, not merged): `is_market_open()` reads today's NYSE session from `pandas_market_calendars`, cached per day; closed on holidays and after early closes, open on [open, close). 14 tests in `tests/trading/brokers/ibkr/test_market_hours.py`.
+
+## Commits
+- `1b1404a` fix(infra): protect homeguard-multi from the OOM killer
+- `65fa24d` fix(infra): cap homeguard-multi memory at 1G (main; deploy branch `f94b9a8`)
+- `3c17ecc` / `137697b` test + fix(ibkr): NYSE calendar for is_market_open (branch `feat/ibkr-calendar`)
+
+## Known Issues / Remaining Work
+- Restart `homeguard-multi` after 16:15 ET (operator go-ahead) to activate the OOM limits; the 08:00-09:15 window was missed because Tailscale SSH was awaiting browser approval.
+- Deploy the calendar fix (go-ahead needed): merge, cherry-pick to the deploy branch, same restart, then run `scripts/trading/smoke_test_ibkr_paper.py`. Check the instance venv has `pandas_market_calendars` first (requirements pin 4.4.1; this machine has 5.1.1). Deadline: 2026-11-26.
+- Fix the duplicate-order bug: treat IBKR warnings 399/2161 as accepted, not as failures to retry.
+- Confirm or rule out oversold positions from Labor Day (IP, GNRC, EIX, BLDR).
+- The 2026-09-08 log shows the SELL-ONLY rebalance branch repeating about every 15 s near 15:55; worth checking whether the rebalance fires more than once per window.
+
+## Validation
+- Calendar fix: 14/14 new tests; wider suite `tests/trading tests/monitoring tests/console_agent` 1112 passed, 12 skipped.
+- Evidence from Loki and VictoriaMetrics through the Grafana connector (instance reachable on the tailnet; SSH pending approval).
