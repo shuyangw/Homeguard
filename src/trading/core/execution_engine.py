@@ -29,6 +29,8 @@ from src.utils.logger import get_logger
 
 logger = get_logger()  # Use global logger (no file creation)
 
+_SETTLED_STATUSES = (OrderStatus.FILLED.value, OrderStatus.CANCELLED.value, OrderStatus.REJECTED.value)
+
 
 class ExecutionStatus(Enum):
     """Execution attempt status."""
@@ -104,6 +106,8 @@ class ExecutionEngine:
         self.max_retries = max_retries
         self.retry_delay = retry_delay
         self.fill_timeout = fill_timeout
+        # Seconds to wait for an order's final state after cancelling it.
+        self.settle_timeout = 5.0
         self.metrics_registry = metrics_registry
 
         # Order tracking
@@ -212,35 +216,7 @@ class ExecutionEngine:
                 if wait_for_fill and order['status'] != OrderStatus.FILLED.value:
                     order = self._wait_for_fill(order['order_id'])
 
-                # Mark execution as successful
-                execution['status'] = ExecutionStatus.SUCCESS
-                execution['order'] = order
-                execution['end_time'] = datetime.now()
-                execution['duration'] = (execution['end_time'] - execution_start).total_seconds()
-
-                self.execution_history.append(execution)
-                self.successful_orders += 1
-                if self.metrics_registry is not None:
-                    try:
-                        # TODO(monitoring): compute real slippage from expected vs filled
-                        # once adapters expose expected_price; today always 0.0
-                        slippage_bps = 0.0
-                        self.metrics_registry.record_order_filled(self._broker_label(), slippage_bps)
-                    except Exception as e:
-                        logger.error(f"Metrics record_order_filled failed: {e}")
-
-                # filled_avg_price is None when wait_for_fill=False and the
-                # order is still pending -- default to 0.0 before formatting
-                # so the log line never crashes with NoneType.__format__.
-                filled_qty = order.get('filled_qty', 0) or 0
-                filled_avg_price = order.get('filled_avg_price', 0) or 0
-                logger.success(
-                    f"Order executed successfully: {order['order_id']} | "
-                    f"Filled {filled_qty} @ ${filled_avg_price:.2f} | "
-                    f"Duration: {execution['duration']:.2f}s"
-                )
-
-                return execution
+                return self._record_success(execution, order, execution_start)
 
             except InvalidOrderError as e:
                 # Don't retry invalid orders
@@ -265,7 +241,12 @@ class ExecutionEngine:
                 # second live order (2026-09-07: every RAMP sell went out three times).
                 accepted = order is not None
                 if accepted:
-                    last_error = self._abandon_accepted_order(order['order_id'], e)
+                    settled = self._cancel_and_settle(order['order_id'])
+                    if settled is not None and settled.get('status') == OrderStatus.FILLED.value:
+                        logger.warning(f"Order {order['order_id']} filled while being cancelled: {e}")
+                        return self._record_success(execution, settled, execution_start)
+                    filled_qty = settled.get('filled_qty') if settled is not None else None
+                    last_error = BrokerError(f"{e}; order cancelled, filled_qty={filled_qty}")
 
                 if attempt < self.max_retries - 1 and not accepted:
                     logger.info(f"Retrying in {self.retry_delay}s...")
@@ -452,19 +433,55 @@ class ExecutionEngine:
             **kwargs
         )
 
-    def _abandon_accepted_order(self, order_id: str, error: BrokerError) -> BrokerError:
-        """Cancel an accepted order that did not fill, and report what did fill."""
+    def _record_success(self, execution: Dict, order: Dict, execution_start: datetime) -> Dict:
+        """Mark an execution successful, update counters and metrics, and return it."""
+        # Mark execution as successful
+        execution['status'] = ExecutionStatus.SUCCESS
+        execution['order'] = order
+        execution['end_time'] = datetime.now()
+        execution['duration'] = (execution['end_time'] - execution_start).total_seconds()
+
+        self.execution_history.append(execution)
+        self.successful_orders += 1
+        if self.metrics_registry is not None:
+            try:
+                # TODO(monitoring): compute real slippage from expected vs filled
+                # once adapters expose expected_price; today always 0.0
+                slippage_bps = 0.0
+                self.metrics_registry.record_order_filled(self._broker_label(), slippage_bps)
+            except Exception as e:
+                logger.error(f"Metrics record_order_filled failed: {e}")
+
+        # filled_avg_price is None when wait_for_fill=False and the
+        # order is still pending -- default to 0.0 before formatting
+        # so the log line never crashes with NoneType.__format__.
+        filled_qty = order.get('filled_qty', 0) or 0
+        filled_avg_price = order.get('filled_avg_price', 0) or 0
+        logger.success(
+            f"Order executed successfully: {order['order_id']} | "
+            f"Filled {filled_qty} @ ${filled_avg_price:.2f} | "
+            f"Duration: {execution['duration']:.2f}s"
+        )
+
+        return execution
+
+    def _cancel_and_settle(self, order_id: str) -> Optional[Dict]:
+        """Cancel an accepted order and return its final state; a fill can still land after the cancel."""
         try:
             self.broker.cancel_order(order_id)
-        except BrokerError as cancel_error:
-            logger.error(f"Cancel of unfilled order {order_id} failed: {cancel_error}")
-        try:
-            filled_qty = self.broker.get_order(order_id).get('filled_qty', 0) or 0
-        except BrokerError as status_error:
-            logger.error(f"Could not read final status of order {order_id}: {status_error}")
-            filled_qty = None
-        logger.error(f"Order {order_id} abandoned without re-submitting: {error} (filled_qty={filled_qty})")
-        return BrokerError(f"{error}; order cancelled, filled_qty={filled_qty}")
+        except Exception as cancel_error:
+            logger.warning(f"Cancel of order {order_id} failed (it may already be done): {cancel_error}")
+        order = None
+        deadline = datetime.now() + timedelta(seconds=self.settle_timeout)
+        while datetime.now() < deadline:
+            try:
+                order = self.broker.get_order(order_id)
+            except Exception as status_error:
+                logger.error(f"Could not read status of order {order_id}: {status_error}")
+            if order is not None and order.get('status') in _SETTLED_STATUSES:
+                return order
+            time.sleep(0.5)
+        return order
 
     def _wait_for_fill(self, order_id: str) -> Dict:
         """
