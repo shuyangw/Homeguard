@@ -190,6 +190,7 @@ class ExecutionEngine:
         last_error = None
         for attempt in range(self.max_retries):
             execution['attempts'] += 1
+            order = None
 
             try:
                 # Place order
@@ -260,14 +261,19 @@ class ExecutionEngine:
             except BrokerError as e:
                 last_error = e
                 logger.warning(f"Order attempt {attempt + 1}/{self.max_retries} failed: {e}")
+                # Once the broker has accepted the order, another attempt would place a
+                # second live order (2026-09-07: every RAMP sell went out three times).
+                accepted = order is not None
+                if accepted:
+                    last_error = self._abandon_accepted_order(order['order_id'], e)
 
-                if attempt < self.max_retries - 1:
+                if attempt < self.max_retries - 1 and not accepted:
                     logger.info(f"Retrying in {self.retry_delay}s...")
                     self.retry_count += 1
                     time.sleep(self.retry_delay)
                 else:
                     # All retries exhausted
-                    logger.error(f"Order execution failed after {self.max_retries} attempts")
+                    logger.error(f"Order execution failed after {execution['attempts']} attempts")
                     execution['status'] = ExecutionStatus.FAILED
                     execution['error'] = str(last_error)
                     execution['end_time'] = datetime.now()
@@ -279,7 +285,7 @@ class ExecutionEngine:
                                 classify_reject_reason(last_error), self._broker_label())
                         except Exception as metric_err:
                             logger.error(f"Metrics record_order_rejected failed: {metric_err}")
-                    raise BrokerError(f"Order execution failed after {self.max_retries} attempts: {last_error}")
+                    raise BrokerError(f"Order execution failed after {execution['attempts']} attempts: {last_error}")
 
         # Should not reach here
         raise BrokerError("Unexpected execution path")
@@ -445,6 +451,20 @@ class ExecutionEngine:
             time_in_force=time_in_force,
             **kwargs
         )
+
+    def _abandon_accepted_order(self, order_id: str, error: BrokerError) -> BrokerError:
+        """Cancel an accepted order that did not fill, and report what did fill."""
+        try:
+            self.broker.cancel_order(order_id)
+        except BrokerError as cancel_error:
+            logger.error(f"Cancel of unfilled order {order_id} failed: {cancel_error}")
+        try:
+            filled_qty = self.broker.get_order(order_id).get('filled_qty', 0) or 0
+        except BrokerError as status_error:
+            logger.error(f"Could not read final status of order {order_id}: {status_error}")
+            filled_qty = None
+        logger.error(f"Order {order_id} abandoned without re-submitting: {error} (filled_qty={filled_qty})")
+        return BrokerError(f"{error}; order cancelled, filled_qty={filled_qty}")
 
     def _wait_for_fill(self, order_id: str) -> Dict:
         """
