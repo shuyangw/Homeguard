@@ -21,10 +21,14 @@ class FakeBroker:
 
     name = "fake"
 
-    def __init__(self, place_failures=0, fill_status="pending", filled_qty=0):
+    def __init__(self, place_failures=0, fill_status="pending", filled_qty=0, fill_on_cancel=False,
+                 cancel_error=None, status_error=None):
         self.place_failures = place_failures
         self.fill_status = fill_status
         self.filled_qty = filled_qty
+        self.fill_on_cancel = fill_on_cancel
+        self.cancel_error = cancel_error
+        self.status_error = status_error
         self.place_calls = 0
         self.cancelled = []
 
@@ -36,11 +40,19 @@ class FakeBroker:
         return self._order(symbol, quantity)
 
     def get_order(self, order_id):
+        if self.status_error is not None:
+            raise self.status_error
         return self._order("IP", 54, order_id)
 
     def cancel_order(self, order_id):
         self.cancelled.append(order_id)
-        self.fill_status = "cancelled"
+        if self.cancel_error is not None:
+            raise self.cancel_error
+        if self.fill_on_cancel:
+            # The fill raced the cancel: IBKR rejects the cancel and the order ends filled.
+            self.fill_status, self.filled_qty = "filled", 54
+        else:
+            self.fill_status = "cancelled"
         return True
 
     def _order(self, symbol, quantity, order_id=None):
@@ -55,7 +67,9 @@ class FakeBroker:
 
 
 def make_engine(broker):
-    return ExecutionEngine(broker, max_retries=3, retry_delay=0.0, fill_timeout=0.2)
+    engine = ExecutionEngine(broker, max_retries=3, retry_delay=0.0, fill_timeout=0.2)
+    engine.settle_timeout = 0.2
+    return engine
 
 
 def test_unfilled_accepted_order_is_cancelled_and_never_resubmitted():
@@ -105,3 +119,33 @@ def test_placement_failing_every_time_gives_up_after_max_retries():
 
     assert broker.place_calls == 3
     assert broker.cancelled == []
+
+
+def test_fill_landing_during_the_cancel_is_reported_as_success():
+    broker = FakeBroker(fill_status="pending", fill_on_cancel=True)
+
+    execution = make_engine(broker).execute_order("IP", 54, OrderSide.SELL, OrderType.MARKET)
+
+    assert execution["order"]["status"] == "filled"
+    assert execution["order"]["filled_qty"] == 54
+    assert broker.place_calls == 1
+
+
+@pytest.mark.parametrize("cancel_error", [BrokerConnectionError("gateway gone"), RuntimeError("ib torn down")])
+def test_failed_cancel_still_never_resubmits(cancel_error):
+    broker = FakeBroker(fill_status="pending", cancel_error=cancel_error)
+
+    with pytest.raises(BrokerError, match="did not fill"):
+        make_engine(broker).execute_order("IP", 54, OrderSide.SELL, OrderType.MARKET)
+
+    assert broker.place_calls == 1
+
+
+def test_unreadable_status_still_never_resubmits():
+    broker = FakeBroker(fill_status="pending", status_error=BrokerConnectionError("status unavailable"))
+
+    with pytest.raises(BrokerError):
+        make_engine(broker).execute_order("IP", 54, OrderSide.SELL, OrderType.MARKET)
+
+    assert broker.place_calls == 1
+    assert broker.cancelled == ["order-1"]

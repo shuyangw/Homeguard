@@ -68,3 +68,29 @@ def test_entry_and_exit_each_fire_once_per_day(tmp_path, monkeypatch):
     fired = actions_at(runner, monkeypatch, checks)
 
     assert fired == ["exit", None, "entry", None]
+
+
+def test_a_restart_inside_the_window_does_not_fire_again(tmp_path, monkeypatch):
+    schedule = [{"time": "15:55", "action": "rebalance"}]
+    first = make_runner(tmp_path, schedule)
+    assert actions_at(first, monkeypatch, [(2026, 10, 7, 15, 55, 0)]) == ["rebalance"]
+
+    restarted = make_runner(tmp_path, schedule)
+
+    assert actions_at(restarted, monkeypatch, [(2026, 10, 7, 15, 55, 30)]) == [None]
+
+
+def test_a_restart_on_a_later_day_fires_normally(tmp_path, monkeypatch):
+    schedule = [{"time": "15:55", "action": "rebalance"}]
+    actions_at(make_runner(tmp_path, schedule), monkeypatch, [(2026, 10, 7, 15, 55, 0)])
+
+    restarted = make_runner(tmp_path, schedule)
+
+    assert actions_at(restarted, monkeypatch, [(2026, 10, 8, 15, 55, 0)]) == ["rebalance"]
+
+
+def test_an_unreadable_fired_actions_file_does_not_stop_the_runner(tmp_path, monkeypatch):
+    (tmp_path / "fired_actions.json").write_text("{not json")
+    runner = make_runner(tmp_path, [{"time": "15:55", "action": "rebalance"}])
+
+    assert actions_at(runner, monkeypatch, [(2026, 10, 7, 15, 55, 0)]) == ["rebalance"]
