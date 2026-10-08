@@ -435,6 +435,7 @@ portfolio = engine.run_with_data(strategy, data)
 **Key Components** ([src/console_agent/](../../src/console_agent/)):
 
 - A read-only stdlib HTTP server on the instance (127.0.0.1:8090, published on the tailnet at :8443 by `tailscale serve`) that serves systemd unit state, the strategy toggle, the execution lock, metric snapshots and the latest decision records to the local Homeguard Console. It never imports `src.trading` and never writes. Design: `docs/superpowers/specs/2026-10-05-homeguard-console-design.md`.
+- Homeguard Console local app ([tools/console/](../../tools/console/)): read-only FastAPI app on 127.0.0.1:8765 that polls the agent over the tailnet every 10 s and falls back to the S3 snapshot (`console/latest/status.json`) when the agent is unreachable; EC2 and the EventBridge schedules are read with the `homeguard-console` profile.
 
 ---
 
