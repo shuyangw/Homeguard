@@ -24,6 +24,7 @@ from tools.console.schedule import SCHEDULE_ACTIONS, CronSchedule, parse_cron
 SNAPSHOT_KEY = "console/latest/status.json"
 AGENT_TIMEOUT_SECONDS = 5.0
 AGENT_INTERVAL = timedelta(seconds=10)
+LIVE_MAX_AGE = 3 * AGENT_INTERVAL
 S3_INTERVAL = timedelta(seconds=60)
 EC2_INTERVAL = timedelta(seconds=30)
 SCHEDULE_INTERVAL = timedelta(minutes=10)
@@ -43,9 +44,10 @@ class ConsoleState:
     errors: dict = field(default_factory=dict)
     agent_down_since: datetime | None = None
 
-    @property
-    def live(self) -> bool:
-        return self.source == "agent" and self.agent_down_since is None
+    def is_live(self, now: datetime) -> bool:
+        if self.source != "agent" or self.agent_down_since is not None or self.as_of is None:
+            return False
+        return now - self.as_of <= LIVE_MAX_AGE
 
 
 class AgentClient:

@@ -102,3 +102,15 @@ def test_gates_context_summarizes_the_full_record():
 
     assert context["gates"]["strategy_enabled"] == {"passed": False, "error": "disabled"}
     assert gates_context(live_state(), "nope") is None
+
+
+def test_an_old_agent_reading_is_not_live():
+    state = live_state(as_of=NOW - timedelta(hours=9))
+
+    context = page_context(state, NOW, "us-east-1")
+
+    assert context["header"]["level"] == "caution"
+    assert context["header"]["badge"] == "Agent reading 9 h 0 min old"
+    assert context["live"] is False
+    measured = {c.name: c.level for c in context["checks"] if c.name in ("Broker heartbeat", "Host memory")}
+    assert measured == {"Broker heartbeat": "unknown", "Host memory": "unknown"}

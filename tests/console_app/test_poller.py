@@ -79,7 +79,7 @@ def test_live_agent_reading_fetches_the_decision_once(aws):
     poller.poll_agent(NOW + timedelta(seconds=10))
 
     assert poller.state.source == "agent"
-    assert poller.state.live is True
+    assert poller.state.is_live(NOW + timedelta(seconds=10)) is True
     assert poller.state.decisions["ramp"] == DECISION
     assert agent.decision_calls == 1
 
@@ -95,7 +95,7 @@ def test_agent_timeout_falls_back_to_s3_and_labels_the_source(aws):
     poller.poll_s3(NOW)
 
     assert poller.state.source == "s3"
-    assert poller.state.live is False
+    assert poller.state.is_live(NOW + timedelta(seconds=10)) is False
     assert poller.state.as_of == uploaded
     assert poller.state.reason == "shutdown"
     assert poller.state.agent_down_since == NOW
@@ -127,7 +127,7 @@ def test_agent_recovery_returns_to_live(aws):
     poller.poll_agent(NOW + timedelta(seconds=10))
 
     assert poller.state.source == "agent"
-    assert poller.state.live is True
+    assert poller.state.is_live(NOW + timedelta(seconds=10)) is True
     assert poller.state.agent_down_since is None
     assert "agent" not in poller.state.errors
 
@@ -143,7 +143,7 @@ def test_older_s3_snapshot_does_not_replace_a_newer_agent_reading(aws):
     poller.poll_s3(NOW + timedelta(seconds=10))
 
     assert poller.state.source == "agent"
-    assert poller.state.live is False
+    assert poller.state.is_live(NOW + timedelta(seconds=10)) is False
 
 
 def test_missing_snapshot_reads_as_no_snapshot_yet(aws):
@@ -295,6 +295,6 @@ def test_unexpected_status_shape_marks_the_agent_down(aws, body):
 
     poller.poll_agent(NOW)
 
-    assert poller.state.live is False
+    assert poller.state.is_live(NOW + timedelta(seconds=10)) is False
     assert poller.state.agent_down_since == NOW
     assert "agent" in poller.state.errors

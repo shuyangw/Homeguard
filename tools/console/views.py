@@ -25,30 +25,33 @@ ACCOUNT_GAUGES = (
 
 def page_context(state: ConsoleState, now: datetime, region: str) -> dict:
     document = state.document or {}
+    live = state.is_live(now)
     return {
-        "header": header_context(state, now),
+        "header": header_context(state, now, live),
         "rail": rail_context(state, now),
         "power": power_context(state, now, region),
-        "checks": run_checks(document, state.live, state.as_of, now) if state.document else None,
+        "checks": run_checks(document, live, state.as_of, now) if state.document else None,
         "strategies": strategy_rows(state),
-        "account": account_rows(state, now),
+        "account": account_rows(state, now, live),
         "units": document.get("units") or [],
-        "live": state.live,
+        "live": live,
     }
 
 
-def header_context(state: ConsoleState, now: datetime) -> dict:
+def header_context(state: ConsoleState, now: datetime, live: bool) -> dict:
     errors = [f"{source}: {error}" for source, error in sorted(state.errors.items())]
     errors += [f"{e.get('source')}: {e.get('error')}" for e in (state.document or {}).get("errors") or []]
     if state.document is None:
         return {"badge": "No status yet", "level": "unknown", "errors": errors}
     age = freshness.age_text(state.as_of, now)
-    if state.live:
+    if live:
         return {"badge": f"Live from agent, {age}", "level": "normal", "errors": errors}
     if state.source == "s3":
         taken = state.as_of.astimezone(EASTERN).strftime("%Y-%m-%d %H:%M:%S ET")
         reason = f" ({state.reason})" if state.reason else ""
         return {"badge": f"Snapshot from S3, taken {taken}{reason}, {age}", "level": "caution", "errors": errors}
+    if state.agent_down_since is None:
+        return {"badge": f"Agent reading {age.removesuffix(' ago')} old", "level": "caution", "errors": errors}
     return {"badge": f"Agent unreachable; last agent reading {age}", "level": "caution", "errors": errors}
 
 
@@ -141,15 +144,15 @@ def _first_value(values: dict | None, template: str) -> str:
     return template.format(next(iter(values.values())))
 
 
-def account_rows(state: ConsoleState, now: datetime) -> list[dict]:
-    age = "" if state.live or state.as_of is None else freshness.age_text(state.as_of, now)
+def account_rows(state: ConsoleState, now: datetime, live: bool) -> list[dict]:
+    age = "" if live or state.as_of is None else freshness.age_text(state.as_of, now)
     rows = []
     for name, entry in sorted(((state.document or {}).get("strategies") or {}).items()):
         gauges = (entry.get("snapshot") or {}).get("gauges") or {}
         if not gauges:
             continue
         cells = [{"label": label, "value": _first_value(gauges.get(metric), template),
-                  "cls": freshness.classify(kind, state.live)}
+                  "cls": freshness.classify(kind, live)}
                  for label, metric, template, kind in ACCOUNT_GAUGES]
         rows.append({"name": name, "cells": cells, "age": age})
     return rows
