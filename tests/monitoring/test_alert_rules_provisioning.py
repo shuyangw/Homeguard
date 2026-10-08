@@ -292,3 +292,26 @@ def test_canary_rule_is_present_and_always_true():
     assert canaries, 'the alerting canary must not be removed'
     exprs = [(n.get('model') or {}).get('expr') for n in canaries[0]['data']]
     assert 'vector(1)' in [e for e in exprs if e], 'canary must be unconditionally true'
+
+
+def test_ramp_decision_missed_notifies_once_a_day():
+    """A missed rebalance cannot clear before the next day's 15:55 run, so hourly
+    reminders carry no new information. It needs its own route, ahead of the
+    generic critical route, since the first matching sibling route wins.
+    """
+    routes = [route for _, doc in _load_rule_files()
+              for policy in doc.get('policies', []) or []
+              for route in policy.get('routes', []) or []]
+    if not routes:
+        pytest.skip('no notification policy provisioned')
+
+    def matches(route, matcher):
+        return matcher in (route.get('object_matchers', []) or [])
+
+    ramp_idx = next(i for i, r in enumerate(routes)
+                    if matches(r, ['alertname', '=', 'RampDecisionMissedToday']))
+    critical_idx = next(i for i, r in enumerate(routes)
+                        if matches(r, ['severity', '=', 'critical']))
+    assert ramp_idx < critical_idx
+    repeat = str(routes[ramp_idx].get('repeat_interval', ''))
+    assert repeat.endswith('h') and int(repeat[:-1]) >= 24

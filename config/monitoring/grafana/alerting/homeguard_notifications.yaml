@@ -61,8 +61,21 @@ policies:
     repeat_interval: 4h
     routes:
 
+      # A missed rebalance cannot clear before the next day's 15:55 run, so
+      # hourly reminders add nothing. Must stay above the critical route, since
+      # the first matching sibling wins.
+      - receiver: homeguard-discord
+        object_matchers:
+          - ['alertname', '=', 'RampDecisionMissedToday']
+        group_by:
+          - alertname
+          - strategy
+        group_wait: 10s
+        group_interval: 1m
+        repeat_interval: 24h
+
       # Critical: page fast, and keep reminding while it is still broken.
-      # IBGatewayDown, RampDecisionMissedToday, Ramp/CscmServiceDown.
+      # IBGatewayDown, Ramp/CscmServiceDown.
       - receiver: homeguard-discord
         object_matchers:
           - ['severity', '=', 'critical']
