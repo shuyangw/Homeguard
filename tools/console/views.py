@@ -8,7 +8,8 @@ from tools.console import freshness
 from tools.console.checks import run_checks
 from tools.console.decision_times import DECISION_TIMES
 from tools.console.poller import ConsoleState
-from tools.console.schedule import EASTERN, expected_state, instance_window, next_event, nyse_session, power_lock, power_status
+from tools.console.schedule import (EASTERN, expected_state, instance_window, last_start, next_event, nyse_session,
+                                    power_lock, power_status)
 
 PANELS = ("header", "schedule", "exceptions", "strategies", "account", "host")
 RAIL_START_HOUR = 6
@@ -108,8 +109,12 @@ def rail_context(state: ConsoleState, now: datetime) -> dict:
 
 
 def power_context(state: ConsoleState, now: datetime, region: str) -> dict:
-    down_for = now - state.agent_down_since if state.agent_down_since else None
-    status = power_status(state.instance_state, expected_state(state.schedules, now), down_for)
+    down_for = None
+    if state.agent_down_since is not None:
+        down_for = now - max(state.agent_down_since, state.launched_at or state.agent_down_since)
+    started = last_start(state.schedules, now)
+    since_start = now - started if started else None
+    status = power_status(state.instance_state, expected_state(state.schedules, now), down_for, since_start)
     upcoming = next_event(state.schedules, now)
     log_url = None
     if status.code == "missed_start":

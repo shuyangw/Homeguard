@@ -17,6 +17,7 @@ import pandas_market_calendars as mcal
 EASTERN = ZoneInfo("America/New_York")
 POWER_LOCK_BUFFER = timedelta(minutes=15)
 AGENT_UNREACHABLE_AFTER = timedelta(minutes=2)
+START_GRACE = timedelta(minutes=5)
 SCHEDULE_ACTIONS = {
     "homeguard-start-instance": "start",
     "homeguard-stop-instance": "stop",
@@ -94,6 +95,10 @@ def expected_state(schedules: list[CronSchedule], now: datetime) -> str | None:
     return "running" if latest.action == "start" else "stopped"
 
 
+def last_start(schedules: list[CronSchedule], now: datetime) -> datetime | None:
+    return max((last_fire(schedule, now) for schedule in schedules if schedule.action == "start"), default=None)
+
+
 def next_event(schedules: list[CronSchedule], now: datetime) -> tuple[str, datetime] | None:
     if not schedules:
         return None
@@ -135,12 +140,14 @@ def power_lock(day: date) -> tuple[datetime, datetime] | None:
     return session[0] - POWER_LOCK_BUFFER, session[1] + POWER_LOCK_BUFFER
 
 
-def power_status(actual: str | None, expected: str | None, agent_down_for: timedelta | None) -> PowerStatus:
+def power_status(actual: str | None, expected: str | None, agent_down_for: timedelta | None,
+                 since_start: timedelta | None = None) -> PowerStatus:
     if actual is None or expected is None:
         return PowerStatus("unknown", "Instance state unknown", "unknown")
     if actual == "running" and agent_down_for is not None and agent_down_for > AGENT_UNREACHABLE_AFTER:
         return PowerStatus("warning", "Instance is up but the console cannot reach the agent", "agent_unreachable")
-    if actual == "stopped" and expected == "running":
+    start_overdue = since_start is None or since_start > START_GRACE
+    if actual == "stopped" and expected == "running" and start_overdue:
         return PowerStatus("warning", "Instance should be running", "missed_start")
     if actual == "running" and expected == "stopped":
         return PowerStatus("caution", "Instance is running outside its schedule", "off_schedule")

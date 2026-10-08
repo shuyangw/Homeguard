@@ -13,6 +13,7 @@ from tools.console.poller import SNAPSHOT_KEY, AgentClient, AwsClients, Poller
 
 SETTINGS = Settings("i-0123456789abcdef0", "us-east-1", "https://agent.test:8443", "bucket")
 NOW = datetime(2026, 10, 8, 16, 0, tzinfo=timezone.utc)
+LAUNCHED = datetime(2026, 10, 8, 12, 0, 30, tzinfo=timezone.utc)
 STATUS = {
     "generated_at": NOW.isoformat(),
     "units": [],
@@ -172,16 +173,19 @@ def test_ec2_state_and_failure(aws):
     poller, _ = make_poller(clients)
     stubs["ec2"].add_response(
         "describe_instances",
-        {"Reservations": [{"Instances": [{"InstanceId": SETTINGS.instance_id, "State": {"Code": 80, "Name": "stopped"}}]}]},
+        {"Reservations": [{"Instances": [{"InstanceId": SETTINGS.instance_id, "LaunchTime": LAUNCHED,
+                                          "State": {"Code": 80, "Name": "stopped"}}]}]},
         {"InstanceIds": [SETTINGS.instance_id]},
     )
     stubs["ec2"].add_client_error("describe_instances", service_error_code="UnauthorizedOperation")
 
     poller.poll_ec2(NOW)
     assert poller.state.instance_state == "stopped"
+    assert poller.state.launched_at == LAUNCHED
 
     poller.poll_ec2(NOW)
     assert poller.state.instance_state is None
+    assert poller.state.launched_at is None
     assert "UnauthorizedOperation" in poller.state.errors["ec2"]
 
 
@@ -230,7 +234,8 @@ def test_tick_polls_s3_only_while_the_agent_is_down(aws):
     poller, agent = make_poller(clients)
     stubs["ec2"].add_response(
         "describe_instances",
-        {"Reservations": [{"Instances": [{"InstanceId": SETTINGS.instance_id, "State": {"Code": 16, "Name": "running"}}]}]},
+        {"Reservations": [{"Instances": [{"InstanceId": SETTINGS.instance_id, "LaunchTime": LAUNCHED,
+                                          "State": {"Code": 16, "Name": "running"}}]}]},
         {"InstanceIds": [SETTINGS.instance_id]},
     )
     add_schedules(stubs["scheduler"])

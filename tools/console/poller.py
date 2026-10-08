@@ -40,6 +40,7 @@ class ConsoleState:
     reason: str | None = None
     decisions: dict = field(default_factory=dict)
     instance_state: str | None = None
+    launched_at: datetime | None = None
     schedules: list = field(default_factory=list)
     errors: dict = field(default_factory=dict)
     agent_down_since: datetime | None = None
@@ -173,10 +174,12 @@ class Poller:
     def poll_ec2(self, now: datetime) -> None:
         try:
             reservations = self.aws.ec2.describe_instances(InstanceIds=[self.settings.instance_id])["Reservations"]
-            self._work.instance_state = reservations[0]["Instances"][0]["State"]["Name"]
+            instance = reservations[0]["Instances"][0]
+            self._work.instance_state = instance["State"]["Name"]
+            self._work.launched_at = instance.get("LaunchTime")
         except AWS_ERRORS + (IndexError, KeyError) as e:
             self._fail("ec2", e)
-            self._work.instance_state = None
+            self._work.instance_state, self._work.launched_at = None, None
             return
         self._work.errors.pop("ec2", None)
 

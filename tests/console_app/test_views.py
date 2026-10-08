@@ -179,3 +179,21 @@ def test_stamp_names_the_source_and_time_when_not_live():
     assert page_context(live_state(), NOW, "us-east-1")["stamp"] is None
     assert page_context(s3, NOW, "us-east-1")["stamp"] == "as of 20:00:12 ET, S3 shutdown snapshot"
     assert page_context(agent, NOW, "us-east-1")["stamp"] == "as of 20:00:12 ET, last agent reading"
+
+
+def morning_power(hour, minute, instance_state, launched_at=None):
+    state = live_state(instance_state=instance_state, source="s3", launched_at=launched_at,
+                       agent_down_since=datetime(2026, 10, 7, 20, 0, tzinfo=EASTERN))
+    return page_context(state, datetime(2026, 10, 8, hour, minute, tzinfo=EASTERN), "us-east-1")["power"]
+
+
+def test_the_agent_down_clock_starts_at_launch_not_at_last_nights_stop():
+    launched = datetime(2026, 10, 8, 8, 0, 30, tzinfo=EASTERN)
+
+    assert morning_power(8, 1, "running", launched)["text"] != "Instance is up but the console cannot reach the agent"
+    assert morning_power(8, 4, "running", launched)["text"] == "Instance is up but the console cannot reach the agent"
+
+
+def test_a_scheduled_start_has_five_minutes_before_it_is_missed():
+    assert morning_power(8, 2, "stopped")["log_url"] is None
+    assert morning_power(8, 6, "stopped")["log_url"] is not None
