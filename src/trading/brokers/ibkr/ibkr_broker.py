@@ -347,12 +347,15 @@ class IBKRBroker(
         **kwargs,
     ) -> Dict:
         """Place a stock order. Returns standardized order dict."""
+        order = None
         try:
             contract = self._resolver.resolve_stock(symbol)
             ibkr_action = self._side_to_ibkr(side)
             order = self._build_order(
                 ibkr_action, quantity, order_type, limit_price, stop_price, time_in_force,
             )
+            # Assigned up front so a failure after placeOrder can still name the order IBKR may hold.
+            order.orderId = self._conn.ib.client.getReqId()
 
             trade = self._conn.run_sync(self._place(contract, order))
 
@@ -366,7 +369,10 @@ class IBKRBroker(
             logger.error(f"[IBKR] Failed to place order: {e}")
             if "insufficient" in str(e).lower():
                 raise InsufficientFundsError(f"Insufficient funds: {e}")
-            raise BrokerConnectionError(f"IBKR API error: {e}")
+            error = BrokerConnectionError(f"IBKR API error: {e}")
+            if order is not None and order.orderId:
+                error.order_id = str(order.orderId)
+            raise error
 
     def close_stock_position(self, symbol: str, quantity: Optional[int] = None) -> Dict:
         """Close a stock position."""
