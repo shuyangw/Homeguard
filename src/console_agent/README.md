@@ -38,3 +38,11 @@ curl -s https://<tailnet-host>:8443/status
 ```bash
 python -m pytest tests/console_agent -q
 ```
+
+## Uploader (Phase 2a)
+
+`python -m src.console_agent.upload --reason periodic|shutdown` builds the same document as `GET /status`
+plus the full latest decision per strategy and copies it to `s3://$CONSOLE_SNAPSHOT_BUCKET/console/latest/status.json`
+with the AWS CLI (the instance role grants `s3:PutObject` on that prefix only). It exits non-zero on any failure.
+The units `homeguard-console-upload.timer` (every 5 minutes) and `homeguard-console-upload-shutdown.service`
+(at shutdown) run it; install them with `infra/ec2/setup/install_console_upload.sh`.
