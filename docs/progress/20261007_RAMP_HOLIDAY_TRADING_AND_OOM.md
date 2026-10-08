@@ -37,7 +37,8 @@ Found that RAMP trades on NYSE holidays and after early closes because `IBKRBrok
 ## Known Issues / Remaining Work
 - **Upgrade IB Gateway before 2026-12-15** (IBKR code 2172: application version 1037.1 desupported on that date).
 - RAMP is paused and the 8 shorts are open: re-enabling RAMP and handling the shorts are operator decisions.
-- Known residual risk (review #1): a placement that raises AFTER IBKR accepted the order (run_sync timeout during the post-place sleep, or `_translate_order` raising) is still treated as "no order" and retried. Fix by keeping `trade` once `placeOrder` returns, or by an `orderRef` idempotency key.
+- Review #1 (placement raising after IBKR accepted the order) FIXED 2026-10-07 evening, see "Ambiguous placements" below. Pushed to main and the deploy branch; NOT yet on the instance (needs a `homeguard-multi` restart outside market hours plus the smoke test).
+- `AlpacaBroker` has the same gap (a timeout after submit leaves no order id); fix with `client_order_id` if Alpaca ever carries an engine-routed strategy again.
 - Review #3: partial fills reach callers only in the exception message, so RAMP state and the trade log can diverge until the next broker sync.
 - Review minors deferred: cancel message ignores cancel's return value; OrderNotFound logged at ERROR; accepted-then-timed-out orders counted as rejections in metrics; cancel_order bypasses run_sync.
 - Restart `homeguard-multi` after 16:15 ET (operator go-ahead) to activate the OOM limits; the 08:00-09:15 window was missed because Tailscale SSH was awaiting browser approval.
@@ -45,6 +46,14 @@ Found that RAMP trades on NYSE holidays and after early closes because `IBKRBrok
 - Fix the duplicate-order bug: treat IBKR warnings 399/2161 as accepted, not as failures to retry.
 - Confirm or rule out oversold positions from Labor Day (IP, GNRC, EIX, BLDR).
 - The 2026-09-08 log shows the SELL-ONLY rebalance branch repeating about every 15 s near 15:55; worth checking whether the rebalance fires more than once per window.
+
+## Ambiguous placements (2026-10-07 evening, review #1)
+- **`IBKRBroker.place_stock_order`**: draws the order id on the event loop thread before `placeOrder` (the ib_async id counter is not thread-safe) and attaches it as `error.order_id` to whatever it raises afterwards, including `InsufficientFundsError`. Failures before the id is drawn (contract lookup, not connected) carry no id and are retried as before.
+- **`ExecutionEngine`**: an error carrying an order id is handled like an accepted order: cancel, settle, a fill counts as success, never retry. `_cancel_and_settle` repeats a cancel that was refused once the order shows up (`run_sync` can time out before `_place` starts and still run `placeOrder` later). An order still unsettled at the deadline is reported as "order state unknown, may still be working", not "order cancelled".
+- Decision: a placement whose outcome is unknown is reported failed, not retried. Cost: a missed leg in the log instead of a duplicate order.
+- Independent Opus review of the first two commits: core fix sound; one Important (late-arriving order left working after a refused cancel) and two Minors (insufficient-funds branch drops the id; id drawn off the loop thread). All three fixed with failing-first tests; the insufficient-funds Minor was re-graded Important since its effect is a duplicate order.
+- Commits: main `97fef80`, `4041b30`, `23befc5`, `67f32d2`; deploy branch `bab023b..c5830c2`.
+- Tests: 9 new or updated in `tests/trading/brokers/ibkr/test_place_order_id.py` and `tests/trading/test_execution_engine_no_duplicates.py`; `tests/trading tests/monitoring tests/console_agent` 1137 passed, 12 skipped on main; `tests/trading tests/monitoring` 1096 passed, 13 skipped on the deploy branch.
 
 ## Validation
 - Calendar fix: 14/14 new tests; wider suite `tests/trading tests/monitoring tests/console_agent` 1112 passed, 12 skipped.
