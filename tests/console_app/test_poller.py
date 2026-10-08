@@ -347,3 +347,14 @@ def test_naive_snapshot_timestamps_are_read_as_utc(aws):
 
     assert poller.state.source == "s3"
     assert poller.state.as_of == NOW + timedelta(minutes=1)
+
+
+def test_a_successful_agent_poll_clears_the_s3_error(aws):
+    clients, stubs = aws
+    poller, _ = make_poller(clients)
+    stubs["s3"].add_client_error("get_object", service_error_code="AccessDenied", http_status_code=403)
+    poller.poll_s3(NOW)
+
+    poller.poll_agent(NOW + timedelta(seconds=10))
+
+    assert "s3" not in poller.state.errors

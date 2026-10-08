@@ -138,6 +138,7 @@ class Poller:
         self._work.document, self._work.source, self._work.as_of, self._work.reason = document, "agent", now, None
         self._work.agent_down_since = None
         self._work.errors.pop("agent", None)
+        self._work.errors.pop("s3", None)
 
     def _refresh_decisions(self, document: dict) -> None:
         for name in (document.get("strategies") or {}):
