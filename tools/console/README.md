@@ -12,7 +12,7 @@ AWS profile. Design: `docs/superpowers/specs/2026-10-08-homeguard-console-phase2
 2. `aws configure --profile homeguard-console` with the keys from `aws iam create-access-key --user-name homeguard-console`.
 3. Run once by hand: `python -m tools.console`, then open http://127.0.0.1:8765.
 4. Start at login:
-   - Windows: `powershell -File tools\console\install_windows_task.ps1 -Python <env>\pythonw.exe`
+   - Windows: `powershell -File tools\console\install_windows_task.ps1 -Python <env>\pythonw.exe`. The task runs without a console, so the app logs to `%LOCALAPPDATA%\Homeguard\console.log`.
    - macOS: `bash tools/console/install_macos_launchd.sh <env>/bin/python`
 
 ## Modules

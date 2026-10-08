@@ -4,8 +4,10 @@ param([Parameter(Mandatory = $true)][string]$Python)
 $ErrorActionPreference = "Stop"
 
 $repo = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
-& $Python -c "import fastapi, uvicorn, jinja2, httpx, boto3"
-if ($LASTEXITCODE -ne 0) { throw "Missing dependencies; run: $Python -m pip install -r $repo\tools\console\requirements.txt" }
+# pythonw.exe is a GUI-subsystem exe: it does not wait or set $LASTEXITCODE, so check with python.exe.
+$checkPython = $Python -replace 'pythonw\.exe$', 'python.exe'
+& $checkPython -c "import fastapi, uvicorn, jinja2, httpx, boto3, dotenv, pandas_market_calendars, yaml"
+if ($LASTEXITCODE -ne 0) { throw "Missing dependencies; run: $checkPython -m pip install -r $repo\tools\console\requirements.txt" }
 
 $action = New-ScheduledTaskAction -Execute $Python -Argument "-m tools.console" -WorkingDirectory $repo
 $trigger = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME

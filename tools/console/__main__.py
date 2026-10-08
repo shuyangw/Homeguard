@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -21,7 +22,17 @@ def utc_now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def _redirect_missing_stdio() -> None:
+    if sys.stdout is not None and sys.stderr is not None:
+        return
+    log_dir = Path(os.environ.get("LOCALAPPDATA") or Path.home()) / "Homeguard"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    log_file = open(log_dir / "console.log", "a", encoding="utf-8", buffering=1)
+    sys.stdout = sys.stderr = log_file
+
+
 def main() -> None:
+    _redirect_missing_stdio()
     load_dotenv(REPO_ROOT / ".env")
     try:
         settings = settings_from_env(os.environ)
