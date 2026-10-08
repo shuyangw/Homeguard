@@ -1,7 +1,7 @@
 # Homeguard Console - Design
 
 Date: 2026-10-05
-Status: Approved for Phase 0 and Phase 1 (2026-10-05); Phases 2 and 3 approved in outline only
+Status: Approved for Phase 0 and Phase 1 (2026-10-05); Phases 2 and 3 approved in outline only. Phase 2a detail: docs/superpowers/specs/2026-10-08-homeguard-console-phase2a-design.md
 Author: Shuyang
 Prototype: https://claude.ai/artifact/1k5dx3zeJw2kcPZyXbrbHq
 Living copy: https://claude.ai/artifact/E4fFjNMe8iBrDAvyoy2ufT
@@ -346,10 +346,10 @@ For the local app itself, Streamlit would need the least code, as it renders cha
 A few questions are still a bit up in the air, and none of them block Phase 0 or Phase 1.
 
 - [ ] Should the Saturday 23:00 UTC start keep firing while CSCM trading is off, given that it starts the whole instance and logs the IB Gateway in for a window in which nothing trades?
-- [ ] Which machines will run the local app, since that decides between a launchd agent and a scheduled task and where the SQLite cache lives? (Phase 2)
-- [ ] Which IAM role is actually attached to the instance, given that main.tf ignores changes to the instance profile? (Phase 2, before the bucket grant)
+- [x] Which machines will run the local app, since that decides between a launchd agent and a scheduled task and where the SQLite cache lives? (Phase 2) Answered 2026-10-08: the Windows PC and the Mac, see the Phase 2a spec.
+- [x] Which IAM role is actually attached to the instance, given that main.tf ignores changes to the instance profile? (Phase 2, before the bucket grant) Answered 2026-10-07: `homeguard-ec2-cloudwatch`, managed in monitoring.tf.
 - [ ] Should a tailnet ACL restrict port 8443 to the operator's devices, in addition to the Tailscale-User-Login check? The Phase 1 exit gate answers whether `tailscale serve` overwrites a forged header; if it does not, the ACL becomes required.
-- [ ] Should the local app's decision times come from a table in the local app or from the agent, given that RAMP's 15:55 is hardcoded in its adapter? (Phase 2)
+- [x] Should the local app's decision times come from a table in the local app or from the agent, given that RAMP's 15:55 is hardcoded in its adapter? (Phase 2) Answered 2026-10-08: a table in the local app with a drift test.
 - [ ] Phase 3: the agent's POST routes need their own Origin or token check. `tailscale serve` injects the operator's login on every request from the operator's devices, so any page open in the operator's browser can send authenticated requests to :8443; Phase 1 GETs are safe only because the agent sends no CORS headers, and the spec's CSRF checks currently sit in the local app alone.
 - [ ] Does the deploy branch stay long-term, or does it eventually converge with main? Every console phase that touches the instance pays a cherry-pick until it does.
 - [ ] Does the IBKR Flex Web Service work for the paper account? Its documentation only lists audit trail fields as unavailable for paper accounts, which suggests it does, though we should confirm with a token before planning the reconciliation work.
