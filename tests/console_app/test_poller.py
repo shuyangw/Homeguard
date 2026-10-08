@@ -67,9 +67,10 @@ def make_poller(aws_clients, agent=None):
     return Poller(SETTINGS, agent_client, aws_clients, clock=lambda: NOW), agent
 
 
-def s3_body(uploaded_at, reason="shutdown"):
+def s3_body(uploaded_at, reason="shutdown", generated_at=None):
+    status = {**STATUS, "generated_at": (generated_at or uploaded_at).isoformat()}
     data = json.dumps({"uploaded_at": uploaded_at.isoformat(), "reason": reason,
-                       "status": STATUS, "decisions": {"ramp": DECISION}}).encode()
+                       "status": status, "decisions": {"ramp": DECISION}}).encode()
     return {"Body": StreamingBody(io.BytesIO(data), len(data))}
 
 
@@ -303,3 +304,46 @@ def test_unexpected_status_shape_marks_the_agent_down(aws, body):
     assert poller.state.is_live(NOW + timedelta(seconds=10)) is False
     assert poller.state.agent_down_since == NOW
     assert "agent" in poller.state.errors
+
+
+def agent_then_down(clients, generated_at):
+    poller, agent = make_poller(clients)
+    agent.status_body = {**STATUS, "generated_at": generated_at.isoformat()}
+    poller.poll_agent(NOW + timedelta(seconds=30))
+    agent.mode = "timeout"
+    poller.poll_agent(NOW + timedelta(seconds=40))
+    return poller
+
+
+def test_the_shutdown_snapshot_replaces_the_last_agent_reading(aws):
+    clients, stubs = aws
+    poller = agent_then_down(clients, NOW + timedelta(seconds=6))
+    stubs["s3"].add_response("get_object", s3_body(NOW, generated_at=NOW + timedelta(seconds=2)),
+                             {"Bucket": "bucket", "Key": SNAPSHOT_KEY})
+
+    poller.poll_s3(NOW + timedelta(seconds=40))
+
+    assert (poller.state.source, poller.state.reason, poller.state.as_of) == ("s3", "shutdown", NOW)
+
+
+def test_an_older_periodic_snapshot_keeps_the_agent_document(aws):
+    clients, stubs = aws
+    poller = agent_then_down(clients, NOW + timedelta(seconds=6))
+    stubs["s3"].add_response("get_object", s3_body(NOW, reason="periodic", generated_at=NOW + timedelta(seconds=2)),
+                             {"Bucket": "bucket", "Key": SNAPSHOT_KEY})
+
+    poller.poll_s3(NOW + timedelta(seconds=40))
+
+    assert poller.state.source == "agent"
+
+
+def test_naive_snapshot_timestamps_are_read_as_utc(aws):
+    clients, stubs = aws
+    poller = agent_then_down(clients, NOW)
+    naive = (NOW + timedelta(minutes=1)).replace(tzinfo=None)
+    stubs["s3"].add_response("get_object", s3_body(naive, reason="periodic"), {"Bucket": "bucket", "Key": SNAPSHOT_KEY})
+
+    poller.poll_s3(NOW + timedelta(minutes=2))
+
+    assert poller.state.source == "s3"
+    assert poller.state.as_of == NOW + timedelta(minutes=1)

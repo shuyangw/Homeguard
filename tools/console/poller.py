@@ -9,7 +9,7 @@ import asyncio
 import json
 import functools
 from dataclasses import dataclass, field, replace
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Callable
 
 import boto3
@@ -28,6 +28,7 @@ LIVE_MAX_AGE = 3 * AGENT_INTERVAL
 S3_INTERVAL = timedelta(seconds=60)
 EC2_INTERVAL = timedelta(seconds=30)
 SCHEDULE_INTERVAL = timedelta(minutes=10)
+SHUTDOWN_SNAPSHOT_SLACK = timedelta(seconds=60)
 AWS_ERRORS = (BotoCoreError, ClientError)
 AGENT_ERRORS = (httpx.HTTPError, ValueError)
 
@@ -88,6 +89,11 @@ def make_aws_clients(settings: Settings) -> AwsClients:
 def _decision_id(document: dict | None, strategy: str) -> str | None:
     entry = ((document or {}).get("strategies") or {}).get(strategy) or {}
     return (entry.get("last_decision") or {}).get("decision_id")
+
+
+def _utc(text: str) -> datetime:
+    moment = datetime.fromisoformat(text)
+    return moment if moment.tzinfo is not None else moment.replace(tzinfo=timezone.utc)
 
 
 def _publishes(method):
@@ -152,8 +158,9 @@ class Poller:
         try:
             body = self.aws.s3.get_object(Bucket=self.settings.snapshot_bucket, Key=SNAPSHOT_KEY)["Body"].read()
             snapshot = json.loads(body)
-            uploaded_at = datetime.fromisoformat(snapshot["uploaded_at"])
+            uploaded_at = _utc(snapshot["uploaded_at"])
             document = snapshot["status"]
+            replaces = self._s3_replaces_current(document, snapshot.get("reason"))
         except ClientError as e:
             if e.response.get("Error", {}).get("Code") == "NoSuchKey":
                 self._work.errors["s3"] = "No snapshot yet"
@@ -164,11 +171,21 @@ class Poller:
             self._fail("s3", e)
             return
         self._work.errors.pop("s3", None)
-        if self._work.as_of is not None and self._work.as_of >= uploaded_at:
+        if not replaces:
             return
         self._work.document, self._work.source, self._work.as_of = document, "s3", uploaded_at
         self._work.reason = snapshot.get("reason")
         self._work.decisions = snapshot.get("decisions") or {}
+
+    def _s3_replaces_current(self, document: dict, reason: str | None) -> bool:
+        # Both generated_at values come from the instance clock; the console's own clock is not comparable.
+        current = self._work.document
+        if current is None:
+            return True
+        if self._work.agent_down_since is None:
+            return False
+        ours, theirs = _utc(current["generated_at"]), _utc(document["generated_at"])
+        return theirs > ours or (reason == "shutdown" and ours - theirs <= SHUTDOWN_SNAPSHOT_SLACK)
 
     @_publishes
     def poll_ec2(self, now: datetime) -> None:
