@@ -1154,8 +1154,8 @@ def preflight_reconcile(
     state_manager,
     force_start: bool,
     *,
-    max_attempts: int = 4,
-    retry_delay: float = 3.0,
+    max_attempts: int = 12,
+    retry_delay: float = 10.0,
 ) -> int:
     """
     Pre-flight reconciliation check.
@@ -1166,12 +1166,13 @@ def preflight_reconcile(
     and returns 0.
 
     A freshly-connected IBKR session can report 0 positions until its async
-    account download (accountDownloadEnd) completes -- ``ib.portfolio()`` is
-    empty until then. If state expects positions ON THIS broker but the broker
-    reports an empty book, retry up to ``max_attempts`` (``retry_delay`` apart)
-    before trusting the 0, so a cold-start race does not trip a false mismatch
-    and crash-loop the runner. An empty book is NOT retried when all tracked
-    positions are tagged for a different broker (that 0 is expected).
+    account download (accountDownloadEnd) completes, and right after an IB
+    Gateway login it can serve only part of the book for over a minute
+    (2026-10-08). While any long position state tracks ON THIS broker is
+    missing from the broker's book, retry up to ``max_attempts``
+    (``retry_delay`` apart) before trusting it, so a cold-start race does not
+    trip a false mismatch and crash-loop the runner. Positions tagged for a
+    different broker are never retried (their absence is expected).
     """
     state_positions = state_manager.get_positions(strategy)
 
@@ -1182,11 +1183,6 @@ def preflight_reconcile(
 
     logger.info(
         f"[Reconcile] {strategy} has {len(state_positions)} tracked positions"
-    )
-
-    expects_positions_on_this_broker = any(
-        pos.get('broker') == broker_name and pos.get('qty', 0) > 0
-        for pos in state_positions.values()
     )
 
     broker_positions = {}
@@ -1204,16 +1200,18 @@ def preflight_reconcile(
             logger.warning("--force-start: proceeding despite broker error")
             return 0
 
-        # An empty book is only suspect when it CONTRADICTS this-broker state.
-        # A populated book, or an empty book when our positions live elsewhere,
-        # needs no retry.
-        if broker_positions or not expects_positions_on_this_broker:
+        missing = [
+            symbol for symbol, pos in state_positions.items()
+            if pos.get('broker') == broker_name and pos.get('qty', 0) > 0
+            and broker_positions.get(symbol, 0) == 0
+        ]
+        if not missing:
             break
         if attempt < max_attempts:
             logger.warning(
-                f"[Reconcile] broker reported 0 positions but state expects holdings "
-                f"on {broker_name} (attempt {attempt}/{max_attempts}); retrying in "
-                f"{retry_delay}s for async account download to complete"
+                f"[Reconcile] broker book is missing {len(missing)} of the holdings state "
+                f"tracks on {broker_name} (attempt {attempt}/{max_attempts}); retrying in "
+                f"{retry_delay}s for the account download to complete"
             )
             time.sleep(retry_delay)
 
