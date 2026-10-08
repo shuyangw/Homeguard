@@ -141,6 +141,36 @@ def test_failed_cancel_still_never_resubmits(cancel_error):
     assert broker.place_calls == 1
 
 
+class AmbiguousPlacementBroker(FakeBroker):
+    """Raises from place_stock_order after IBKR may already hold the order, naming its id."""
+
+    def place_stock_order(self, symbol, quantity, side, order_type, limit_price=None, stop_price=None,
+                          time_in_force=None, **kwargs):
+        self.place_calls += 1
+        error = BrokerConnectionError("IBKR request timed out after 30s")
+        error.order_id = f"order-{self.place_calls}"
+        raise error
+
+
+def test_placement_failing_after_the_order_reached_ibkr_is_cancelled_not_resubmitted():
+    broker = AmbiguousPlacementBroker(fill_status="pending")
+
+    with pytest.raises(BrokerError, match="order cancelled"):
+        make_engine(broker).execute_order("IP", 54, OrderSide.SELL, OrderType.MARKET)
+
+    assert broker.place_calls == 1
+    assert broker.cancelled == ["order-1"]
+
+
+def test_ambiguous_placement_that_filled_is_reported_as_success():
+    broker = AmbiguousPlacementBroker(fill_status="pending", fill_on_cancel=True)
+
+    execution = make_engine(broker).execute_order("IP", 54, OrderSide.SELL, OrderType.MARKET)
+
+    assert execution["order"]["status"] == "filled"
+    assert broker.place_calls == 1
+
+
 def test_unreadable_status_still_never_resubmits():
     broker = FakeBroker(fill_status="pending", status_error=BrokerConnectionError("status unavailable"))
 
