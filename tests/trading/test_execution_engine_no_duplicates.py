@@ -10,6 +10,7 @@ import pytest
 from src.trading.brokers.broker_interface import (
     BrokerConnectionError,
     BrokerError,
+    OrderNotFoundError,
     OrderSide,
     OrderType,
 )
@@ -168,6 +169,38 @@ def test_ambiguous_placement_that_filled_is_reported_as_success():
     execution = make_engine(broker).execute_order("IP", 54, OrderSide.SELL, OrderType.MARKET)
 
     assert execution["order"]["status"] == "filled"
+    assert broker.place_calls == 1
+
+
+class LateArrivingOrderBroker(AmbiguousPlacementBroker):
+    """The order reaches IBKR only after the first cancel was refused as unknown."""
+
+    def cancel_order(self, order_id):
+        if not self.cancelled:
+            self.cancelled.append(order_id)
+            raise OrderNotFoundError(f"Order {order_id} not found")
+        return super().cancel_order(order_id)
+
+
+def test_cancel_is_repeated_when_the_order_shows_up_after_a_refused_cancel():
+    broker = LateArrivingOrderBroker(fill_status="pending")
+    engine = make_engine(broker)
+    engine.settle_timeout = 1.0
+
+    with pytest.raises(BrokerError, match="order cancelled"):
+        engine.execute_order("IP", 54, OrderSide.SELL, OrderType.MARKET)
+
+    assert broker.cancelled == ["order-1", "order-1"]
+    assert broker.fill_status == "cancelled"
+
+
+def test_order_that_never_settles_is_reported_as_unknown_not_cancelled():
+    broker = AmbiguousPlacementBroker(fill_status="pending", cancel_error=BrokerConnectionError("gateway gone"))
+
+    with pytest.raises(BrokerError, match="order state unknown") as raised:
+        make_engine(broker).execute_order("IP", 54, OrderSide.SELL, OrderType.MARKET)
+
+    assert "order cancelled" not in str(raised.value)
     assert broker.place_calls == 1
 
 

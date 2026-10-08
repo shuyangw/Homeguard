@@ -10,7 +10,7 @@ from types import SimpleNamespace
 import pytest
 
 from src.trading.brokers.ibkr.ibkr_broker import IBKRBroker
-from src.trading.brokers.interfaces import BrokerConnectionError, OrderSide
+from src.trading.brokers.interfaces import BrokerConnectionError, InsufficientFundsError, OrderSide
 
 ASSIGNED_ORDER_ID = 4242
 
@@ -71,6 +71,47 @@ def test_untranslatable_trade_reports_the_assigned_order_id():
         broker.place_stock_order("IP", 54, OrderSide.SELL)
 
     assert raised.value.order_id == str(ASSIGNED_ORDER_ID)
+
+
+def test_insufficient_funds_after_placement_reports_the_assigned_order_id():
+    ib = FakeIB()
+
+    def run_then_fail(coro, timeout=None):
+        result = asyncio.run(coro)
+        if ib.placed:
+            raise RuntimeError("insufficient margin")
+        return result
+
+    broker = make_broker(ib, run_then_fail)
+
+    with pytest.raises(InsufficientFundsError) as raised:
+        broker.place_stock_order("IP", 54, OrderSide.SELL)
+
+    assert raised.value.order_id == str(ASSIGNED_ORDER_ID)
+
+
+def test_order_id_is_drawn_on_the_event_loop():
+    ib = FakeIB(trade=SimpleNamespace())
+    on_loop = []
+
+    def take_id():
+        assert on_loop, "getReqId called outside run_sync"
+        return ASSIGNED_ORDER_ID
+
+    def run_on_loop(coro, timeout=None):
+        on_loop.append(True)
+        try:
+            return asyncio.run(coro)
+        finally:
+            on_loop.pop()
+
+    ib.client = SimpleNamespace(getReqId=take_id)
+    broker = make_broker(ib, run_on_loop)
+
+    with pytest.raises(BrokerConnectionError):
+        broker.place_stock_order("IP", 54, OrderSide.SELL)
+
+    assert ib.placed[0].orderId == ASSIGNED_ORDER_ID
 
 
 def test_failure_before_placement_reports_no_order_id():
