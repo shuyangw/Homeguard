@@ -78,3 +78,20 @@ def test_localhost_is_accepted():
 
 def test_post_is_not_allowed():
     assert make_client(live_state()).post("/").status_code == 405
+
+
+def test_snapshot_state_stamps_every_document_panel():
+    state = live_state()
+    state.source, state.agent_down_since, state.reason = "s3", NOW, "shutdown"
+    state.as_of = datetime(2026, 10, 8, 0, 0, 12, tzinfo=timezone.utc)
+    client = make_client(state)
+
+    for panel in ("exceptions", "strategies", "account", "host"):
+        assert "as of 20:00:12 ET, S3 shutdown snapshot" in client.get(f"/panels/{panel}").text, panel
+
+
+def test_empty_state_panels_read_no_snapshot_yet():
+    client = make_client(ConsoleState())
+
+    for panel in ("strategies", "account", "host"):
+        assert "No snapshot yet" in client.get(f"/panels/{panel}").text, panel

@@ -35,7 +35,19 @@ def page_context(state: ConsoleState, now: datetime, region: str) -> dict:
         "account": account_rows(state, now, live),
         "units": document.get("units") or [],
         "live": live,
+        "stamp": stamp_text(state, live),
+        "has_document": state.document is not None,
     }
+
+
+def stamp_text(state: ConsoleState, live: bool) -> str | None:
+    if live or state.document is None:
+        return None
+    taken = state.as_of.astimezone(EASTERN).strftime("%H:%M:%S ET")
+    if state.source != "s3":
+        return f"as of {taken}, last agent reading"
+    reason = f" {state.reason}" if state.reason else ""
+    return f"as of {taken}, S3{reason} snapshot"
 
 
 def header_context(state: ConsoleState, now: datetime, live: bool) -> dict:

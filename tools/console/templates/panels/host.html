@@ -1,4 +1,8 @@
 <h2 id="host-h">Host</h2>
+{% if stamp %}<p class="muted">{{ stamp }}</p>{% endif %}
+{% if not has_document %}
+<p class="muted">No snapshot yet</p>
+{% else %}
 <table class="{{ '' if live else 'frozen' }}">
   <thead><tr><th>Unit</th><th>State</th><th>Restarts</th><th>Memory</th><th>Since</th></tr></thead>
   <tbody>
@@ -12,3 +16,4 @@
   {% endfor %}
   </tbody>
 </table>
+{% endif %}

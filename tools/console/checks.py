@@ -19,6 +19,7 @@ GATEWAY_UNIT = "homeguard-gateway.service"
 TRADING_UNIT = "homeguard-multi.service"
 MEASURED_CHECKS = {"IB Gateway", "Broker heartbeat", "Market data stream", "Host memory"}
 SNAPSHOT_CHECKS = {"Broker heartbeat", "Market data stream"}
+STAMPED_CHECKS = {"Decisions on schedule", "Order rejects", "Drawdown"}
 
 
 @dataclass(frozen=True)
@@ -42,13 +43,21 @@ def run_checks(document: dict, live: bool, as_of: datetime, now: datetime) -> li
         Check("Metrics scrape", "unknown", "Measured from Phase 2b"),
     ]
     if not live:
-        return [_unknown_since(check, as_of) if check.name in MEASURED_CHECKS else check for check in checks]
+        return [_not_live(check, as_of) for check in checks]
     stale = [freshness.snapshot_time(entry) for entry in strategies.values()
              if entry.get("snapshot") and not freshness.snapshot_is_live(entry, now)]
     if not stale:
         return checks
     since = min((taken for taken in stale if taken is not None), default=as_of)
     return [_unknown_since(check, since) if check.name in SNAPSHOT_CHECKS else check for check in checks]
+
+
+def _not_live(check: Check, as_of: datetime) -> Check:
+    if check.name in MEASURED_CHECKS:
+        return _unknown_since(check, as_of)
+    if check.name in STAMPED_CHECKS:
+        return Check(check.name, check.level, f"{check.detail}; as of {as_of.astimezone(EASTERN):%H:%M}")
+    return check
 
 
 def _unknown_since(check: Check, as_of: datetime) -> Check:

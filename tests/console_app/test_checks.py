@@ -181,3 +181,12 @@ def test_a_strategy_without_a_unit_is_left_out_of_the_checks():
                                 "snapshot": {"timestamp": 0, "counters": {"hg_orders_rejected_total": {"{}": 5}}}}
 
     assert levels(doc, NOON)["Order rejects"] == "normal"
+
+
+def test_document_checks_carry_the_reading_time_when_not_live():
+    as_of = et(2026, 10, 8, 20, 0)
+    results = {c.name: c for c in run_checks(document(), False, as_of, as_of + timedelta(hours=3))}
+
+    for name in ("Decisions on schedule", "Order rejects", "Drawdown"):
+        assert results[name].detail.endswith("; as of 20:00")
+    assert "as of" not in check(document(), NOON, "Order rejects").detail

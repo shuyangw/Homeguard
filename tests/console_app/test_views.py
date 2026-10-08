@@ -169,3 +169,13 @@ def test_an_active_unit_shows_running_and_no_caution():
 
     assert row["process"] == "homeguard-multi.service: active (running)"
     assert row["caution"] is False
+
+
+def test_stamp_names_the_source_and_time_when_not_live():
+    uploaded = datetime(2026, 10, 8, 0, 0, 12, tzinfo=timezone.utc)
+    s3 = live_state(source="s3", as_of=uploaded, reason="shutdown", agent_down_since=NOW)
+    agent = live_state(as_of=uploaded, agent_down_since=NOW)
+
+    assert page_context(live_state(), NOW, "us-east-1")["stamp"] is None
+    assert page_context(s3, NOW, "us-east-1")["stamp"] == "as of 20:00:12 ET, S3 shutdown snapshot"
+    assert page_context(agent, NOW, "us-east-1")["stamp"] == "as of 20:00:12 ET, last agent reading"

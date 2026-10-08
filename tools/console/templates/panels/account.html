@@ -1,5 +1,7 @@
 <h2 id="pf-h">Account</h2>
-{% if not account %}<p class="muted">No account readings</p>{% endif %}
+{% if stamp %}<p class="muted">{{ stamp }}</p>{% endif %}
+{% if not has_document %}<p class="muted">No snapshot yet</p>
+{% elif not account %}<p class="muted">No account readings</p>{% endif %}
 {% for row in account %}
 <div class="account-row">
   <strong>{{ row.name }}</strong>

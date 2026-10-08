@@ -1,4 +1,8 @@
 <h2 id="strats-h">Strategies</h2>
+{% if stamp %}<p class="muted">{{ stamp }}</p>{% endif %}
+{% if not has_document %}
+<p class="muted">No snapshot yet</p>
+{% else %}
 <table>
   <thead><tr><th>Strategy</th><th>Switch</th><th>Process</th><th>Variant</th><th>Last decision</th><th>Gates</th></tr></thead>
   <tbody>
@@ -14,3 +18,4 @@
   {% endfor %}
   </tbody>
 </table>
+{% endif %}
