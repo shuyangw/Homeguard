@@ -28,6 +28,7 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now homeguard-console-upload-shutdown.service homeguard-console-upload.timer
 
 echo "[+] Running one upload now"
+# systemctl start fails on a non-zero upload; the instance role has PutObject only, so it cannot list the bucket.
 sudo systemctl start homeguard-console-upload.service
-aws s3 ls "s3://$BUCKET/console/latest/status.json"
+journalctl -u homeguard-console-upload.service -n 3 --no-pager
 systemctl list-timers homeguard-console-upload.timer --no-pager

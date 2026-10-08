@@ -59,3 +59,8 @@ def test_periodic_unit_and_timer():
     assert service["Service"]["MemoryMax"] == "256M"
     assert timer["Timer"]["OnUnitActiveSec"] == "5min"
     assert timer["Install"]["WantedBy"] == "timers.target"
+
+
+def test_installer_verifies_the_upload_without_list_permission():
+    # The instance role only has s3:PutObject; `aws s3 ls` would fail after a good upload.
+    assert "aws s3 ls" not in INSTALLER.read_text()
