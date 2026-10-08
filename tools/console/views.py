@@ -121,18 +121,27 @@ def _short_time(timestamp: str | None) -> str:
     return moment.astimezone(EASTERN).strftime("%m-%d %H:%M")
 
 
+def _unit_text(name: str, unit: dict | None) -> str:
+    if unit is None:
+        return f"{name}: not reported"
+    return f"{name}: {unit.get('active_state')} ({unit.get('sub_state')})"
+
+
 def strategy_rows(state: ConsoleState) -> list[dict]:
+    reported = {unit.get("unit"): unit for unit in (state.document or {}).get("units") or []}
     rows = []
     for name, entry in sorted(((state.document or {}).get("strategies") or {}).items()):
         decision = entry.get("last_decision") or {}
+        listed = entry.get("units") or []
+        running = any((reported.get(unit) or {}).get("active_state") == "active" for unit in listed)
         rows.append({
             "name": name,
             "enabled": entry.get("enabled"),
-            "process": ", ".join(entry.get("units") or []) or "no unit",
+            "process": ", ".join(_unit_text(unit, reported.get(unit)) for unit in listed) or "no unit",
             "variant": entry.get("variant"),
             "decided_at": _short_time(decision.get("timestamp")),
             "passed": decision.get("all_passed"),
-            "caution": bool(entry.get("enabled")) and not entry.get("units"),
+            "caution": bool(entry.get("enabled")) and not running,
             "has_gates": state.decisions.get(name) is not None,
         })
     return rows

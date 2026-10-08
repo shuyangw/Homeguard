@@ -147,3 +147,25 @@ def test_a_strategy_without_a_unit_has_no_account_row():
     rows = page_context(live_state(document=document), NOW, "us-east-1")["account"]
 
     assert [row["name"] for row in rows] == ["ramp"]
+
+
+def strategy_row(unit_state):
+    document = copy.deepcopy(DOCUMENT)
+    document["strategies"]["ramp"]["enabled"] = True
+    document["units"][0]["active_state"], document["units"][0]["sub_state"] = unit_state
+    rows = page_context(live_state(document=document), NOW, "us-east-1")["strategies"]
+    return next(row for row in rows if row["name"] == "ramp")
+
+
+def test_a_failed_unit_shows_its_state_and_a_caution():
+    row = strategy_row(("failed", "failed"))
+
+    assert row["process"] == "homeguard-multi.service: failed (failed)"
+    assert row["caution"] is True
+
+
+def test_an_active_unit_shows_running_and_no_caution():
+    row = strategy_row(("active", "running"))
+
+    assert row["process"] == "homeguard-multi.service: active (running)"
+    assert row["caution"] is False
