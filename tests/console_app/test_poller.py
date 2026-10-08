@@ -28,6 +28,9 @@ class FakeAgent:
     def __init__(self):
         self.mode = "ok"
         self.decision_calls = 0
+        self.decision_fails = False
+        self.status_body = STATUS
+        self.decision_body = DECISION
 
     def handler(self, request):
         if self.mode == "timeout":
@@ -35,9 +38,11 @@ class FakeAgent:
         if self.mode == "403":
             return httpx.Response(403, json={"error": "forbidden"})
         if request.url.path == "/status":
-            return httpx.Response(200, json=STATUS)
+            return httpx.Response(200, json=self.status_body)
         self.decision_calls += 1
-        return httpx.Response(200, json=DECISION)
+        if self.decision_fails:
+            return httpx.Response(500, json={"error": "boom"})
+        return httpx.Response(200, json=self.decision_body)
 
 
 def client(name):
@@ -238,3 +243,58 @@ def test_tick_polls_s3_only_while_the_agent_is_down(aws):
     stubs["scheduler"].assert_no_pending_responses()
     assert poller.state.instance_state == "running"
     assert len(poller.state.schedules) == 4
+
+
+def status_with_decision_id(decision_id):
+    strategies = {"ramp": {"units": [], "snapshot": None, "last_decision": {"decision_id": decision_id}}}
+    return {**STATUS, "strategies": strategies}
+
+
+def test_failed_decision_fetch_is_retried_on_the_next_poll(aws):
+    poller, agent = make_poller(aws[0])
+    poller.poll_agent(NOW)
+    newer = {"decision_id": "ramp-2"}
+    agent.status_body = status_with_decision_id("ramp-2")
+    agent.decision_body = newer
+    agent.decision_fails = True
+    poller.poll_agent(NOW + timedelta(seconds=10))
+    agent.decision_fails = False
+
+    poller.poll_agent(NOW + timedelta(seconds=20))
+
+    assert poller.state.decisions["ramp"] == newer
+    assert agent.decision_calls == 3
+
+
+def test_changed_decision_id_triggers_a_refetch(aws):
+    poller, agent = make_poller(aws[0])
+    poller.poll_agent(NOW)
+    agent.status_body = status_with_decision_id("ramp-2")
+
+    poller.poll_agent(NOW + timedelta(seconds=10))
+
+    assert agent.decision_calls == 2
+
+
+def test_published_state_is_not_mutated_by_later_polls(aws):
+    poller, agent = make_poller(aws[0])
+    poller.poll_agent(NOW)
+    before = poller.state
+    agent.mode = "timeout"
+
+    poller.poll_agent(NOW + timedelta(seconds=10))
+
+    assert "agent" not in before.errors
+    assert before is not poller.state
+
+
+@pytest.mark.parametrize("body", [[], {"strategies": []}])
+def test_unexpected_status_shape_marks_the_agent_down(aws, body):
+    poller, agent = make_poller(aws[0])
+    agent.status_body = body
+
+    poller.poll_agent(NOW)
+
+    assert poller.state.live is False
+    assert poller.state.agent_down_since == NOW
+    assert "agent" in poller.state.errors

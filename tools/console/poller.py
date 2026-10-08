@@ -7,7 +7,8 @@ from __future__ import annotations
 
 import asyncio
 import json
-from dataclasses import dataclass, field
+import functools
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
 from typing import Callable
 
@@ -54,12 +55,18 @@ class AgentClient:
     def status(self) -> dict:
         response = self._http.get("/status")
         response.raise_for_status()
-        return response.json()
+        body = response.json()
+        if not isinstance(body, dict) or not isinstance(body.get("strategies", {}), dict):
+            raise ValueError("unexpected /status shape")
+        return body
 
     def decision(self, strategy: str) -> dict:
         response = self._http.get("/decisions", params={"strategy": strategy})
         response.raise_for_status()
-        return response.json()
+        body = response.json()
+        if not isinstance(body, dict):
+            raise ValueError("unexpected /decisions shape")
+        return body
 
 
 @dataclass(frozen=True)
@@ -80,47 +87,64 @@ def _decision_id(document: dict | None, strategy: str) -> str | None:
     return (entry.get("last_decision") or {}).get("decision_id")
 
 
+def _publishes(method):
+    @functools.wraps(method)
+    def wrapper(self, *args, **kwargs):
+        try:
+            return method(self, *args, **kwargs)
+        finally:
+            self._publish()
+    return wrapper
+
+
 class Poller:
     def __init__(self, settings: Settings, agent: AgentClient, aws: AwsClients, clock: Callable[[], datetime]):
         self.settings = settings
         self.agent = agent
         self.aws = aws
         self.clock = clock
-        self.state = ConsoleState()
+        self._work = ConsoleState()
+        self._publish()
         self._last_run: dict[str, datetime] = {}
 
-    def _fail(self, source: str, error: object) -> None:
-        if source not in self.state.errors:
-            logger.warning(f"[console] {source} poll failed: {error!r}")
-        self.state.errors[source] = repr(error)
+    def _publish(self) -> None:
+        work = self._work
+        self.state = replace(work, errors=dict(work.errors), decisions=dict(work.decisions),
+                             schedules=list(work.schedules))
 
+    def _fail(self, source: str, error: object) -> None:
+        if source not in self._work.errors:
+            logger.warning(f"[console] {source} poll failed: {error!r}")
+        self._work.errors[source] = repr(error)
+
+    @_publishes
     def poll_agent(self, now: datetime) -> None:
         try:
             document = self.agent.status()
         except AGENT_ERRORS as e:
             self._fail("agent", e)
-            self.state.agent_down_since = self.state.agent_down_since or now
+            self._work.agent_down_since = self._work.agent_down_since or now
             return
-        previous = self.state.document if self.state.source == "agent" else None
-        self._refresh_decisions(document, previous)
-        self.state.document, self.state.source, self.state.as_of, self.state.reason = document, "agent", now, None
-        self.state.agent_down_since = None
-        self.state.errors.pop("agent", None)
+        self._refresh_decisions(document)
+        self._work.document, self._work.source, self._work.as_of, self._work.reason = document, "agent", now, None
+        self._work.agent_down_since = None
+        self._work.errors.pop("agent", None)
 
-    def _refresh_decisions(self, document: dict, previous: dict | None) -> None:
+    def _refresh_decisions(self, document: dict) -> None:
         for name in (document.get("strategies") or {}):
             latest = _decision_id(document, name)
             if latest is None:
-                self.state.decisions[name] = None
+                self._work.decisions[name] = None
                 continue
-            if latest == _decision_id(previous, name) and self.state.decisions.get(name) is not None:
+            if latest == (self._work.decisions.get(name) or {}).get("decision_id"):
                 continue
             try:
-                self.state.decisions[name] = self.agent.decision(name)
-                self.state.errors.pop(f"decision:{name}", None)
+                self._work.decisions[name] = self.agent.decision(name)
+                self._work.errors.pop(f"decision:{name}", None)
             except AGENT_ERRORS as e:
                 self._fail(f"decision:{name}", e)
 
+    @_publishes
     def poll_s3(self, now: datetime) -> None:
         try:
             body = self.aws.s3.get_object(Bucket=self.settings.snapshot_bucket, Key=SNAPSHOT_KEY)["Body"].read()
@@ -129,30 +153,32 @@ class Poller:
             document = snapshot["status"]
         except ClientError as e:
             if e.response.get("Error", {}).get("Code") == "NoSuchKey":
-                self.state.errors["s3"] = "No snapshot yet"
+                self._work.errors["s3"] = "No snapshot yet"
             else:
                 self._fail("s3", e)
             return
         except (BotoCoreError, ValueError, KeyError, TypeError) as e:
             self._fail("s3", e)
             return
-        self.state.errors.pop("s3", None)
-        if self.state.as_of is not None and self.state.as_of >= uploaded_at:
+        self._work.errors.pop("s3", None)
+        if self._work.as_of is not None and self._work.as_of >= uploaded_at:
             return
-        self.state.document, self.state.source, self.state.as_of = document, "s3", uploaded_at
-        self.state.reason = snapshot.get("reason")
-        self.state.decisions = snapshot.get("decisions") or {}
+        self._work.document, self._work.source, self._work.as_of = document, "s3", uploaded_at
+        self._work.reason = snapshot.get("reason")
+        self._work.decisions = snapshot.get("decisions") or {}
 
+    @_publishes
     def poll_ec2(self, now: datetime) -> None:
         try:
             reservations = self.aws.ec2.describe_instances(InstanceIds=[self.settings.instance_id])["Reservations"]
-            self.state.instance_state = reservations[0]["Instances"][0]["State"]["Name"]
+            self._work.instance_state = reservations[0]["Instances"][0]["State"]["Name"]
         except AWS_ERRORS + (IndexError, KeyError) as e:
             self._fail("ec2", e)
-            self.state.instance_state = None
+            self._work.instance_state = None
             return
-        self.state.errors.pop("ec2", None)
+        self._work.errors.pop("ec2", None)
 
+    @_publishes
     def poll_schedules(self, now: datetime) -> None:
         schedules: list[CronSchedule] = []
         failed = False
@@ -162,13 +188,13 @@ class Poller:
                 if entry["State"] == "ENABLED":
                     schedules.append(parse_cron(name, action, entry["ScheduleExpression"],
                                                 entry.get("ScheduleExpressionTimezone", "UTC")))
-                self.state.errors.pop(f"schedule:{name}", None)
+                self._work.errors.pop(f"schedule:{name}", None)
             except AWS_ERRORS + (KeyError, ValueError) as e:
                 self._fail(f"schedule:{name}", e)
                 failed = True
         # A partial list would compute the wrong expected state, so keep the last full one.
         if not failed:
-            self.state.schedules = schedules
+            self._work.schedules = schedules
 
     def _due(self, name: str, interval: timedelta, now: datetime) -> bool:
         last = self._last_run.get(name)
@@ -180,7 +206,7 @@ class Poller:
     def tick(self) -> None:
         now = self.clock()
         self.poll_agent(now)
-        if self.state.agent_down_since is not None and self._due("s3", S3_INTERVAL, now):
+        if self._work.agent_down_since is not None and self._due("s3", S3_INTERVAL, now):
             self.poll_s3(now)
         if self._due("ec2", EC2_INTERVAL, now):
             self.poll_ec2(now)
@@ -191,9 +217,10 @@ class Poller:
         while True:
             try:
                 await asyncio.to_thread(self.tick)
-                self.state.errors.pop("poller", None)
+                self._work.errors.pop("poller", None)
             except Exception as e:
                 # Keep the console up and say so; one bad tick must not stop every panel.
                 logger.error(f"[console] poller tick failed: {e!r}")
-                self.state.errors["poller"] = repr(e)
+                self._work.errors["poller"] = repr(e)
+            self._publish()
             await asyncio.sleep(AGENT_INTERVAL.total_seconds())
