@@ -158,3 +158,39 @@ def test_preflight_handles_missing_broker_tag_with_force(mgr):
     broker = _fake_broker({'TQQQ': 100})
     rc = preflight_reconcile('omr', broker, 'alpaca', mgr, force_start=True)
     assert rc == 0
+
+
+def test_preflight_retries_a_partially_loaded_book_then_passes(mgr):
+    """Right after an IB Gateway login, portfolio() can hold only part of the
+    book (2026-10-08 08:03 ET: every restart saw some holdings missing, never an
+    empty book). Preflight must keep retrying while this-broker holdings are
+    missing, not only when the book is empty."""
+    mgr.add_position('omr', 'TQQQ', 100, 52.30, order_id='x', broker='ibkr')
+    mgr.add_position('omr', 'SQQQ', 50, 10.00, order_id='y', broker='ibkr')
+    broker = Mock()
+    broker.get_stock_positions.side_effect = [
+        [{'symbol': 'SQQQ', 'quantity': 50}],  # partial book
+        [{'symbol': 'SQQQ', 'quantity': 50}],  # still partial
+        [{'symbol': 'SQQQ', 'quantity': 50}, {'symbol': 'TQQQ', 'quantity': 100}],
+    ]
+    rc = preflight_reconcile('omr', broker, 'ibkr', mgr, force_start=False, retry_delay=0)
+    assert rc == 0
+    assert broker.get_stock_positions.call_count == 3
+
+
+def test_preflight_blocks_a_persistently_partial_book_after_all_attempts(mgr):
+    """A holding that stays missing is a real mismatch and still blocks."""
+    mgr.add_position('omr', 'TQQQ', 100, 52.30, order_id='x', broker='ibkr')
+    mgr.add_position('omr', 'SQQQ', 50, 10.00, order_id='y', broker='ibkr')
+    broker = _fake_broker({'SQQQ': 50})
+    rc = preflight_reconcile('omr', broker, 'ibkr', mgr, force_start=False, max_attempts=5, retry_delay=0)
+    assert rc == 1
+    assert broker.get_stock_positions.call_count == 5
+
+
+def test_preflight_default_retry_window_outlasts_gateway_warmup():
+    """The default window must cover the observed warm-up (over 80 s after login)."""
+    import inspect
+    params = inspect.signature(preflight_reconcile).parameters
+    window = (params['max_attempts'].default - 1) * params['retry_delay'].default
+    assert window >= 100
