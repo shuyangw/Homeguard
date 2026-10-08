@@ -81,12 +81,11 @@ resource "aws_iam_user_policy" "console_read" {
         Resource = "${aws_s3_bucket.console_snapshots.arn}/console/latest/*"
       },
       {
-        # Without ListBucket a missing object reads as AccessDenied instead of NoSuchKey.
-        Sid       = "ListSnapshotPrefix"
-        Effect    = "Allow"
-        Action    = "s3:ListBucket"
-        Resource  = aws_s3_bucket.console_snapshots.arn
-        Condition = { StringLike = { "s3:prefix" = ["console/latest/*"] } }
+        # Without ListBucket a missing object reads as AccessDenied; the bucket holds only the snapshot.
+        Sid      = "ListSnapshotPrefix"
+        Effect   = "Allow"
+        Action   = "s3:ListBucket"
+        Resource = aws_s3_bucket.console_snapshots.arn
       },
       {
         Sid    = "ReadSchedulerLambdaLogs"

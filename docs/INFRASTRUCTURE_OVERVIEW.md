@@ -184,7 +184,7 @@ See "CSCM note" below.
 - **Instance role** `homeguard-ec2-cloudwatch` has `s3:PutObject` on `console/latest/*` only
   (inline policy `homeguard-console-snapshot-upload`).
 - **IAM user** `homeguard-console` (read-only): `ec2:DescribeInstances`, `scheduler:GetSchedule`,
-  `s3:GetObject` and `s3:ListBucket` on the prefix, `logs:FilterLogEvents` on the two scheduler Lambda
+  `s3:GetObject` on the prefix and `s3:ListBucket` on the bucket, `logs:FilterLogEvents` on the two scheduler Lambda
   log groups. Its access keys are created with the CLI, not Terraform, and live in the `homeguard-console`
   profile on the operator's machines. Defined in `infra/terraform/console.tf`.
 
