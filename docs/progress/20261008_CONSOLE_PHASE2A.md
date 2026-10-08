@@ -26,10 +26,12 @@ Built Phase 2a of the Homeguard Console: a read-only local app (FastAPI + htmx o
 - The first live view showed RAMP's snapshot frozen at 08:03 ET (heartbeat and stream tiles unknown, not green). `homeguard-multi` was `failed` with NRestarts=5: at boot its startup reconciliation saw "state says N on ibkr, broker reports 0" for every RAMP holding and exited 1; five fast restarts hit the start limit by 08:03 ET. IBC finished logging in at 08:01 ET, so the runner most likely read positions before IBKR delivered them.
 - A read-only check at about 15:30 ET (clientId 98) shows the account intact: 26 stock positions (18 long, the same 8 shorts), 0 open orders.
 - Impact: none on trading (RAMP is paused), but the process that would trade RAMP is down until restarted, and the same race can recur on any boot.
-- Not restarted: no restarts during market hours without the operator. Fix to design: wait for or retry the IBKR position load before the reconciliation guard, and/or a longer RestartSec so restarts outlast gateway warm-up.
+- Root cause: the preflight retry covered only an empty book; a freshly logged-in gateway served a partial one (no "retrying" lines in the boot journal), so every start failed at once.
+- Fix (operator-approved): `277ab18` retries while any this-broker holding is missing (12 attempts x 10 s); `f313dc6` also checks short positions, which the guard had never checked (independent review finding). Deploy branch `d8892c0`, `9573c3f`. Trading suite: main 1068 passed, deploy branch 1102 passed.
+- Restarted 16:17 ET (20:17 UTC, after the 16:15 lock), RAMP still disabled: active, NRestarts=0, "[Reconcile] Pre-flight check passed for ramp" over 26 positions, RAMP v11 loaded; IBKR paper smoke test PASSED (2 successful, 0 failed, 0 retries, no lingering orders); read-only check 26 stock positions (18 long, 8 short), 0 open orders; console heartbeat tile live again (ramp 53 s, cscm 35 s).
 
 ## Known Issues / Remaining Work
-- **homeguard-multi is down** (see above): restart after 16:15 ET or let the next 08:00 boot retry, and fix the boot race before relying on it.
+- **Boot race fix**: proven only on a warm gateway so far; confirm at the next 08:00 boot that the preflight passes (look for "retrying" lines and a single start).
 - **Mac**: copy the `homeguard-console` keys to the Mac (`aws configure --profile homeguard-console`), add the three CONSOLE_ values to its repo .env, run `bash tools/console/install_macos_launchd.sh <env>/bin/python`.
 - **Exit gate**: after a 20:00 ET stop the console must show "Snapshot from S3 ... (shutdown)" stamped within a minute of 20:00 with unknown tiles for the live-only checks.
 - **Verify live**: a GetObject on an absent key with the real profile returns NoSuchKey; TLS to the agent over the tailnet works from httpx.
