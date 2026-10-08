@@ -143,3 +143,30 @@ def test_measured_checks_become_unknown_on_a_snapshot_and_keep_the_last_reading(
 
 def test_document_without_strategies_or_units_still_returns_eight_checks():
     assert len(run_checks({}, True, NOON, NOON)) == 8
+
+
+def two_strategy_document(ramp_age, cscm_age, now=NOON):
+    doc = document(heartbeat_age=ramp_age, now=now)
+    doc["strategies"]["cscm"] = {
+        "units": ["homeguard-cscm.service"],
+        "snapshot": {"gauges": {"hg_broker_last_heartbeat_timestamp": {"{}": now.timestamp() - cscm_age}}},
+        "last_decision": None,
+    }
+    return doc
+
+
+def test_a_stale_strategy_heartbeat_is_not_masked_by_a_fresh_one():
+    result = check(two_strategy_document(900, 10), NOON, "Broker heartbeat")
+
+    assert result.level == "warning"
+    assert result.detail == "ramp: last heartbeat 900 s ago"
+
+
+def test_fresh_heartbeats_list_each_strategy():
+    result = check(two_strategy_document(12, 8), NOON, "Broker heartbeat")
+
+    assert (result.level, result.detail) == ("normal", "cscm 8 s, ramp 12 s")
+
+
+def test_a_heartbeat_ahead_of_the_local_clock_reads_zero_seconds():
+    assert check(document(heartbeat_age=-3), NOON, "Broker heartbeat").detail == "ramp 0 s"

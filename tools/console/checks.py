@@ -71,14 +71,19 @@ def gateway_check(units: list[dict]) -> Check:
 
 
 def heartbeat_check(strategies: dict, now: datetime) -> Check:
-    beats = _metric_values(strategies, "gauges", "hg_broker_last_heartbeat_timestamp")
-    if not beats:
+    ages = {}
+    for name, entry in sorted(strategies.items()):
+        beats = _metric_values({name: entry}, "gauges", "hg_broker_last_heartbeat_timestamp")
+        if beats:
+            ages[name] = max(now - datetime.fromtimestamp(max(beats), tz=timezone.utc), timedelta(0))
+    if not ages:
         return Check("Broker heartbeat", "normal", "Not reported")
-    age = now - datetime.fromtimestamp(max(beats), tz=timezone.utc)
-    seconds = int(age.total_seconds())
-    if age > HEARTBEAT_MAX_AGE:
-        return Check("Broker heartbeat", "warning", f"Last heartbeat {seconds} s ago")
-    return Check("Broker heartbeat", "normal", f"{seconds} s ago")
+    stale = [f"{name}: last heartbeat {int(age.total_seconds())} s ago"
+             for name, age in ages.items() if age > HEARTBEAT_MAX_AGE]
+    if stale:
+        return Check("Broker heartbeat", "warning", ", ".join(stale))
+    fresh = [f"{name} {int(age.total_seconds())} s" for name, age in ages.items()]
+    return Check("Broker heartbeat", "normal", ", ".join(fresh))
 
 
 def stream_check(strategies: dict, now: datetime) -> Check:
