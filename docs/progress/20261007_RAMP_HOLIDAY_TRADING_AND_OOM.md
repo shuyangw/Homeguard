@@ -37,7 +37,7 @@ Found that RAMP trades on NYSE holidays and after early closes because `IBKRBrok
 ## Known Issues / Remaining Work
 - **Upgrade IB Gateway before 2026-12-15** (IBKR code 2172: application version 1037.1 desupported on that date).
 - RAMP is paused and the 8 shorts are open: re-enabling RAMP and handling the shorts are operator decisions.
-- Review #1 (placement raising after IBKR accepted the order) FIXED 2026-10-07 evening, see "Ambiguous placements" below. Pushed to main and the deploy branch; NOT yet on the instance (needs a `homeguard-multi` restart outside market hours plus the smoke test).
+- Review #1 (placement raising after IBKR accepted the order) FIXED and DEPLOYED 2026-10-07 22:20 ET, see "Ambiguous placements" below.
 - `AlpacaBroker` has the same gap (a timeout after submit leaves no order id); fix with `client_order_id` if Alpaca ever carries an engine-routed strategy again.
 - Review #3: partial fills reach callers only in the exception message, so RAMP state and the trade log can diverge until the next broker sync.
 - Review minors deferred: cancel message ignores cancel's return value; OrderNotFound logged at ERROR; accepted-then-timed-out orders counted as rejections in metrics; cancel_order bypasses run_sync.
@@ -53,6 +53,7 @@ Found that RAMP trades on NYSE holidays and after early closes because `IBKRBrok
 - Decision: a placement whose outcome is unknown is reported failed, not retried. Cost: a missed leg in the log instead of a duplicate order.
 - Independent Opus review of the first two commits: core fix sound; one Important (late-arriving order left working after a refused cancel) and two Minors (insufficient-funds branch drops the id; id drawn off the loop thread). All three fixed with failing-first tests; the insufficient-funds Minor was re-graded Important since its effect is a duplicate order.
 - Commits: main `97fef80`, `4041b30`, `23befc5`, `67f32d2`; deploy branch `bab023b..c5830c2`.
+- Deploy 2026-10-07 22:20 ET: instance started outside its schedule (it was stopped), pulled to `c5830c2`, `homeguard-multi` restarted (active, 0 restarts, MemoryMax 1G and OOMScoreAdjust -900 still set, RAMP still `enabled: false`). IBKR paper smoke test (full mode) PASSED: 2 successful, 0 failed, no lingering orders. Read-only check (clientId 98): 26 stock positions, 18 long, the same 8 shorts, 0 open orders. Journal noise seen after restart is pre-existing: code 2172 (Gateway version) and code 10167 (delayed market data, 41,480 lines since 2026-10-01).
 - Tests: 9 new or updated in `tests/trading/brokers/ibkr/test_place_order_id.py` and `tests/trading/test_execution_engine_no_duplicates.py`; `tests/trading tests/monitoring tests/console_agent` 1137 passed, 12 skipped on main; `tests/trading tests/monitoring` 1096 passed, 13 skipped on the deploy branch.
 
 ## Validation
