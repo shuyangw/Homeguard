@@ -1,0 +1,23 @@
+[Unit]
+Description=Homeguard Console snapshot upload at shutdown
+Wants=network-online.target
+# systemd stops units in reverse start order, so ExecStop runs while all of these are still up.
+After=network-online.target homeguard-multi.service homeguard-cscm.service homeguard-gateway.service homeguard-console-agent.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+User=ec2-user
+WorkingDirectory=/home/ec2-user/Homeguard
+Environment="PATH=/home/ec2-user/Homeguard/venv/bin:/usr/local/bin:/usr/bin:/bin"
+ExecStart=/bin/true
+ExecStop=/home/ec2-user/Homeguard/venv/bin/python -m src.console_agent.upload --reason shutdown
+TimeoutStopSec=60
+MemoryMax=256M
+OOMScoreAdjust=500
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=homeguard-console-upload
+
+[Install]
+WantedBy=multi-user.target

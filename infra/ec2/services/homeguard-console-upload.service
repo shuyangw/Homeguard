@@ -1,0 +1,17 @@
+[Unit]
+Description=Homeguard Console snapshot upload (status document to S3)
+After=network-online.target homeguard-console-agent.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=ec2-user
+WorkingDirectory=/home/ec2-user/Homeguard
+Environment="PATH=/home/ec2-user/Homeguard/venv/bin:/usr/local/bin:/usr/bin:/bin"
+ExecStart=/home/ec2-user/Homeguard/venv/bin/python -m src.console_agent.upload --reason periodic
+TimeoutStartSec=60
+MemoryMax=256M
+OOMScoreAdjust=500
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=homeguard-console-upload
