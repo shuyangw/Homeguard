@@ -1,0 +1,16 @@
+<h2 id="strats-h">Strategies</h2>
+<table>
+  <thead><tr><th>Strategy</th><th>Switch</th><th>Process</th><th>Variant</th><th>Last decision</th><th>Gates</th></tr></thead>
+  <tbody>
+  {% for row in strategies %}
+    <tr class="{{ 'caution' if row.caution else '' }} {{ '' if live else 'frozen' }}">
+      <td>{{ row.name }}</td>
+      <td>{{ 'on' if row.enabled else 'off' }}</td>
+      <td>{{ row.process }}{% if row.caution %} <span class="level">CAUTION: switch on, no unit</span>{% endif %}</td>
+      <td>{{ row.variant or '-' }}</td>
+      <td>{{ row.decided_at }} {% if row.passed is true %}passed{% elif row.passed is false %}not passed{% endif %}</td>
+      <td>{% if row.has_gates %}<button hx-get="/panels/gates/{{ row.name }}" hx-target="#gates">Show gates</button>{% endif %}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>

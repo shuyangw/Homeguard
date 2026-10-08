@@ -1,0 +1,9 @@
+<h2 id="pf-h">Account</h2>
+{% if not account %}<p class="muted">No account readings</p>{% endif %}
+{% for row in account %}
+<div class="account-row">
+  <strong>{{ row.name }}</strong>
+  {% for cell in row.cells %}<span class="cell {{ cell.cls }}">{{ cell.label }} {{ cell.value }}</span>{% endfor %}
+  {% if row.age %}<small class="muted">as of {{ row.age }}; prices have moved since</small>{% endif %}
+</div>
+{% endfor %}

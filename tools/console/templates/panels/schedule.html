@@ -1,0 +1,16 @@
+<h2 id="day-h">Today's schedule</h2>
+<div class="rail-row">
+  <svg class="rail" viewBox="0 0 1000 64" role="img" aria-label="Instance window, power lock, NYSE session and decisions for today">
+    {% for hour in rail.hours %}<text class="hour" x="{{ hour.x }}" y="8">{{ hour.label }}</text>{% endfor %}
+    {% for band in rail.bands %}<rect class="band {{ band.cls }}" x="{{ band.x }}" y="{{ band.y }}" width="{{ band.w }}" height="{{ band.h }}"><title>{{ band.label }}</title></rect>{% endfor %}
+    {% for tick in rail.ticks %}<line class="tick" x1="{{ tick.x }}" x2="{{ tick.x }}" y1="10" y2="52"/><text class="tick-label" x="{{ tick.x }}" y="62">{{ tick.label }}</text>{% endfor %}
+    {% if rail.now_x is not none %}<line class="now" x1="{{ rail.now_x }}" x2="{{ rail.now_x }}" y1="0" y2="64"/>{% endif %}
+  </svg>
+  <div class="tile {{ power.level }}">
+    <strong>Power</strong><span class="level">{{ power.level|upper }}</span>
+    <span>{{ power.text }}</span>
+    {% if power.next %}<small>{{ power.next }}</small>{% endif %}
+    {% if power.log_url %}<a href="{{ power.log_url }}" target="_blank" rel="noopener">Start Lambda log</a>{% endif %}
+  </div>
+</div>
+<p class="legend"><span class="key instance"></span>Instance window <span class="key lock"></span>Power lock <span class="key session"></span>NYSE session</p>

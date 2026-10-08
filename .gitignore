@@ -149,6 +149,8 @@ backtest_logs/
 
 # Generated reports and charts
 *.html
+# The console's Jinja templates are source, not generated output.
+!tools/console/templates/**/*.html
 !docs/**/*.html
 *.png
 !docs/**/*.png

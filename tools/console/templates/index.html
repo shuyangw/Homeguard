@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Homeguard Console</title>
+<link rel="stylesheet" href="/static/console.css">
+<script src="/static/htmx.min.js"></script>
+</head>
+<body>
+<header id="header" hx-get="/panels/header" hx-trigger="every 10s">{% include "panels/header.html" %}</header>
+<main>
+  <section class="day" aria-labelledby="day-h" hx-get="/panels/schedule" hx-trigger="every 10s">{% include "panels/schedule.html" %}</section>
+  <section aria-labelledby="annun-h" hx-get="/panels/exceptions" hx-trigger="every 10s">{% include "panels/exceptions.html" %}</section>
+  <section aria-labelledby="strats-h" hx-get="/panels/strategies" hx-trigger="every 10s">{% include "panels/strategies.html" %}</section>
+  <section id="gates" aria-live="polite"></section>
+  <section aria-labelledby="pf-h" hx-get="/panels/account" hx-trigger="every 10s">{% include "panels/account.html" %}</section>
+  <section aria-labelledby="host-h" hx-get="/panels/host" hx-trigger="every 10s">{% include "panels/host.html" %}</section>
+</main>
+</body>
+</html>

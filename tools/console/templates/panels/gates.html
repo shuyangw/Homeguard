@@ -1,0 +1,10 @@
+<h2>Gates for {{ strategy }}{% if summary %} at {{ summary.timestamp }}{% endif %}</h2>
+{% if error %}<p class="tile warning">Could not read the decision record: {{ error }}</p>{% endif %}
+<table>
+  <thead><tr><th>Gate</th><th>Result</th><th>Error</th></tr></thead>
+  <tbody>
+  {% for name, gate in gates.items() %}
+    <tr class="{{ '' if gate.passed else 'caution' }}"><td>{{ name }}</td><td>{{ 'passed' if gate.passed else 'FAILED' }}</td><td>{{ gate.error or '' }}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>

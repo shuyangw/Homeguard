@@ -1,0 +1,10 @@
+<h2 id="annun-h">Exceptions</h2>
+{% if checks is none %}
+<p class="muted">No snapshot yet</p>
+{% else %}
+<div class="tiles">
+  {% for check in checks %}
+  <div class="tile {{ check.level }}"><strong>{{ check.name }}</strong><span class="level">{{ check.level|upper }}</span><small>{{ check.detail }}</small></div>
+  {% endfor %}
+</div>
+{% endif %}

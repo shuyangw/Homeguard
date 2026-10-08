@@ -1,0 +1,14 @@
+<h2 id="host-h">Host</h2>
+<table class="{{ '' if live else 'frozen' }}">
+  <thead><tr><th>Unit</th><th>State</th><th>Restarts</th><th>Memory</th><th>Since</th></tr></thead>
+  <tbody>
+  {% for unit in units %}
+    <tr class="{{ '' if unit.active_state == 'active' else 'caution' }}">
+      <td>{{ unit.unit }}</td><td>{{ unit.active_state }} ({{ unit.sub_state }})</td>
+      <td>{{ unit.restarts if unit.restarts is not none else '-' }}</td>
+      <td>{{ '%.0f MB'|format(unit.memory_bytes / 1048576) if unit.memory_bytes else '-' }}</td>
+      <td>{{ unit.active_since or '-' }}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
