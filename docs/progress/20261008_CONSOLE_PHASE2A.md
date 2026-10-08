@@ -1,7 +1,7 @@
 # Homeguard Console Phase 2a (build) - 2026-10-08
 
 ## Summary
-Built Phase 2a of the Homeguard Console: a read-only local app (FastAPI + htmx on 127.0.0.1:8765) that shows whether Homeguard is up and trading, and keeps showing the last known state from an S3 snapshot after the instance stops. Spec, plan, nine build tasks and a final fix wave are merged to main and pushed (`09568e3..65056c5`). Nothing is deployed yet: the Terraform apply, the access keys, the instance install and the 20:00 exit gate are operator steps still to run.
+Built Phase 2a of the Homeguard Console: a read-only local app (FastAPI + htmx on 127.0.0.1:8765) that shows whether Homeguard is up and trading, and keeps showing the last known state from an S3 snapshot after the instance stops. Spec, plan, nine build tasks and a final fix wave are merged to main and pushed (`09568e3..65056c5`). Rolled out the same afternoon (operator-approved): Terraform applied, keys and profile on the Windows PC, uploader live on the instance, console running at logon on the PC. The Mac install and the 20:00 exit gate remain.
 
 ## Changes Made
 - **Instance uploader** (`src/console_agent/upload.py`, three units in `infra/ec2/services/`, `infra/ec2/setup/install_console_upload.sh`): builds the agent's `/status` document plus the latest decision per strategy and copies it to `s3://<bucket>/console/latest/status.json` with the AWS CLI every 5 minutes and at shutdown (shutdown unit ordered after the trading units so its `ExecStop` runs while they are up).
@@ -15,8 +15,22 @@ Built Phase 2a of the Homeguard Console: a read-only local app (FastAPI + htmx o
 - Build: `a5359b5` uploader, `0a43af0` units, `e5caa2f` + `c5df725` terraform, `1533201` settings, `24ffccb` schedule, `37e2e0d` checks, `1c31f29` + `b3371c5` poller, `c53ef2a` + `e92530c` app and templates, `7637d26` + `d76bbf7` installers
 - Final-review fix wave: `fa4b036` live age limit, `70d5b65` per-strategy heartbeat, `d37b0d0` stale and unit-less snapshots, `026b40b` unit state in the process column, `3e0b00a` source stamps on panels, `b41bf67` unreachability timed from launch plus start grace, `1e6634f` S3 snapshot chosen on the instance clock, `65056c5` clear the S3 error on recovery
 
+## Rollout (2026-10-08, about 15:15-15:40 ET)
+- Terraform: targeted plan 6 to add, 0 change, 0 destroy; applied (bucket `homeguard-console-<account id>`, set in the local untracked terraform.tfvars).
+- `homeguard-console` access key created; profile written on the Windows PC. Profile verified: DescribeInstances and all four GetSchedule calls succeed, GetObject on the absent key returns NoSuchKey (the unconditioned ListBucket works), StopInstances is denied.
+- Deploy branch: `7dafc86` + `73c94d3` (uploader cherry-picks) and `22b848d` (installer fix); instance pulled to `73c94d3`, `CONSOLE_SNAPSHOT_BUCKET` added to its .env, aws-cli 2.30.4 present, `install_console_upload.sh` installed and enabled the timer and the shutdown unit; first upload landed (15 KB at 19:23 UTC). The installer's final `aws s3 ls` failed because the instance role has PutObject only; fixed in `d69a180` (main) / `22b848d` (deploy branch).
+- Windows: local .env has the console values; `install_windows_task.ps1` registered `HomeguardConsole` (pythonw), serving "Live from agent" and logging to %LOCALAPPDATA%\Homeguard\console.log.
+- Process note: the instance step ran at about 15:22 ET, inside market hours, because Git Bash ignored TZ and the clock check printed UTC as ET. It restarted no trading unit and RAMP is paused; check the clock with the instance's `date -u` next time.
+
+## Incident found by the console: homeguard-multi down since 08:03 ET
+- The first live view showed RAMP's snapshot frozen at 08:03 ET (heartbeat and stream tiles unknown, not green). `homeguard-multi` was `failed` with NRestarts=5: at boot its startup reconciliation saw "state says N on ibkr, broker reports 0" for every RAMP holding and exited 1; five fast restarts hit the start limit by 08:03 ET. IBC finished logging in at 08:01 ET, so the runner most likely read positions before IBKR delivered them.
+- A read-only check at about 15:30 ET (clientId 98) shows the account intact: 26 stock positions (18 long, the same 8 shorts), 0 open orders.
+- Impact: none on trading (RAMP is paused), but the process that would trade RAMP is down until restarted, and the same race can recur on any boot.
+- Not restarted: no restarts during market hours without the operator. Fix to design: wait for or retry the IBKR position load before the reconciliation guard, and/or a longer RestartSec so restarts outlast gateway warm-up.
+
 ## Known Issues / Remaining Work
-- **Operator rollout (not started)**: targeted `terraform apply` of console.tf; create `homeguard-console` access keys and the profile on the PC and the Mac; cherry-pick `a5359b5` and `0a43af0` onto `ramp-phase4-turnover-regime-research`, add `CONSOLE_SNAPSHOT_BUCKET` to the instance .env, check `aws --version`, run `install_console_upload.sh` (outside market hours); add `CONSOLE_AGENT_URL` and `CONSOLE_SNAPSHOT_BUCKET` to the local .env and install the logon task / launchd agent.
+- **homeguard-multi is down** (see above): restart after 16:15 ET or let the next 08:00 boot retry, and fix the boot race before relying on it.
+- **Mac**: copy the `homeguard-console` keys to the Mac (`aws configure --profile homeguard-console`), add the three CONSOLE_ values to its repo .env, run `bash tools/console/install_macos_launchd.sh <env>/bin/python`.
 - **Exit gate**: after a 20:00 ET stop the console must show "Snapshot from S3 ... (shutdown)" stamped within a minute of 20:00 with unknown tiles for the live-only checks.
 - **Verify live**: a GetObject on an absent key with the real profile returns NoSuchKey; TLS to the agent over the tailnet works from httpx.
 - **Deferred minors** (the final review triaged them as fine to defer): Day P&L format "$-500", gates panel not auto-refreshed, accessibility polish, launchd respawn loop on a misconfigured app, ANSI codes in the Windows console log, installer parsing edge cases, a malformed snapshot timestamp would 500 every panel.
