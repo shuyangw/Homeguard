@@ -1,0 +1,240 @@
+import io
+import json
+from datetime import datetime, timedelta, timezone
+
+import boto3
+import httpx
+import pytest
+from botocore.response import StreamingBody
+from botocore.stub import Stubber
+
+from tools.console.config import Settings
+from tools.console.poller import SNAPSHOT_KEY, AgentClient, AwsClients, Poller
+
+SETTINGS = Settings("i-0123456789abcdef0", "us-east-1", "https://agent.test:8443", "bucket")
+NOW = datetime(2026, 10, 8, 16, 0, tzinfo=timezone.utc)
+STATUS = {
+    "generated_at": NOW.isoformat(),
+    "units": [],
+    "strategies": {"ramp": {"units": ["homeguard-multi.service"], "snapshot": None,
+                            "last_decision": {"decision_id": "ramp-1", "timestamp": NOW.isoformat()}}},
+    "execution_lock": {"state": "free"},
+    "errors": [],
+}
+DECISION = {"decision_id": "ramp-1", "preconditions": {"all_passed": True}}
+
+
+class FakeAgent:
+    def __init__(self):
+        self.mode = "ok"
+        self.decision_calls = 0
+
+    def handler(self, request):
+        if self.mode == "timeout":
+            raise httpx.ConnectTimeout("timed out", request=request)
+        if self.mode == "403":
+            return httpx.Response(403, json={"error": "forbidden"})
+        if request.url.path == "/status":
+            return httpx.Response(200, json=STATUS)
+        self.decision_calls += 1
+        return httpx.Response(200, json=DECISION)
+
+
+def client(name):
+    return boto3.client(name, region_name="us-east-1", aws_access_key_id="x", aws_secret_access_key="x")
+
+
+@pytest.fixture
+def aws():
+    clients = AwsClients(client("ec2"), client("scheduler"), client("s3"))
+    stubs = {name: Stubber(getattr(clients, name)) for name in ("ec2", "scheduler", "s3")}
+    for stub in stubs.values():
+        stub.activate()
+    yield clients, stubs
+    for stub in stubs.values():
+        stub.deactivate()
+
+
+def make_poller(aws_clients, agent=None):
+    agent = agent or FakeAgent()
+    agent_client = AgentClient(SETTINGS.agent_url, transport=httpx.MockTransport(agent.handler))
+    return Poller(SETTINGS, agent_client, aws_clients, clock=lambda: NOW), agent
+
+
+def s3_body(uploaded_at, reason="shutdown"):
+    data = json.dumps({"uploaded_at": uploaded_at.isoformat(), "reason": reason,
+                       "status": STATUS, "decisions": {"ramp": DECISION}}).encode()
+    return {"Body": StreamingBody(io.BytesIO(data), len(data))}
+
+
+def test_live_agent_reading_fetches_the_decision_once(aws):
+    poller, agent = make_poller(aws[0])
+
+    poller.poll_agent(NOW)
+    poller.poll_agent(NOW + timedelta(seconds=10))
+
+    assert poller.state.source == "agent"
+    assert poller.state.live is True
+    assert poller.state.decisions["ramp"] == DECISION
+    assert agent.decision_calls == 1
+
+
+def test_agent_timeout_falls_back_to_s3_and_labels_the_source(aws):
+    clients, stubs = aws
+    poller, agent = make_poller(clients)
+    agent.mode = "timeout"
+    uploaded = NOW - timedelta(minutes=3)
+    stubs["s3"].add_response("get_object", s3_body(uploaded), {"Bucket": "bucket", "Key": SNAPSHOT_KEY})
+
+    poller.poll_agent(NOW)
+    poller.poll_s3(NOW)
+
+    assert poller.state.source == "s3"
+    assert poller.state.live is False
+    assert poller.state.as_of == uploaded
+    assert poller.state.reason == "shutdown"
+    assert poller.state.agent_down_since == NOW
+    assert "agent" in poller.state.errors
+
+
+def test_agent_403_falls_back_to_s3_and_reports_the_error(aws):
+    clients, stubs = aws
+    poller, agent = make_poller(clients)
+    agent.mode = "403"
+    stubs["s3"].add_response("get_object", s3_body(NOW - timedelta(minutes=1)), {"Bucket": "bucket", "Key": SNAPSHOT_KEY})
+
+    poller.poll_agent(NOW)
+    poller.poll_s3(NOW)
+
+    assert "403" in poller.state.errors["agent"]
+    assert poller.state.source == "s3"
+
+
+def test_agent_recovery_returns_to_live(aws):
+    clients, stubs = aws
+    poller, agent = make_poller(clients)
+    agent.mode = "timeout"
+    stubs["s3"].add_response("get_object", s3_body(NOW - timedelta(minutes=3)), {"Bucket": "bucket", "Key": SNAPSHOT_KEY})
+    poller.poll_agent(NOW)
+    poller.poll_s3(NOW)
+
+    agent.mode = "ok"
+    poller.poll_agent(NOW + timedelta(seconds=10))
+
+    assert poller.state.source == "agent"
+    assert poller.state.live is True
+    assert poller.state.agent_down_since is None
+    assert "agent" not in poller.state.errors
+
+
+def test_older_s3_snapshot_does_not_replace_a_newer_agent_reading(aws):
+    clients, stubs = aws
+    poller, agent = make_poller(clients)
+    poller.poll_agent(NOW)
+    agent.mode = "timeout"
+    poller.poll_agent(NOW + timedelta(seconds=10))
+    stubs["s3"].add_response("get_object", s3_body(NOW - timedelta(minutes=5)), {"Bucket": "bucket", "Key": SNAPSHOT_KEY})
+
+    poller.poll_s3(NOW + timedelta(seconds=10))
+
+    assert poller.state.source == "agent"
+    assert poller.state.live is False
+
+
+def test_missing_snapshot_reads_as_no_snapshot_yet(aws):
+    clients, stubs = aws
+    poller, _ = make_poller(clients)
+    stubs["s3"].add_client_error("get_object", service_error_code="NoSuchKey", http_status_code=404)
+
+    poller.poll_s3(NOW)
+
+    assert poller.state.errors["s3"] == "No snapshot yet"
+    assert poller.state.document is None
+
+
+def test_s3_access_denied_is_an_error_not_no_snapshot(aws):
+    clients, stubs = aws
+    poller, _ = make_poller(clients)
+    stubs["s3"].add_client_error("get_object", service_error_code="AccessDenied", http_status_code=403)
+
+    poller.poll_s3(NOW)
+
+    assert "AccessDenied" in poller.state.errors["s3"]
+
+
+def test_ec2_state_and_failure(aws):
+    clients, stubs = aws
+    poller, _ = make_poller(clients)
+    stubs["ec2"].add_response(
+        "describe_instances",
+        {"Reservations": [{"Instances": [{"InstanceId": SETTINGS.instance_id, "State": {"Code": 80, "Name": "stopped"}}]}]},
+        {"InstanceIds": [SETTINGS.instance_id]},
+    )
+    stubs["ec2"].add_client_error("describe_instances", service_error_code="UnauthorizedOperation")
+
+    poller.poll_ec2(NOW)
+    assert poller.state.instance_state == "stopped"
+
+    poller.poll_ec2(NOW)
+    assert poller.state.instance_state is None
+    assert "UnauthorizedOperation" in poller.state.errors["ec2"]
+
+
+def add_schedules(stub, disabled=()):
+    real = {
+        "homeguard-start-instance": ("cron(0 8 ? * MON-FRI *)", "America/New_York"),
+        "homeguard-stop-instance": ("cron(0 20 ? * MON-FRI *)", "America/New_York"),
+        "homeguard-start-instance-sunday": ("cron(0 23 ? * SAT *)", "UTC"),
+        "homeguard-stop-instance-sunday": ("cron(10 0 ? * SUN *)", "UTC"),
+    }
+    for name, (expression, zone) in real.items():
+        stub.add_response(
+            "get_schedule",
+            {"Name": name, "ScheduleExpression": expression, "ScheduleExpressionTimezone": zone,
+             "State": "DISABLED" if name in disabled else "ENABLED"},
+            {"Name": name},
+        )
+
+
+def test_schedules_are_read_and_disabled_ones_skipped(aws):
+    clients, stubs = aws
+    poller, _ = make_poller(clients)
+    add_schedules(stubs["scheduler"], disabled={"homeguard-start-instance-sunday"})
+
+    poller.poll_schedules(NOW)
+
+    assert [s.name for s in poller.state.schedules] == [
+        "homeguard-start-instance", "homeguard-stop-instance", "homeguard-stop-instance-sunday"]
+
+
+def test_a_failed_schedule_read_keeps_the_previous_schedules(aws):
+    clients, stubs = aws
+    poller, _ = make_poller(clients)
+    add_schedules(stubs["scheduler"])
+    poller.poll_schedules(NOW)
+    stubs["scheduler"].add_client_error("get_schedule", service_error_code="AccessDeniedException")
+
+    poller.poll_schedules(NOW + timedelta(minutes=10))
+
+    assert len(poller.state.schedules) == 4
+    assert "schedule:homeguard-start-instance" in poller.state.errors
+
+
+def test_tick_polls_s3_only_while_the_agent_is_down(aws):
+    clients, stubs = aws
+    poller, agent = make_poller(clients)
+    stubs["ec2"].add_response(
+        "describe_instances",
+        {"Reservations": [{"Instances": [{"InstanceId": SETTINGS.instance_id, "State": {"Code": 16, "Name": "running"}}]}]},
+        {"InstanceIds": [SETTINGS.instance_id]},
+    )
+    add_schedules(stubs["scheduler"])
+
+    poller.tick()
+
+    # A poll_s3 call would hit the unstubbed S3 client and record an "s3" error.
+    assert "s3" not in poller.state.errors
+    stubs["ec2"].assert_no_pending_responses()
+    stubs["scheduler"].assert_no_pending_responses()
+    assert poller.state.instance_state == "running"
+    assert len(poller.state.schedules) == 4
