@@ -44,3 +44,11 @@ Built Phase 2a of the Homeguard Console: a read-only local app (FastAPI + htmx o
 - `tests/trading tests/monitoring tests/console_agent tests/console_app`: 1278 passed, 12 skipped, 1 failed (`test_adapters.py::TestMomentumLiveAdapter::test_run_once_calls_fetch_todays_closes`, the known Dropbox WinError 5 lock flake; passes alone; the branch changes nothing under `src/trading` or `tests/trading`).
 - `terraform validate` and `fmt -check` pass; no plan or apply run.
 - Entry point smoke: a missing AWS profile refuses to start with exit 1 under both python.exe and pythonw.exe (Windows test writes to `%LOCALAPPDATA%\Homeguard\console.log`).
+
+## Alert noise fix (19:25 ET)
+
+- **Symptom:** `RampDecisionMissedToday` (critical) re-posted to Discord every hour from 18:15 ET. The alert was correct: homeguard-multi was down 08:03-16:17 ET, so the 15:55 run wrote no decision record (paused RAMP still writes a placeholder record daily).
+- **Cause:** all critical alerts share one route with `repeat_interval: 1h`. This alert cannot clear before the next day's 15:55 run, so the repeats carried no new information.
+- **Fix:** `config/monitoring/grafana/alerting/homeguard_notifications.yaml` gets a route for this alert alone, `repeat_interval: 24h`, ordered ahead of the critical route. Test `test_ramp_decision_missed_notifies_once_a_day` (RED then GREEN); `tests/monitoring` 90 passed, 7 skipped.
+- **Commits:** main `16b879f`, deploy branch `f36cbf6`. Deployed via `infra/ec2/sync_grafana_alerts.sh` (Grafana restart only, no trading restart). The sync also installed the pending comment-only rules change `1a3ce85`. Live policy verified: the new route shows `repeat_interval 1d`, and all 7 rules are healthy.
+- **Silence:** `f205059e` on `RampDecisionMissedToday` until 2026-10-09 16:00 ET, for tonight's known miss; it survived the Grafana restart.
