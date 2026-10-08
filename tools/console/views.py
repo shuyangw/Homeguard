@@ -144,16 +144,22 @@ def _first_value(values: dict | None, template: str) -> str:
     return template.format(next(iter(values.values())))
 
 
+def _reading_time(entry: dict, as_of: datetime) -> datetime:
+    taken = freshness.snapshot_time(entry)
+    return min(taken, as_of) if taken else as_of
+
+
 def account_rows(state: ConsoleState, now: datetime, live: bool) -> list[dict]:
-    age = "" if live or state.as_of is None else freshness.age_text(state.as_of, now)
     rows = []
     for name, entry in sorted(((state.document or {}).get("strategies") or {}).items()):
         gauges = (entry.get("snapshot") or {}).get("gauges") or {}
-        if not gauges:
+        if not entry.get("units") or not gauges:
             continue
+        row_live = live and freshness.snapshot_is_live(entry, now)
         cells = [{"label": label, "value": _first_value(gauges.get(metric), template),
-                  "cls": freshness.classify(kind, live)}
+                  "cls": freshness.classify(kind, row_live)}
                  for label, metric, template, kind in ACCOUNT_GAUGES]
+        age = "" if row_live else freshness.age_text(_reading_time(entry, state.as_of), now)
         rows.append({"name": name, "cells": cells, "age": age})
     return rows
 

@@ -1,3 +1,4 @@
+import copy
 from datetime import datetime, timedelta, timezone
 
 from tools.console.poller import ConsoleState
@@ -14,7 +15,8 @@ DOCUMENT = {
                "restarts": 0, "memory_bytes": 1 << 29, "active_since": "Thu 2026-10-08 08:01:12 EDT"}],
     "strategies": {
         "ramp": {"enabled": False, "variant": "v11", "units": ["homeguard-multi.service"],
-                 "snapshot": {"gauges": {"hg_portfolio_equity_usd": {"{}": 101234.0},
+                 "snapshot": {"timestamp": NOW.timestamp() - 5,
+                              "gauges": {"hg_portfolio_equity_usd": {"{}": 101234.0},
                                          "hg_strategy_positions_count": {'{"strategy": "ramp"}': 26.0}}},
                  "last_decision": {"timestamp": "2026-10-07T15:55:04-04:00", "all_passed": False}},
         "mp": {"enabled": True, "variant": "v01", "units": [], "snapshot": None, "last_decision": None},
@@ -114,3 +116,34 @@ def test_an_old_agent_reading_is_not_live():
     assert context["live"] is False
     measured = {c.name: c.level for c in context["checks"] if c.name in ("Broker heartbeat", "Host memory")}
     assert measured == {"Broker heartbeat": "unknown", "Host memory": "unknown"}
+
+
+def stale_snapshot_state():
+    document = copy.deepcopy(DOCUMENT)
+    snapshot = document["strategies"]["ramp"]["snapshot"]
+    snapshot["timestamp"] = NOW.timestamp() - 300
+    snapshot["gauges"]["hg_broker_last_heartbeat_timestamp"] = {"{}": NOW.timestamp() - 300}
+    snapshot["gauges"]["hg_websocket_connected"] = {"{}": 1.0}
+    return live_state(document=document)
+
+
+def test_a_stale_snapshot_from_a_live_agent_is_not_live():
+    context = page_context(stale_snapshot_state(), NOW, "us-east-1")
+
+    checks = {c.name: c for c in context["checks"]}
+    for name in ("Broker heartbeat", "Market data stream"):
+        assert checks[name].level == "unknown"
+        assert checks[name].detail.startswith("Unknown since 12:25; last reading:")
+    cells = {cell["label"]: cell for cell in context["account"][0]["cells"]}
+    assert cells["Equity"]["cls"] == "drifting"
+    assert context["account"][0]["age"] == "5 min ago"
+
+
+def test_a_strategy_without_a_unit_has_no_account_row():
+    document = copy.deepcopy(DOCUMENT)
+    document["strategies"]["mp"]["snapshot"] = {"timestamp": NOW.timestamp(),
+                                                "gauges": {"hg_portfolio_equity_usd": {"{}": 5.0}}}
+
+    rows = page_context(live_state(document=document), NOW, "us-east-1")["account"]
+
+    assert [row["name"] for row in rows] == ["ramp"]

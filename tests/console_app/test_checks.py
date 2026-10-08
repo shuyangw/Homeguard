@@ -27,7 +27,8 @@ def document(*, gateway="active", heartbeat_age=10.0, websocket=None, rejected=0
         "strategies": {
             "ramp": {
                 "units": ["homeguard-multi.service"] if ramp_units else [],
-                "snapshot": {"gauges": gauges, "counters": {"hg_orders_rejected_total": {'{"reason": "x"}': rejected}}},
+                "snapshot": {"timestamp": now.timestamp() - 5, "gauges": gauges,
+                             "counters": {"hg_orders_rejected_total": {'{"reason": "x"}': rejected}}},
                 "last_decision": {"timestamp": decided_at, "all_passed": True} if decided_at else None,
             },
             "mp": {"units": [], "snapshot": None, "last_decision": None},
@@ -78,7 +79,8 @@ def test_absent_heartbeat_reads_as_not_reported():
 
 def test_stream_disconnected_in_session_is_a_caution_and_after_close_is_normal():
     assert levels(document(websocket=0), NOON)["Market data stream"] == "caution"
-    assert levels(document(websocket=0), et(2026, 10, 8, 17, 0))["Market data stream"] == "normal"
+    after_close = et(2026, 10, 8, 17, 0)
+    assert levels(document(websocket=0, now=after_close), after_close)["Market data stream"] == "normal"
     assert check(document(), NOON, "Market data stream").detail == "Not reported"
 
 
@@ -149,7 +151,8 @@ def two_strategy_document(ramp_age, cscm_age, now=NOON):
     doc = document(heartbeat_age=ramp_age, now=now)
     doc["strategies"]["cscm"] = {
         "units": ["homeguard-cscm.service"],
-        "snapshot": {"gauges": {"hg_broker_last_heartbeat_timestamp": {"{}": now.timestamp() - cscm_age}}},
+        "snapshot": {"timestamp": now.timestamp() - 5,
+                     "gauges": {"hg_broker_last_heartbeat_timestamp": {"{}": now.timestamp() - cscm_age}}},
         "last_decision": None,
     }
     return doc
@@ -170,3 +173,11 @@ def test_fresh_heartbeats_list_each_strategy():
 
 def test_a_heartbeat_ahead_of_the_local_clock_reads_zero_seconds():
     assert check(document(heartbeat_age=-3), NOON, "Broker heartbeat").detail == "ramp 0 s"
+
+
+def test_a_strategy_without_a_unit_is_left_out_of_the_checks():
+    doc = document()
+    doc["strategies"]["omr"] = {"units": [], "last_decision": None,
+                                "snapshot": {"timestamp": 0, "counters": {"hg_orders_rejected_total": {"{}": 5}}}}
+
+    assert levels(doc, NOON)["Order rejects"] == "normal"

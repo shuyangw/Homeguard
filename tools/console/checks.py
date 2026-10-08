@@ -18,6 +18,7 @@ MEMORY_WARNING = 0.95
 GATEWAY_UNIT = "homeguard-gateway.service"
 TRADING_UNIT = "homeguard-multi.service"
 MEASURED_CHECKS = {"IB Gateway", "Broker heartbeat", "Market data stream", "Host memory"}
+SNAPSHOT_CHECKS = {"Broker heartbeat", "Market data stream"}
 
 
 @dataclass(frozen=True)
@@ -29,7 +30,7 @@ class Check:
 
 def run_checks(document: dict, live: bool, as_of: datetime, now: datetime) -> list[Check]:
     units = document.get("units") or []
-    strategies = document.get("strategies") or {}
+    strategies = {name: entry for name, entry in (document.get("strategies") or {}).items() if entry.get("units")}
     checks = [
         gateway_check(units),
         heartbeat_check(strategies, now),
@@ -40,9 +41,14 @@ def run_checks(document: dict, live: bool, as_of: datetime, now: datetime) -> li
         memory_check(units),
         Check("Metrics scrape", "unknown", "Measured from Phase 2b"),
     ]
-    if freshness.classify(freshness.MEASURED, live) != "unknown":
+    if not live:
+        return [_unknown_since(check, as_of) if check.name in MEASURED_CHECKS else check for check in checks]
+    stale = [freshness.snapshot_time(entry) for entry in strategies.values()
+             if entry.get("snapshot") and not freshness.snapshot_is_live(entry, now)]
+    if not stale:
         return checks
-    return [_unknown_since(check, as_of) if check.name in MEASURED_CHECKS else check for check in checks]
+    since = min((taken for taken in stale if taken is not None), default=as_of)
+    return [_unknown_since(check, since) if check.name in SNAPSHOT_CHECKS else check for check in checks]
 
 
 def _unknown_since(check: Check, as_of: datetime) -> Check:
