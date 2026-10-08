@@ -247,8 +247,11 @@ class ExecutionEngine:
                     if settled is not None and settled.get('status') == OrderStatus.FILLED.value:
                         logger.warning(f"Order {order_id} filled while being cancelled: {e}")
                         return self._record_success(execution, settled, execution_start)
-                    filled_qty = settled.get('filled_qty') if settled is not None else None
-                    last_error = BrokerError(f"{e}; order cancelled, filled_qty={filled_qty}")
+                    if settled is not None and settled.get('status') in _SETTLED_STATUSES:
+                        outcome = f"order {settled['status']}, filled_qty={settled.get('filled_qty')}"
+                    else:
+                        outcome = f"order state unknown, may still be working at the broker: {settled}"
+                    last_error = BrokerError(f"{e}; {outcome}")
 
                 if attempt < self.max_retries - 1 and not accepted:
                     logger.info(f"Retrying in {self.retry_delay}s...")
@@ -469,10 +472,7 @@ class ExecutionEngine:
 
     def _cancel_and_settle(self, order_id: str) -> Optional[Dict]:
         """Cancel an accepted order and return its final state; a fill can still land after the cancel."""
-        try:
-            self.broker.cancel_order(order_id)
-        except Exception as cancel_error:
-            logger.warning(f"Cancel of order {order_id} failed (it may already be done): {cancel_error}")
+        cancel_sent = self._try_cancel(order_id)
         order = None
         deadline = datetime.now() + timedelta(seconds=self.settle_timeout)
         while datetime.now() < deadline:
@@ -482,8 +482,19 @@ class ExecutionEngine:
                 logger.error(f"Could not read status of order {order_id}: {status_error}")
             if order is not None and order.get('status') in _SETTLED_STATUSES:
                 return order
+            # An order can reach the broker after a cancel was refused as unknown.
+            if order is not None and not cancel_sent:
+                cancel_sent = self._try_cancel(order_id)
             time.sleep(0.5)
         return order
+
+    def _try_cancel(self, order_id: str) -> bool:
+        try:
+            self.broker.cancel_order(order_id)
+            return True
+        except Exception as cancel_error:
+            logger.warning(f"Cancel of order {order_id} failed (it may already be done): {cancel_error}")
+            return False
 
     def _wait_for_fill(self, order_id: str) -> Dict:
         """
