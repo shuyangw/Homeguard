@@ -239,11 +239,13 @@ class ExecutionEngine:
                 logger.warning(f"Order attempt {attempt + 1}/{self.max_retries} failed: {e}")
                 # Once the broker has accepted the order, another attempt would place a
                 # second live order (2026-09-07: every RAMP sell went out three times).
-                accepted = order is not None
+                # A broker that failed after the order may have gone out names it on the error.
+                order_id = order['order_id'] if order is not None else getattr(e, 'order_id', None)
+                accepted = order_id is not None
                 if accepted:
-                    settled = self._cancel_and_settle(order['order_id'])
+                    settled = self._cancel_and_settle(order_id)
                     if settled is not None and settled.get('status') == OrderStatus.FILLED.value:
-                        logger.warning(f"Order {order['order_id']} filled while being cancelled: {e}")
+                        logger.warning(f"Order {order_id} filled while being cancelled: {e}")
                         return self._record_success(execution, settled, execution_start)
                     filled_qty = settled.get('filled_qty') if settled is not None else None
                     last_error = BrokerError(f"{e}; order cancelled, filled_qty={filled_qty}")
