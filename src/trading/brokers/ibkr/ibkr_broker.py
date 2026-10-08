@@ -355,7 +355,7 @@ class IBKRBroker(
                 ibkr_action, quantity, order_type, limit_price, stop_price, time_in_force,
             )
             # Assigned up front so a failure after placeOrder can still name the order IBKR may hold.
-            order.orderId = self._conn.ib.client.getReqId()
+            order.orderId = self._conn.run_sync(self._next_order_id())
 
             trade = self._conn.run_sync(self._place(contract, order))
 
@@ -368,8 +368,9 @@ class IBKRBroker(
         except Exception as e:
             logger.error(f"[IBKR] Failed to place order: {e}")
             if "insufficient" in str(e).lower():
-                raise InsufficientFundsError(f"Insufficient funds: {e}")
-            error = BrokerConnectionError(f"IBKR API error: {e}")
+                error = InsufficientFundsError(f"Insufficient funds: {e}")
+            else:
+                error = BrokerConnectionError(f"IBKR API error: {e}")
             if order is not None and order.orderId:
                 error.order_id = str(order.orderId)
             raise error
@@ -678,6 +679,10 @@ class IBKRBroker(
 
         order.tif = self._tif_to_ibkr(tif)
         return order
+
+    async def _next_order_id(self) -> int:
+        # The id counter is not thread-safe; the event loop thread also draws from it.
+        return self._conn.ib.client.getReqId()
 
     async def _place(self, contract, order):
         trade = self._conn.ib.placeOrder(contract, order)
