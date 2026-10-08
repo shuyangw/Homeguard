@@ -64,3 +64,6 @@ create_cloudwatch_alarms = false
 # Requires create_elastic_ip = true for static IP when stopped
 # Lambda costs: ~$0.01/month (negligible)
 enable_scheduled_start_stop = false
+
+# Homeguard Console snapshot bucket (globally unique name)
+console_snapshot_bucket = "<YOUR_BUCKET_NAME>"

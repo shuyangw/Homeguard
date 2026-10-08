@@ -185,3 +185,8 @@ variable "discord_allowed_channels" {
   type        = string
   default     = ""
 }
+
+variable "console_snapshot_bucket" {
+  description = "Private S3 bucket that holds the Homeguard Console snapshot (console/latest/status.json)"
+  type        = string
+}

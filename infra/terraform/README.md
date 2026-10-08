@@ -710,3 +710,25 @@ After deployment:
 - [Terraform AWS Provider Docs](https://registry.terraform.io/providers/hashicorp/aws/latest/docs)
 - [AWS EC2 Pricing](https://aws.amazon.com/ec2/pricing/)
 - [EC2 Instance Types](https://aws.amazon.com/ec2/instance-types/)
+
+## Homeguard Console resources (console.tf)
+
+- **S3 bucket** `var.console_snapshot_bucket` (private, SSE-S3, public access blocked) holds one object,
+  `console/latest/status.json`, written by `homeguard-console-upload.timer` every 5 minutes and by
+  `homeguard-console-upload-shutdown.service` at shutdown.
+- **Instance role** `homeguard-ec2-cloudwatch` has `s3:PutObject` on `console/latest/*` only
+  (inline policy `homeguard-console-snapshot-upload`).
+- **IAM user** `homeguard-console` (read-only): `ec2:DescribeInstances`, `scheduler:GetSchedule`,
+  `s3:GetObject` and `s3:ListBucket` on the prefix, `logs:FilterLogEvents` on the two scheduler Lambda
+  log groups. Its access keys are created with the CLI, not Terraform, and live in the `homeguard-console`
+  profile on the operator's machines. Defined in `infra/terraform/console.tf`.
+
+Apply only these resources:
+
+    terraform plan -target=aws_s3_bucket.console_snapshots -target=aws_s3_bucket_public_access_block.console_snapshots \
+      -target=aws_s3_bucket_server_side_encryption_configuration.console_snapshots \
+      -target=aws_iam_role_policy.console_snapshot_upload -target=aws_iam_user.console -target=aws_iam_user_policy.console_read \
+      -var 'ssh_allowed_cidrs=["<YOUR_IP>/32"]'
+
+Then create the keys: `aws iam create-access-key --user-name homeguard-console` and store them with
+`aws configure --profile homeguard-console` on each machine.

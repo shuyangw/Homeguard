@@ -176,6 +176,20 @@ See "CSCM note" below.
 
 ---
 
+### Homeguard Console (Phase 2a)
+
+- **S3 bucket** `var.console_snapshot_bucket` (private, SSE-S3, public access blocked) holds one object,
+  `console/latest/status.json`, written by `homeguard-console-upload.timer` every 5 minutes and by
+  `homeguard-console-upload-shutdown.service` at shutdown.
+- **Instance role** `homeguard-ec2-cloudwatch` has `s3:PutObject` on `console/latest/*` only
+  (inline policy `homeguard-console-snapshot-upload`).
+- **IAM user** `homeguard-console` (read-only): `ec2:DescribeInstances`, `scheduler:GetSchedule`,
+  `s3:GetObject` and `s3:ListBucket` on the prefix, `logs:FilterLogEvents` on the two scheduler Lambda
+  log groups. Its access keys are created with the CLI, not Terraform, and live in the `homeguard-console`
+  profile on the operator's machines. Defined in `infra/terraform/console.tf`.
+
+---
+
 ## Remote Access
 
 Primary path: **Tailscale**. The EC2 host and the operator laptop join the same tailnet. SSH is reachable over the tailnet; Grafana is published on the tailnet by `tailscale serve`, which terminates TLS and proxies to loopback. No public ingress is required beyond the `<YOUR_IP_CIDR>` SSH fallback.
