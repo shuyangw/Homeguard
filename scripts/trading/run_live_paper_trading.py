@@ -1168,8 +1168,8 @@ def preflight_reconcile(
     A freshly-connected IBKR session can report 0 positions until its async
     account download (accountDownloadEnd) completes, and right after an IB
     Gateway login it can serve only part of the book for over a minute
-    (2026-10-08). While any long position state tracks ON THIS broker is
-    missing from the broker's book, retry up to ``max_attempts``
+    (2026-10-08). While any position, long or short, that state tracks ON
+    THIS broker is missing from the broker's book, retry up to ``max_attempts``
     (``retry_delay`` apart) before trusting it, so a cold-start race does not
     trip a false mismatch and crash-loop the runner. Positions tagged for a
     different broker are never retried (their absence is expected).
@@ -1202,7 +1202,7 @@ def preflight_reconcile(
 
         missing = [
             symbol for symbol, pos in state_positions.items()
-            if pos.get('broker') == broker_name and pos.get('qty', 0) > 0
+            if pos.get('broker') == broker_name and pos.get('qty', 0) != 0
             and broker_positions.get(symbol, 0) == 0
         ]
         if not missing:
@@ -1226,12 +1226,12 @@ def preflight_reconcile(
             continue
         broker_qty = broker_positions.get(symbol, 0)
 
-        if pos_broker != broker_name and state_qty > 0:
+        if pos_broker != broker_name and state_qty != 0:
             mismatches.append(
                 f"{symbol}: {state_qty} shares tagged {pos_broker}, "
                 f"runner on {broker_name}"
             )
-        elif broker_qty == 0 and state_qty > 0 and pos_broker == broker_name:
+        elif broker_qty == 0 and state_qty != 0 and pos_broker == broker_name:
             mismatches.append(
                 f"{symbol}: state says {state_qty} on {broker_name}, "
                 f"broker reports 0"

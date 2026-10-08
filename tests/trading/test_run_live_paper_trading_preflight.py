@@ -188,9 +188,44 @@ def test_preflight_blocks_a_persistently_partial_book_after_all_attempts(mgr):
     assert broker.get_stock_positions.call_count == 5
 
 
-def test_preflight_default_retry_window_outlasts_gateway_warmup():
-    """The default window must cover the observed warm-up (over 80 s after login)."""
-    import inspect
-    params = inspect.signature(preflight_reconcile).parameters
-    window = (params['max_attempts'].default - 1) * params['retry_delay'].default
-    assert window >= 100
+def test_preflight_waits_for_shorts_still_loading(mgr):
+    """A short position state tracks must also be present before start; the
+    paper book holds shorts (2026-10-07), and starting while they are still
+    loading would leave them unverified."""
+    mgr.add_position('omr', 'TQQQ', 100, 52.30, order_id='x', broker='ibkr')
+    mgr.add_position('omr', 'ALB', -90, 80.00, order_id='y', broker='ibkr')
+    broker = Mock()
+    broker.get_stock_positions.side_effect = [
+        [{'symbol': 'TQQQ', 'quantity': 100}],  # longs loaded, short not yet
+        [{'symbol': 'TQQQ', 'quantity': 100}, {'symbol': 'ALB', 'quantity': -90}],
+    ]
+    rc = preflight_reconcile('omr', broker, 'ibkr', mgr, force_start=False, retry_delay=0)
+    assert rc == 0
+    assert broker.get_stock_positions.call_count == 2
+
+
+def test_preflight_blocks_a_short_that_stays_missing(mgr):
+    mgr.add_position('omr', 'ALB', -90, 80.00, order_id='y', broker='ibkr')
+    broker = _fake_broker({})
+    rc = preflight_reconcile('omr', broker, 'ibkr', mgr, force_start=False, max_attempts=3, retry_delay=0)
+    assert rc == 1
+    assert broker.get_stock_positions.call_count == 3
+
+
+def test_preflight_retries_only_for_holdings_on_this_broker(mgr):
+    """A holding tagged for another broker never causes a retry; it blocks on the tag."""
+    mgr.add_position('omr', 'TQQQ', 100, 52.30, order_id='x', broker='ibkr')
+    mgr.add_position('omr', 'SPY', 10, 500.00, order_id='z', broker='alpaca')
+    broker = _fake_broker({'TQQQ': 100})
+    rc = preflight_reconcile('omr', broker, 'ibkr', mgr, force_start=False, retry_delay=0)
+    assert rc == 1
+    assert broker.get_stock_positions.call_count == 1
+
+
+def test_preflight_sleeps_retry_delay_between_attempts(mgr, monkeypatch):
+    mgr.add_position('omr', 'TQQQ', 100, 52.30, order_id='x', broker='ibkr')
+    sleeps = []
+    monkeypatch.setattr('scripts.trading.run_live_paper_trading.time.sleep', sleeps.append)
+    broker = _fake_broker({})
+    preflight_reconcile('omr', broker, 'ibkr', mgr, force_start=False, max_attempts=3, retry_delay=10.0)
+    assert sleeps == [10.0, 10.0]
