@@ -49,7 +49,8 @@ Built Phase 2a of the Homeguard Console: a read-only local app (FastAPI + htmx o
   - [-] (2) The header reads "Agent unreachable; last agent reading 6 min ago", not "Snapshot from S3 ... (shutdown)". This follows from (1): the console keeps its 00:00:09 UTC live reading over an older S3 snapshot.
   - [+] (3) Exceptions: IB Gateway, Broker heartbeat, Market data stream and Host memory all UNKNOWN "since 20:00".
   - [+] (4) Power tile: "Instance stopped, as scheduled", next start Fri 08:00 ET.
-  - Cause not yet known. The shutdown unit was active (since 19:22:58 UTC) and loads the bucket the same way as the periodic unit, so a missing env var is ruled out. At the next boot read `journalctl -b -1 -u homeguard-console-upload-shutdown.service` to see whether ExecStop ran and what failed.
+  - 10-09 follow-up (from Loki, no SSH needed): the shutdown unit DID run at 00:00:19 UTC; `aws s3 cp` hung until the 30 s timeout killed it at 00:00:49. The network and DNS were up throughout (systemd-networkd and systemd-resolved stopped at 00:01:49), and periodic uploads take about 1.2 s, so this hang happens only at shutdown. Fix `bea369e` (deploy `57c1dfe`): `--cli-connect-timeout 5 --cli-read-timeout 10`, so the CLI retries and names the unreachable endpoint, plus a 45 s process timeout inside TimeoutStopSec=60. A manual periodic upload with the new flags succeeded on the instance at 22:02:48 UTC. Gate re-run at the 10-09 20:00 ET stop.
+  - (superseded) Cause not yet known. The shutdown unit was active (since 19:22:58 UTC) and loads the bucket the same way as the periodic unit, so a missing env var is ruled out. At the next boot read `journalctl -b -1 -u homeguard-console-upload-shutdown.service` to see whether ExecStop ran and what failed.
 
 ## Alert noise fix (19:25 ET)
 
