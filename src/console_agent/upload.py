@@ -24,7 +24,8 @@ from src.utils.logger import logger
 REPO_ROOT = Path(__file__).resolve().parents[2]
 BUCKET_ENV = "CONSOLE_SNAPSHOT_BUCKET"
 OBJECT_KEY = "console/latest/status.json"
-UPLOAD_TIMEOUT_SECONDS = 30
+# Fits inside the shutdown unit's TimeoutStopSec=60 with room for the CLI's own retries.
+UPLOAD_TIMEOUT_SECONDS = 45
 REASONS = ("periodic", "shutdown")
 
 
@@ -46,7 +47,9 @@ def upload(document: dict, bucket: str, run: Callable = subprocess.run) -> bool:
         tmp_path = Path(handle.name)
     try:
         run(
-            ["aws", "s3", "cp", str(tmp_path), f"s3://{bucket}/{OBJECT_KEY}", "--only-show-errors"],
+            ["aws", "s3", "cp", str(tmp_path), f"s3://{bucket}/{OBJECT_KEY}", "--only-show-errors",
+             # Short CLI timeouts make it retry and name the unreachable endpoint before we kill it.
+             "--cli-connect-timeout", "5", "--cli-read-timeout", "10"],
             capture_output=True, text=True, timeout=UPLOAD_TIMEOUT_SECONDS, check=True,
         )
         return True

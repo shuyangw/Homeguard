@@ -93,3 +93,14 @@ def test_uploader_does_not_import_trading_or_boto3():
 
     assert result.returncode == 0, result.stderr
     assert result.stdout.strip() == "False"
+
+
+def test_aws_cli_times_out_on_its_own_before_the_process_is_killed(agent_config, fake_systemd):
+    run = FakeRun()
+
+    upload.run_upload(agent_config, BUCKET_ENV, "shutdown", NOW, run)
+
+    args, kwargs = run.calls[0]
+    connect = int(args[args.index("--cli-connect-timeout") + 1])
+    read = int(args[args.index("--cli-read-timeout") + 1])
+    assert connect + read < kwargs["timeout"] < 60
