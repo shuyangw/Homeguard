@@ -33,7 +33,7 @@ Built Phase 2a of the Homeguard Console: a read-only local app (FastAPI + htmx o
 ## Known Issues / Remaining Work
 - **Boot race fix**: proven only on a warm gateway so far; confirm at the next 08:00 boot that the preflight passes (look for "retrying" lines and a single start).
 - **Mac**: copy the `homeguard-console` keys to the Mac (`aws configure --profile homeguard-console`), add the three CONSOLE_ values to its repo .env, run `bash tools/console/install_macos_launchd.sh <env>/bin/python`.
-- **Exit gate**: after a 20:00 ET stop the console must show "Snapshot from S3 ... (shutdown)" stamped within a minute of 20:00 with unknown tiles for the live-only checks.
+- **Exit gate FAILED 10-08**: the shutdown snapshot never reached S3 (see Validation). Diagnose from the previous boot's journal on 10-09, fix, and re-run the gate at the 10-09 20:00 ET stop.
 - **Verify live**: a GetObject on an absent key with the real profile returns NoSuchKey; TLS to the agent over the tailnet works from httpx.
 - **Deferred minors** (the final review triaged them as fine to defer): Day P&L format "$-500", gates panel not auto-refreshed, accessibility polish, launchd respawn loop on a misconfigured app, ANSI codes in the Windows console log, installer parsing edge cases, a malformed snapshot timestamp would 500 every panel.
 - **Cleanup**: `.worktrees/console-p2a` and branch `feat/console-p2a` could not be removed (Dropbox lock on its `.superpowers` folder); remove later with `git worktree remove --force .worktrees/console-p2a && git branch -d feat/console-p2a`.
@@ -44,6 +44,12 @@ Built Phase 2a of the Homeguard Console: a read-only local app (FastAPI + htmx o
 - `tests/trading tests/monitoring tests/console_agent tests/console_app`: 1278 passed, 12 skipped, 1 failed (`test_adapters.py::TestMomentumLiveAdapter::test_run_once_calls_fetch_todays_closes`, the known Dropbox WinError 5 lock flake; passes alone; the branch changes nothing under `src/trading` or `tests/trading`).
 - `terraform validate` and `fmt -check` pass; no plan or apply run.
 - Entry point smoke: a missing AWS profile refuses to start with exit 1 under both python.exe and pythonw.exe (Windows test writes to `%LOCALAPPDATA%\Homeguard\console.log`).
+- **Exit gate, 20:07 ET: FAIL (2 of 4 pass).** The instance stopped at 00:00:18 UTC (StopInstances, user initiated).
+  - [-] (1) S3 `console/latest/status.json` LastModified 23:58:09 UTC, `reason: periodic`. That is the last timer upload; no shutdown snapshot landed.
+  - [-] (2) The header reads "Agent unreachable; last agent reading 6 min ago", not "Snapshot from S3 ... (shutdown)". This follows from (1): the console keeps its 00:00:09 UTC live reading over an older S3 snapshot.
+  - [+] (3) Exceptions: IB Gateway, Broker heartbeat, Market data stream and Host memory all UNKNOWN "since 20:00".
+  - [+] (4) Power tile: "Instance stopped, as scheduled", next start Fri 08:00 ET.
+  - Cause not yet known. The shutdown unit was active (since 19:22:58 UTC) and loads the bucket the same way as the periodic unit, so a missing env var is ruled out. At the next boot read `journalctl -b -1 -u homeguard-console-upload-shutdown.service` to see whether ExecStop ran and what failed.
 
 ## Alert noise fix (19:25 ET)
 
