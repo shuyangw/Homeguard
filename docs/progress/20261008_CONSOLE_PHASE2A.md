@@ -51,6 +51,13 @@ Built Phase 2a of the Homeguard Console: a read-only local app (FastAPI + htmx o
   - [+] (4) Power tile: "Instance stopped, as scheduled", next start Fri 08:00 ET.
   - 10-09 follow-up (from Loki, no SSH needed): the shutdown unit DID run at 00:00:19 UTC; `aws s3 cp` hung until the 30 s timeout killed it at 00:00:49. The network and DNS were up throughout (systemd-networkd and systemd-resolved stopped at 00:01:49), and periodic uploads take about 1.2 s, so this hang happens only at shutdown. Fix `bea369e` (deploy `57c1dfe`): `--cli-connect-timeout 5 --cli-read-timeout 10`, so the CLI retries and names the unreachable endpoint, plus a 45 s process timeout inside TimeoutStopSec=60. A manual periodic upload with the new flags succeeded on the instance at 22:02:48 UTC. Gate re-run at the 10-09 20:00 ET stop.
   - (superseded) Cause not yet known. The shutdown unit was active (since 19:22:58 UTC) and loads the bucket the same way as the periodic unit, so a missing env var is ruled out. At the next boot read `journalctl -b -1 -u homeguard-console-upload-shutdown.service` to see whether ExecStop ran and what failed.
+- **Exit gate re-run, 2026-10-09 20:07 ET: FAIL again (2 of 4 pass).** The instance stopped at 00:00:19 UTC.
+  - [-] (1) S3 LastModified 00:00:00 UTC, but `uploaded_at` 23:59:59 UTC and `reason: periodic`: the last timer tick, again no shutdown snapshot.
+  - [-] (2) The header reads "Agent unreachable; last agent reading 6 min ago" (same cause as 1).
+  - [+] (3) IB Gateway, Broker heartbeat, Market data stream and Host memory all UNKNOWN "since 20:00".
+  - [+] (4) Power tile "Instance stopped, as scheduled", next start Sat 19:00 ET (CSCM weekend window).
+  - The CLI-timeout fix did not make the upload succeed. Its log is in the instance journal and in Loki, both on the stopped instance; read `{unit="homeguard-console-upload-shutdown.service"}` from 2026-10-09T23:55Z after the Sat 19:00 ET boot. The error should now name the endpoint.
+  - Separate console bug found: "Decisions on schedule" warns "Missed: ramp 15:55", but RAMP wrote its decision at 15:54:04 ET. The runner fires within +/-1 min of the target (`run_live_paper_trading.py`, `abs(time_diff)`), and since the 10-07 fire-once fix the single fire lands at about 15:54. `tools/console/checks.py:139` treats any decision before 15:55 as missed. The Grafana rule (12 h staleness) is unaffected.
 
 ## Alert noise fix (19:25 ET)
 
