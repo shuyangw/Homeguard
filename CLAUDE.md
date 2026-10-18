@@ -258,7 +258,7 @@ Shell scripts: `source infra/ec2/load_env.sh`. Batch scripts: `call infra\ec2\lo
 
 ## Message log (MANDATORY, every exchange)
 
-Every exchange in this repo is logged, so work can continue from a Claude Code session in another worktree, on another machine, or on another OS with no gap. This replaces the old end-of-session `docs/progress/YYYYMMDD_<TOPIC>.md` session log; the files already in `docs/progress/` stay as history.
+Every exchange in this repo is logged, so work can continue from a Claude Code session in another worktree, on another machine, or on another OS with no gap. This replaces writing a `docs/progress/` doc at the end of every session; progress docs are now written only when a substantial feature is finished (below).
 
 - **Where:** `_claude-code-logs/YYYYMMDD_log.md` in the MAIN checkout, never in a worktree. Worktrees live outside Dropbox (`.worktrees/`, orca), so resolve the main checkout from git rather than from memory: `"$(git rev-parse --path-format=absolute --git-common-dir)/.."`. The main checkout is in Dropbox, so the log syncs across machines. The dir is gitignored: it is never committed. One file per Eastern-time day; create it when absent, with a `# Message log - YYYY-MM-DD` heading. Entries are oldest first.
 - **One entry per exchange**, appended as the last action of the turn, after the work and before the final reply:
@@ -273,6 +273,8 @@ Every exchange in this repo is logged, so work can continue from a Claude Code s
 - **Eastern time, taken fresh for every entry**, never from memory or an earlier entry: `python -c "from datetime import datetime; from zoneinfo import ZoneInfo; print(datetime.now(ZoneInfo('America/New_York')).strftime('%Y-%m-%d %H:%M %Z'))"` (use the `fintech` env's python on Windows, which has tzdata). Do NOT use `TZ=America/New_York date` on Windows: Git Bash ignores it and prints GMT with no error.
 - **Before appending, catch up on what other sessions wrote.** Concurrent sessions in other worktrees or on other machines append to the same log. Read the log file first and find this session's own last entry. Every entry after it was written elsewhere: read those, carry their context forward, re-read any file they touched before editing it, and mention anything that changes your current work in the reply. If this session has not written to the log yet, the new entries are the ones after the point the session started or resumed from (see "Session handoffs"). Then append at the end; entries are never reordered or edited.
 - **Summaries only.** No pasted code, no secrets (API keys, IPs, account IDs), no metric tables; an entry says what was done and where.
+
+**Progress docs for substantial features.** When a substantial feature or body of work is finished (multiple days, multiple files, or several related commits), also write `docs/progress/YYYYMMDD_<TOPIC>.md` and commit it, without being asked. Small fixes and routine sessions get only log entries. When/format: `.claude/documentation.md` "Progress Documentation System".
 
 **Results docs are separate and still owed.** Any strategy test/campaign that produces a verdict writes its verdict + metrics to `docs/reports/<strategy>/` (or `docs/reports/futures/portfolio_summary.md`) PLUS a durable tracked copy under `docs/strategies/research/`. strategy-lead / the specialists own this at close-out. A log entry does not replace it.
 

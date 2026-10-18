@@ -101,34 +101,30 @@ All progress documentation goes in this dedicated folder, **not** in the root `d
 
 ### Naming Convention
 
-**Format**: `YYYY-MM-DD_FEATURE_NAME_TYPE.md`
-
-**Examples**:
-- `2024-11-02_RISK_MANAGEMENT_VALIDATION.md`
-- `2024-11-02_GUI_RISK_MANAGEMENT_INTEGRATION.md`
-- `2025-01-03_MULTI_SYMBOL_PORTFOLIO_OPTIMIZATION.md`
-
-**Date**: Use completion date (not start date)
-**Feature Name**: Use UPPER_SNAKE_CASE, descriptive
-**Type**: One of:
-- `VALIDATION` - Test results, validation reports for major features
-- `STATUS` - Implementation status tracking for ongoing large features (updated periodically)
-- `INTEGRATION` - Major component integration summaries
-- `FEATURE` - Significant new feature implementations
-- `OPTIMIZATION` - Performance optimization documentation
-- `REPORT` - Implementation reports for large bodies of work
-- `MAINTENANCE` - Large-scale refactoring or cleanup docs
+**Format**: `YYYYMMDD_<TOPIC>.md`, completion date, topic in UPPER_SNAKE_CASE (e.g. `20261008_CONSOLE_PHASE2A.md`, `20260711_FUTURES_RETEST.md`). Append `_STATUS` for a doc tracking an ongoing multi-phase feature that gets updated as it goes.
 
 ### Progress Doc Template
 
-Use `docs/progress/TEMPLATE.md` as a starting point.
+```markdown
+# <Topic> - YYYY-MM-DD
 
-**Minimum Required Sections**:
-1. **Summary** - 1-2 sentences of what was done
-2. **Status** - [+] Complete |  In Progress | ️ Paused | [-] Blocked
-3. **Changes Made** - Files created/modified/deleted
-4. **Testing** - What tests were run
-5. **Validation** - Success criteria met
+## Summary
+1-3 sentence overview of what was accomplished.
+
+## Changes Made
+- **File/area**: what changed and why (bulleted, concise)
+
+## Commits
+- `<short-hash>` <commit message>
+
+## Known Issues / Remaining Work
+- What's left, what broke, what needs follow-up
+
+## Validation
+- How the changes were verified (tests run, manual checks, EC2 deploy)
+```
+
+Keep it factual; include commit hashes; focus on context and decisions the commit messages do not capture.
 
 ### What NOT to Put in Progress Docs
 
@@ -170,7 +166,7 @@ Session-to-session continuity comes from the message log and handoffs in the mai
 docs/progress/
 ├── archive/
 │   └── 2023/
-│       └── 2023-06-15_OLD_FEATURE_STATUS.md
-├── 2024-11-02_RISK_MANAGEMENT_VALIDATION.md
-└── 2024-11-15_MULTI_SYMBOL_STATUS.md
+│       └── 20230615_OLD_FEATURE_STATUS.md
+├── 20241102_RISK_MANAGEMENT_VALIDATION.md
+└── 20241115_MULTI_SYMBOL_STATUS.md
 ```
