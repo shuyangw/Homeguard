@@ -256,41 +256,33 @@ Strategy skill: `.claude/skills/implement-strategy/`
 
 Shell scripts: `source infra/ec2/load_env.sh`. Batch scripts: `call infra\ec2\load_env.bat`.
 
-## Session Work Logs (MANDATORY -- write to disk, do not just summarize in chat)
+## Message log (MANDATORY, every exchange)
 
-**This is a hard requirement, not a suggestion.** A session that produced commits is NOT done until a timestamped summary exists ON DISK. Summarizing progress in the conversation does NOT satisfy this -- the deliverable is a committed file. Write it PROACTIVELY at the close of the work, without being asked. The trigger is concrete: the moment you are reporting results and reaching for a wrap-up, STOP and write the file first, then report.
+Every exchange in this repo is logged, so work can continue from a Claude Code session in another worktree, on another machine, or on another OS with no gap. This replaces the old end-of-session `docs/progress/YYYYMMDD_<TOPIC>.md` session log; the files already in `docs/progress/` stay as history.
 
-**When to write:** at the end of any commit-producing session (new features, infra changes, migrations, multi-step fixes, and EVERY strategy backtest/campaign that produces a verdict). Skip only for pure research/discussion sessions with no commits.
+- **Where:** `_claude-code-logs/YYYYMMDD_log.md` in the MAIN checkout, never in a worktree. Worktrees live outside Dropbox (`.worktrees/`, orca), so resolve the main checkout from git rather than from memory: `"$(git rev-parse --path-format=absolute --git-common-dir)/.."`. The main checkout is in Dropbox, so the log syncs across machines. The dir is gitignored: it is never committed. One file per Eastern-time day; create it when absent, with a `# Message log - YYYY-MM-DD` heading. Entries are oldest first.
+- **One entry per exchange**, appended as the last action of the turn, after the work and before the final reply:
 
-**Two docs, both persisted to disk (one does not replace the other):**
-1. **Results doc** -- for any strategy test/campaign: the verdict + metrics. `docs/reports/<strategy>/` (or `docs/reports/futures/portfolio_summary.md`) PLUS a durable tracked copy under `docs/strategies/research/`. strategy-lead / the specialists own this at close-out.
-2. **Session log** -- the orchestrator-level narrative + decisions at `docs/progress/YYYYMMDD_<TOPIC>.md` (format below). This is the MAIN-LOOP's own job, owed EVEN WHEN subagents already wrote the results doc. A subagent's results summary is NOT the session log -- do not treat it as satisfying this requirement (this is exactly what was missed on 2026-07-11).
+  ```
+  ## 2026-10-18 19:10 EDT (Windows)
+  - **In:** <what the user asked, at most 2 sentences>
+  - **Out:** <what was done or answered, at most 2 sentences; name changed files, commit hashes, and the branch/worktree>
+  ```
 
-**Format:**
-```markdown
-# <Topic> - YYYY-MM-DD
+- **Every heading names the OS that wrote the entry**: `(macOS)`, `(Windows)` or `(Linux)`, exactly those spellings. Take it from the machine, never from memory: `uname -s` prints `Darwin` on macOS, `Linux` on Linux, and a name starting `MINGW` or `MSYS` in Git Bash on Windows.
+- **Eastern time, taken fresh for every entry**, never from memory or an earlier entry: `python -c "from datetime import datetime; from zoneinfo import ZoneInfo; print(datetime.now(ZoneInfo('America/New_York')).strftime('%Y-%m-%d %H:%M %Z'))"` (use the `fintech` env's python on Windows, which has tzdata). Do NOT use `TZ=America/New_York date` on Windows: Git Bash ignores it and prints GMT with no error.
+- **Before appending, catch up on what other sessions wrote.** Concurrent sessions in other worktrees or on other machines append to the same log. Read the log file first and find this session's own last entry. Every entry after it was written elsewhere: read those, carry their context forward, re-read any file they touched before editing it, and mention anything that changes your current work in the reply. If this session has not written to the log yet, the new entries are the ones after the point the session started or resumed from (see "Session handoffs"). Then append at the end; entries are never reordered or edited.
+- **Summaries only.** No pasted code, no secrets (API keys, IPs, account IDs), no metric tables; an entry says what was done and where.
 
-## Summary
-1-3 sentence overview of what was accomplished.
+**Results docs are separate and still owed.** Any strategy test/campaign that produces a verdict writes its verdict + metrics to `docs/reports/<strategy>/` (or `docs/reports/futures/portfolio_summary.md`) PLUS a durable tracked copy under `docs/strategies/research/`. strategy-lead / the specialists own this at close-out. A log entry does not replace it.
 
-## Changes Made
-- **File/area**: what changed and why (bulleted, concise)
+## Session handoffs
 
-## Commits
-- `<short-hash>` <commit message>
+Handoff documents (the `session-handoff` skill) go in `_handoffs/` in the main checkout (same resolution as the log), named `YYYYMMDD_SESSION-HANDOFF-<topic-slug>.md`. Gitignored and Dropbox-synced, like the log. Older handoffs in `docs/progress/SESSION-HANDOFF-*.md` stay where they are.
 
-## Known Issues / Remaining Work
-- What's left, what broke, what needs follow-up
-
-## Validation
-- How the changes were verified (tests run, manual checks, EC2 deploy)
-```
-
-**Rules:**
-- Keep it factual and concise -- this is a reference doc, not a narrative
-- Include commit hashes so future sessions can trace changes
-- Always list remaining work so the next session knows where to pick up
-- Do not duplicate content already in commit messages -- focus on context and decisions that aren't captured in code
+- **At the start of a session, or when told to resume**, read the newest file in `_handoffs/`, then the `_claude-code-logs/` entries written after it. The handoff gives the state as of its writing; the log entries give everything since. Say which handoff and which log entries you resumed from.
+- **After writing a handoff**, log it like any other exchange, naming the handoff file, so the log shows where each handoff falls.
+- The log is a line per exchange, the handoff is a dense snapshot on request. Neither replaces the other.
 
 ## Common Type Issues
 

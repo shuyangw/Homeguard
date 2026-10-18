@@ -17,6 +17,9 @@ settings.ini
 .claude/settings.local.json
 TODO.md
 .claude-recovery.log
+# Message log and handoffs live in the main checkout and sync via Dropbox (see CLAUDE.md)
+_claude-code-logs/
+_handoffs/
 
 # Git worktrees (isolated workspaces for parallel feature development)
 .worktrees/

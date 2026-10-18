@@ -144,14 +144,9 @@ Use `docs/progress/TEMPLATE.md` as a starting point.
 **Purpose**: When switching between machines or AI assistants, progress docs help maintain context.
 
 **AI Usage**:
-When starting work on a new machine:
-1. Read `docs/progress/` to understand recent completions
-2. Sort by date to see chronological progress
-3. Check STATUS docs for ongoing work
-4. Check VALIDATION docs to see what's been tested
-
-**Example AI Prompt**:
-> "Read the latest progress docs in docs/progress/ to understand what's been completed recently."
+Session-to-session continuity comes from the message log and handoffs in the main checkout (`_claude-code-logs/`, `_handoffs/`; see CLAUDE.md "Message log" and "Session handoffs"). Progress docs are for substantial features only:
+1. Check STATUS docs for ongoing work
+2. Check VALIDATION docs to see what's been tested
 
 ### Updating Progress Docs
 
