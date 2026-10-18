@@ -110,6 +110,16 @@ def test_missed_rebalance_after_grace_is_a_warning():
     assert levels(doc, et(2026, 10, 8, 16, 0, 1))["Decisions on schedule"] == "warning"
 
 
+def test_decision_inside_the_runner_early_fire_window_is_on_schedule():
+    doc = document(decided_at="2026-10-09T15:54:04-04:00")
+    assert levels(doc, et(2026, 10, 9, 17, 0))["Decisions on schedule"] == "normal"
+
+
+def test_decision_before_the_runner_early_fire_window_is_missed():
+    doc = document(decided_at="2026-10-09T15:53:59-04:00")
+    assert levels(doc, et(2026, 10, 9, 17, 0))["Decisions on schedule"] == "warning"
+
+
 def test_strategy_without_a_unit_is_not_expected_to_decide():
     doc = document(decided_at=None, ramp_units=False)
     assert levels(doc, et(2026, 10, 8, 17, 0))["Decisions on schedule"] == "normal"

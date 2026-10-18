@@ -10,6 +10,8 @@ from tools.console.schedule import EASTERN, nyse_session
 
 HEARTBEAT_MAX_AGE = timedelta(seconds=120)
 DECISION_GRACE = timedelta(minutes=5)
+# run_live_paper_trading.py fires when abs(now - target) < 60 s, so a decision can land up to a minute early.
+RUNNER_FIRE_WINDOW = timedelta(seconds=60)
 DRAWDOWN_CAUTION_PCT = -10.0
 DRAWDOWN_WARNING_PCT = -20.0
 TRADING_UNIT_MEMORY_CAP_BYTES = 1 << 30  # homeguard-multi MemoryMax=1G
@@ -136,7 +138,7 @@ def decisions_check(strategies: dict, now: datetime) -> Check:
             if not session[0] <= due < session[1] or local_now < due + DECISION_GRACE:
                 continue
             decided = _decided_at(entry)
-            if decided is None or decided < due:
+            if decided is None or decided < due - RUNNER_FIRE_WINDOW:
                 missed.append(f"{name} {slot}")
     if missed:
         return Check("Decisions on schedule", "warning", f"Missed: {', '.join(missed)}")
