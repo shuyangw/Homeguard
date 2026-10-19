@@ -420,23 +420,28 @@ class CSCMLiveAdapter:
             logger.error(f"[CSCM] Failed to get balance: {e}")
             return 0.0
 
-    def _get_total_portfolio_value(self) -> float:
-        """Get total portfolio value (cash + positions)."""
+    def _get_total_portfolio_value(self) -> float | None:
+        """Get total portfolio value (cash + positions), or None if any position cannot be priced."""
         try:
             total = self._get_account_balance()
             positions = self._get_current_positions()
 
             for symbol, qty in positions.items():
                 try:
-                    quote = self.broker.get_crypto_quote(symbol)
-                    total += float(qty) * quote['last']
+                    price = float(self.broker.get_crypto_quote(symbol)['last'])
                 except (KeyError, ValueError, ConnectionError):
-                    pass
+                    price = 0.0
+                # DemoBroker returns last=0.0 when it has no data; counting that as $0
+                # fired a false 88.8% trailing stop during the 2026-10-16 DNS outage.
+                if price <= 0:
+                    logger.warning(f"[CSCM] No price for {symbol}; portfolio value unknown")
+                    return None
+                total += float(qty) * price
 
             return total
         except Exception as e:
             logger.error(f"[CSCM] Failed to get portfolio value: {e}")
-            return 0.0
+            return None
 
     def _check_trailing_stop(self) -> bool:
         """
@@ -446,7 +451,7 @@ class CSCMLiveAdapter:
             True if stop was triggered and positions should be closed
         """
         portfolio_value = self._get_total_portfolio_value()
-        if portfolio_value <= 0:
+        if portfolio_value is None or portfolio_value <= 0:
             return False
 
         # Update portfolio value in signals (this checks trailing stop)
