@@ -59,6 +59,12 @@ Built Phase 2a of the Homeguard Console: a read-only local app (FastAPI + htmx o
   - The CLI-timeout fix did not make the upload succeed. Its log is in the instance journal and in Loki, both on the stopped instance; read `{unit="homeguard-console-upload-shutdown.service"}` from 2026-10-09T23:55Z after the Sat 19:00 ET boot. The error should now name the endpoint.
   - Separate console bug found: "Decisions on schedule" warns "Missed: ramp 15:55", but RAMP wrote its decision at 15:54:04 ET. The runner fires within +/-1 min of the target (`run_live_paper_trading.py`, `abs(time_diff)`), and since the 10-07 fire-once fix the single fire lands at about 15:54. `tools/console/checks.py:139` treats any decision before 15:55 as missed. The Grafana rule (12 h staleness) is unaffected.
 
+- **Exit gate re-run #3, 2026-10-19 20:07 ET: PASS (4 of 4).** The instance stopped at 00:00:19 UTC.
+  - [+] (1) The S3 object has `uploaded_at` 00:00:19.8 UTC and `reason: shutdown` (LastModified 00:00:21 UTC).
+  - [+] (2) Header: "Snapshot from S3, taken 2026-10-19 20:00:19 ET (shutdown)".
+  - [+] (3) IB Gateway, Broker heartbeat, Market data stream and Host memory all UNKNOWN "since 20:00"; "Decisions on schedule" is NORMAL, confirming the early-fire fix `d9eb850`.
+  - [+] (4) Power tile: "Instance stopped, as scheduled", next start Tue 08:00 ET.
+  - The only change since the two failures was `/etc/resolv.conf` moving from Tailscale MagicDNS (100.100.100.100) to the VPC resolver 172.31.0.2 on 10-19, plus the CLI timeouts (`bea369e`). Inferred cause of the 10-08/10-09 hangs: name resolution through tailscaled during shutdown. Not proven, since those journals were not read.
 ## Alert noise fix (19:25 ET)
 
 - **Symptom:** `RampDecisionMissedToday` (critical) re-posted to Discord every hour from 18:15 ET. The alert was correct: homeguard-multi was down 08:03-16:17 ET, so the 15:55 run wrote no decision record (paused RAMP still writes a placeholder record daily).
